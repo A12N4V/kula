@@ -30,10 +30,7 @@ impl Repo {
     }
 
     pub fn name(&self) -> String {
-        self.root
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "repo".into())
+        self.root.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "repo".into())
     }
 
     pub fn kula_dir(&self) -> PathBuf {
@@ -71,13 +68,7 @@ impl Repo {
     /// Run git with stdin content.
     pub fn run_stdin(&self, args: &[&str], input: &[u8]) -> Result<String> {
         use std::io::Write;
-        let mut child = self
-            .cmd()
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+        let mut child = self.cmd().args(args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
         child.stdin.take().unwrap().write_all(input)?;
         let out = child.wait_with_output()?;
         if !out.status.success() {
@@ -91,9 +82,7 @@ impl Repo {
     }
 
     pub fn branch(&self) -> String {
-        self.run(&["rev-parse", "--abbrev-ref", "HEAD"])
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|_| "(no commits)".into())
+        self.run(&["rev-parse", "--abbrev-ref", "HEAD"]).map(|s| s.trim().to_string()).unwrap_or_else(|_| "(no commits)".into())
     }
 
     pub fn user(&self) -> String {
@@ -160,11 +149,7 @@ impl Repo {
                     author: f[3].into(),
                     email: f[4].into(),
                     time: f[5].parse().unwrap_or(0),
-                    refs: f[6]
-                        .split(", ")
-                        .filter(|s| !s.is_empty() && !s.starts_with("refs/kula"))
-                        .map(String::from)
-                        .collect(),
+                    refs: f[6].split(", ").filter(|s| !s.is_empty() && !s.starts_with("refs/kula")).map(String::from).collect(),
                     subject: f[7].into(),
                 })
             })
@@ -182,7 +167,7 @@ impl Repo {
             .lines()
             .filter_map(|l| {
                 let f: Vec<&str> = l.split('\x1f').collect();
-                if f.len() < 8 || f[1].ends_with("/HEAD") {
+                if f.len() < 8 || f[0].ends_with("/HEAD") {
                     return None;
                 }
                 Some(Branch {
@@ -234,7 +219,7 @@ impl Repo {
     }
 
     /// Files and changed line ranges between two revisions (merge-base aware).
-    pub fn changed_ranges(&self, base: &str, head: &str) -> Result<Vec<(String, String, Vec<(u32, u32)>)>> {
+    pub fn changed_ranges(&self, base: &str, head: &str) -> Result<Vec<ChangedFile>> {
         validate_rev(base)?;
         validate_rev(head)?;
         let range = format!("{base}...{head}");
@@ -281,9 +266,7 @@ impl Repo {
     }
 
     pub fn is_clean(&self) -> bool {
-        self.run(&["status", "--porcelain", "--untracked-files=no"])
-            .map(|s| s.trim().is_empty())
-            .unwrap_or(false)
+        self.run(&["status", "--porcelain", "--untracked-files=no"]).map(|s| s.trim().is_empty()).unwrap_or(false)
     }
 }
 
@@ -294,6 +277,9 @@ pub fn validate_rev(r: &str) -> Result<()> {
     }
     Ok(())
 }
+
+/// (status, path, changed line ranges in the head revision)
+pub type ChangedFile = (String, String, Vec<(u32, u32)>);
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ExecResult {

@@ -10,7 +10,8 @@ homepage = "https://github.com/arnavsharma/kula"
 readme = "README.md"
 keywords = ["git", "knowledge-graph", "code-intelligence", "mcp", "tree-sitter"]
 categories = ["command-line-utilities", "development-tools"]
-exclude = ["web/node_modules", "docs", "packaging", ".github"]
+# web/dist is git-ignored but must ship so `cargo install kula` gets the UI.
+include = ["src/**", "tests/**", "build.rs", "web/dist/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "rustfmt.toml"]
 
 [[bin]]
 name = "kula"

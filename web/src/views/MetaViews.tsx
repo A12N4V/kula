@@ -38,6 +38,7 @@ export function Issues({ version, onChanged, openSymbol }: Nav) {
   useEffect(() => { load(); }, [version]);
   const list = meta?.issues.filter((i) => i.status === show).sort((a, b) => b.id - a.id) ?? [];
   const issue = typeof sel === "number" ? meta?.issues.find((i) => i.id === sel) : null;
+  useEffect(() => { if (sel == null && list[0]) setSel(list[0].id); }, [list.length]);
   const act = async (action: string | number, body: Record<string, unknown>, ok?: string) => {
     try { await api.metaAction("issues", action, body); if (ok) toast(ok); await load(); onChanged(); } catch (e: any) { toast(e.message, "err"); }
   };
@@ -105,6 +106,7 @@ export function Proposals({ version, onChanged, openSymbol }: Nav) {
   useEffect(() => { load(); }, [version]);
   const list = meta?.proposals.filter((p) => (show === "open" ? p.status === "open" : p.status !== "open")).sort((a, b) => b.id - a.id) ?? [];
   const p = meta?.proposals.find((x) => x.id === sel) ?? null;
+  useEffect(() => { if (sel == null && list[0]) setSel(list[0].id); }, [list.length]);
   useEffect(() => { setCmp(null); if (p && p.status === "open") api.compare(p.base, p.head).then(setCmp).catch(() => {}); }, [sel, p?.status]);
   const act = async (body: Record<string, unknown>, ok?: string) => {
     if (!p) return;

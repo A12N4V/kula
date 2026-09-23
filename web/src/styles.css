@@ -88,7 +88,8 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 
 .main { position: relative; overflow: hidden; min-width: 0; }
 .statusbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 0 12px; border-top: 1px solid var(--line); background: var(--bg-2); color: var(--text-3); font-size: 11.5px; }
-.statusbar span { display: inline-flex; align-items: center; gap: 6px; }
+.statusbar span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.statusbar svg { width: 13px; height: 13px; }
 
 /* ---------- common ---------- */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--panel-2); color: var(--text); cursor: pointer; white-space: nowrap; transition: background 0.15s, border-color 0.15s, transform 0.08s; }
@@ -235,3 +236,5 @@ pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-
   .search-trigger { width: auto; flex: 1; }
   .brand .crumb, .chip.hide-sm { display: none; }
 }
+
+.detail svg:not([width]):not(.lane-svg) { width: 18px; height: 18px; flex: none; }

@@ -94,10 +94,8 @@ async fn static_file(State(s): State<AppState>, req: Request) -> Response {
         },
     };
     if name == "index.html" {
-        let html = String::from_utf8_lossy(&file.data).replace(
-            "</head>",
-            &format!("<meta name=\"kula-token\" content=\"{}\"></head>", s.token),
-        );
+        let html =
+            String::from_utf8_lossy(&file.data).replace("</head>", &format!("<meta name=\"kula-token\" content=\"{}\"></head>", s.token));
         return Response::builder()
             .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
             .header(header::CACHE_CONTROL, "no-store")
@@ -162,7 +160,11 @@ async fn symbol(State(s): State<AppState>, Path(id): Path<i64>) -> ApiResult {
         let notes: Vec<_> = meta::load(&s.repo)?
             .notes
             .into_iter()
-            .filter(|n| n.target == format!("symbol:{}:{}", c.node.path, c.node.name) || n.target == format!("symbol:{}", c.node.name) || n.target == format!("file:{}", c.node.path))
+            .filter(|n| {
+                n.target == format!("symbol:{}:{}", c.node.path, c.node.name)
+                    || n.target == format!("symbol:{}", c.node.name)
+                    || n.target == format!("file:{}", c.node.path)
+            })
             .collect();
         let mut v = json!(c);
         v["notes"] = json!(notes);
@@ -281,7 +283,9 @@ async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(
         };
         let out = match action.as_str() {
             "stage" => r.run(&if a.paths.is_empty() { vec!["add".to_string(), "-A".into()] } else { with_paths(&["add"]) })?,
-            "unstage" => r.run(&if a.paths.is_empty() { vec!["reset".to_string(), "-q".into()] } else { with_paths(&["reset", "-q", "HEAD"]) }).or_else(|_| r.run(&with_paths(&["rm", "--cached", "-q"])))?,
+            "unstage" => r
+                .run(&if a.paths.is_empty() { vec!["reset".to_string(), "-q".into()] } else { with_paths(&["reset", "-q", "HEAD"]) })
+                .or_else(|_| r.run(&with_paths(&["rm", "--cached", "-q"])))?,
             "discard" => {
                 let tracked = r.run(&with_paths(&["checkout"])).map(|_| ());
                 // Untracked files: remove them explicitly.
@@ -361,7 +365,13 @@ async fn meta_action(State(s): State<AppState>, Path((kind, action)): Path<(Stri
         let id = || -> anyhow::Result<u64> { action.parse().map_err(|_| anyhow!("bad id")) };
         let v = match (kind.as_str(), action.as_str()) {
             ("issues", "new") => json!(meta::issue_new(r, m.title.as_deref().unwrap_or("untitled"), &body, m.labels, m.anchors)?),
-            ("proposals", "new") => json!(meta::proposal_new(r, m.title.as_deref().unwrap_or("untitled"), &body, m.base.as_deref().unwrap_or("main"), &m.head.clone().unwrap_or_else(|| r.branch()))?),
+            ("proposals", "new") => json!(meta::proposal_new(
+                r,
+                m.title.as_deref().unwrap_or("untitled"),
+                &body,
+                m.base.as_deref().unwrap_or("main"),
+                &m.head.clone().unwrap_or_else(|| r.branch())
+            )?),
             ("notes", "new") => json!(meta::note_add(r, m.target.as_deref().unwrap_or("repo"), &body)?),
             ("issues", _) if m.status.is_some() => json!(meta::issue_set_status(r, id()?, m.status.as_deref().unwrap())?),
             ("proposals", _) if m.status.as_deref() == Some("merged") => json!(meta::proposal_merge(r, id()?)?),
@@ -437,4 +447,3 @@ pub fn serve(repo: Repo, port: u16, open_browser: bool) -> anyhow::Result<()> {
         Ok(())
     })
 }
-

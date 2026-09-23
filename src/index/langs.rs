@@ -21,10 +21,7 @@ pub struct Lang {
 }
 
 fn compile(language: &Language, patterns: &[&str]) -> Vec<Query> {
-    patterns
-        .iter()
-        .filter_map(|p| Query::new(language, p).ok())
-        .collect()
+    patterns.iter().filter_map(|p| Query::new(language, p).ok()).collect()
 }
 
 const RUST: &[&str] = &[
@@ -103,12 +100,9 @@ pub fn load(id: &str) -> Option<Lang> {
             &["impl_item", "trait_item"],
             &["function_item", "function_signature_item", "struct_item", "enum_item", "trait_item"],
         ),
-        "python" => (
-            tree_sitter_python::LANGUAGE.into(),
-            PYTHON.to_vec(),
-            &["class_definition"],
-            &["function_definition", "class_definition"],
-        ),
+        "python" => {
+            (tree_sitter_python::LANGUAGE.into(), PYTHON.to_vec(), &["class_definition"], &["function_definition", "class_definition"])
+        }
         "javascript" => (
             tree_sitter_javascript::LANGUAGE.into(),
             JS.to_vec(),
@@ -116,28 +110,41 @@ pub fn load(id: &str) -> Option<Lang> {
             &["function_declaration", "generator_function_declaration", "class_declaration", "method_definition", "variable_declarator"],
         ),
         "typescript" | "tsx" => {
-            let lang: Language = if id == "tsx" {
-                tree_sitter_typescript::LANGUAGE_TSX.into()
-            } else {
-                tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
-            };
+            let lang: Language =
+                if id == "tsx" { tree_sitter_typescript::LANGUAGE_TSX.into() } else { tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into() };
             let mut p = JS.to_vec();
             p.extend_from_slice(TS_EXTRA);
             (
                 lang,
                 p,
                 &["class_declaration", "abstract_class_declaration", "class"],
-                &["function_declaration", "generator_function_declaration", "class_declaration", "abstract_class_declaration", "method_definition", "variable_declarator", "interface_declaration"],
+                &[
+                    "function_declaration",
+                    "generator_function_declaration",
+                    "class_declaration",
+                    "abstract_class_declaration",
+                    "method_definition",
+                    "variable_declarator",
+                    "interface_declaration",
+                ],
             )
         }
-        "go" => (
-            tree_sitter_go::LANGUAGE.into(),
-            GO.to_vec(),
-            &[],
-            &["function_declaration", "method_declaration", "type_spec"],
-        ),
+        "go" => (tree_sitter_go::LANGUAGE.into(), GO.to_vec(), &[], &["function_declaration", "method_declaration", "type_spec"]),
         _ => return None,
     };
     let queries = compile(&language, &pats);
-    Some(Lang { id: match id { "rust" => "rust", "python" => "python", "javascript" => "javascript", "typescript" => "typescript", "tsx" => "tsx", _ => "go" }, language, queries, class_kinds, def_kinds })
+    Some(Lang {
+        id: match id {
+            "rust" => "rust",
+            "python" => "python",
+            "javascript" => "javascript",
+            "typescript" => "typescript",
+            "tsx" => "tsx",
+            _ => "go",
+        },
+        language,
+        queries,
+        class_kinds,
+        def_kinds,
+    })
 }

@@ -36,11 +36,7 @@ pub fn detect_communities(nodes: &mut [Node], edges: &[Edge]) -> Vec<Community> 
             }
             // Mild self-affinity keeps labels stable.
             *score.entry(label[i]).or_default() += 0.05;
-            let best = score
-                .into_iter()
-                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap().then(b.0.cmp(&a.0)))
-                .map(|x| x.0)
-                .unwrap();
+            let best = score.into_iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap().then(b.0.cmp(&a.0))).map(|x| x.0).unwrap();
             if best != label[i] {
                 label[i] = best;
                 changed += 1;
@@ -107,10 +103,7 @@ pub fn context(repo: &Repo, store: &Store, id: i64) -> Result<Context> {
     } else {
         (vec![], vec![])
     };
-    let community = store
-        .conn
-        .query_row("SELECT label FROM communities WHERE id = ?1", [node.community], |r| r.get(0))
-        .ok();
+    let community = store.conn.query_row("SELECT label FROM communities WHERE id = ?1", [node.community], |r| r.get(0)).ok();
     let snippet = read_lines(repo, &node.path, node.start_line, node.end_line.min(node.start_line + 80));
     Ok(Context { node, community, callers, callees, children, imports, imported_by, container, snippet })
 }
@@ -122,13 +115,7 @@ pub fn read_lines(repo: &Repo, path: &str, start: i64, end: i64) -> String {
         return String::new();
     }
     std::fs::read_to_string(full)
-        .map(|s| {
-            s.lines()
-                .skip((start.max(1) - 1) as usize)
-                .take((end - start + 1).max(1) as usize)
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
+        .map(|s| s.lines().skip((start.max(1) - 1) as usize).take((end - start + 1).max(1) as usize).collect::<Vec<_>>().join("\n"))
         .unwrap_or_default()
 }
 
@@ -196,7 +183,14 @@ pub fn impact(store: &Store, id: i64, upstream: bool, max_depth: usize) -> Resul
         (_, 0, _) => "none",
         _ => "low",
     };
-    Ok(Impact { root, direction: if upstream { "upstream" } else { "downstream" }.into(), files: files.len(), communities, risk: risk.into(), hits })
+    Ok(Impact {
+        root,
+        direction: if upstream { "upstream" } else { "downstream" }.into(),
+        files: files.len(),
+        communities,
+        risk: risk.into(),
+        hits,
+    })
 }
 
 /// Shortest call path from `a` to `b`.
@@ -291,11 +285,7 @@ pub fn compare(repo: &Repo, store: Option<&Store>, base: &str, head: &str) -> Re
                     syms.push(n);
                 }
             }
-            let inner: Vec<Node> = syms
-                .iter()
-                .filter(|n| !syms.iter().any(|m| m.id != n.id && m.parent == Some(n.id)))
-                .cloned()
-                .collect();
+            let inner: Vec<Node> = syms.iter().filter(|n| !syms.iter().any(|m| m.id != n.id && m.parent == Some(n.id))).cloned().collect();
             syms = inner;
             touched_ids.extend(syms.iter().map(|s| s.id));
         }
@@ -307,7 +297,7 @@ pub fn compare(repo: &Repo, store: Option<&Store>, base: &str, head: &str) -> Re
     if let Some(st) = store {
         let mut seen = touched.clone();
         for id in &touched_ids {
-            let imp = impact(st, *id, true, 3)?;
+            let imp = impact(st, *id, true, 4)?;
             communities.extend(imp.communities);
             for h in imp.hits {
                 if seen.insert(h.node.id) {
@@ -325,7 +315,18 @@ pub fn compare(repo: &Repo, store: Option<&Store>, base: &str, head: &str) -> Re
         (0, 0) => "none",
         _ => "low",
     };
-    Ok(Compare { base: base.into(), head: head.into(), ahead, behind, commits, files, touched: touched.len(), affected, communities, risk: risk.into() })
+    Ok(Compare {
+        base: base.into(),
+        head: head.into(),
+        ahead,
+        behind,
+        commits,
+        files,
+        touched: touched.len(),
+        affected,
+        communities,
+        risk: risk.into(),
+    })
 }
 
 #[derive(Serialize)]
@@ -357,7 +358,7 @@ pub fn export(store: &Store, level: &str, limit: usize) -> Result<GraphExport> {
             .collect();
         return Ok(GraphExport { nodes, edges, communities, truncated: false });
     }
-    let total: i64 = store.conn.query_row("SELECT count(*) FROM nodes", [], |r| r.get(0))?;
+    let total: i64 = store.conn.query_row("SELECT count(*) FROM nodes WHERE lang != ''", [], |r| r.get(0))?;
     // Keep the most connected nodes when the graph is huge.
     let nodes = store.nodes_where(
         "lang != '' ORDER BY (SELECT count(*) FROM edges WHERE src = nodes.id OR dst = nodes.id) DESC, id LIMIT ?1",

@@ -16,12 +16,86 @@ const MAX_FILE_BYTES: u64 = 1_000_000;
 /// Names so generic that a cross-file, name-only match is almost always wrong
 /// (iterator/collection/stdlib methods). Same-file matches are still linked.
 const COMMON: &[&str] = &[
-    "new", "next", "get", "set", "push", "pop", "map", "iter", "len", "clone", "unwrap", "to_string", "insert", "remove",
-    "contains", "join", "split", "find", "filter", "collect", "open", "close", "read", "write", "run", "load", "save",
-    "update", "delete", "add", "append", "keys", "values", "items", "format", "parse", "send", "emit", "call", "apply",
-    "bind", "then", "catch", "log", "print", "println", "init", "start", "stop", "reset", "clear", "size", "is_empty",
-    "from", "into", "default", "fmt", "eq", "hash", "cmp", "toString", "forEach", "reduce", "some", "every", "slice",
-    "splice", "resolve", "reject", "render", "use", "handle", "main", "test", "string", "list", "dict", "str", "int", "len",
+    "new",
+    "next",
+    "get",
+    "set",
+    "push",
+    "pop",
+    "map",
+    "iter",
+    "len",
+    "clone",
+    "unwrap",
+    "to_string",
+    "insert",
+    "remove",
+    "contains",
+    "join",
+    "split",
+    "find",
+    "filter",
+    "collect",
+    "open",
+    "close",
+    "read",
+    "write",
+    "run",
+    "load",
+    "save",
+    "update",
+    "delete",
+    "add",
+    "append",
+    "keys",
+    "values",
+    "items",
+    "format",
+    "parse",
+    "send",
+    "emit",
+    "call",
+    "apply",
+    "bind",
+    "then",
+    "catch",
+    "log",
+    "print",
+    "println",
+    "init",
+    "start",
+    "stop",
+    "reset",
+    "clear",
+    "size",
+    "is_empty",
+    "from",
+    "into",
+    "default",
+    "fmt",
+    "eq",
+    "hash",
+    "cmp",
+    "toString",
+    "forEach",
+    "reduce",
+    "some",
+    "every",
+    "slice",
+    "splice",
+    "resolve",
+    "reject",
+    "render",
+    "use",
+    "handle",
+    "main",
+    "test",
+    "string",
+    "list",
+    "dict",
+    "str",
+    "int",
+    "len",
 ];
 
 #[derive(Debug, Default)]
@@ -63,7 +137,10 @@ fn walk(root: &Path) -> Vec<(String, Option<&'static str>)> {
         .git_ignore(true)
         .filter_entry(|e| {
             let n = e.file_name().to_string_lossy();
-            !matches!(n.as_ref(), ".git" | ".kula" | "node_modules" | "target" | "dist" | "build" | "vendor" | "__pycache__" | ".venv" | "venv")
+            !matches!(
+                n.as_ref(),
+                ".git" | ".kula" | "node_modules" | "target" | "dist" | "build" | "vendor" | "__pycache__" | ".venv" | "venv"
+            )
         })
         .build();
     for entry in walker.flatten() {
@@ -144,10 +221,9 @@ fn parse_file(root: &Path, rel: &str, lang: &langs::Lang, parser: &mut Parser) -
                     }
                     if lang.id == "go" && kind == "method" {
                         // func (r *Recv) Name() — owner is the receiver type.
-                        parent_name = def_node
-                            .child_by_field_name("receiver")
-                            .and_then(|r| r.utf8_text(bytes).ok())
-                            .and_then(|t| t.split_whitespace().last().map(|s| s.trim_matches(|c: char| !c.is_alphanumeric() && c != '_').to_string()));
+                        parent_name = def_node.child_by_field_name("receiver").and_then(|r| r.utf8_text(bytes).ok()).and_then(|t| {
+                            t.split_whitespace().last().map(|s| s.trim_matches(|c: char| !c.is_alphanumeric() && c != '_').to_string())
+                        });
                     }
                     if text.is_empty() {
                         continue;
@@ -197,7 +273,13 @@ fn normalize(parts: &str) -> String {
 }
 
 /// Resolve an import string to indexed files.
-fn resolve_import(raw: &str, from: &str, lang: &str, by_stem: &HashMap<String, Vec<usize>>, by_dir: &HashMap<String, Vec<usize>>) -> Vec<usize> {
+fn resolve_import(
+    raw: &str,
+    from: &str,
+    lang: &str,
+    by_stem: &HashMap<String, Vec<usize>>,
+    by_dir: &HashMap<String, Vec<usize>>,
+) -> Vec<usize> {
     let s = raw.trim().trim_matches(|c| c == '"' || c == '\'' || c == '`');
     let dir = from.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
     let suffix_lookup = |key: &str| -> Vec<usize> {
@@ -218,11 +300,7 @@ fn resolve_import(raw: &str, from: &str, lang: &str, by_stem: &HashMap<String, V
             if s.starts_with('.') {
                 let joined = normalize(&format!("{dir}/{s}"));
                 let key = strip_ext(&joined).to_string();
-                by_stem
-                    .get(&key)
-                    .or_else(|| by_stem.get(&format!("{key}/index")))
-                    .cloned()
-                    .unwrap_or_default()
+                by_stem.get(&key).or_else(|| by_stem.get(&format!("{key}/index"))).cloned().unwrap_or_default()
             } else {
                 vec![]
             }
@@ -248,10 +326,7 @@ fn resolve_import(raw: &str, from: &str, lang: &str, by_stem: &HashMap<String, V
         "rust" => {
             // `use crate::a::b::{C, D}` or `mod name;`
             let path = s.split('{').next().unwrap_or(s).trim_end_matches("::");
-            let segs: Vec<&str> = path
-                .split("::")
-                .filter(|p| !matches!(*p, "crate" | "self" | "super" | "" | "*"))
-                .collect();
+            let segs: Vec<&str> = path.split("::").filter(|p| !matches!(*p, "crate" | "self" | "super" | "" | "*")).collect();
             if segs.len() == 1 && !s.contains("::") {
                 // mod item: sibling file
                 let base = if from.ends_with("mod.rs") || from.ends_with("main.rs") || from.ends_with("lib.rs") {
@@ -279,7 +354,9 @@ fn resolve_import(raw: &str, from: &str, lang: &str, by_stem: &HashMap<String, V
             let last = s.rsplit('/').next().unwrap_or(s);
             by_dir
                 .iter()
-                .filter(|(d, _)| d.ends_with(&format!("/{tail}")) || d.as_str() == tail || d.ends_with(&format!("/{last}")) || d.as_str() == last)
+                .filter(|(d, _)| {
+                    d.ends_with(&format!("/{tail}")) || d.as_str() == tail || d.ends_with(&format!("/{last}")) || d.as_str() == last
+                })
                 .flat_map(|(_, v)| v.iter().copied().take(12))
                 .collect()
         }
@@ -383,9 +460,8 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         }
         // Owner links (class → method), else file → symbol.
         for (i, d) in pf.defs.iter().enumerate() {
-            let owner = d.parent_name.as_ref().and_then(|pn| {
-                pf.defs.iter().position(|o| &o.name == pn && matches!(o.kind, "class" | "interface"))
-            });
+            let owner =
+                d.parent_name.as_ref().and_then(|pn| pf.defs.iter().position(|o| &o.name == pn && matches!(o.kind, "class" | "interface")));
             match owner {
                 Some(o) if o != i => {
                     nodes[ids[i]].parent = Some(ids[o] as i64);
@@ -462,7 +538,10 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     let store = Store::create(repo)?;
     store.write_all(&nodes, &edges, &communities)?;
     store.set_meta("indexed_head", &repo.head().unwrap_or_default())?;
-    store.set_meta("indexed_at", &std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0).to_string())?;
+    store.set_meta(
+        "indexed_at",
+        &std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0).to_string(),
+    )?;
 
     let stats = IndexStats {
         files: files.len(),

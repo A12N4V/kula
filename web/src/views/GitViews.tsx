@@ -182,7 +182,9 @@ export function Branches({ onChanged, openSymbol, version, initialCompare }: Nav
     const cur = d.branches.find((b) => b.current)?.name ?? "";
     const main = d.branches.find((b) => !b.remote && ["main", "master", "trunk", "develop"].includes(b.name))?.name ?? cur;
     setBase((b) => b || main);
-    setHead((h) => h || cur);
+    // Default to the most recent other local branch so compare is meaningful.
+    const other = d.branches.filter((b) => !b.remote && b.name !== main).sort((a, b) => b.time - a.time)[0]?.name;
+    setHead((h) => h || (cur === main && other ? other : cur));
   });
   useEffect(() => { load(); }, [version]);
   useEffect(() => { if (initialCompare) { setBase(initialCompare.base); setHead(initialCompare.head); } }, [initialCompare]);

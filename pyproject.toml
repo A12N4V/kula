@@ -1,0 +1,30 @@
+# `pip install kula` — maturin packages the Rust binary into a platform wheel.
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "kula"
+description = "git, with a map — a local-first git client with a knowledge-graph view, local issues/PRs, notes and an MCP server."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+keywords = ["git", "knowledge-graph", "mcp", "code-intelligence", "tree-sitter"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Rust",
+  "Topic :: Software Development :: Version Control :: Git",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/arnavsharma/kula"
+Repository = "https://github.com/arnavsharma/kula"
+
+[tool.maturin]
+bindings = "bin"
+strip = true
+# The embedded UI must exist before building: `pnpm -C web build`.
+include = [{ path = "web/dist/**/*", format = "sdist" }]

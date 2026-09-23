@@ -110,7 +110,17 @@ fn next(meta: &mut Meta) -> u64 {
 
 pub fn issue_new(repo: &Repo, title: &str, body: &str, labels: Vec<String>, anchors: Vec<String>) -> Result<Issue> {
     let mut m = load(repo)?;
-    let issue = Issue { id: next(&mut m), title: title.into(), body: body.into(), status: "open".into(), labels, anchors, author: repo.user(), created: now(), comments: vec![] };
+    let issue = Issue {
+        id: next(&mut m),
+        title: title.into(),
+        body: body.into(),
+        status: "open".into(),
+        labels,
+        anchors,
+        author: repo.user(),
+        created: now(),
+        comments: vec![],
+    };
     m.issues.push(issue.clone());
     save(repo, &m, &format!("open issue #{} {}", issue.id, title))?;
     Ok(issue)
@@ -144,7 +154,18 @@ pub fn proposal_new(repo: &Repo, title: &str, body: &str, base: &str, head: &str
     repo.run(&["rev-parse", "--verify", base]).map_err(|_| anyhow!("unknown base {base}"))?;
     repo.run(&["rev-parse", "--verify", head]).map_err(|_| anyhow!("unknown head {head}"))?;
     let mut m = load(repo)?;
-    let p = Proposal { id: next(&mut m), title: title.into(), body: body.into(), base: base.into(), head: head.into(), status: "open".into(), author: repo.user(), created: now(), comments: vec![], merged_sha: None };
+    let p = Proposal {
+        id: next(&mut m),
+        title: title.into(),
+        body: body.into(),
+        base: base.into(),
+        head: head.into(),
+        status: "open".into(),
+        author: repo.user(),
+        created: now(),
+        comments: vec![],
+        merged_sha: None,
+    };
     m.proposals.push(p.clone());
     save(repo, &m, &format!("propose #{} {head} → {base}", p.id))?;
     Ok(p)

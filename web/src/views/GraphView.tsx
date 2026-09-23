@@ -81,7 +81,8 @@ export default function GraphView({ focus, setFocus, onChanged, version }: Props
     for (const e of data.edges) {
       const s = String(e.src), t = String(e.dst);
       if (s === t || !g.hasNode(s) || !g.hasNode(t) || g.hasEdge(s, t)) continue;
-      g.addEdge(s, t, { kind: e.kind, size: e.kind === "CALLS" ? 0.6 : 0.4, color: cssVar("--line-2") });
+      const same = g.getNodeAttribute(s, "node").community === g.getNodeAttribute(t, "node").community;
+      g.addEdge(s, t, { kind: e.kind, size: e.kind === "CALLS" ? 0.6 : 0.4, color: cssVar("--line-2"), weight: same ? 3 : 0.35 });
     }
     g.forEachNode((id, attr) => {
       const deg = g.degree(id);
@@ -90,7 +91,7 @@ export default function GraphView({ focus, setFocus, onChanged, version }: Props
     });
     if (g.order > 1) {
       const settings = forceAtlas2.inferSettings(g);
-      forceAtlas2.assign(g, { iterations: g.order > 3000 ? 120 : 260, settings: { ...settings, gravity: 0.6, scalingRatio: 8, barnesHutOptimize: g.order > 800, adjustSizes: false } });
+      forceAtlas2.assign(g, { iterations: g.order > 3000 ? 120 : 260, settings: { ...settings, linLogMode: true, outboundAttractionDistribution: true, edgeWeightInfluence: 1, gravity: 1.2, scalingRatio: 6, barnesHutOptimize: g.order > 800, adjustSizes: false } });
       noverlap.assign(g, { maxIterations: 60, settings: { margin: 2, ratio: 1.1 } });
     }
     return g;
@@ -99,7 +100,9 @@ export default function GraphView({ focus, setFocus, onChanged, version }: Props
   // Sigma renderer.
   useEffect(() => {
     if (!graph || !box.current) return;
-    const s = new Sigma(graph, box.current, {
+    let s: Sigma;
+    try {
+      s = new Sigma(graph, box.current, {
       renderEdgeLabels: false,
       labelFont: "Geist Variable, system-ui, sans-serif",
       labelSize: 11,
@@ -113,7 +116,11 @@ export default function GraphView({ focus, setFocus, onChanged, version }: Props
       defaultDrawNodeHover: drawHover,
       minCameraRatio: 0.05,
       maxCameraRatio: 8,
-    });
+      });
+    } catch (e) {
+      setErr("This browser could not start WebGL, which the graph needs. Other views still work.");
+      return;
+    }
     const faded = cssVar("--line");
     const accent = cssVar("--accent");
     s.setSetting("nodeReducer", (id, attr) => {
@@ -192,7 +199,7 @@ export default function GraphView({ focus, setFocus, onChanged, version }: Props
     <div className="graph-wrap">
       <div ref={box} className="graph-canvas" />
       {!data && !err && <div className="loading"><div className="stack" style={{ alignItems: "center" }}><Logo spin /><span>Laying out the graph…</span></div></div>}
-      {err && <div className="loading"><Empty title="No graph yet">{err}<div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => api.reindex().then(onChanged)}>Build graph</button></div></Empty></div>}
+      {err && <div className="loading"><Empty title={err.includes("WebGL") ? "Graph unavailable" : "No graph yet"}>{err}{!err.includes("WebGL") && <div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => api.reindex().then(onChanged)}>Build graph</button></div>}</Empty></div>}
 
       <div className="graph-overlay hud">
         <div className="seg">
@@ -234,7 +241,9 @@ function Inspector({ id, onClose, setFocus, impact, setImpact }: { id: number; o
   const [note, setNote] = useState("");
   const toast = useToast();
   const load = () => api.symbol(id).then(setCtx).catch((e) => toast(e.message, "err"));
-  useEffect(() => { setCtx(null); load(); setTab("context"); }, [id]);
+  // `#graph/<id>/impact` opens straight onto a tab (first load only).
+  const initialTab = useRef(location.hash.split("/")[2] as typeof tab | undefined);
+  useEffect(() => { setCtx(null); load(); setTab(initialTab.current ?? "context"); initialTab.current = undefined; }, [id]);
   useEffect(() => {
     if (tab === "impact") api.impact(id, dir).then(setImpact).catch((e) => toast(e.message, "err"));
     else setImpact(null);

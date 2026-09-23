@@ -54,7 +54,11 @@ enum Cmd {
         limit: usize,
     },
     /// Search symbols and files.
-    Query { text: Vec<String>, #[arg(short, long, default_value_t = 15)] limit: usize },
+    Query {
+        text: Vec<String>,
+        #[arg(short, long, default_value_t = 15)]
+        limit: usize,
+    },
     /// 360° view of a symbol: callers, callees, container, source.
     Context { symbol: String },
     /// Blast radius of changing a symbol.
@@ -69,7 +73,10 @@ enum Cmd {
     /// Shortest call path between two symbols.
     Trace { from: String, to: String },
     /// Execution flows discovered from entry points.
-    Flows { #[arg(short, long, default_value_t = 10)] limit: usize },
+    Flows {
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+    },
     /// Functional clusters (communities) in the codebase.
     Clusters,
     /// Graph-aware branch comparison.
@@ -84,13 +91,19 @@ enum Cmd {
     #[command(subcommand)]
     Note(NoteCmd),
     /// Push/pull issues, proposals and notes with a remote.
-    Sync { #[arg(default_value = "origin")] remote: String },
+    Sync {
+        #[arg(default_value = "origin")]
+        remote: String,
+    },
     /// Serve the graph to AI agents over MCP (stdio).
     Mcp,
     /// Check the environment.
     Doctor,
     /// Explicit git passthrough: `kula git <args>`.
-    Git { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> },
+    Git {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     #[command(external_subcommand)]
     External(Vec<String>),
 }
@@ -98,10 +111,21 @@ enum Cmd {
 #[derive(Subcommand)]
 enum IssueCmd {
     /// Open an issue.
-    New { title: String, #[arg(short, long, default_value = "")] body: String, #[arg(short, long)] label: Vec<String>, /// Anchor to a symbol or file.
-        #[arg(short, long)] anchor: Vec<String> },
+    New {
+        title: String,
+        #[arg(short, long, default_value = "")]
+        body: String,
+        #[arg(short, long)]
+        label: Vec<String>,
+        /// Anchor to a symbol or file.
+        #[arg(short, long)]
+        anchor: Vec<String>,
+    },
     /// List issues.
-    List { #[arg(long)] all: bool },
+    List {
+        #[arg(long)]
+        all: bool,
+    },
     /// Show one issue.
     Show { id: u64 },
     /// Close an issue.
@@ -115,23 +139,54 @@ enum IssueCmd {
 #[derive(Subcommand)]
 enum PrCmd {
     /// Propose merging HEAD (or --head) into --base.
-    New { title: String, #[arg(long, default_value = "main")] base: String, #[arg(long)] head: Option<String>, #[arg(short, long, default_value = "")] body: String },
-    List { #[arg(long)] all: bool },
+    New {
+        title: String,
+        #[arg(long, default_value = "main")]
+        base: String,
+        #[arg(long)]
+        head: Option<String>,
+        #[arg(short, long, default_value = "")]
+        body: String,
+    },
+    List {
+        #[arg(long)]
+        all: bool,
+    },
     /// Show a proposal with its graph impact.
-    Show { id: u64 },
+    Show {
+        id: u64,
+    },
     /// Merge (no-ff) into the base branch.
-    Merge { id: u64 },
-    Close { id: u64 },
-    Comment { id: u64, body: String },
+    Merge {
+        id: u64,
+    },
+    Close {
+        id: u64,
+    },
+    Comment {
+        id: u64,
+        body: String,
+    },
 }
 
 #[derive(Subcommand)]
 enum NoteCmd {
     /// Add a note. Target: repo | file:<path> | symbol:<name> | commit:<sha>.
-    Add { target: String, body: String },
-    List { #[arg(long)] target: Option<String> },
-    Edit { id: u64, body: String },
-    Rm { id: u64 },
+    Add {
+        target: String,
+        body: String,
+    },
+    List {
+        #[arg(long)]
+        target: Option<String>,
+    },
+    Edit {
+        id: u64,
+        body: String,
+    },
+    Rm {
+        id: u64,
+    },
 }
 
 fn main() {
@@ -148,12 +203,7 @@ fn passthrough(dir: &std::path::Path, args: &[String]) -> Result<()> {
 }
 
 fn print_node(n: &store::Node) {
-    println!(
-        "  {} {}  {}",
-        community(n.community, kind_glyph(&n.kind)),
-        bold(&n.name),
-        dim(&format!("{}:{}", n.path, n.start_line))
-    );
+    println!("  {} {}  {}", community(n.community, kind_glyph(&n.kind)), bold(&n.name), dim(&format!("{}:{}", n.path, n.start_line)));
 }
 
 fn run(cli: Cli) -> Result<()> {
@@ -161,7 +211,12 @@ fn run(cli: Cli) -> Result<()> {
     let json = cli.json;
     let Some(cmd) = cli.cmd else {
         println!("{}", accent(BANNER));
-        println!("  {} build the graph      {} open the UI      {} all commands\n", bold("kula index"), bold("kula view"), bold("kula --help"));
+        println!(
+            "  {} build the graph      {} open the UI      {} all commands\n",
+            bold("kula index"),
+            bold("kula view"),
+            bold("kula --help")
+        );
         return Ok(());
     };
     if let Cmd::External(args) = &cmd {
@@ -205,13 +260,24 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Status => status(&repo, json)?,
         Cmd::Lg { limit } => {
             let n = format!("-n{limit}");
-            passthrough(&repo.root, &["log".into(), "--graph".into(), "--all".into(), n, "--format=%C(auto)%h%d %s %C(dim)· %an, %ar%C(reset)".into(), "--color=auto".into()])?;
+            passthrough(
+                &repo.root,
+                &[
+                    "log".into(),
+                    "--graph".into(),
+                    "--all".into(),
+                    n,
+                    "--format=%C(auto)%h%d %s %C(dim)· %an, %ar%C(reset)".into(),
+                    "--color=auto".into(),
+                ],
+            )?;
         }
         Cmd::Query { text, limit } => {
             let st = Store::open(&repo)?;
             let hits = st.search(&text.join(" "), limit)?;
             if json {
-                return Ok(out(&hits));
+                out(&hits);
+                return Ok(());
             }
             if hits.is_empty() {
                 println!("{}", dim("no matches"));
@@ -225,13 +291,25 @@ fn run(cli: Cli) -> Result<()> {
             let n = graph::resolve_one(&st, &symbol)?;
             let c = graph::context(&repo, &st, n.id)?;
             if json {
-                return Ok(out(&c));
+                out(&c);
+                return Ok(());
             }
-            header(&format!("{} {} {}", kind_glyph(&c.node.kind), c.node.name, dim(&format!("{}:{}-{}", c.node.path, c.node.start_line, c.node.end_line))));
+            header(&format!(
+                "{} {} {}",
+                kind_glyph(&c.node.kind),
+                c.node.name,
+                dim(&format!("{}:{}-{}", c.node.path, c.node.start_line, c.node.end_line))
+            ));
             if let Some(cm) = &c.community {
                 println!("  {} {}", dim("cluster"), community(c.node.community, cm));
             }
-            for (label, list) in [("callers", &c.callers), ("callees", &c.callees), ("contains", &c.children), ("imports", &c.imports), ("imported by", &c.imported_by)] {
+            for (label, list) in [
+                ("callers", &c.callers),
+                ("callees", &c.callees),
+                ("contains", &c.children),
+                ("imports", &c.imports),
+                ("imported by", &c.imported_by),
+            ] {
                 if list.is_empty() {
                     continue;
                 }
@@ -240,7 +318,11 @@ fn run(cli: Cli) -> Result<()> {
                     print_node(x);
                 }
             }
-            let notes: Vec<_> = meta::load(&repo)?.notes.into_iter().filter(|x| x.target.ends_with(&c.node.name) || x.target.ends_with(&c.node.path)).collect();
+            let notes: Vec<_> = meta::load(&repo)?
+                .notes
+                .into_iter()
+                .filter(|x| x.target.ends_with(&c.node.name) || x.target.ends_with(&c.node.path))
+                .collect();
             if !notes.is_empty() {
                 println!("\n  {}", bold("notes"));
                 for x in notes {
@@ -253,10 +335,17 @@ fn run(cli: Cli) -> Result<()> {
             let n = graph::resolve_one(&st, &symbol)?;
             let imp = graph::impact(&st, n.id, !down, depth)?;
             if json {
-                return Ok(out(&imp));
+                out(&imp);
+                return Ok(());
             }
             header(&format!("impact of {} {}", bold(&imp.root.name), dim(&format!("({})", imp.direction))));
-            println!("  risk {}   {} symbols · {} files · {} clusters\n", risk(&imp.risk), imp.hits.len(), imp.files, imp.communities.len());
+            println!(
+                "  risk {}   {} symbols · {} files · {} clusters\n",
+                risk(&imp.risk),
+                imp.hits.len(),
+                imp.files,
+                imp.communities.len()
+            );
             for d in 1..=depth {
                 let layer: Vec<_> = imp.hits.iter().filter(|h| h.depth == d).collect();
                 if layer.is_empty() {
@@ -277,20 +366,28 @@ fn run(cli: Cli) -> Result<()> {
             let b = graph::resolve_one(&st, &to)?;
             let path = graph::trace(&st, a.id, b.id)?;
             if json {
-                return Ok(out(&path));
+                out(&path);
+                return Ok(());
             }
             if path.is_empty() {
                 println!("{} no call path from {} to {}", dim("○"), a.name, b.name);
             }
             for (i, n) in path.iter().enumerate() {
-                println!("  {}{} {}  {}", "  ".repeat(i), if i == 0 { accent("●") } else { dim("└→") }, bold(&n.name), dim(&format!("{}:{}", n.path, n.start_line)));
+                println!(
+                    "  {}{} {}  {}",
+                    "  ".repeat(i),
+                    if i == 0 { accent("●") } else { dim("└→") },
+                    bold(&n.name),
+                    dim(&format!("{}:{}", n.path, n.start_line))
+                );
             }
         }
         Cmd::Flows { limit } => {
             let st = Store::open(&repo)?;
             let f = graph::flows(&st, limit)?;
             if json {
-                return Ok(out(&f));
+                out(&f);
+                return Ok(());
             }
             header("execution flows");
             for fl in f {
@@ -305,7 +402,8 @@ fn run(cli: Cli) -> Result<()> {
             let st = Store::open(&repo)?;
             let c = st.communities()?;
             if json {
-                return Ok(out(&c));
+                out(&c);
+                return Ok(());
             }
             header("clusters");
             for x in c.iter().filter(|x| x.size > 1).take(30) {
@@ -317,7 +415,8 @@ fn run(cli: Cli) -> Result<()> {
             let st = Store::open(&repo).ok();
             let c = graph::compare(&repo, st.as_ref(), &base, &head)?;
             if json {
-                return Ok(out(&c));
+                out(&c);
+                return Ok(());
             }
             print_compare(&c);
         }
@@ -333,7 +432,14 @@ fn run(cli: Cli) -> Result<()> {
 
 fn print_compare(c: &graph::Compare) {
     header(&format!("{} {} {}", c.base, dim("…"), c.head));
-    println!("  {} ahead · {} behind · {} files · {} symbols touched · risk {}\n", green(&c.ahead.to_string()), red(&c.behind.to_string()), c.files.len(), c.touched, risk(&c.risk));
+    println!(
+        "  {} ahead · {} behind · {} files · {} symbols touched · risk {}\n",
+        green(&c.ahead.to_string()),
+        red(&c.behind.to_string()),
+        c.files.len(),
+        c.touched,
+        risk(&c.risk)
+    );
     if !c.commits.is_empty() {
         println!("  {}", bold("commits"));
         for x in c.commits.iter().take(12) {
@@ -395,7 +501,11 @@ fn status(repo: &Repo, json: bool) -> Result<()> {
         println!("  {}", bold(title));
         for f in list {
             let code = if col == 0 { &f.index } else { &f.worktree };
-            let c = match col { 0 => green(code), 1 => yellow(code), _ => dim("?") };
+            let c = match col {
+                0 => green(code),
+                1 => yellow(code),
+                _ => dim("?"),
+            };
             println!("    {c} {}", f.path);
         }
     }
@@ -421,7 +531,13 @@ fn issue_cmd(repo: &Repo, c: IssueCmd, json: bool) -> Result<()> {
             for i in list {
                 let dot = if i.status == "open" { green("●") } else { dim("○") };
                 let labels = if i.labels.is_empty() { String::new() } else { magenta(&format!(" [{}]", i.labels.join(", "))) };
-                println!("  {dot} {} {}{}  {}", accent(&format!("#{}", i.id)), i.title, labels, dim(&format!("{} · {}", i.author, rel_time(i.created))));
+                println!(
+                    "  {dot} {} {}{}  {}",
+                    accent(&format!("#{}", i.id)),
+                    i.title,
+                    labels,
+                    dim(&format!("{} · {}", i.author, rel_time(i.created)))
+                );
             }
         }
         IssueCmd::Show { id } => {
@@ -477,8 +593,17 @@ fn pr_cmd(repo: &Repo, c: PrCmd, json: bool) -> Result<()> {
                 println!("{}", dim("no proposals"));
             }
             for p in list {
-                let dot = match p.status.as_str() { "open" => green("●"), "merged" => magenta("◆"), _ => dim("○") };
-                println!("  {dot} {} {}  {}", accent(&format!("#{}", p.id)), p.title, dim(&format!("{} → {} · {}", p.head, p.base, rel_time(p.created))));
+                let dot = match p.status.as_str() {
+                    "open" => green("●"),
+                    "merged" => magenta("◆"),
+                    _ => dim("○"),
+                };
+                println!(
+                    "  {dot} {} {}  {}",
+                    accent(&format!("#{}", p.id)),
+                    p.title,
+                    dim(&format!("{} → {} · {}", p.head, p.base, rel_time(p.created)))
+                );
             }
         }
         PrCmd::Show { id } => {
@@ -535,7 +660,13 @@ fn note_cmd(repo: &Repo, c: NoteCmd, json: bool) -> Result<()> {
                 println!("{}", dim("no notes"));
             }
             for n in list {
-                println!("  {} {} {}  {}", magenta("✎"), accent(&format!("#{}", n.id)), bold(&n.target), dim(&format!("{} · {}", n.author, rel_time(n.updated))));
+                println!(
+                    "  {} {} {}  {}",
+                    magenta("✎"),
+                    accent(&format!("#{}", n.id)),
+                    bold(&n.target),
+                    dim(&format!("{} · {}", n.author, rel_time(n.updated)))
+                );
                 for l in n.body.lines() {
                     println!("      {l}");
                 }

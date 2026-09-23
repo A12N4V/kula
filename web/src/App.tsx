@@ -19,11 +19,14 @@ const VIEWS: { id: View; label: string; icon: () => React.ReactElement; key: str
 ];
 
 export default function App() {
-  const [view, setView] = useState<View>(() => (location.hash.slice(1) as View) || "graph");
+  const [view, setView] = useState<View>(() => (location.hash.slice(1).split("/")[0] as View) || "graph");
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [changes, setChanges] = useState(0);
-  const [focus, setFocus] = useState<number | null>(null);
+  const [focus, setFocus] = useState<number | null>(() => {
+    const id = Number(location.hash.split("/")[1]);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  });
   const [palette, setPalette] = useState(false);
   const [version, setVersion] = useState(0);
   const [indexing, setIndexing] = useState(false);
@@ -38,7 +41,8 @@ export default function App() {
   const onChanged = useCallback(() => { refresh(); setVersion((v) => v + 1); }, [refresh]);
 
   useEffect(() => { refresh(); const t = setInterval(refresh, 5000); return () => clearInterval(t); }, [refresh]);
-  useEffect(() => { history.replaceState(null, "", `#${view}`); }, [view]);
+  // Deep links: #graph/<symbol id> is shareable.
+  useEffect(() => { history.replaceState(null, "", `#${view}${view === "graph" && focus != null ? `/${focus}` : ""}`); }, [view, focus]);
   useEffect(() => {
     if (theme) document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
     try { theme ? localStorage.setItem("kula-theme", theme) : localStorage.removeItem("kula-theme"); } catch {}

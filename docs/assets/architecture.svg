@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 420" width="1000" height="420" role="img" aria-label="Architecture: git repository → tree-sitter indexer → SQLite graph → CLI, web UI and MCP; refs/kula/meta for issues, proposals and notes">
+  <style>
+    .bg { fill: #0b0b0d; }
+    .box { fill: #141418; stroke: #2f2f38; }
+    .hot { fill: #1c1410; stroke: #ff9e6d; }
+    .t { font: 600 15px 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif; fill: #ece8e1; }
+    .s { font: 400 12px 'Geist Mono', 'SF Mono', Menlo, monospace; fill: #8a857d; }
+    .k { font: 600 10.5px 'Geist', ui-sans-serif, system-ui, sans-serif; fill: #6d6a66; letter-spacing: .12em; }
+    .wire { fill: none; stroke: #3a3a44; stroke-width: 1.5; }
+    .flow { fill: none; stroke: #ff9e6d; stroke-width: 2; stroke-dasharray: 6 14; animation: flow 1.4s linear infinite; }
+    .flow.b { stroke: #7cb7ff; } .flow.g { stroke: #8fd694; } .flow.v { stroke: #d49cf0; }
+    @keyframes flow { to { stroke-dashoffset: -20; } }
+    @media (prefers-reduced-motion: reduce) { .flow { animation: none; } }
+  </style>
+  <rect class="bg" width="1000" height="420" rx="18"/>
+
+  <text x="40" y="44" class="k">SOURCE</text>
+  <text x="300" y="44" class="k">INDEX</text>
+  <text x="560" y="44" class="k">SURFACES</text>
+
+  <!-- repo -->
+  <rect class="box" x="40" y="70" width="200" height="120" rx="12"/>
+  <text x="60" y="102" class="t">your git repo</text>
+  <text x="60" y="126" class="s">.ts .tsx .js .py</text>
+  <text x="60" y="146" class="s">.rs .go</text>
+  <text x="60" y="170" class="s">HEAD · branches · diff</text>
+
+  <rect class="box" x="40" y="240" width="200" height="120" rx="12"/>
+  <text x="60" y="272" class="t">refs/kula/meta</text>
+  <text x="60" y="296" class="s">issues · proposals</text>
+  <text x="60" y="316" class="s">notes (a commit chain)</text>
+  <text x="60" y="340" class="s">kula sync ⇄ remote</text>
+
+  <!-- indexer -->
+  <rect class="hot" x="300" y="70" width="200" height="120" rx="12"/>
+  <text x="320" y="102" class="t">indexer</text>
+  <text x="320" y="126" class="s">tree-sitter · parallel</text>
+  <text x="320" y="146" class="s">defs · calls · imports</text>
+  <text x="320" y="170" class="s">label-prop clusters</text>
+
+  <rect class="box" x="300" y="240" width="200" height="120" rx="12"/>
+  <text x="320" y="272" class="t">.kula/graph.db</text>
+  <text x="320" y="296" class="s">SQLite + FTS5</text>
+  <text x="320" y="316" class="s">nodes · edges</text>
+  <text x="320" y="340" class="s">communities · meta</text>
+
+  <!-- surfaces -->
+  <rect class="box" x="560" y="70" width="400" height="80" rx="12"/>
+  <text x="580" y="102" class="t">CLI  <tspan class="s">every git command passes through</tspan></text>
+  <text x="580" y="128" class="s">index · impact · trace · compare · issue · pr · note</text>
+
+  <rect class="box" x="560" y="170" width="400" height="80" rx="12"/>
+  <text x="580" y="202" class="t">web UI  <tspan class="s">kula view → localhost:7420</tspan></text>
+  <text x="580" y="228" class="s">graph · changes · history · compare · issues · notes</text>
+
+  <rect class="box" x="560" y="270" width="400" height="80" rx="12"/>
+  <text x="580" y="302" class="t">MCP  <tspan class="s">kula mcp (stdio)</tspan></text>
+  <text x="580" y="328" class="s">Claude Code · Cursor · Codex · any agent</text>
+
+  <!-- wires -->
+  <path class="wire" d="M240 130H300"/><path class="flow" d="M240 130H300"/>
+  <path class="wire" d="M400 190V240"/><path class="flow" d="M400 190V240"/>
+  <path class="wire" d="M500 300C530 300 530 110 560 110"/><path class="flow b" d="M500 300C530 300 530 110 560 110"/>
+  <path class="wire" d="M500 300C530 300 530 210 560 210"/><path class="flow g" d="M500 300C530 300 530 210 560 210"/>
+  <path class="wire" d="M500 300C530 300 530 305 560 305"/><path class="flow v" d="M500 300C530 300 530 305 560 305"/>
+  <path class="wire" d="M240 300C270 300 270 390 400 390C530 390 540 330 560 330"/><path class="flow v" d="M240 300C270 300 270 390 400 390C530 390 540 330 560 330"/>
+</svg>

@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" width="960" height="360" role="img" aria-label="kula — git, with a map">
+  <style>
+    .bg { fill: #0b0b0d; }
+    .grid { fill: #24242b; }
+    .ring { fill: none; stroke: #ff9e6d; stroke-width: 2; stroke-dasharray: 520; stroke-dashoffset: 520; animation: draw 2.4s cubic-bezier(.22,1,.36,1) .2s forwards; }
+    .node { fill: #ff9e6d; opacity: 0; transform-box: fill-box; transform-origin: center; animation: pop .5s cubic-bezier(.22,1,.36,1) forwards; }
+    .core { fill: #ece8e1; transform-box: fill-box; transform-origin: center; animation: breathe 3.2s ease-in-out infinite; }
+    .spoke { stroke: #3a3a44; stroke-width: 1.2; stroke-dasharray: 4 5; animation: flow 1.6s linear infinite; }
+    .pulse { fill: none; stroke: #ff9e6d; stroke-width: 1.5; opacity: 0; transform-box: fill-box; transform-origin: center; animation: ripple 3.2s ease-out 2.4s infinite; }
+    .orbit { transform-origin: 180px 180px; animation: spin 40s linear infinite; }
+    .sat { fill: #7cb7ff; } .sat2 { fill: #8fd694; } .sat3 { fill: #d49cf0; }
+    .word { font: 600 84px 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif; fill: #ece8e1; letter-spacing: -2px; opacity: 0; animation: rise .9s cubic-bezier(.22,1,.36,1) .6s forwards; }
+    .tag { font: 400 24px 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif; fill: #a9a49c; opacity: 0; animation: rise .9s cubic-bezier(.22,1,.36,1) .9s forwards; }
+    .mono { font: 500 14px 'Geist Mono', 'SF Mono', Menlo, monospace; fill: #6d6a66; opacity: 0; animation: rise .9s cubic-bezier(.22,1,.36,1) 1.2s forwards; }
+    .accent { fill: #ff9e6d; }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+    @keyframes pop { 0% { opacity: 0; transform: scale(.2); } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes breathe { 50% { transform: scale(1.12); } }
+    @keyframes flow { to { stroke-dashoffset: -18; } }
+    @keyframes ripple { 0% { opacity: .8; transform: scale(.3); } 100% { opacity: 0; transform: scale(2.2); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { * { animation-duration: 0s !important; animation-delay: 0s !important; } }
+  </style>
+  <defs>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" class="grid"/></pattern>
+    <radialGradient id="glow" cx="180" cy="180" r="220" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff9e6d" stop-opacity=".16"/><stop offset="1" stop-color="#ff9e6d" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect class="bg" width="960" height="360" rx="18"/>
+  <rect width="960" height="360" rx="18" fill="url(#dots)" opacity=".7"/>
+  <rect width="960" height="360" rx="18" fill="url(#glow)"/>
+
+  <!-- the Kula ring: six nodes on a closed circuit around a centre -->
+  <g>
+    <line class="spoke" x1="180" y1="180" x2="180" y2="80"/>
+    <line class="spoke" x1="180" y1="180" x2="266.6" y2="130"/>
+    <line class="spoke" x1="180" y1="180" x2="266.6" y2="230"/>
+    <line class="spoke" x1="180" y1="180" x2="180" y2="280"/>
+    <line class="spoke" x1="180" y1="180" x2="93.4" y2="230"/>
+    <line class="spoke" x1="180" y1="180" x2="93.4" y2="130"/>
+    <polygon class="ring" points="180,80 266.6,130 266.6,230 180,280 93.4,230 93.4,130"/>
+    <circle class="node" cx="180" cy="80" r="9" style="animation-delay:.5s"/>
+    <circle class="node" cx="266.6" cy="130" r="7" style="animation-delay:.8s"/>
+    <circle class="node" cx="266.6" cy="230" r="7" style="animation-delay:1.1s"/>
+    <circle class="node" cx="180" cy="280" r="7" style="animation-delay:1.4s"/>
+    <circle class="node" cx="93.4" cy="230" r="7" style="animation-delay:1.7s"/>
+    <circle class="node" cx="93.4" cy="130" r="7" style="animation-delay:2.0s"/>
+    <circle class="pulse" cx="180" cy="180" r="40"/>
+    <circle class="core" cx="180" cy="180" r="13"/>
+    <g class="orbit">
+      <circle class="sat" cx="180" cy="36" r="4"/>
+      <circle class="sat2" cx="324" cy="180" r="3.5"/>
+      <circle class="sat3" cx="60" cy="260" r="3"/>
+    </g>
+  </g>
+
+  <text x="380" y="170" class="word">kula</text>
+  <text x="384" y="214" class="tag">git, with a map.</text>
+  <text x="384" y="262" class="mono"><tspan class="accent">❯</tspan> kula index  ·  kula view  ·  kula impact &lt;symbol&gt;</text>
+</svg>

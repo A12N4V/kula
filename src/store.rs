@@ -160,14 +160,12 @@ impl Store {
     /// Neighbours along `kind` edges. `out` = follow src→dst.
     pub fn neighbours(&self, id: i64, kind: &str, out: bool) -> Result<Vec<(Node, f64)>> {
         let sql = if out {
-            format!("SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community, e.weight FROM edges e JOIN nodes n ON n.id = e.dst WHERE e.src = ?1 AND e.kind = ?2")
+            "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community, e.weight FROM edges e JOIN nodes n ON n.id = e.dst WHERE e.src = ?1 AND e.kind = ?2"
         } else {
-            format!("SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community, e.weight FROM edges e JOIN nodes n ON n.id = e.src WHERE e.dst = ?1 AND e.kind = ?2")
+            "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community, e.weight FROM edges e JOIN nodes n ON n.id = e.src WHERE e.dst = ?1 AND e.kind = ?2"
         };
-        let mut st = self.conn.prepare(&sql)?;
-        let rows = st
-            .query_map(params![id, kind], |r| Ok((row_node(r)?, r.get(9)?)))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut st = self.conn.prepare(sql)?;
+        let rows = st.query_map(params![id, kind], |r| Ok((row_node(r)?, r.get(9)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
 
@@ -182,16 +180,12 @@ impl Store {
             return Ok(vec![]);
         }
         let fts = terms.join(" ");
-        let sql = format!(
-            "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community
+        let sql = "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community
              FROM nodes_fts f JOIN nodes n ON n.id = f.rowid
              WHERE nodes_fts MATCH ?1
-             ORDER BY (lower(n.name) = lower(?2)) DESC, (n.kind = 'file') ASC, bm25(nodes_fts, 5.0, 1.0) LIMIT ?3"
-        );
-        let mut st = self.conn.prepare(&sql)?;
-        let mut rows = st
-            .query_map(params![fts, q.trim(), limit as i64], row_node)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+             ORDER BY (lower(n.name) = lower(?2)) DESC, (n.kind = 'file') ASC, bm25(nodes_fts, 5.0, 1.0) LIMIT ?3";
+        let mut st = self.conn.prepare(sql)?;
+        let mut rows = st.query_map(params![fts, q.trim(), limit as i64], row_node)?.collect::<rusqlite::Result<Vec<_>>>()?;
         if rows.is_empty() {
             rows = self.nodes_where("name LIKE ?1 LIMIT ?2", params![format!("%{}%", q.trim()), limit as i64])?;
         }
@@ -234,4 +228,16 @@ pub fn split_ident(s: &str) -> String {
         out.extend(c.to_lowercase());
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_ident;
+
+    #[test]
+    fn splits_identifiers() {
+        assert_eq!(split_ident("parseHttpRequest"), "parse http request");
+        assert_eq!(split_ident("load_user_v2"), "load user v2");
+        assert_eq!(split_ident("URL"), "url");
+    }
 }

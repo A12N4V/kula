@@ -16,14 +16,30 @@ fn paint(code: &str, s: &str) -> String {
     }
 }
 
-pub fn bold(s: &str) -> String { paint("1", s) }
-pub fn dim(s: &str) -> String { paint("2", s) }
-pub fn accent(s: &str) -> String { paint("38;5;215", s) } // shell-coral
-pub fn green(s: &str) -> String { paint("38;5;114", s) }
-pub fn red(s: &str) -> String { paint("38;5;203", s) }
-pub fn yellow(s: &str) -> String { paint("38;5;221", s) }
-pub fn blue(s: &str) -> String { paint("38;5;110", s) }
-pub fn magenta(s: &str) -> String { paint("38;5;176", s) }
+pub fn bold(s: &str) -> String {
+    paint("1", s)
+}
+pub fn dim(s: &str) -> String {
+    paint("2", s)
+}
+pub fn accent(s: &str) -> String {
+    paint("38;5;215", s)
+} // shell-coral
+pub fn green(s: &str) -> String {
+    paint("38;5;114", s)
+}
+pub fn red(s: &str) -> String {
+    paint("38;5;203", s)
+}
+pub fn yellow(s: &str) -> String {
+    paint("38;5;221", s)
+}
+pub fn blue(s: &str) -> String {
+    paint("38;5;110", s)
+}
+pub fn magenta(s: &str) -> String {
+    paint("38;5;176", s)
+}
 
 /// Stable colour per community id for terminal output.
 pub fn community(id: i64, s: &str) -> String {
