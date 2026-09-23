@@ -95,7 +95,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--panel-2); color: var(--text); cursor: pointer; white-space: nowrap; transition: background 0.15s, border-color 0.15s, transform 0.08s; }
 .btn:hover { border-color: var(--text-3); }
 .btn:active { transform: translateY(1px); }
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:disabled, .btn.primary:disabled { opacity: 1; cursor: not-allowed; background: var(--panel-2); border-color: var(--line); color: var(--text-3); filter: none; transform: none; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
@@ -182,7 +182,7 @@ pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-
 .inspector .body { flex: 1; overflow: auto; padding: 4px 16px 16px; }
 .sym { display: flex; align-items: center; gap: 8px; padding: 4px 8px; margin: 0 -8px; border-radius: 6px; cursor: pointer; }
 .sym:hover { background: var(--panel-2); }
-.sym .glyph { width: 16px; text-align: center; font-size: 12px; }
+.kind-badge { display: inline-grid; place-items: center; flex: none; border-radius: 4px; font-family: var(--mono); font-weight: 700; line-height: 1; }
 .sym .nm { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sym .p { margin-left: auto; color: var(--text-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; direction: rtl; text-align: left; }
 .risk { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; text-transform: capitalize; }
@@ -233,7 +233,11 @@ pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-
   .split { grid-template-columns: 1fr; }
   .split > .detail { display: none; }
   .inspector { left: 12px; width: auto; }
-  .search-trigger { width: auto; flex: 1; }
+  .search-trigger { width: 32px; flex: none; justify-content: center; padding: 0; }
+  .search-trigger .st-label { display: none; }
+  .search-trigger kbd, .topbar .btn.sm:not(.ghost) { display: none; }
+  .statusbar > span:nth-child(2), .statusbar .mono { display: none; }
+  .topbar { gap: 8px; }
   .brand .crumb, .chip.hide-sm { display: none; }
 }
 

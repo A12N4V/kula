@@ -14,6 +14,12 @@ export function Changes({ onChanged, version }: Nav) {
   const toast = useToast();
   const refresh = () => api.status().then((s) => setFiles(s.files));
   useEffect(() => { refresh(); }, [version]);
+  // Open the first change so the diff pane is never empty on arrival.
+  useEffect(() => {
+    if (sel && files.some((f) => f.path === sel.path)) return;
+    const f = files[0];
+    setSel(f ? { path: f.path, staged: f.staged && !f.unstaged } : null);
+  }, [files]);
   useEffect(() => { if (sel) api.diff(sel.path, sel.staged).then((d) => setDiff(d.diff)); else setDiff(""); }, [sel, files]);
 
   const act = async (action: string, paths: string[] = []) => {
@@ -302,9 +308,9 @@ export function Console({ onChanged }: Nav) {
   const [cursor, setCursor] = useState(-1);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => end.current?.scrollIntoView({ behavior: "smooth" }), [hist]);
-  const run = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cmd = line.trim().replace(/^(git|kula)\s+/, "");
+  const run = (e: React.FormEvent) => { e.preventDefault(); exec(line); };
+  const exec = async (input: string) => {
+    const cmd = input.trim().replace(/^(git|kula)\s+/, "");
     if (!cmd) return;
     setLine(""); setCursor(-1);
     const args = cmd.match(/"[^"]*"|'[^']*'|\S+/g)?.map((a) => a.replace(/^["']|["']$/g, "")) ?? [];
@@ -318,6 +324,13 @@ export function Console({ onChanged }: Nav) {
     <div className="console">
       <div className="out">
         <div className="muted" style={{ marginBottom: 16 }}>Full git, in the browser. Anything you type runs as <span style={{ color: "var(--text)" }}>git &lt;args&gt;</span> in this repository. Non-interactive commands only; try <span style={{ color: "var(--text)" }}>log --oneline -5</span>.</div>
+        {hist.length === 0 && (
+          <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+            {["status -sb", "log --oneline --graph -15", "branch -avv", "stash list", "remote -v", "shortlog -sn"].map((c) => (
+              <button key={c} className="btn sm mono" onClick={() => exec(c)}>{c}</button>
+            ))}
+          </div>
+        )}
         {hist.map((h, i) => (
           <div key={i} className="entry">
             <div className="cmd">git {h.cmd} {h.code !== 0 && <span style={{ color: "var(--red)" }}>· exit {h.code}</span>}</div>

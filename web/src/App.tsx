@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Meta, type Node, type RepoInfo } from "./api";
-import { Icon, Logo, glyph, useToast } from "./ui";
+import { Icon, Kind, Logo, useToast } from "./ui";
 import GraphView from "./views/GraphView";
 import { Branches, Changes, Console, History } from "./views/GitViews";
 import { Flows, Issues, Notes, Proposals } from "./views/MetaViews";
@@ -81,7 +81,7 @@ export default function App() {
         <div className="brand"><Logo /><span>kula</span><span className="crumb">/</span><span style={{ fontWeight: 500 }}>{repo?.name ?? "…"}</span></div>
         <button className="chip" onClick={() => setView("branches")} title="Current branch"><Icon.branches /><b className="mono">{repo?.branch ?? "…"}</b></button>
         <span className="spacer" />
-        <div className="search-trigger" onClick={() => setPalette(true)} role="button" aria-label="Search"><Icon.search /> Search symbols, files, commands… <kbd>⌘K</kbd></div>
+        <div className="search-trigger" onClick={() => setPalette(true)} role="button" aria-label="Search"><Icon.search /> <span className="st-label">Search symbols, files, commands…</span> <kbd>⌘K</kbd></div>
         <span className="spacer" />
         <span className="chip hide-sm" title={repo?.index === "current" ? "Graph matches HEAD" : "Graph is behind HEAD"}>
           <span className={`dot ${repo?.index === "current" ? "ok" : repo?.index === "stale" ? "warn" : "bad"}`} />
@@ -104,7 +104,7 @@ export default function App() {
       </nav>
 
       <main className="main">
-        {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} />}
+        {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} theme={theme} />}
         {view === "changes" && <Changes {...nav} />}
         {view === "history" && <History {...nav} />}
         {view === "branches" && <Branches {...nav} />}
@@ -146,7 +146,7 @@ function Palette({ onClose, onPick, onView, onReindex }: { onClose: () => void; 
     { label: "Reindex knowledge graph", hint: "", run: onReindex },
   ].filter((c) => !q || c.label.toLowerCase().includes(q.toLowerCase()));
   const items: { key: string; el: React.ReactNode; run: () => void }[] = [
-    ...hits.map((n) => ({ key: `n${n.id}`, run: () => onPick(n), el: <><span style={{ width: 16, textAlign: "center" }}>{glyph(n.kind)}</span><span className="mono">{n.name}</span><span className="p">{n.path}:{n.start_line}</span></> })),
+    ...hits.map((n) => ({ key: `n${n.id}`, run: () => onPick(n), el: <><Kind kind={n.kind} community={n.community} size={18} /><span className="mono">{n.name}</span><span className="p">{n.path}:{n.start_line}</span></> })),
     ...commands.map((c) => ({ key: c.label, run: c.run, el: <><span style={{ width: 16, textAlign: "center", color: "var(--accent)" }}>›</span><span>{c.label}</span><span className="p">{c.hint && <kbd>{c.hint}</kbd>}</span></> })),
   ];
   return (

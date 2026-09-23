@@ -94,4 +94,13 @@ export function relTime(ts: number) {
 
 // Community palette: muted, distinguishable on near-black and on paper.
 export const PALETTE = ["#ff9e6d", "#7cb7ff", "#8fd694", "#d49cf0", "#f2cc60", "#5fd4c8", "#f08a9b", "#a8a4ff", "#c9b28f", "#76c8f0", "#e0a86b", "#9fd0a8"];
-export const colorFor = (c: number) => PALETTE[((c % PALETTE.length) + PALETTE.length) % PALETTE.length];
+// Deeper variants with enough contrast on the light (paper) theme.
+export const PALETTE_LIGHT = ["#c8531d", "#2f6fcf", "#2f8a44", "#8a4fb0", "#9a7400", "#12867a", "#c23d5a", "#5a55d6", "#8a6a3a", "#1f7fb0", "#b0651e", "#3f8a55"];
+function isLight() {
+  const t = document.documentElement.dataset.theme;
+  return t ? t === "light" : window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false;
+}
+export const colorFor = (c: number) => {
+  const p = isLight() ? PALETTE_LIGHT : PALETTE;
+  return p[((c % p.length) + p.length) % p.length];
+};

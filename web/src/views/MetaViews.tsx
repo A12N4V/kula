@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, colorFor, relTime, type Compare, type Flow, type Meta, type Node } from "../api";
-import { Empty, Icon, Md, Sym, glyph, useToast } from "../ui";
+import { Empty, Icon, Kind, Md, Sym, useToast } from "../ui";
 import { CompareReport } from "./GitViews";
 
 type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number };
@@ -254,7 +254,7 @@ export function Flows({ openSymbol, version }: Nav) {
       <div className="detail">
         {f && (
           <div className="detail-pad">
-            <h1 className="mono">{glyph(f.entry.kind)} {f.entry.name}</h1>
+            <h1 className="mono row" style={{ gap: 10 }}><Kind kind={f.entry.kind} community={f.entry.community} size={22} />{f.entry.name}</h1>
             <div className="muted" style={{ marginBottom: 18 }}>{f.entry.path}:{f.entry.start_line} · reaches {f.reach} symbols</div>
             {[1, 2, 3, 4].map((d) => {
               const steps = f.steps.filter((s) => s.depth === d);

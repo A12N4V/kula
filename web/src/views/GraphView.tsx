@@ -4,9 +4,9 @@ import Sigma from "sigma";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import noverlap from "graphology-layout-noverlap";
 import { api, colorFor, type Context, type GraphData, type Impact, type Node } from "../api";
-import { Empty, Icon, Logo, Md, Sym, glyph, useToast } from "../ui";
+import { Empty, Icon, Kind, Logo, Md, Sym, useToast } from "../ui";
 
-type Props = { focus: number | null; setFocus: (id: number | null) => void; onChanged: () => void; version: number };
+type Props = { focus: number | null; setFocus: (id: number | null) => void; onChanged: () => void; version: number; theme?: string | null };
 
 function cssVar(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
@@ -37,7 +37,7 @@ function drawHover(ctx: CanvasRenderingContext2D, data: any, settings: any) {
   ctx.stroke();
 }
 
-export default function GraphView({ focus, setFocus, onChanged, version }: Props) {
+export default function GraphView({ focus, setFocus, onChanged, version, theme }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const sigma = useRef<Sigma | null>(null);
   const [level, setLevel] = useState<"symbol" | "file">("symbol");
@@ -46,7 +46,7 @@ export default function GraphView({ focus, setFocus, onChanged, version }: Props
   const [hover, setHover] = useState<string | null>(null);
   const [cluster, setCluster] = useState<number | null>(null);
   const [impact, setImpact] = useState<Impact | null>(null);
-  const [showLegend, setShowLegend] = useState(true);
+  const [showLegend, setShowLegend] = useState(() => window.innerWidth > 760);
   const state = useRef({ hover: null as string | null, focus: null as number | null, cluster: null as number | null, impact: null as Set<string> | null, neigh: new Set<string>() });
 
   useEffect(() => {
@@ -95,7 +95,7 @@ export default function GraphView({ focus, setFocus, onChanged, version }: Props
       noverlap.assign(g, { maxIterations: 60, settings: { margin: 2, ratio: 1.1 } });
     }
     return g;
-  }, [data, level]);
+  }, [data, level, theme]); // theme: node colours come from the active palette
 
   // Sigma renderer.
   useEffect(() => {
@@ -130,14 +130,14 @@ export default function GraphView({ focus, setFocus, onChanged, version }: Props
       if (st.impact) {
         if (id === String(st.focus)) { res.highlighted = true; res.zIndex = 3; }
         else if (st.impact.has(id)) { res.color = accent; res.zIndex = 2; res.forceLabel = true; }
-        else { res.color = faded; res.label = ""; res.zIndex = 0; }
+        else { res.color = faded; res.label = ""; res.zIndex = 0; res.size = Math.max(1.5, attr.size * 0.45); }
         return res;
       }
-      if (st.cluster != null && attr.node.community !== st.cluster) { res.color = faded; res.label = ""; return res; }
+      if (st.cluster != null && attr.node.community !== st.cluster) { res.color = faded; res.label = ""; res.size = Math.max(1.5, attr.size * 0.45); return res; }
       if (active) {
         if (id === active) { res.highlighted = true; res.zIndex = 3; res.forceLabel = true; }
         else if (st.neigh.has(id)) { res.zIndex = 2; res.forceLabel = true; }
-        else { res.color = faded; res.label = ""; res.zIndex = 0; }
+        else { res.color = faded; res.label = ""; res.zIndex = 0; res.size = Math.max(1.5, attr.size * 0.45); }
       }
       return res;
     });
@@ -257,7 +257,7 @@ function Inspector({ id, onClose, setFocus, impact, setImpact }: { id: number; o
     <aside className="inspector" aria-label="Symbol inspector">
       <header>
         <div className="row">
-          <div className="kind">{ctx && <span style={{ color: colorFor(ctx.node.community) }}>{glyph(ctx.node.kind)}</span>}{ctx?.node.kind ?? "loading"}</div>
+          <div className="kind">{ctx && <Kind kind={ctx.node.kind} community={ctx.node.community} size={15} />}{ctx?.node.kind ?? "loading"}</div>
           <span className="spacer" />
           <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
         </div>

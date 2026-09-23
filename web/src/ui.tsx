@@ -38,12 +38,22 @@ export function Logo({ spin = false }: { spin?: boolean }) {
   );
 }
 
-export const glyph = (k: string) => ({ file: "▤", class: "◆", interface: "◇", method: "◦", function: "ƒ" })[k] ?? "·";
+
+/** Letter badge for a symbol kind, tinted by its cluster colour. */
+export function Kind({ kind, community, size = 16 }: { kind: string; community: number; size?: number }) {
+  const letter = ({ file: "", class: "C", interface: "I", method: "M", function: "F" } as Record<string, string>)[kind] ?? "·";
+  const c = colorFor(community);
+  return (
+    <span className="kind-badge" title={kind} style={{ width: size, height: size, color: c, background: `color-mix(in oklab, ${c} 16%, transparent)`, fontSize: size * 0.62 }}>
+      {kind === "file" ? <svg viewBox="0 0 16 16" width={size * 0.62} height={size * 0.62} fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 2h5l3 3v9H4z" /><path d="M9 2v3h3" /></svg> : letter}
+    </span>
+  );
+}
 
 export function Sym({ n, onClick, right }: { n: Node; onClick?: (n: Node) => void; right?: ReactNode }) {
   return (
     <div className="sym" onClick={() => onClick?.(n)} title={`${n.path}:${n.start_line}`}>
-      <span className="glyph" style={{ color: colorFor(n.community) }}>{glyph(n.kind)}</span>
+      <Kind kind={n.kind} community={n.community} />
       <span className="nm">{n.name}</span>
       <span className="p">{right ?? `${n.path}:${n.start_line}`}</span>
     </div>
