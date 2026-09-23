@@ -1,6 +1,6 @@
 [package]
 name = "kula"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.80"
 description = "Git, with a map. A local-first git client that turns your repository into a living knowledge graph."

@@ -5,7 +5,9 @@ import forceAtlas2 from "graphology-layout-forceatlas2";
 import noverlap from "graphology-layout-noverlap";
 import { api, type DiffNode, type DiffStatus, type GraphDiff } from "../api";
 import { Empty, Icon, Kind, Logo, useToast } from "../ui";
-import { cssVar, drawHover } from "./GraphView";
+import EdgeCurveProgram from "@sigma/edge-curve";
+import { attachFx, drawOutlinedLabel } from "../graphfx";
+import { cssVar, drawHover, withAlpha } from "./GraphView";
 
 type Props = {
   base: string;
@@ -36,6 +38,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
   const [hover, setHover] = useState<string | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
   const [q, setQ] = useState("");
+  const fx = useRef<ReturnType<typeof attachFx> | null>(null);
   const state = useRef({ hover: null as string | null, focus: null as string | null, hidden: new Set<string>(), neigh: new Set<string>() });
   const toast = useToast();
 
@@ -84,7 +87,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
       if (s === t || !g.hasNode(s) || !g.hasNode(t) || g.hasEdge(s, t)) continue;
       const changed = e.status !== "same";
       const touchesChange = changedIds.has(e.src) || changedIds.has(e.dst);
-      g.addEdge(s, t, { color: changed ? colorOf(e.status) : touchesChange ? cssVar("--text-3") : cssVar("--line"), size: changed ? 1.8 : touchesChange ? 0.9 : 0.4, zIndex: changed ? 2 : touchesChange ? 1 : 0, status: e.status, weight: changed ? 2 : 1 });
+      g.addEdge(s, t, { color: changed ? colorOf(e.status) : touchesChange ? withAlpha(cssVar("--text-2"), 0.55) : withAlpha(cssVar("--text-3"), 0.22), size: changed ? 1.8 : touchesChange ? 0.9 : 0.4, zIndex: changed ? 2 : touchesChange ? 1 : 0, status: e.status, weight: changed ? 2 : 1 });
     }
     if (g.order > 1) {
       forceAtlas2.assign(g, { iterations: g.order > 3000 ? 120 : 240, settings: { ...forceAtlas2.inferSettings(g), linLogMode: true, gravity: 1.2, scalingRatio: 6, barnesHutOptimize: g.order > 800 } });
@@ -101,10 +104,14 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
         labelFont: "Geist Variable, system-ui, sans-serif",
         labelSize: 11,
         labelWeight: "500",
-        labelColor: { color: cssVar("--text-2") },
+        labelColor: { color: cssVar("--text") },
         labelRenderedSizeThreshold: 5,
         zIndex: true,
+        defaultEdgeType: "curved",
+        edgeProgramClasses: { curved: EdgeCurveProgram },
+        defaultDrawNodeLabel: drawOutlinedLabel,
         defaultDrawNodeHover: drawHover,
+        hideEdgesOnMove: true,
       });
     } catch {
       setErr("This browser could not start WebGL, which the graph needs.");
@@ -133,8 +140,20 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
     s.on("leaveNode", () => { setHover(null); box.current!.style.cursor = ""; });
     s.on("clickNode", ({ node }) => setFocus(Number(node)));
     s.on("clickStage", () => setFocus(null));
+    // Changed symbols glow and pulse; new calls carry flowing particles.
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const effects = attachFx(s, graph, {
+      glow: (_id, a) => (a.diff.status !== "same" ? 2 : 0),
+      reducedMotion: reduced,
+    });
+    const changedIds: string[] = [];
+    graph.forEachNode((id, a) => { if (a.diff.status !== "same" && a.diff.kind !== "file") changedIds.push(id); });
+    const flows: [string, string][] = [];
+    graph.forEachEdge((_e, a, src, dst) => { if (a.status === "added" && flows.length < 150) flows.push([src, dst]); });
+    effects.set({ pulse: new Set(changedIds.slice(0, 40)), flows });
+    fx.current = effects;
     sigma.current = s;
-    return () => { s.kill(); sigma.current = null; };
+    return () => { effects.kill(); fx.current = null; s.kill(); sigma.current = null; };
   }, [graph]);
 
   useEffect(() => {

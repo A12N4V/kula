@@ -2,8 +2,10 @@
 @import "@fontsource-variable/geist-mono";
 
 :root {
-  --bg: #0b0b0d;
-  --bg-2: #111114;
+  --bg: #08080b;
+  --bg-2: #0e0e12;
+  --edge: rgba(150, 150, 175, 0.13);
+  --node-faded: #1d1d25;
   --panel: #141418;
   --panel-2: #1a1a1f;
   --line: #24242b;
@@ -31,7 +33,7 @@
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #f6f4f0; --bg-2: #efece6; --panel: #fbfaf7; --panel-2: #f1eee8; --line: #e2ddd4; --line-2: #d3cdc2;
+    --bg: #f6f4f0; --bg-2: #efece6; --edge: rgba(60, 50, 40, 0.14); --node-faded: #e2ddd4; --panel: #fbfaf7; --panel-2: #f1eee8; --line: #e2ddd4; --line-2: #d3cdc2;
     --text: #1d1b18; --text-2: #5d5850; --text-3: #938c81; --accent: #d4642c; --accent-ink: #fff;
     --accent-soft: rgba(212, 100, 44, 0.1); --green: #2f8a44; --red: #c2453b; --yellow: #a67c00; --blue: #2f6fcf; --violet: #8a4fb0;
     --add-bg: rgba(47, 138, 68, 0.08); --del-bg: rgba(194, 69, 59, 0.08);
@@ -40,7 +42,7 @@
   }
 }
 :root[data-theme="light"] {
-  --bg: #f6f4f0; --bg-2: #efece6; --panel: #fbfaf7; --panel-2: #f1eee8; --line: #e2ddd4; --line-2: #d3cdc2;
+  --bg: #f6f4f0; --bg-2: #efece6; --edge: rgba(60, 50, 40, 0.14); --node-faded: #e2ddd4; --panel: #fbfaf7; --panel-2: #f1eee8; --line: #e2ddd4; --line-2: #d3cdc2;
   --text: #1d1b18; --text-2: #5d5850; --text-3: #938c81; --accent: #d4642c; --accent-ink: #fff;
   --accent-soft: rgba(212, 100, 44, 0.1); --green: #2f8a44; --red: #c2453b; --yellow: #a67c00; --blue: #2f6fcf; --violet: #8a4fb0;
   --add-bg: rgba(47, 138, 68, 0.08); --del-bg: rgba(194, 69, 59, 0.08);
@@ -384,3 +386,25 @@ pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-
 }
 
 .btn svg:not([width]) { width: 15px; height: 15px; flex: none; }
+
+/* ================================================================ graph v2 */
+.graph-canvas {
+  background:
+    radial-gradient(ellipse at 50% 40%, color-mix(in oklab, var(--accent) 7%, transparent), transparent 60%),
+    radial-gradient(ellipse at 20% 90%, color-mix(in oklab, var(--blue) 5%, transparent), transparent 55%),
+    radial-gradient(color-mix(in oklab, var(--line) 70%, transparent) 1px, transparent 1px) 0 0 / 26px 26px,
+    var(--bg);
+}
+.graph-canvas::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 55%, color-mix(in oklab, var(--bg) 80%, transparent) 100%); }
+.hud .chip, .seg, .zoom .btn, .legend, .rev-pick { background: color-mix(in oklab, var(--panel) 72%, transparent); backdrop-filter: blur(14px) saturate(1.3); border-color: color-mix(in oklab, var(--line-2) 80%, transparent); }
+.zoom .btn { width: 32px; height: 32px; }
+.hover-card { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 7; display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-radius: 12px; pointer-events: none;
+  background: color-mix(in oklab, var(--panel-2) 82%, transparent); backdrop-filter: blur(14px); box-shadow: var(--shadow); animation: card-in .16s var(--ease) both; max-width: min(560px, 70%); }
+@keyframes card-in { from { opacity: 0; transform: translate(-50%, -4px) scale(.98); } to { opacity: 1; transform: translate(-50%, 0); } }
+.hc-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.hc-path { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hc-stats { display: flex; gap: 10px; margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--line-2); font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.hc-stats b { color: var(--text); font-weight: 600; }
+.legend .li.on .sw { box-shadow: 0 0 0 3px color-mix(in oklab, currentColor 20%, transparent), 0 0 12px currentColor; }
+.legend .sw { box-shadow: 0 0 8px color-mix(in oklab, currentColor 60%, transparent); }
+.inspector { background: color-mix(in oklab, var(--panel) 88%, transparent); backdrop-filter: blur(18px) saturate(1.2); }

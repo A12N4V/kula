@@ -218,7 +218,7 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
                         anc = a.parent();
                     }
                     if lang.id == "go" && kind == "method" {
-                        // func (r *Recv) Name() — owner is the receiver type.
+                        // func (r *Recv) Name() – owner is the receiver type.
                         parent_name = def_node.child_by_field_name("receiver").and_then(|r| r.utf8_text(bytes).ok()).and_then(|t| {
                             t.split_whitespace().last().map(|s| s.trim_matches(|c: char| !c.is_alphanumeric() && c != '_').to_string())
                         });

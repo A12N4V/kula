@@ -21,7 +21,7 @@ impl Repo {
             .arg(start)
             .args(["rev-parse", "--show-toplevel"])
             .output()
-            .context("failed to run git — is it installed and on PATH?")?;
+            .context("failed to run git – is it installed and on PATH?")?;
         if !out.status.success() {
             bail!("not a git repository: {}", start.display());
         }

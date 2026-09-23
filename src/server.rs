@@ -1,4 +1,4 @@
-//! `kula view` — local HTTP server with the embedded web UI.
+//! `kula view` – local HTTP server with the embedded web UI.
 //!
 //! Security model: binds to 127.0.0.1 only, rejects non-localhost Host headers
 //! (DNS rebinding) and requires a per-session token that is injected into the

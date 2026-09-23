@@ -98,7 +98,7 @@ kula commit -am "ship it"  # …and it's still just git
 </td></tr>
 <tr><td colspan="2">
 <img src="docs/assets/ui-graph.png" alt="Graph view">
-<p align="center"><b>Graph.</b> Every function, class and file, clustered by what calls what. Hover to trace neighbours, click a cluster to isolate it. Rendered with WebGL, so thousands of nodes stay smooth.</p>
+<p align="center"><b>Graph.</b> Every function, class and file, clustered by what calls what. The layout settles live in a web worker; each cluster glows as its own territory and names itself when you zoom out. Focus a symbol and particles flow along its calls. Rendered with WebGL, so thousands of nodes stay smooth.</p>
 </td></tr>
 <tr>
 <td width="50%"><img src="docs/assets/ui-impact.png" alt="Impact analysis"><p align="center"><b>Impact.</b> The blast radius of any symbol, lit up on the graph and graded by risk.</p></td>

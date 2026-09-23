@@ -110,7 +110,8 @@ export function relTime(ts: number) {
 }
 
 // Community palette: muted, distinguishable on near-black and on paper.
-export const PALETTE = ["#ff9e6d", "#7cb7ff", "#8fd694", "#d49cf0", "#f2cc60", "#5fd4c8", "#f08a9b", "#a8a4ff", "#c9b28f", "#76c8f0", "#e0a86b", "#9fd0a8"];
+// Luminous on near-black: saturated enough to glow, spaced around the wheel.
+export const PALETTE = ["#ff8f5a", "#5aa8ff", "#4fe08e", "#c07bff", "#ffd246", "#2fe0cf", "#ff5f8f", "#8d85ff", "#f2b872", "#45c8ff", "#ff9f43", "#9be36b"];
 // Deeper variants with enough contrast on the light (paper) theme.
 export const PALETTE_LIGHT = ["#c8531d", "#2f6fcf", "#2f8a44", "#8a4fb0", "#9a7400", "#12867a", "#c23d5a", "#5a55d6", "#8a6a3a", "#1f7fb0", "#b0651e", "#3f8a55"];
 function isLight() {

@@ -1,8 +1,8 @@
-//! Issues, proposals (local pull requests) and notes — stored *inside git*.
+//! Issues, proposals (local pull requests) and notes – stored *inside git*.
 //!
 //! Everything lives in a single JSON document committed to `refs/kula/meta`.
 //! Each change is a new commit on that ref, so the history is auditable and
-//! `git push origin refs/kula/meta` shares it with collaborators — no server.
+//! `git push origin refs/kula/meta` shares it with collaborators – no server.
 
 use crate::git::{validate_rev, Repo};
 use anyhow::{anyhow, bail, Result};
@@ -188,7 +188,7 @@ pub fn proposal_merge(repo: &Repo, id: u64) -> Result<Proposal> {
         bail!("proposal #{id} is {}", p.status);
     }
     if !repo.is_clean() {
-        bail!("working tree has uncommitted changes — commit or stash them first");
+        bail!("working tree has uncommitted changes – commit or stash them first");
     }
     if repo.branch() != p.base {
         repo.run(&["switch", &p.base])?;

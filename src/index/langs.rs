@@ -1,9 +1,9 @@
 //! Language registry: grammars + the tree-sitter patterns Kula extracts.
 //!
 //! Captures:
-//!   @def.function / @def.method / @def.class / @def.interface — a definition's name
-//!   @call   — the callee name at a call site
-//!   @import — an import statement or its module string
+//!   @def.function / @def.method / @def.class / @def.interface – a definition's name
+//!   @call   – the callee name at a call site
+//!   @import – an import statement or its module string
 //!
 //! Each pattern is compiled on its own so one grammar-version mismatch never
 //! disables a whole language.

@@ -14,6 +14,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
+VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 
 c() { [ -t 1 ] && printf "\033[%sm%s\033[0m" "$1" "$2" || printf "%s" "$2"; }
 PASS=(); FAIL=(); SKIP=()
@@ -105,10 +106,10 @@ if want pkg; then
   if has npm; then
     NT=$(mktemp -d)
     PLAT="$(node -p 'process.platform+"-"+process.arch')"
-    PD=$(./packaging/npm/make-platform-package.sh "$PLAT" "$REL" 0.1.0 "$NT/out")
+    PD=$(./packaging/npm/make-platform-package.sh "$PLAT" "$REL" "$VERSION" "$NT/out")
     (cd "$NT" && npm pack -s "$PD" >/dev/null && npm pack -s "$ROOT/packaging/npm/kula-cli" >/dev/null)
-    mkdir -p "$NT/app" && (cd "$NT/app" && npm init -y >/dev/null && npm i -s --no-audit --no-fund --omit=optional "$NT"/kula-cli-*-*.tgz "$NT"/kula-cli-0.1.0.tgz >/dev/null 2>&1)
-    if [ -x "$NT/app/node_modules/.bin/kula" ] && "$NT/app/node_modules/.bin/kula" --version | grep -q "kula 0.1.0"; then ok "npm: kula-cli launcher → @kula-cli/$PLAT"; else bad "npm install + run"; fi
+    mkdir -p "$NT/app" && (cd "$NT/app" && npm init -y >/dev/null && npm i -s --no-audit --no-fund --omit=optional "$NT"/kula-cli-*-*.tgz "$NT"/kula-cli-$VERSION.tgz >/dev/null 2>&1)
+    if [ -x "$NT/app/node_modules/.bin/kula" ] && "$NT/app/node_modules/.bin/kula" --version | grep -q "kula $VERSION"; then ok "npm: kula-cli launcher → @kula-cli/$PLAT"; else bad "npm install + run"; fi
     rm -rf "$NT"
   else skip "npm" "npm not installed"; fi
 
@@ -118,7 +119,7 @@ if want pkg; then
     if uvx --quiet maturin build --release --quiet --out "$WT" >/dev/null 2>&1; then
       ok "pip: maturin wheel $(basename "$WT"/*.whl)"
       (cd "$WT" && uv venv -q .venv && uv pip install -q --python .venv/bin/python ./*.whl) >/dev/null 2>&1
-      "$WT/.venv/bin/kula" --version | grep -q "kula 0.1.0" && ok "pip: installed kula runs" || bad "pip: installed kula runs"
+      "$WT/.venv/bin/kula" --version | grep -q "kula $VERSION" && ok "pip: installed kula runs" || bad "pip: installed kula runs"
     else bad "pip: maturin build"; fi
     rm -rf "$WT"
   else skip "pip wheel" "uv not installed"; fi

@@ -3,6 +3,9 @@ import Graph from "graphology";
 import Sigma from "sigma";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import noverlap from "graphology-layout-noverlap";
+import FA2Layout from "graphology-layout-forceatlas2/worker";
+import EdgeCurveProgram from "@sigma/edge-curve";
+import { attachFx, drawOutlinedLabel } from "../graphfx";
 import { api, colorFor, relTime, type Context, type GraphData, type Impact, type Node, type SymbolHistory } from "../api";
 import { Empty, Icon, Kind, Logo, Md, Sym, useToast } from "../ui";
 import Contrast from "./Contrast";
@@ -13,33 +16,42 @@ type Props = {
   contrast: { base: string; head: string } | null; setContrast: (c: { base: string; head: string } | null) => void; go: Go;
 };
 
+/** ForceAtlas2 tuned for code graphs: tight clusters, readable bridges. */
+export function layoutSettings(g: Graph) {
+  return { ...forceAtlas2.inferSettings(g), linLogMode: true, outboundAttractionDistribution: true, edgeWeightInfluence: 1, gravity: 1.1, scalingRatio: 7, slowDown: 3, barnesHutOptimize: g.order > 600 };
+}
+
+/**
+ * Colour `c` at opacity `a`, pre-blended onto the page background.
+ * The curved-edge shader ignores alpha, so translucency must be baked in.
+ */
+export function withAlpha(c: string, a: number) {
+  const hex = (x: string) => {
+    const n = parseInt(x.replace("#", "").slice(0, 6), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  if (!c.startsWith("#")) return c;
+  const bg = cssVar("--bg");
+  const [r, g, b] = hex(c);
+  const [R, G, B] = bg.startsWith("#") ? hex(bg) : [8, 8, 11];
+  const mix = (x: number, y: number) => Math.round(x * a + y * (1 - a)).toString(16).padStart(2, "0");
+  return `#${mix(r, R)}${mix(g, G)}${mix(b, B)}`;
+}
+
 export function cssVar(name: string) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
+  // Sigma's colour parser rejects "rgba(1, 2, 3, 0.4)" with spaces; normalise.
+  return getComputedStyle(document.documentElement).getPropertyValue(name).replace(/\s+/g, "") || "#888";
 }
 
 // Dark-aware hover label (sigma's default is a white box).
 export function drawHover(ctx: CanvasRenderingContext2D, data: any, settings: any) {
-  const size = settings.labelSize + 1;
-  ctx.font = `500 ${size}px ${settings.labelFont}`;
-  const label = data.label ?? "";
-  const w = ctx.measureText(label).width + 16;
-  const h = size + 12;
-  const x = data.x + data.size + 6;
-  const y = data.y - h / 2;
-  ctx.fillStyle = cssVar("--panel-2");
-  ctx.strokeStyle = cssVar("--line-2");
-  ctx.lineWidth = 1;
+  // Details live in the floating hover card; on canvas we just ring the node and label it.
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 6);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = cssVar("--text");
-  ctx.fillText(label, x + 8, data.y + size / 3);
-  ctx.beginPath();
-  ctx.arc(data.x, data.y, data.size + 3, 0, Math.PI * 2);
+  ctx.arc(data.x, data.y, data.size + 3.5, 0, Math.PI * 2);
   ctx.strokeStyle = data.color;
   ctx.lineWidth = 2;
   ctx.stroke();
+  drawOutlinedLabel(ctx, { ...data, size: data.size + 3 }, { ...settings, labelWeight: "600" });
 }
 
 export default function GraphView(props: Props) {
@@ -73,6 +85,8 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
   const [cluster, setCluster] = useState<number | null>(null);
   const [impact, setImpact] = useState<Impact | null>(null);
   const [showLegend, setShowLegend] = useState(() => window.innerWidth > 760);
+  const [settling, setSettling] = useState(false);
+  const fx = useRef<ReturnType<typeof attachFx> | null>(null);
   const state = useRef({ hover: null as string | null, focus: null as number | null, cluster: null as number | null, impact: null as Set<string> | null, neigh: new Set<string>() });
 
   useEffect(() => {
@@ -81,89 +95,95 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
     api.graph(level).then(setData).catch((e) => setErr(String(e.message ?? e)));
   }, [level, version]);
 
-  // Build graph + layout.
+  // Build graph with a golden-angle cluster seed (the live layout refines it).
   const graph = useMemo(() => {
     if (!data) return null;
     const g = new Graph({ multi: false, type: "directed" });
-    const comms = new Map(data.communities.map((c) => [c.id, c]));
     const byComm = new Map<number, number>();
     data.nodes.forEach((n) => byComm.set(n.community, (byComm.get(n.community) ?? 0) + 1));
-    const order = [...byComm.keys()].sort((a, b) => (byComm.get(b)! - byComm.get(a)!));
-    const angle = new Map(order.map((c, i) => [c, (i / Math.max(order.length, 1)) * Math.PI * 2]));
+    const order = [...byComm.keys()].sort((a, b) => byComm.get(b)! - byComm.get(a)!);
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    const spread = Math.sqrt(data.nodes.length) * 14;
+    const centre = new Map(order.map((c, i) => {
+      const r = spread * Math.sqrt((i + 0.5) / order.length);
+      return [c, { x: r * Math.cos(i * golden), y: r * Math.sin(i * golden) }];
+    }));
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (const n of data.nodes) {
-      const a = angle.get(n.community) ?? 0;
-      const r = 60 + (comms.get(n.community)?.size ?? 1) ** 0.5 * 4;
-      g.addNode(String(n.id), {
-        x: Math.cos(a) * r + (rnd() - 0.5) * 40,
-        y: Math.sin(a) * r + (rnd() - 0.5) * 40,
-        label: n.name,
-        color: n.kind === "file" && level === "symbol" ? cssVar("--text-3") : colorFor(n.community),
-        size: 2,
-        node: n,
-      });
+      const c = centre.get(n.community)!;
+      const j = Math.sqrt(byComm.get(n.community) ?? 1) * 5;
+      g.addNode(String(n.id), { x: c.x + (rnd() - 0.5) * j, y: c.y + (rnd() - 0.5) * j, label: n.name, color: colorFor(n.community), size: 2, node: n });
     }
+    const neutral = withAlpha(cssVar("--text-3"), 0.3);
     for (const e of data.edges) {
       const s = String(e.src), t = String(e.dst);
       if (s === t || !g.hasNode(s) || !g.hasNode(t) || g.hasEdge(s, t)) continue;
-      const same = g.getNodeAttribute(s, "node").community === g.getNodeAttribute(t, "node").community;
-      g.addEdge(s, t, { kind: e.kind, size: e.kind === "CALLS" ? 0.6 : 0.4, color: cssVar("--line-2"), weight: same ? 3 : 0.35 });
+      const cs = g.getNodeAttribute(s, "node").community, ct = g.getNodeAttribute(t, "node").community;
+      const same = cs === ct;
+      // Intra-cluster edges take the cluster's hue; bridges stay neutral.
+      g.addEdge(s, t, { kind: e.kind, size: e.kind === "CALLS" ? 0.7 : 0.45, color: same ? withAlpha(colorFor(cs), 0.42) : neutral, weight: same ? 3 : 0.35 });
     }
+    let maxDeg = 1;
+    g.forEachNode((id) => { maxDeg = Math.max(maxDeg, g.degree(id)); });
     g.forEachNode((id, attr) => {
       const deg = g.degree(id);
-      const base = attr.node.kind === "class" ? 4 : attr.node.kind === "file" ? (level === "file" ? 4 : 2.5) : 2.5;
-      g.setNodeAttribute(id, "size", Math.min(18, base + Math.sqrt(deg) * 1.4));
+      const base = attr.node.kind === "file" ? 4 : attr.node.kind === "class" ? 4 : 2.6;
+      g.setNodeAttribute(id, "size", Math.min(20, base + Math.sqrt(deg) * 1.5));
+      g.setNodeAttribute(id, "hub", deg >= Math.max(6, maxDeg * 0.35));
     });
     if (g.order > 1) {
-      const settings = forceAtlas2.inferSettings(g);
-      forceAtlas2.assign(g, { iterations: g.order > 3000 ? 120 : 260, settings: { ...settings, linLogMode: true, outboundAttractionDistribution: true, edgeWeightInfluence: 1, gravity: 1.2, scalingRatio: 6, barnesHutOptimize: g.order > 800, adjustSizes: false } });
-      noverlap.assign(g, { maxIterations: 60, settings: { margin: 2, ratio: 1.1 } });
+      // A short warm-up so the first frame is already shaped; the worker finishes it live.
+      forceAtlas2.assign(g, { iterations: 40, settings: layoutSettings(g) });
     }
     return g;
   }, [data, level, theme]); // theme: node colours come from the active palette
 
-  // Sigma renderer.
+  // Sigma renderer + effects + live layout.
   useEffect(() => {
     if (!graph || !box.current) return;
     let s: Sigma;
     try {
       s = new Sigma(graph, box.current, {
-      renderEdgeLabels: false,
-      labelFont: "Geist Variable, system-ui, sans-serif",
-      labelSize: 11,
-      labelWeight: "500",
-      labelColor: { color: cssVar("--text-2") },
-      labelDensity: 0.6,
-      labelGridCellSize: 90,
-      labelRenderedSizeThreshold: 7,
-      defaultEdgeType: "line",
-      zIndex: true,
-      defaultDrawNodeHover: drawHover,
-      minCameraRatio: 0.05,
-      maxCameraRatio: 8,
+        renderEdgeLabels: false,
+        labelFont: "Geist Variable, system-ui, sans-serif",
+        labelSize: 11.5,
+        labelWeight: "500",
+        labelColor: { color: cssVar("--text") },
+        labelDensity: 0.7,
+        labelGridCellSize: 100,
+        labelRenderedSizeThreshold: 6,
+        defaultEdgeType: "curved",
+        edgeProgramClasses: { curved: EdgeCurveProgram },
+        defaultDrawNodeLabel: drawOutlinedLabel,
+        defaultDrawNodeHover: drawHover,
+        hideEdgesOnMove: true,
+        zIndex: true,
+        minCameraRatio: 0.03,
+        maxCameraRatio: 6,
       });
-    } catch (e) {
+    } catch {
       setErr("This browser could not start WebGL, which the graph needs. Other views still work.");
       return;
     }
-    const faded = cssVar("--line");
+    const faded = cssVar("--node-faded");
     const accent = cssVar("--accent");
     s.setSetting("nodeReducer", (id, attr) => {
       const st = state.current;
       const res: any = { ...attr };
       const active = st.hover ?? (st.focus != null ? String(st.focus) : null);
+      const dim = () => { res.color = faded; res.label = ""; res.zIndex = 0; res.size = Math.max(1.4, attr.size * 0.4); };
       if (st.impact) {
         if (id === String(st.focus)) { res.highlighted = true; res.zIndex = 3; }
         else if (st.impact.has(id)) { res.color = accent; res.zIndex = 2; res.forceLabel = true; }
-        else { res.color = faded; res.label = ""; res.zIndex = 0; res.size = Math.max(1.5, attr.size * 0.45); }
+        else dim();
         return res;
       }
-      if (st.cluster != null && attr.node.community !== st.cluster) { res.color = faded; res.label = ""; res.size = Math.max(1.5, attr.size * 0.45); return res; }
+      if (st.cluster != null && attr.node.community !== st.cluster) { dim(); return res; }
       if (active) {
         if (id === active) { res.highlighted = true; res.zIndex = 3; res.forceLabel = true; }
         else if (st.neigh.has(id)) { res.zIndex = 2; res.forceLabel = true; }
-        else { res.color = faded; res.label = ""; res.zIndex = 0; res.size = Math.max(1.5, attr.size * 0.45); }
+        else dim();
       }
       return res;
     });
@@ -173,7 +193,7 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
       const [src, dst] = graph.extremities(id);
       if (st.impact) {
         const on = (st.impact.has(src) || src === String(st.focus)) && (st.impact.has(dst) || dst === String(st.focus));
-        if (on) { res.color = accent; res.size = 1.4; res.zIndex = 2; } else res.hidden = true;
+        if (on) { res.color = withAlpha(accent, 0.75); res.size = 1.5; res.zIndex = 2; } else res.hidden = true;
         return res;
       }
       const active = st.hover ?? (st.focus != null ? String(st.focus) : null);
@@ -182,8 +202,8 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
         if (a !== st.cluster && b !== st.cluster) res.hidden = true;
       } else if (active) {
         if (src === active || dst === active) {
-          res.color = colorFor(graph.getNodeAttribute(active, "node").community);
-          res.size = 1.2;
+          res.color = withAlpha(colorFor(graph.getNodeAttribute(active, "node").community), 0.85);
+          res.size = 1.4;
           res.zIndex = 2;
         } else res.hidden = true;
       }
@@ -193,11 +213,52 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
     s.on("leaveNode", () => { setHover(null); box.current!.style.cursor = ""; });
     s.on("clickNode", ({ node }) => setFocus(Number(node)));
     s.on("clickStage", () => { setFocus(null); setImpact(null); });
+
+    // "src/views · MetaViews" → "MetaViews": the distinctive half of the cluster name.
+    const labels = new Map(data?.communities.map((c) => [c.id, c.label.split(" · ").pop()!.split("/").pop()!]) ?? []);
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const effects = attachFx(s, graph, {
+      clusterOf: (a) => a.node.community,
+      clusterLabel: (c) => labels.get(c),
+      clusterColor: colorFor,
+      glow: (id, a) => {
+        const st = state.current;
+        if (st.impact?.has(id)) return 1;
+        return a.hub ? 1 : 0;
+      },
+      reducedMotion: reduced,
+    });
+    fx.current = effects;
+
+    // Live layout: the graph settles on screen in a worker thread.
+    let worker: FA2Layout | null = null;
+    let timer = 0;
+    if (!reduced && graph.order > 2) {
+      worker = new FA2Layout(graph, { settings: layoutSettings(graph) });
+      worker.start();
+      setSettling(true);
+      timer = window.setTimeout(() => {
+        worker?.stop();
+        noverlap.assign(graph, { maxIterations: 40, settings: { margin: 2, ratio: 1.1 } });
+        setSettling(false);
+      }, Math.min(4500, 1400 + graph.order * 4));
+    } else {
+      forceAtlas2.assign(graph, { iterations: 200, settings: layoutSettings(graph) });
+      noverlap.assign(graph, { maxIterations: 40, settings: { margin: 2, ratio: 1.1 } });
+    }
     sigma.current = s;
-    return () => { s.kill(); sigma.current = null; };
+    return () => {
+      clearTimeout(timer);
+      worker?.kill();
+      effects.kill();
+      fx.current = null;
+      s.kill();
+      sigma.current = null;
+      setSettling(false);
+    };
   }, [graph, setFocus]);
 
-  // Push interaction state to the reducers.
+  // Push interaction state to the reducers and the effects layer.
   useEffect(() => {
     const st = state.current;
     st.hover = hover;
@@ -207,18 +268,33 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
     const active = hover ?? (focus != null ? String(focus) : null);
     st.neigh = new Set(active && graph?.hasNode(active) ? graph.neighbors(active) : []);
     sigma.current?.refresh({ skipIndexation: true });
+    if (!graph || !fx.current) return;
+    // Particles run along the focused symbol's calls (or the whole impact cone).
+    const flows: [string, string][] = [];
+    const f = focus != null ? String(focus) : null;
+    if (st.impact && f) {
+      graph.forEachEdge((_e, _a, src, dst) => {
+        if (flows.length < 160 && (st.impact!.has(src) || src === f) && (st.impact!.has(dst) || dst === f)) flows.push([src, dst]);
+      });
+    } else if (f && graph.hasNode(f)) {
+      graph.forEachEdge(f, (_e, _a, src, dst) => { if (flows.length < 120) flows.push([src, dst]); });
+    }
+    fx.current.set({ focus: f && graph.hasNode(f) ? f : null, flows, dimOthers: active || st.impact ? new Set([...(st.impact ?? []), ...st.neigh, ...(active ? [active] : [])]) : null });
   }, [hover, focus, cluster, impact, graph]);
 
   // Fly to focused node.
   useEffect(() => {
     if (focus == null || !sigma.current || !graph?.hasNode(String(focus))) return;
     const pos = sigma.current.getNodeDisplayData(String(focus));
-    if (pos) sigma.current.getCamera().animate({ x: pos.x, y: pos.y, ratio: Math.min(sigma.current.getCamera().ratio, 0.45) }, { duration: 550 });
-  }, [focus, graph]);
+    if (pos) sigma.current.getCamera().animate({ x: pos.x, y: pos.y, ratio: Math.min(sigma.current.getCamera().ratio, 0.45) }, { duration: 650 });
+  }, [focus, graph, settling]);
 
   useEffect(() => { if (focus == null) setImpact(null); }, [focus]);
 
   const cam = (f: (c: ReturnType<Sigma["getCamera"]>) => void) => sigma.current && f(sigma.current.getCamera());
+  const hoverNode: Node | null = hover && graph?.hasNode(hover) && hover !== String(focus) ? graph.getNodeAttribute(hover, "node") : null;
+  const hoverIn = hover && graph?.hasNode(hover) ? graph.inDegree(hover) : 0;
+  const hoverOut = hover && graph?.hasNode(hover) ? graph.outDegree(hover) : 0;
   const communities = data?.communities.filter((c) => c.size > 1 && data.nodes.some((n) => n.community === c.id)) ?? [];
 
   return (
@@ -234,15 +310,26 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
         </div>
         <div className="seg"><button className={showLegend ? "on" : ""} onClick={() => setShowLegend((v) => !v)}>Clusters</button></div>
         <button className="btn sm" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs"><Icon.compare /> Contrast</button>
-        {data && <span className="chip hide-sm">{data.nodes.length.toLocaleString()} nodes · {data.edges.length.toLocaleString()} edges{data.truncated ? " · top by degree" : ""}</span>}
+        {data && <span className="chip hide-sm">{settling ? <><span className="dot warn pulse" /> settling layout…</> : <>{data.nodes.length.toLocaleString()} nodes · {data.edges.length.toLocaleString()} edges{data.truncated ? " · top by degree" : ""}</>}</span>}
       </div>
+
+      {hoverNode && (
+        <div className="hover-card" key={hover!}>
+          <Kind kind={hoverNode.kind} community={hoverNode.community} size={18} />
+          <div>
+            <div className="hc-name mono">{hoverNode.name}</div>
+            <div className="hc-path mono">{hoverNode.path}:{hoverNode.start_line}</div>
+          </div>
+          <div className="hc-stats"><span><b>{hoverIn}</b> in</span><span><b>{hoverOut}</b> out</span></div>
+        </div>
+      )}
 
       {showLegend && communities.length > 0 && (
         <div className="graph-overlay legend">
           <div className="section-title" style={{ marginTop: 0 }}>Clusters <span className="count">{communities.length}</span></div>
           {communities.slice(0, 40).map((c) => (
             <div key={c.id} className={`li ${cluster === c.id ? "on" : ""}`} onClick={() => setCluster(cluster === c.id ? null : c.id)}>
-              <span className="sw" style={{ background: colorFor(c.id) }} />
+              <span className="sw" style={{ background: colorFor(c.id), color: colorFor(c.id) }} />
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.label}</span>
               <span className="n">{c.size}</span>
             </div>
@@ -254,6 +341,7 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
         <button className="btn" aria-label="Zoom in" onClick={() => cam((c) => c.animatedZoom({ duration: 200 }))}><Icon.plus /></button>
         <button className="btn" aria-label="Zoom out" onClick={() => cam((c) => c.animatedUnzoom({ duration: 200 }))}><Icon.minus /></button>
         <button className="btn" aria-label="Reset view" onClick={() => cam((c) => c.animatedReset({ duration: 300 }))}><Icon.target /></button>
+        <button className="btn" aria-label="Re-run layout" title="Re-run layout" onClick={() => setData((d) => (d ? { ...d } : d))}><Icon.refresh /></button>
       </div>
 
       {focus != null && <Inspector id={focus} onClose={() => setFocus(null)} setFocus={setFocus} impact={impact} setImpact={setImpact} go={go} />}

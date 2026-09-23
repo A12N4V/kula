@@ -1,4 +1,4 @@
-//! kula — git, with a map.
+//! kula – git, with a map.
 
 mod git;
 mod graph;
@@ -19,7 +19,7 @@ use term::*;
 #[command(
     name = "kula",
     version,
-    about = "git, with a map — a local-first git client with a knowledge-graph view",
+    about = "git, with a map – a local-first git client with a knowledge-graph view",
     long_about = "Kula is a superset of git. Any git command works (`kula commit`, `kula rebase -i`…),\nplus a knowledge graph of your code, local issues & proposals, notes, and a web UI.",
     after_help = "Any command not listed here is passed straight to git.\nExamples:\n  kula index            build the knowledge graph\n  kula view             open the graph + git UI at localhost\n  kula impact parseArgs what breaks if I change parseArgs?\n  kula compare main feat/x   graph-aware branch diff\n  kula commit -am \"fix\"  plain git passthrough"
 )]
@@ -93,7 +93,7 @@ enum Cmd {
     /// Local issues stored in git.
     #[command(subcommand)]
     Issue(IssueCmd),
-    /// Proposals — local pull requests between branches.
+    /// Proposals – local pull requests between branches.
     #[command(subcommand, name = "pr", alias = "proposal")]
     Pr(PrCmd),
     /// Notes & annotations on the repo, files, symbols or commits.
@@ -261,7 +261,7 @@ fn run(cli: Cli) -> Result<()> {
         }
         Cmd::View { port, no_open } => {
             if !Store::path(&repo).exists() {
-                eprint!("{} first run — indexing …", accent("◯"));
+                eprint!("{} first run – indexing …", accent("◯"));
                 index::run(&repo, false)?;
             }
             server::serve(repo, port, !no_open)?;
@@ -335,7 +335,7 @@ fn run(cli: Cli) -> Result<()> {
             if !notes.is_empty() {
                 println!("\n  {}", bold("notes"));
                 for x in notes {
-                    println!("  {} {} {}", magenta("✎"), x.body, dim(&format!("— {}", x.author)));
+                    println!("  {} {} {}", magenta("✎"), x.body, dim(&format!("– {}", x.author)));
                 }
             }
         }
@@ -549,8 +549,8 @@ fn status(repo: &Repo, json: bool) -> Result<()> {
     header(&format!("{}  {}", repo.name(), accent(&format!(" {}", repo.branch()))));
     let idx = match fresh {
         "current" => green("● graph current"),
-        "stale" => yellow("● graph behind HEAD — run `kula index`"),
-        _ => dim("○ no graph yet — run `kula index`"),
+        "stale" => yellow("● graph behind HEAD – run `kula index`"),
+        _ => dim("○ no graph yet – run `kula index`"),
     };
     println!("  {idx}\n");
     if files.is_empty() {
@@ -621,7 +621,7 @@ fn issue_cmd(repo: &Repo, c: IssueCmd, json: bool) -> Result<()> {
                 println!("  {} {}", accent("⌖"), a);
             }
             for c in &i.comments {
-                println!("  {} {}  {}", blue("│"), c.body, dim(&format!("— {}, {}", c.author, rel_time(c.at))));
+                println!("  {} {}  {}", blue("│"), c.body, dim(&format!("– {}, {}", c.author, rel_time(c.at))));
             }
         }
         IssueCmd::Close { id } => {
@@ -688,7 +688,7 @@ fn pr_cmd(repo: &Repo, c: PrCmd, json: bool) -> Result<()> {
                 print_compare(&graph::compare(repo, st.as_ref(), &p.base, &p.head)?);
             }
             for c in &p.comments {
-                println!("  {} {}  {}", blue("│"), c.body, dim(&format!("— {}, {}", c.author, rel_time(c.at))));
+                println!("  {} {}  {}", blue("│"), c.body, dim(&format!("– {}, {}", c.author, rel_time(c.at))));
             }
         }
         PrCmd::Merge { id } => {
@@ -761,7 +761,7 @@ fn doctor(cwd: &std::path::Path) -> Result<()> {
             println!("  {} repository {}", green("✓"), r.root.display());
             match Store::open(&r) {
                 Ok(s) => println!("  {} graph {}", green("✓"), dim(&s.meta("stats").unwrap_or_default())),
-                Err(_) => println!("  {} no graph — run `kula index`", yellow("●")),
+                Err(_) => println!("  {} no graph – run `kula index`", yellow("●")),
             }
         }
         Err(_) => println!("  {} not inside a git repository", yellow("●")),

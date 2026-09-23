@@ -92,7 +92,7 @@ impl Store {
     pub fn open(repo: &Repo) -> Result<Store> {
         let p = Self::path(repo);
         if !p.exists() {
-            bail!("no index yet — run `kula index` first");
+            bail!("no index yet – run `kula index` first");
         }
         let conn = Connection::open(&p)?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;

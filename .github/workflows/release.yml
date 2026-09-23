@@ -111,7 +111,7 @@ jobs:
           v="${GITHUB_REF_NAME#v}"
           for d in artifacts/bin-*/npm-out/*/; do npm publish "$d" --access public || true; done
           cd packaging/npm/kula-cli && cp ../../../README.md . \
-            && sed -i "s/\"0\.1\.0\"/\"$v\"/g" package.json && npm publish --access public
+            && sed -i -E "s/\"[0-9]+\.[0-9]+\.[0-9]+\"/\"$v\"/g" package.json && npm publish --access public
 
   crates:
     needs: build
