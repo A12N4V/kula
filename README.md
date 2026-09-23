@@ -66,7 +66,7 @@ Kula is a single static binary (about 11 MB) with the web UI embedded. Its only 
 | **nix** | `nix run github:A12N4V/kula` · `nix profile install github:A12N4V/kula` |
 
 > [!NOTE]
-> Available today: the curl installer, Homebrew tap, `.deb` packages and prebuilt binaries on [Releases](../../releases). The npm, PyPI, crates.io and nix channels are rolling out. You can always build from source: `pnpm -C web install && pnpm -C web build && cargo install --path .`
+> **v0.1.0 is live** via the curl installer, the Homebrew tap, `.deb` packages and prebuilt binaries for macOS (Apple Silicon and Intel), Linux (x64 and arm64) and Windows on [Releases](../../releases). The npm, PyPI, crates.io and nix channels are rolling out. You can always build from source: `pnpm -C web install && pnpm -C web build && cargo install --path .`
 
 ## Sixty seconds
 
