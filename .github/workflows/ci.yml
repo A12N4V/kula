@@ -19,3 +19,23 @@ jobs:
         with: { node-version: 22, cache: pnpm, cache-dependency-path: web/pnpm-lock.yaml }
       - run: git config --global user.name ci && git config --global user.email ci@example.com
       - run: ./scripts/test.sh
+      # The signed apt repository, end to end: build a .deb, publish it into a repo
+      # signed with a throwaway key, serve it, and `apt install kula` from it.
+      - if: runner.os == 'Linux'
+        name: apt repository round-trip
+        run: |
+          cargo install cargo-deb --locked
+          cargo deb -o debs/
+          sudo apt-get install -y -qq dpkg-dev apt-utils
+          export GNUPGHOME=$(mktemp -d)
+          gpg --batch --passphrase '' --quick-gen-key "kula ci <ci@example.com>" ed25519 sign never
+          export APT_GPG_KEY="$(gpg --armor --export-secret-keys)"
+          unset GNUPGHOME
+          ./packaging/apt/build-repo.sh debs site
+          (cd site && python3 -m http.server 8080 >/dev/null 2>&1 &)
+          sleep 1
+          sudo cp site/kula.gpg /usr/share/keyrings/kula.gpg
+          echo "deb [signed-by=/usr/share/keyrings/kula.gpg] http://127.0.0.1:8080/apt stable main" | sudo tee /etc/apt/sources.list.d/kula.list
+          sudo apt-get update -o Dir::Etc::sourcelist=sources.list.d/kula.list -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0
+          sudo apt-get install -y kula
+          /usr/bin/kula --version

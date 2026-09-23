@@ -59,14 +59,28 @@ Kula is a single static binary (about 11 MB) with the web UI embedded. Its only 
 |---|---|
 | **curl** (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh \| sh` |
 | **Homebrew** | `brew install A12N4V/tap/kula` |
+| **apt** (Debian, Ubuntu) | one-time: add the signed repo (below), then `sudo apt install kula` |
 | **npm / pnpm / bun** | `npm i -g kula-cli` · `pnpm add -g kula-cli` · `bunx kula-cli` |
 | **pip / uv / pipx** | `pip install kula` · `uv tool install kula` · `pipx install kula` |
 | **cargo** | `cargo install kula` |
-| **apt** (Debian, Ubuntu) | download `kula_*.deb` from [Releases](../../releases), then `sudo apt install ./kula_*.deb` |
+| **.deb** | download `kula_*.deb` from [Releases](../../releases), then `sudo apt install ./kula_*.deb` |
 | **nix** | `nix run github:A12N4V/kula` · `nix profile install github:A12N4V/kula` |
 
+<details>
+<summary><b>apt repository</b> – add once, then <code>apt install kula</code> and <code>apt upgrade</code> as usual</summary>
+
+```bash
+curl -fsSL https://a12n4v.github.io/kula/kula.gpg | sudo tee /usr/share/keyrings/kula.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/kula.gpg] https://a12n4v.github.io/kula/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/kula.list
+sudo apt update && sudo apt install kula
+```
+</details>
+
+**Why not plain `brew install kula` or `apt install kula`?** Those names resolve only in the distributions' own repositories. Homebrew core admits self-submitted projects once they are at least 30 days old with 225 stars (or 90 forks or watchers); a source-built formula is ready in [`packaging/homebrew/kula-core.rb`](packaging/homebrew/kula-core.rb) for that day. Debian and Ubuntu need a sponsored package with every Rust dependency packaged first. Until then, the tap and the signed apt repository are one line each.
+
 > [!NOTE]
-> **v0.1.0 is live** via the curl installer, the Homebrew tap, `.deb` packages and prebuilt binaries for macOS (Apple Silicon and Intel), Linux (x64 and arm64) and Windows on [Releases](../../releases). The npm, PyPI, crates.io and nix channels are rolling out. You can always build from source: `pnpm -C web install && pnpm -C web build && cargo install --path .`
+> **v0.2.0 is live** via the curl installer, the Homebrew tap, `.deb` packages and prebuilt binaries for macOS (Apple Silicon and Intel), Linux (x64 and arm64) and Windows on [Releases](../../releases). The npm, PyPI, crates.io and nix channels are rolling out. You can always build from source: `pnpm -C web install && pnpm -C web build && cargo install --path .`
 
 ## Sixty seconds
 
@@ -94,14 +108,14 @@ kula commit -am "ship it"  # …and it's still just git
 </td></tr>
 <tr><td colspan="2">
 <img src="docs/assets/ui-contrast.png" alt="Contrast view">
-<p align="center"><b>Contrast.</b> Overlay the knowledge graphs of any two branches, tags or commits, or your uncommitted working tree. Added, removed and modified symbols glow; their direct neighbours light up so you can see what each change touches.</p>
+<p align="center"><b>Contrast.</b> Overlay the knowledge graphs of any two branches, tags or commits, or your uncommitted working tree. Changed symbols become tiles marked <code>+</code> <code>−</code> <code>~</code>, their direct neighbours stay lit, and directory names show where each change lands. The side panel tallies changes per directory.</p>
 </td></tr>
 <tr><td colspan="2">
 <img src="docs/assets/ui-graph.png" alt="Graph view">
-<p align="center"><b>Graph.</b> Every function, class and file, clustered by what calls what. The layout settles live in a web worker; each cluster glows as its own territory and names itself when you zoom out. Focus a symbol and particles flow along its calls. Rendered with WebGL, so thousands of nodes stay smooth.</p>
+<p align="center"><b>Graph.</b> Every function, class and file. Each directory settles into its own tinted territory, named in place; the most-connected symbols become square tiles that carry their kind (<code>ƒ</code> <code>m</code> <code>C</code> <code>I</code>) or language. Hover for callers, callees, size and churn; the legend doubles as a filter. Rendered with WebGL, so thousands of nodes stay smooth.</p>
 </td></tr>
 <tr>
-<td width="50%"><img src="docs/assets/ui-impact.png" alt="Impact analysis"><p align="center"><b>Impact.</b> The blast radius of any symbol, lit up on the graph and graded by risk.</p></td>
+<td width="50%"><img src="docs/assets/ui-impact.png" alt="Impact analysis"><p align="center"><b>Impact.</b> The blast radius of any symbol, shaded by depth on the graph and graded by risk. Callers are blue, callees coral.</p></td>
 <td width="50%"><img src="docs/assets/ui-compare.png" alt="Branch comparison"><p align="center"><b>Compare.</b> Diff two branches at the symbol level and see what the change ripples into.</p></td>
 </tr>
 <tr>
@@ -123,15 +137,16 @@ Also included:
 - **Navigation:** number keys <kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd> switch views; <kbd>[</kbd> <kbd>]</kbd> go back and forward through inspected symbols; <kbd>?</kbd> shows every shortcut.
 - **Shareable deep links** such as `#graph/<id>/impact`, `#graph/contrast/main/feat%2Fx` and `#issues/3`.
 - **Always-fresh graph:** `kula view` reindexes in the background whenever `HEAD` moves.
-- Light, dark and system themes, each with its own tuned palette.
+- **Settings** (<kbd>,</kbd>): colour the graph by directory, cluster, kind or 90-day churn; pick any directory's colour; set directory depth, hub share, label density, import edges and curved edges; light, dark or system theme; compact or comfortable density.
 
 ### Design principles
 
 1. **Triage first, then the map.** You land on what needs you; every item opens straight into the graph, the diff or the thread.
-2. **Colour carries meaning.** Hue means cluster. Coral means focus or change. Red and amber only ever mean risk.
+2. **One variable per channel.** Hue is the variable you choose (directory by default). Size is degree. Shape marks hubs. The ground behind the nodes is the directory. Nothing glows for decoration.
 3. **Keyboard first.** Everything is reachable through <kbd>⌘K</kbd>, and every view has a number key.
 4. **Honest status.** The top bar always says whether the graph matches `HEAD`.
-5. **Motion explains cause.** Selecting a symbol dims everything that isn't connected to it. `prefers-reduced-motion` is respected everywhere.
+5. **Motion explains cause.** Selecting a symbol dims everything that isn't connected to it, and small dots run along its calls in the direction they go. `prefers-reduced-motion` is respected everywhere.
+6. **Density over decoration.** Every number sits next to what it means: KPIs carry a sub-fact, hotspots show commits and edges, the hover card shows in, out, lines and churn.
 
 ## Commands
 

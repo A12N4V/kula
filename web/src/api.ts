@@ -34,7 +34,7 @@ export interface Node {
 }
 export interface Edge { src: number; dst: number; kind: string; weight: number }
 export interface Community { id: number; label: string; size: number }
-export interface GraphData { nodes: Node[]; edges: Edge[]; communities: Community[]; truncated: boolean }
+export interface GraphData { nodes: Node[]; edges: Edge[]; communities: Community[]; truncated: boolean; churn?: Record<string, number> }
 export interface RepoInfo {
   name: string; root: string; branch: string; head: string | null; indexed_head: string | null;
   index: "current" | "stale" | "missing"; user: string; remotes: string[]; version: string;
@@ -109,16 +109,5 @@ export function relTime(ts: number) {
   return new Date(ts * 1000).toLocaleDateString();
 }
 
-// Community palette: muted, distinguishable on near-black and on paper.
-// Luminous on near-black: saturated enough to glow, spaced around the wheel.
-export const PALETTE = ["#ff8f5a", "#5aa8ff", "#4fe08e", "#c07bff", "#ffd246", "#2fe0cf", "#ff5f8f", "#8d85ff", "#f2b872", "#45c8ff", "#ff9f43", "#9be36b"];
-// Deeper variants with enough contrast on the light (paper) theme.
-export const PALETTE_LIGHT = ["#c8531d", "#2f6fcf", "#2f8a44", "#8a4fb0", "#9a7400", "#12867a", "#c23d5a", "#5a55d6", "#8a6a3a", "#1f7fb0", "#b0651e", "#3f8a55"];
-function isLight() {
-  const t = document.documentElement.dataset.theme;
-  return t ? t === "light" : window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false;
-}
-export const colorFor = (c: number) => {
-  const p = isLight() ? PALETTE_LIGHT : PALETTE;
-  return p[((c % p.length) + p.length) % p.length];
-};
+// Cluster colours share the graph palette (see colors.ts).
+export { hue as colorFor } from "./colors";

@@ -6,6 +6,8 @@ import GraphView from "./views/GraphView";
 import Overview from "./views/Overview";
 import { Branches, Changes, Console, History } from "./views/GitViews";
 import { Flows, Issues, Notes, Proposals } from "./views/MetaViews";
+import SettingsPanel from "./SettingsPanel";
+import { settings } from "./settings";
 
 type Rail = { id: View; label: string; icon: () => React.ReactElement; key: string };
 // Grouped by intent: understand · change · collaborate · escape hatch.
@@ -57,7 +59,7 @@ export default function App() {
   const [help, setHelp] = useState(false);
   const [version, setVersion] = useState(0);
   const [indexing, setIndexing] = useState(false);
-  const [theme, setTheme] = useState<string | null>(() => { try { return localStorage.getItem("kula-theme"); } catch { return null; } });
+  const [prefs, setPrefs] = useState(false);
   const lastHead = useRef<string | null>(null);
   const toast = useToast();
 
@@ -86,11 +88,6 @@ export default function App() {
     history.replaceState(null, "", `#${h}`);
   }, [view, focus, contrast, target]);
 
-  useEffect(() => {
-    if (theme) document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
-    try { theme ? localStorage.setItem("kula-theme", theme) : localStorage.removeItem("kula-theme"); } catch {}
-  }, [theme]);
-
   const go: Go = useCallback((v, t = {}) => {
     setView(v);
     setTarget(t);
@@ -110,6 +107,7 @@ export default function App() {
       if (v) go(v.id);
       if (e.key === "/") { e.preventDefault(); setPalette(true); }
       if (e.key === "?") setHelp((h) => !h);
+      if (e.key === ",") setPrefs((p) => !p);
       if (e.key === "Escape") { setHelp(false); setFocus(null); }
     };
     window.addEventListener("keydown", onKey);
@@ -147,7 +145,7 @@ export default function App() {
         </span>
         <button className="btn sm" onClick={reindex} disabled={indexing}><Icon.refresh /> {indexing ? "Indexing…" : "Reindex"}</button>
         <button className="btn sm ghost" aria-label="Keyboard shortcuts" title="Shortcuts  ?" onClick={() => setHelp(true)}>?</button>
-        <button className="btn sm ghost" aria-label="Toggle theme" onClick={() => setTheme((t) => (t === "light" ? "dark" : t === "dark" ? null : "light"))} title={`Theme: ${theme ?? "system"}`}><Icon.sun /></button>
+        <button className="btn sm ghost" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.sliders /></button>
       </header>
 
       <nav className="rail" aria-label="Views">
@@ -167,7 +165,7 @@ export default function App() {
         {/* Keyed so each view change plays a short enter transition. */}
         <div className="view-enter" key={view + (contrast ? ":c" : "")}>
           {view === "overview" && <Overview repo={repo} version={version} go={go} />}
-          {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} theme={theme} contrast={contrast} setContrast={setContrast} go={go} />}
+          {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} />}
           {view === "changes" && <Changes {...nav} />}
           {view === "history" && <History {...nav} />}
           {view === "branches" && <Branches {...nav} />}
@@ -189,8 +187,9 @@ export default function App() {
         <button className="sb-help" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
       </footer>
 
-      {palette && <Palette meta={meta} onClose={() => setPalette(false)} go={(v, t) => { setPalette(false); go(v, t); }} onReindex={() => { setPalette(false); reindex(); }} />}
+      {palette && <Palette meta={meta} onClose={() => setPalette(false)} go={(v, t) => { setPalette(false); go(v, t); }} onReindex={() => { setPalette(false); reindex(); }} onSettings={() => { setPalette(false); setPrefs(true); }} />}
       {help && <Help onClose={() => setHelp(false)} />}
+      {prefs && <SettingsPanel onClose={() => setPrefs(false)} />}
     </div>
   );
 }
@@ -198,7 +197,7 @@ export default function App() {
 type Item = { key: string; group: string; el: React.ReactNode; run: () => void };
 
 /** One box for everything: symbols, issues, proposals, branches, views and actions. */
-function Palette({ meta, onClose, go, onReindex }: { meta: Meta | null; onClose: () => void; go: Go; onReindex: () => void }) {
+function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | null; onClose: () => void; go: Go; onReindex: () => void; onSettings: () => void }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Node[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -236,6 +235,9 @@ function Palette({ meta, onClose, go, onReindex }: { meta: Meta | null; onClose:
       ...VIEWS.map((v) => ({ label: `Go to ${v.label}`, hint: v.key, run: () => go(v.id) })),
       { label: "Contrast graph: HEAD → working tree", hint: "", run: () => go("graph", { contrast: { base: "HEAD", head: "WORKTREE" } }) },
       { label: "Reindex knowledge graph", hint: "", run: onReindex },
+      { label: "Open settings", hint: ",", run: onSettings },
+      ...(["directory", "cluster", "kind", "churn"] as const).map((c) => ({ label: `Colour graph by ${c}`, hint: "", run: () => { settings.set({ colorBy: c }); go("graph"); } })),
+      ...(["dark", "light", "system"] as const).map((t) => ({ label: `Theme: ${t}`, hint: "", run: () => { settings.set({ theme: t }); onClose(); } })),
     ].filter((c) => match(c.label)).forEach((c) => items.push({ key: c.label, group: "Commands", run: c.run, el: <><span className="pal-ico" style={{ color: "var(--accent)" }}>›</span><span>{c.label}</span><span className="p">{c.hint && <kbd>{c.hint}</kbd>}</span></> }));
   }
 
@@ -269,6 +271,7 @@ function Help({ onClose }: { onClose: () => void }) {
     ["⌘K  /", "Search everything"],
     ["1 – 9, 0", "Switch view"],
     ["?", "This sheet"],
+    [",", "Settings: theme, colours, graph encodings"],
     ["[  ]", "Back / forward through inspected symbols"],
     ["esc", "Close panel or dialog"],
     ["⌘↵", "Commit (Changes) · save (Notes)"],

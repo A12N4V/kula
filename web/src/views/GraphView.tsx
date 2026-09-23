@@ -1,41 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Graph from "graphology";
 import Sigma from "sigma";
+import { EdgeRectangleProgram } from "sigma/rendering";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import noverlap from "graphology-layout-noverlap";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import EdgeCurveProgram from "@sigma/edge-curve";
-import { attachFx, drawOutlinedLabel } from "../graphfx";
+import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../graphfx";
 import { api, colorFor, relTime, type Context, type GraphData, type Impact, type Node, type SymbolHistory } from "../api";
+import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLYPH, makeColorer } from "../colors";
+import { knownDirs, useSettings, type Settings } from "../settings";
 import { Empty, Icon, Kind, Logo, Md, Sym, useToast } from "../ui";
 import Contrast from "./Contrast";
 import type { Go } from "../nav";
 
 type Props = {
-  focus: number | null; setFocus: (id: number | null) => void; onChanged: () => void; version: number; theme?: string | null;
+  focus: number | null; setFocus: (id: number | null) => void; onChanged: () => void; version: number;
   contrast: { base: string; head: string } | null; setContrast: (c: { base: string; head: string } | null) => void; go: Go;
+  openSettings: () => void;
 };
 
-/** ForceAtlas2 tuned for code graphs: tight clusters, readable bridges. */
+/** ForceAtlas2 tuned for code graphs: tight directories, readable bridges. */
 export function layoutSettings(g: Graph) {
   return { ...forceAtlas2.inferSettings(g), linLogMode: true, outboundAttractionDistribution: true, edgeWeightInfluence: 1, gravity: 1.1, scalingRatio: 7, slowDown: 3, barnesHutOptimize: g.order > 600 };
-}
-
-/**
- * Colour `c` at opacity `a`, pre-blended onto the page background.
- * The curved-edge shader ignores alpha, so translucency must be baked in.
- */
-export function withAlpha(c: string, a: number) {
-  const hex = (x: string) => {
-    const n = parseInt(x.replace("#", "").slice(0, 6), 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  };
-  if (!c.startsWith("#")) return c;
-  const bg = cssVar("--bg");
-  const [r, g, b] = hex(c);
-  const [R, G, B] = bg.startsWith("#") ? hex(bg) : [8, 8, 11];
-  const mix = (x: number, y: number) => Math.round(x * a + y * (1 - a)).toString(16).padStart(2, "0");
-  return `#${mix(r, R)}${mix(g, G)}${mix(b, B)}`;
 }
 
 export function cssVar(name: string) {
@@ -43,16 +30,12 @@ export function cssVar(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).replace(/\s+/g, "") || "#888";
 }
 
-// Dark-aware hover label (sigma's default is a white box).
-export function drawHover(ctx: CanvasRenderingContext2D, data: any, settings: any) {
-  // Details live in the floating hover card; on canvas we just ring the node and label it.
-  ctx.beginPath();
-  ctx.arc(data.x, data.y, data.size + 3.5, 0, Math.PI * 2);
-  ctx.strokeStyle = data.color;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  drawOutlinedLabel(ctx, { ...data, size: data.size + 3 }, { ...settings, labelWeight: "600" });
-}
+/** `c` at opacity `a`, pre-blended onto the page background (edge shaders ignore alpha). */
+export const withAlpha = (c: string, a: number) => blend(c, a, cssVar("--bg"));
+
+export const CURVATURE = 0.25; // @sigma/edge-curve default
+const LABELS = { few: [0.35, 9], normal: [0.8, 6], many: [1.8, 3] } as const;
+const TRANSPARENT = "rgba(0,0,0,0)";
 
 export default function GraphView(props: Props) {
   const { contrast, setContrast, setFocus } = props;
@@ -61,9 +44,9 @@ export default function GraphView(props: Props) {
       <Contrast
         base={contrast.base}
         head={contrast.head}
-        theme={props.theme}
         onChange={(base, head) => setContrast({ base, head })}
         onExit={() => setContrast(null)}
+        openSettings={props.openSettings}
         openInMap={async (name, path) => {
           const hits = await api.search(name);
           const hit = hits.find((h) => h.path === path) ?? hits[0];
@@ -75,19 +58,25 @@ export default function GraphView(props: Props) {
   return <MapView {...props} />;
 }
 
-function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }: Props) {
+type Filter = { type: "dir" | "cluster" | "kind"; key: string } | null;
+
+function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSettings }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const sigma = useRef<Sigma | null>(null);
+  const s = useSettings();
+  const cfg = useRef(s);
+  cfg.current = s;
   const [level, setLevel] = useState<"symbol" | "file">("symbol");
   const [data, setData] = useState<GraphData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
-  const [cluster, setCluster] = useState<number | null>(null);
+  const [filter, setFilter] = useState<Filter>(null);
+  const [peek, setPeek] = useState<string | null>(null);
   const [impact, setImpact] = useState<Impact | null>(null);
-  const [showLegend, setShowLegend] = useState(() => window.innerWidth > 760);
+  const [legendOpen, setLegendOpen] = useState(() => window.innerWidth > 760);
   const [settling, setSettling] = useState(false);
-  const fx = useRef<ReturnType<typeof attachFx> | null>(null);
-  const state = useRef({ hover: null as string | null, focus: null as number | null, cluster: null as number | null, impact: null as Set<string> | null, neigh: new Set<string>() });
+  const overlay = useRef<Overlay | null>(null);
+  const state = useRef({ hover: null as string | null, focus: null as number | null, filter: null as Filter, impact: null as Map<string, number> | null, neigh: new Set<string>() });
 
   useEffect(() => {
     setData(null);
@@ -95,142 +84,167 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
     api.graph(level).then(setData).catch((e) => setErr(String(e.message ?? e)));
   }, [level, version]);
 
-  // Build graph with a golden-angle cluster seed (the live layout refines it).
+  const churn = data?.churn ?? {};
+  // Territories and colours follow the chosen depth; the layout always uses the automatic one.
+  const groups = useMemo(() => groupDirs(data?.nodes.map((n) => n.path) ?? [], s.dirDepth), [data, s.dirDepth]);
+  const colorer = useMemo(() => makeColorer(s, groups, churn), [s.colorBy, s.dirColors, s.theme, groups, data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const look = useRef({ groups, colorer });
+  look.current = { groups, colorer };
+  useEffect(() => { knownDirs.set({ list: groups.sizes.map(([d, n]) => [d, n, groups.label(d)]), depth: groups.depth }); }, [groups]);
+
+  // Build the graph: seeded by directory on a golden-angle spiral, refined live by the worker.
   const graph = useMemo(() => {
     if (!data) return null;
     const g = new Graph({ multi: false, type: "directed" });
-    const byComm = new Map<number, number>();
-    data.nodes.forEach((n) => byComm.set(n.community, (byComm.get(n.community) ?? 0) + 1));
-    const order = [...byComm.keys()].sort((a, b) => byComm.get(b)! - byComm.get(a)!);
+    const lay = groupDirs(data.nodes.map((n) => n.path), 0);
     const golden = Math.PI * (3 - Math.sqrt(5));
     const spread = Math.sqrt(data.nodes.length) * 14;
-    const centre = new Map(order.map((c, i) => {
-      const r = spread * Math.sqrt((i + 0.5) / order.length);
-      return [c, { x: r * Math.cos(i * golden), y: r * Math.sin(i * golden) }];
+    const centre = new Map(lay.sizes.map(([d], i) => {
+      const r = spread * Math.sqrt((i + 0.5) / lay.sizes.length);
+      return [d, { x: r * Math.cos(i * golden), y: r * Math.sin(i * golden) }];
     }));
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (const n of data.nodes) {
-      const c = centre.get(n.community)!;
-      const j = Math.sqrt(byComm.get(n.community) ?? 1) * 5;
-      g.addNode(String(n.id), { x: c.x + (rnd() - 0.5) * j, y: c.y + (rnd() - 0.5) * j, label: n.name, color: colorFor(n.community), size: 2, node: n });
+      const d = lay.of(n.path);
+      const c = centre.get(d)!;
+      const j = Math.sqrt(lay.sizes.find(([k]) => k === d)?.[1] ?? 1) * 5;
+      g.addNode(String(n.id), { x: c.x + (rnd() - 0.5) * j, y: c.y + (rnd() - 0.5) * j, label: n.name, color: "#888", size: 2, node: n, dir: d });
     }
-    const neutral = withAlpha(cssVar("--text-3"), 0.3);
     for (const e of data.edges) {
-      const s = String(e.src), t = String(e.dst);
-      if (s === t || !g.hasNode(s) || !g.hasNode(t) || g.hasEdge(s, t)) continue;
-      const cs = g.getNodeAttribute(s, "node").community, ct = g.getNodeAttribute(t, "node").community;
-      const same = cs === ct;
-      // Intra-cluster edges take the cluster's hue; bridges stay neutral.
-      g.addEdge(s, t, { kind: e.kind, size: e.kind === "CALLS" ? 0.7 : 0.45, color: same ? withAlpha(colorFor(cs), 0.42) : neutral, weight: same ? 3 : 0.35 });
+      const a = String(e.src), b = String(e.dst);
+      if (a === b || !g.hasNode(a) || !g.hasNode(b) || g.hasEdge(a, b)) continue;
+      const na = g.getNodeAttributes(a), nb = g.getNodeAttributes(b);
+      const sameDir = na.dir === nb.dir, sameComm = na.node.community === nb.node.community;
+      g.addEdge(a, b, { kind: e.kind, size: e.kind === "CALLS" ? 0.8 : 0.5, color: "#444", weight: sameDir && sameComm ? 5 : sameDir ? 3 : sameComm ? 0.8 : 0.12 });
     }
-    let maxDeg = 1;
-    g.forEachNode((id) => { maxDeg = Math.max(maxDeg, g.degree(id)); });
-    g.forEachNode((id, attr) => {
+    // Rank by degree once; the hub share is a view setting.
+    const ranked = g.nodes().sort((x, y) => g.degree(y) - g.degree(x));
+    ranked.forEach((id, i) => {
       const deg = g.degree(id);
-      const base = attr.node.kind === "file" ? 4 : attr.node.kind === "class" ? 4 : 2.6;
-      g.setNodeAttribute(id, "size", Math.min(20, base + Math.sqrt(deg) * 1.5));
-      g.setNodeAttribute(id, "hub", deg >= Math.max(6, maxDeg * 0.35));
+      const kind = g.getNodeAttribute(id, "node").kind;
+      g.mergeNodeAttributes(id, { rank: i, deg, din: g.inDegree(id), dout: g.outDegree(id), size: Math.min(18, (kind === "file" || kind === "class" ? 3.6 : 2.4) + Math.sqrt(deg) * 1.35) });
     });
-    if (g.order > 1) {
-      // A short warm-up so the first frame is already shaped; the worker finishes it live.
-      forceAtlas2.assign(g, { iterations: 40, settings: layoutSettings(g) });
+    // One invisible anchor per directory, tied to its members: the layout pulls each
+    // directory into its own region, so territories read as places rather than a blend.
+    for (const [d] of lay.sizes) {
+      const anchor = `__dir:${d}`;
+      const c = centre.get(d)!;
+      g.addNode(anchor, { x: c.x, y: c.y, size: 0.1, virtual: true, label: "" });
     }
+    g.forEachNode((id, a) => { if (!a.virtual) g.addEdge(`__dir:${a.dir}`, id, { virtual: true, weight: 1.2, size: 0.1, color: "#000" }); });
+    if (g.order > 1) forceAtlas2.assign(g, { iterations: 40, settings: layoutSettings(g) });
     return g;
-  }, [data, level, theme]); // theme: node colours come from the active palette
+  }, [data]);
 
-  // Sigma renderer + effects + live layout.
+  // Theme tokens the reducers read (refreshed when the theme changes).
+  const theme = useMemo(() => ({
+    bg: cssVar("--bg"), faded: cssVar("--node-faded"), accent: cssVar("--accent"), text3: cssVar("--text-3"), in: cssVar("--blue"), out: cssVar("--accent"),
+  }), [s.theme]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const tok = useRef(theme);
+  tok.current = theme;
+
+  const isHub = (a: any) => !!graph && !a.virtual && a.deg >= 4 && a.rank < Math.max(3, Math.round(cfg.current.hubShare * graph.order));
+
+  // Renderer, overlay and live layout.
   useEffect(() => {
     if (!graph || !box.current) return;
-    let s: Sigma;
+    let r: Sigma;
     try {
-      s = new Sigma(graph, box.current, {
+      r = new Sigma(graph, box.current, {
         renderEdgeLabels: false,
         labelFont: "Geist Variable, system-ui, sans-serif",
         labelSize: 11.5,
         labelWeight: "500",
         labelColor: { color: cssVar("--text") },
-        labelDensity: 0.7,
-        labelGridCellSize: 100,
-        labelRenderedSizeThreshold: 6,
-        defaultEdgeType: "curved",
-        edgeProgramClasses: { curved: EdgeCurveProgram },
+        labelGridCellSize: 90,
+        defaultEdgeType: "line",
+        edgeProgramClasses: { line: EdgeRectangleProgram, curved: EdgeCurveProgram },
         defaultDrawNodeLabel: drawOutlinedLabel,
         defaultDrawNodeHover: drawHover,
-        hideEdgesOnMove: true,
+        hideEdgesOnMove: graph.size > 3000,
         zIndex: true,
         minCameraRatio: 0.03,
         maxCameraRatio: 6,
       });
-    } catch {
+    } catch (e) {
+      console.error(e);
       setErr("This browser could not start WebGL, which the graph needs. Other views still work.");
       return;
     }
-    const faded = cssVar("--node-faded");
-    const accent = cssVar("--accent");
-    s.setSetting("nodeReducer", (id, attr) => {
-      const st = state.current;
-      const res: any = { ...attr };
+    r.setSetting("nodeReducer", (id, attr) => {
+      const st = state.current, c = cfg.current, { colorer, groups } = look.current, theme = tok.current;
+      if (attr.virtual) return { ...attr, hidden: true };
+      const res: any = { ...attr, color: colorer.node(attr.node) };
+      const hub = c.hubIcons && isHub(attr);
+      if (hub) res.forceLabel = true;
       const active = st.hover ?? (st.focus != null ? String(st.focus) : null);
-      const dim = () => { res.color = faded; res.label = ""; res.zIndex = 0; res.size = Math.max(1.4, attr.size * 0.4); };
+      const dim = () => { res.color = theme.faded; res.dimmed = true; res.label = ""; res.forceLabel = false; res.zIndex = 0; res.size = Math.max(1.4, attr.size * 0.45); };
+      const f = st.filter;
       if (st.impact) {
-        if (id === String(st.focus)) { res.highlighted = true; res.zIndex = 3; }
-        else if (st.impact.has(id)) { res.color = accent; res.zIndex = 2; res.forceLabel = true; }
+        const depth = st.impact.get(id);
+        if (id === String(st.focus)) { res.zIndex = 3; res.forceLabel = true; }
+        else if (depth) { res.color = blend(theme.accent, [1, 0.72, 0.5][Math.min(depth, 3) - 1], theme.bg); res.zIndex = 2; res.forceLabel = depth === 1; }
         else dim();
-        return res;
-      }
-      if (st.cluster != null && attr.node.community !== st.cluster) { dim(); return res; }
-      if (active) {
-        if (id === active) { res.highlighted = true; res.zIndex = 3; res.forceLabel = true; }
+      } else if (f && !(f.type === "dir" ? groups.of(attr.node.path) === f.key : f.type === "cluster" ? String(attr.node.community) === f.key : attr.node.kind === f.key)) {
+        dim();
+      } else if (active) {
+        if (id === active) { res.zIndex = 3; res.forceLabel = true; }
         else if (st.neigh.has(id)) { res.zIndex = 2; res.forceLabel = true; }
         else dim();
       }
+      if (hub && !res.dimmed) { res.tile = res.color; res.hubTile = true; res.color = TRANSPARENT; res.zIndex = Math.max(res.zIndex ?? 0, 1); }
       return res;
     });
-    s.setSetting("edgeReducer", (id, attr) => {
-      const st = state.current;
-      const res: any = { ...attr };
-      const [src, dst] = graph.extremities(id);
+    r.setSetting("edgeReducer", (id, attr) => {
+      const st = state.current, c = cfg.current, { colorer, groups } = look.current, theme = tok.current;
+      if (attr.virtual) return { ...attr, hidden: true };
+      const res: any = { ...attr, type: c.curved ? "curved" : "line" };
+      if (!c.imports && attr.kind === "IMPORTS") { res.hidden = true; return res; }
+      const [a, b] = graph.extremities(id);
+      const na = graph.getNodeAttributes(a), nb = graph.getNodeAttributes(b);
       if (st.impact) {
-        const on = (st.impact.has(src) || src === String(st.focus)) && (st.impact.has(dst) || dst === String(st.focus));
-        if (on) { res.color = withAlpha(accent, 0.75); res.size = 1.5; res.zIndex = 2; } else res.hidden = true;
+        const on = (st.impact.has(a) || a === String(st.focus)) && (st.impact.has(b) || b === String(st.focus));
+        if (on) { res.color = blend(theme.accent, 0.6, theme.bg); res.size = 1.3; res.zIndex = 2; } else res.hidden = true;
         return res;
       }
       const active = st.hover ?? (st.focus != null ? String(st.focus) : null);
-      if (st.cluster != null) {
-        const a = graph.getNodeAttribute(src, "node").community, b = graph.getNodeAttribute(dst, "node").community;
-        if (a !== st.cluster && b !== st.cluster) res.hidden = true;
-      } else if (active) {
-        if (src === active || dst === active) {
-          res.color = withAlpha(colorFor(graph.getNodeAttribute(active, "node").community), 0.85);
-          res.size = 1.4;
-          res.zIndex = 2;
-        } else res.hidden = true;
+      if (active) {
+        // Direction by colour: calls out of the active symbol vs. calls into it.
+        if (a === active) { res.color = blend(theme.out, 0.85, theme.bg); res.size = 1.4; res.zIndex = 2; }
+        else if (b === active) { res.color = blend(theme.in, 0.85, theme.bg); res.size = 1.4; res.zIndex = 2; }
+        else res.hidden = true;
+        return res;
       }
+      const f = st.filter;
+      if (f) {
+        const keep = (n: any) => (f.type === "dir" ? groups.of(n.node.path) === f.key : f.type === "cluster" ? String(n.node.community) === f.key : n.node.kind === f.key);
+        if (!keep(na) && !keep(nb)) { res.hidden = true; return res; }
+      }
+      const within = groups.of(na.node.path) === groups.of(nb.node.path);
+      const imp = attr.kind === "IMPORTS";
+      res.color = within && colorer.mode === "directory"
+        ? blend(colorer.node(na.node), imp ? 0.2 : 0.34, theme.bg)
+        : blend(theme.text3, imp ? 0.16 : 0.26, theme.bg);
       return res;
     });
-    s.on("enterNode", ({ node }) => { setHover(node); box.current!.style.cursor = "pointer"; });
-    s.on("leaveNode", () => { setHover(null); box.current!.style.cursor = ""; });
-    s.on("clickNode", ({ node }) => setFocus(Number(node)));
-    s.on("clickStage", () => { setFocus(null); setImpact(null); });
+    r.on("enterNode", ({ node }) => { setHover(node); box.current!.style.cursor = "pointer"; });
+    r.on("leaveNode", () => { setHover(null); box.current!.style.cursor = ""; });
+    r.on("clickNode", ({ node }) => setFocus(Number(node)));
+    r.on("clickStage", () => { setFocus(null); setImpact(null); });
 
-    // "src/views · MetaViews" → "MetaViews": the distinctive half of the cluster name.
-    const labels = new Map(data?.communities.map((c) => [c.id, c.label.split(" · ").pop()!.split("/").pop()!]) ?? []);
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    const effects = attachFx(s, graph, {
-      clusterOf: (a) => a.node.community,
-      clusterLabel: (c) => labels.get(c),
-      clusterColor: colorFor,
-      glow: (id, a) => {
-        const st = state.current;
-        if (st.impact?.has(id)) return 1;
-        return a.hub ? 1 : 0;
-      },
+    const ov = attachOverlay(r, graph, {
+      group: (a) => (a.virtual ? null : look.current.groups.of(a.node.path)),
+      groupLabel: (k) => look.current.groups.label(k),
+      groupColor: (k) => (look.current.colorer.mode === "directory" ? dirColor(k, look.current.groups, cfg.current) : null),
+      hub: (_id, a) => cfg.current.hubIcons && isHub(a),
+      glyph: (a) => (a.node.kind === "file" ? LANG_GLYPH[a.node.lang] ?? "·" : GLYPH[a.node.kind] ?? "·"),
       reducedMotion: reduced,
     });
-    fx.current = effects;
+    overlay.current = ov;
 
-    // Live layout: the graph settles on screen in a worker thread.
     let worker: FA2Layout | null = null;
     let timer = 0;
     if (!reduced && graph.order > 2) {
@@ -239,50 +253,66 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
       setSettling(true);
       timer = window.setTimeout(() => {
         worker?.stop();
-        noverlap.assign(graph, { maxIterations: 40, settings: { margin: 2, ratio: 1.1 } });
+        noverlap.assign(graph, { maxIterations: 40, settings: { margin: 3, ratio: 1.15 } });
         setSettling(false);
       }, Math.min(4500, 1400 + graph.order * 4));
     } else {
       forceAtlas2.assign(graph, { iterations: 200, settings: layoutSettings(graph) });
-      noverlap.assign(graph, { maxIterations: 40, settings: { margin: 2, ratio: 1.1 } });
+      noverlap.assign(graph, { maxIterations: 40, settings: { margin: 3, ratio: 1.15 } });
     }
-    sigma.current = s;
+    sigma.current = r;
     return () => {
       clearTimeout(timer);
       worker?.kill();
-      effects.kill();
-      fx.current = null;
-      s.kill();
+      ov.kill();
+      overlay.current = null;
+      r.kill();
       sigma.current = null;
       setSettling(false);
     };
-  }, [graph, setFocus]);
+  }, [graph, setFocus]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Push interaction state to the reducers and the effects layer.
+  // View settings → renderer, without rebuilding the graph.
+  useEffect(() => {
+    const r = sigma.current;
+    if (!r) return;
+    const [density, threshold] = LABELS[s.labels];
+    r.setSetting("labelDensity", density);
+    r.setSetting("labelRenderedSizeThreshold", threshold);
+    r.setSetting("labelColor", { color: cssVar("--text") });
+    overlay.current?.retheme();
+    overlay.current?.set({ territories: s.territories, hubIcons: s.hubIcons, curvature: s.curved ? CURVATURE : 0 });
+    r.refresh({ skipIndexation: true });
+  }, [s, graph, colorer, theme]);
+
+  // Interaction state → reducers and overlay.
   useEffect(() => {
     const st = state.current;
     st.hover = hover;
     st.focus = focus;
-    st.cluster = cluster;
-    st.impact = impact ? new Set(impact.hits.map((h) => String(h.node.id))) : null;
+    st.filter = filter;
+    st.impact = impact ? new Map(impact.hits.map((h) => [String(h.node.id), h.depth])) : null;
     const active = hover ?? (focus != null ? String(focus) : null);
-    st.neigh = new Set(active && graph?.hasNode(active) ? graph.neighbors(active) : []);
+    st.neigh = new Set(active && graph?.hasNode(active) ? graph.neighbors(active).filter((n) => !n.startsWith("__dir:")) : []);
     sigma.current?.refresh({ skipIndexation: true });
-    if (!graph || !fx.current) return;
-    // Particles run along the focused symbol's calls (or the whole impact cone).
+    if (!graph || !overlay.current) return;
+    const f = focus != null && graph.hasNode(String(focus)) ? String(focus) : null;
     const flows: [string, string][] = [];
-    const f = focus != null ? String(focus) : null;
-    if (st.impact && f) {
-      graph.forEachEdge((_e, _a, src, dst) => {
-        if (flows.length < 160 && (st.impact!.has(src) || src === f) && (st.impact!.has(dst) || dst === f)) flows.push([src, dst]);
-      });
-    } else if (f && graph.hasNode(f)) {
-      graph.forEachEdge(f, (_e, _a, src, dst) => { if (flows.length < 120) flows.push([src, dst]); });
+    if (s.flow && f) {
+      if (st.impact) graph.forEachEdge((_e, _a, a, b) => { if (flows.length < 160 && (st.impact!.has(a) || a === f) && (st.impact!.has(b) || b === f)) flows.push([a, b]); });
+      else graph.forEachEdge(f, (_e, attr, a, b) => { if (flows.length < 120 && attr.kind === "CALLS") flows.push([a, b]); });
     }
-    fx.current.set({ focus: f && graph.hasNode(f) ? f : null, flows, dimOthers: active || st.impact ? new Set([...(st.impact ?? []), ...st.neigh, ...(active ? [active] : [])]) : null });
-  }, [hover, focus, cluster, impact, graph]);
+    const activeNode = active && graph.hasNode(active) ? graph.getNodeAttributes(active) : null;
+    overlay.current.set({
+      focus: f,
+      flows,
+      quiet: !!active || !!st.impact || !!filter,
+      focusMode: !!active || !!st.impact,
+      activeGroup: peek ?? (filter?.type === "dir" ? filter.key : activeNode ? groups.of(activeNode.node.path) : null),
+    });
+  }, [hover, focus, filter, impact, graph, s.flow, peek, groups]);
 
-  // Fly to focused node.
+  // Fly to the focused node.
   useEffect(() => {
     if (focus == null || !sigma.current || !graph?.hasNode(String(focus))) return;
     const pos = sigma.current.getNodeDisplayData(String(focus));
@@ -290,15 +320,14 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
   }, [focus, graph, settling]);
 
   useEffect(() => { if (focus == null) setImpact(null); }, [focus]);
+  useEffect(() => setFilter(null), [s.colorBy, s.dirDepth, level]);
 
   const cam = (f: (c: ReturnType<Sigma["getCamera"]>) => void) => sigma.current && f(sigma.current.getCamera());
-  const hoverNode: Node | null = hover && graph?.hasNode(hover) && hover !== String(focus) ? graph.getNodeAttribute(hover, "node") : null;
-  const hoverIn = hover && graph?.hasNode(hover) ? graph.inDegree(hover) : 0;
-  const hoverOut = hover && graph?.hasNode(hover) ? graph.outDegree(hover) : 0;
-  const communities = data?.communities.filter((c) => c.size > 1 && data.nodes.some((n) => n.community === c.id)) ?? [];
+  const hovered = hover && graph?.hasNode(hover) && !hover.startsWith("__dir:") ? graph.getNodeAttributes(hover) : null;
+  const hubCount = graph ? graph.filterNodes((_id, a) => isHub(a)).length : 0;
 
   return (
-    <div className="graph-wrap">
+    <div className={`graph-wrap ${focus != null ? "inspecting" : ""}`}>
       <div ref={box} className="graph-canvas" />
       {!data && !err && <div className="loading"><div className="stack" style={{ alignItems: "center" }}><Logo spin /><span>Laying out the graph…</span></div></div>}
       {err && <div className="loading"><Empty title={err.includes("WebGL") ? "Graph unavailable" : "No graph yet"}>{err}{!err.includes("WebGL") && <div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => api.reindex().then(onChanged)}>Build graph</button></div>}</Empty></div>}
@@ -308,48 +337,133 @@ function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }
           <button className={level === "symbol" ? "on" : ""} onClick={() => setLevel("symbol")}>Symbols</button>
           <button className={level === "file" ? "on" : ""} onClick={() => setLevel("file")}>Files</button>
         </div>
-        <div className="seg"><button className={showLegend ? "on" : ""} onClick={() => setShowLegend((v) => !v)}>Clusters</button></div>
-        <button className="btn sm" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs"><Icon.compare /> Contrast</button>
-        {data && <span className="chip hide-sm">{settling ? <><span className="dot warn pulse" /> settling layout…</> : <>{data.nodes.length.toLocaleString()} nodes · {data.edges.length.toLocaleString()} edges{data.truncated ? " · top by degree" : ""}</>}</span>}
+        <button className="btn sm hud-btn" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs"><Icon.compare /> Contrast</button>
+        <button className="btn sm hud-btn icon-only" onClick={openSettings} title="Graph settings  ," aria-label="Graph settings"><Icon.sliders /></button>
+        {data && (
+          <span className="hud-stats hide-sm">
+            {settling ? <><span className="dot warn pulse" /> settling</> : <>
+              <b>{data.nodes.length.toLocaleString()}</b> {level === "file" ? "files" : "symbols"}<i />
+              <b>{data.edges.length.toLocaleString()}</b> edges<i />
+              <b>{groups.sizes.length}</b> dirs<i />
+              <b>{hubCount}</b> hubs{data.truncated ? <><i />top by degree</> : null}
+            </>}
+          </span>
+        )}
       </div>
 
-      {hoverNode && (
-        <div className="hover-card" key={hover!}>
-          <Kind kind={hoverNode.kind} community={hoverNode.community} size={18} />
-          <div>
-            <div className="hc-name mono">{hoverNode.name}</div>
-            <div className="hc-path mono">{hoverNode.path}:{hoverNode.start_line}</div>
-          </div>
-          <div className="hc-stats"><span><b>{hoverIn}</b> in</span><span><b>{hoverOut}</b> out</span></div>
-        </div>
-      )}
+      {hovered && hover !== String(focus) && <HoverCard n={hovered.node} dir={groups.label(groups.of(hovered.node.path))} deg={[hovered.din, hovered.dout]} churn={churn[hovered.node.path] ?? 0} hub={isHub(hovered)} />}
 
-      {showLegend && communities.length > 0 && (
-        <div className="graph-overlay legend">
-          <div className="section-title" style={{ marginTop: 0 }}>Clusters <span className="count">{communities.length}</span></div>
-          {communities.slice(0, 40).map((c) => (
-            <div key={c.id} className={`li ${cluster === c.id ? "on" : ""}`} onClick={() => setCluster(cluster === c.id ? null : c.id)}>
-              <span className="sw" style={{ background: colorFor(c.id), color: colorFor(c.id) }} />
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.label}</span>
-              <span className="n">{c.size}</span>
-            </div>
-          ))}
-        </div>
+      {data && (
+        <Legend
+          open={legendOpen} setOpen={setLegendOpen} mode={s.colorBy} groups={groups} settings={s} data={data} churn={churn}
+          filter={filter} setFilter={setFilter} setPeek={setPeek}
+        />
       )}
 
       <div className="graph-overlay zoom">
         <button className="btn" aria-label="Zoom in" onClick={() => cam((c) => c.animatedZoom({ duration: 200 }))}><Icon.plus /></button>
         <button className="btn" aria-label="Zoom out" onClick={() => cam((c) => c.animatedUnzoom({ duration: 200 }))}><Icon.minus /></button>
-        <button className="btn" aria-label="Reset view" onClick={() => cam((c) => c.animatedReset({ duration: 300 }))}><Icon.target /></button>
+        <button className="btn" aria-label="Fit graph" title="Fit" onClick={() => cam((c) => c.animatedReset({ duration: 300 }))}><Icon.target /></button>
         <button className="btn" aria-label="Re-run layout" title="Re-run layout" onClick={() => setData((d) => (d ? { ...d } : d))}><Icon.refresh /></button>
       </div>
 
-      {focus != null && <Inspector id={focus} onClose={() => setFocus(null)} setFocus={setFocus} impact={impact} setImpact={setImpact} go={go} />}
+      {focus != null && <Inspector id={focus} onClose={() => setFocus(null)} setFocus={setFocus} impact={impact} setImpact={setImpact} go={go} churn={churn} deg={graph?.hasNode(String(focus)) ? [graph.getNodeAttribute(String(focus), "din"), graph.getNodeAttribute(String(focus), "dout")] : null} />}
     </div>
   );
 }
 
-function Inspector({ id, onClose, setFocus, impact, setImpact, go: goView }: { id: number; onClose: () => void; setFocus: (id: number) => void; impact: Impact | null; setImpact: (i: Impact | null) => void; go: Go }) {
+function HoverCard({ n, dir, deg, churn, hub }: { n: Node; dir: string; deg: [number, number]; churn: number; hub: boolean }) {
+  const lines = n.end_line - n.start_line + 1;
+  return (
+    <div className="hover-card" key={n.id}>
+      <Kind kind={n.kind} size={22} />
+      <div className="hc-main">
+        <div className="hc-name mono">{n.name}{hub && <span className="hc-hub">hub</span>}</div>
+        <div className="hc-path mono">{n.path}:{n.start_line}</div>
+      </div>
+      <div className="hc-stats">
+        <span title="Incoming edges (callers, importers)"><b className="in">{deg[0]}</b> in</span>
+        <span title="Outgoing edges (callees, imports)"><b className="out">{deg[1]}</b> out</span>
+        {n.kind !== "file" && <span><b>{lines}</b> ln</span>}
+        <span title="Commits touching this file in 90 days"><b>{churn}</b> {churn === 1 ? "commit" : "commits"}</span>
+        <span className="hc-dir mono">{dir}</span>
+      </div>
+    </div>
+  );
+}
+
+function Legend({ open, setOpen, mode, groups, settings: s, data, churn, filter, setFilter, setPeek }: {
+  open: boolean; setOpen: (o: boolean) => void; mode: Settings["colorBy"]; groups: ReturnType<typeof groupDirs>; settings: Settings;
+  data: GraphData; churn: Record<string, number>; filter: Filter; setFilter: (f: Filter) => void; setPeek: (k: string | null) => void;
+}) {
+  const total = data.nodes.length || 1;
+  let rows: { key: string; label: string; n: number; color: string; type: "dir" | "cluster" | "kind" }[] = [];
+  if (mode === "directory") rows = groups.sizes.map(([d, n]) => ({ key: d, label: groups.label(d), n, color: dirColor(d, groups, s), type: "dir" }));
+  if (mode === "cluster") {
+    const count = new Map<number, number>();
+    data.nodes.forEach((x) => count.set(x.community, (count.get(x.community) ?? 0) + 1));
+    rows = data.communities.filter((c) => count.get(c.id)).sort((a, b) => count.get(b.id)! - count.get(a.id)!)
+      .map((c) => ({ key: String(c.id), label: c.label, n: count.get(c.id)!, color: hue(c.id), type: "cluster" }));
+  }
+  if (mode === "kind") {
+    const count = new Map<string, number>();
+    data.nodes.forEach((x) => count.set(x.kind, (count.get(x.kind) ?? 0) + 1));
+    rows = [...count].sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ key: k, label: k, n, color: kindColor(k), type: "kind" }));
+  }
+  const max = Math.max(20, ...Object.values(churn));
+  const hottest = Object.entries(churn).filter(([p]) => data.nodes.some((x) => x.path === p)).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const title = { directory: "Directories", cluster: "Clusters", kind: "Kinds", churn: "Churn · 90 days" }[mode];
+
+  return (
+    <div className={`graph-overlay legend ${open ? "" : "closed"}`}>
+      <button className="legend-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span>{title}</span>
+        {mode !== "churn" && <span className="count">{rows.length}</span>}
+        <span className="spacer" />
+        <Icon.chevron />
+      </button>
+      {mode !== "churn" && (
+        // Composition bar: each band is a share of all nodes – always visible, even collapsed.
+        <div className="comp-bar" role="presentation">
+          {rows.slice(0, 16).map((r) => (
+            <i key={r.key} style={{ flexGrow: r.n, background: r.color, opacity: filter && filter.key !== r.key ? 0.25 : 1 }} title={`${r.label} · ${r.n}`}
+              onClick={() => setFilter(filter?.key === r.key ? null : { type: r.type, key: r.key })} />
+          ))}
+        </div>
+      )}
+      {open && mode !== "churn" && (
+        <div className="legend-rows">
+          {rows.slice(0, 40).map((r) => (
+            <div key={r.key} className={`li ${filter?.key === r.key ? "on" : ""}`}
+              onMouseEnter={() => r.type === "dir" && setPeek(r.key)} onMouseLeave={() => setPeek(null)}
+              onClick={() => setFilter(filter?.key === r.key ? null : { type: r.type, key: r.key })}>
+              <span className="sw" style={{ background: r.color }} />
+              <span className={`lbl ${r.type === "dir" ? "mono" : ""}`}>{r.label}</span>
+              <span className="n">{r.n}</span>
+              <span className="pct">{Math.round((r.n / total) * 100)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {open && mode === "churn" && (
+        <div className="legend-rows">
+          <div className="ramp" style={{ background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((t) => churnColor(t)).join(",")})` }} />
+          <div className="ramp-scale"><span>0</span><span>{max} commits</span></div>
+          {hottest.map(([p, n]) => (
+            <div key={p} className="li"><span className="sw" style={{ background: churnColor(Math.log1p(n) / Math.log1p(max)) }} /><span className="lbl mono">{p}</span><span className="n">{n}</span></div>
+          ))}
+          {!hottest.length && <div className="muted" style={{ padding: "4px 6px" }}>No commits in 90 days.</div>}
+        </div>
+      )}
+      {filter && <button className="legend-clear" onClick={() => setFilter(null)}>Showing {filter.type === "dir" ? groups.label(filter.key) : rows.find((r) => r.key === filter.key)?.label} only · clear</button>}
+    </div>
+  );
+}
+
+function Inspector({ id, onClose, setFocus, impact, setImpact, go: goView, churn, deg }: {
+  id: number; onClose: () => void; setFocus: (id: number) => void; impact: Impact | null; setImpact: (i: Impact | null) => void; go: Go;
+  churn: Record<string, number>; deg: [number, number] | null;
+}) {
   const [ctx, setCtx] = useState<Context | null>(null);
   const [tab, setTab] = useState<"context" | "impact" | "history" | "source" | "notes">("context");
   const [hist, setHist] = useState<SymbolHistory | null>(null);
@@ -389,14 +503,14 @@ function Inspector({ id, onClose, setFocus, impact, setImpact, go: goView }: { i
   }, [tab, dir, id]);
 
   const go = (n: Node) => setFocus(n.id);
-  const lists: [string, Node[]][] = ctx ? [["Called by", ctx.callers], ["Calls", ctx.callees], ["Contains", ctx.children], ["Imports", ctx.imports], ["Imported by", ctx.imported_by]] : [];
+  const lists: [string, Node[], string][] = ctx ? [["Called by", ctx.callers, "in"], ["Calls", ctx.callees, "out"], ["Contains", ctx.children, ""], ["Imports", ctx.imports, "out"], ["Imported by", ctx.imported_by, "in"]] : [];
   const target = ctx ? (ctx.node.kind === "file" ? `file:${ctx.node.path}` : `symbol:${ctx.node.path}:${ctx.node.name}`) : "";
 
   return (
     <aside className="inspector" aria-label="Symbol inspector">
       <header>
         <div className="row">
-          <div className="kind">{ctx && <Kind kind={ctx.node.kind} community={ctx.node.community} size={15} />}{ctx?.node.kind ?? "loading"}</div>
+          <div className="kind">{ctx && <Kind kind={ctx.node.kind} size={15} />}{ctx?.node.kind ?? "loading"}</div>
           <span className="spacer" />
           <button className="btn ghost sm" disabled={trail.current.at <= 0} onClick={() => step(-1)} aria-label="Back" title="Back  [">←</button>
           <button className="btn ghost sm" disabled={trail.current.at >= trail.current.stack.length - 1} onClick={() => step(1)} aria-label="Forward" title="Forward  ]">→</button>
@@ -404,7 +518,16 @@ function Inspector({ id, onClose, setFocus, impact, setImpact, go: goView }: { i
         </div>
         <h2>{ctx?.node.name ?? "…"}</h2>
         {ctx && <div className="muted mono" style={{ fontSize: 11.5 }}>{ctx.node.path}:{ctx.node.start_line}–{ctx.node.end_line}</div>}
-        {ctx?.community && <div style={{ marginTop: 8 }}><span className="tag" style={{ color: colorFor(ctx.node.community) }}>■ {ctx.community}</span></div>}
+        {ctx && (
+          <div className="insp-facts">
+            <span><b className="in">{ctx.callers.length + ctx.imported_by.length}</b> in</span>
+            <span><b className="out">{ctx.callees.length + ctx.imports.length}</b> out</span>
+            {ctx.node.kind !== "file" && <span><b>{ctx.node.end_line - ctx.node.start_line + 1}</b> lines</span>}
+            <span><b>{churn[ctx.node.path] ?? 0}</b> {(churn[ctx.node.path] ?? 0) === 1 ? "commit" : "commits"} · 90d</span>
+            {deg && deg[0] + deg[1] > 0 && ctx.callers.length === 0 && ctx.node.kind !== "file" && <span className="warn-fact">no callers</span>}
+            {ctx.community && <span className="insp-cluster" title="Cluster"><i style={{ background: colorFor(ctx.node.community) }} />{ctx.community}</span>}
+          </div>
+        )}
       </header>
       <div className="tabs">
         {(["context", "impact", "history", "source", "notes"] as const).map((t) => (
@@ -417,10 +540,10 @@ function Inspector({ id, onClose, setFocus, impact, setImpact, go: goView }: { i
         {!ctx ? <div className="muted" style={{ padding: 16 }}>Loading…</div> : tab === "context" ? (
           <>
             {ctx.container && (<><div className="section-title">Defined in</div><Sym n={ctx.container} onClick={go} /></>)}
-            {lists.filter(([, l]) => l.length).map(([t, l]) => (
+            {lists.filter(([, l]) => l.length).map(([t, l, dir]) => (
               <div key={t}>
-                <div className="section-title">{t} <span className="count">{l.length}</span></div>
-                {l.slice(0, 60).map((n) => <Sym key={n.id} n={n} onClick={go} />)}
+                <div className={`section-title ${dir}`}>{t} <span className="count">{l.length}</span></div>
+                {l.slice(0, 60).map((n) => <Sym key={n.id} n={n} onClick={go} right={n.path === ctx.node.path ? `:${n.start_line}` : undefined} />)}
               </div>
             ))}
             {lists.every(([, l]) => !l.length) && <Empty title="Isolated">No resolved relationships.</Empty>}

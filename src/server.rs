@@ -162,7 +162,9 @@ async fn graph_data(State(s): State<AppState>, Query(q): Query<HashMap<String, S
         let st = Store::open(&s.repo)?;
         let level = q.get("level").map(String::as_str).unwrap_or("symbol").to_string();
         let limit = q.get("limit").and_then(|l| l.parse().ok()).unwrap_or(4000);
-        Ok(json!(graph::export(&st, &level, limit)?))
+        let mut out = json!(graph::export(&st, &level, limit)?);
+        out["churn"] = json!(graph::churn(&s.repo, 90));
+        Ok(out)
     })
     .await
 }

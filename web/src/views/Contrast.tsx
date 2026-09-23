@@ -6,8 +6,11 @@ import noverlap from "graphology-layout-noverlap";
 import { api, type DiffNode, type DiffStatus, type GraphDiff } from "../api";
 import { Empty, Icon, Kind, Logo, useToast } from "../ui";
 import EdgeCurveProgram from "@sigma/edge-curve";
-import { attachFx, drawOutlinedLabel } from "../graphfx";
-import { cssVar, drawHover, withAlpha } from "./GraphView";
+import { EdgeRectangleProgram } from "sigma/rendering";
+import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../graphfx";
+import { groupDirs } from "../colors";
+import { useSettings } from "../settings";
+import { CURVATURE, cssVar, withAlpha } from "./GraphView";
 
 type Props = {
   base: string;
@@ -16,7 +19,7 @@ type Props = {
   onExit: () => void;
   /** Jump to a symbol in the regular map. */
   openInMap: (name: string, path: string) => void;
-  theme?: string | null;
+  openSettings: () => void;
 };
 
 const STATUS: { id: Exclude<DiffStatus, "same">; label: string; sign: string; color: string }[] = [
@@ -27,7 +30,9 @@ const STATUS: { id: Exclude<DiffStatus, "same">; label: string; sign: string; co
 const colorOf = (s: DiffStatus) => (s === "same" ? cssVar("--line-2") : cssVar(STATUS.find((x) => x.id === s)!.color));
 
 /** Two revisions' knowledge graphs, overlaid: what the change does to the architecture. */
-export default function Contrast({ base, head, onChange, onExit, openInMap, theme }: Props) {
+export default function Contrast({ base, head, onChange, onExit, openInMap, openSettings }: Props) {
+  const cfg = useSettings();
+  const theme = cfg.theme;
   const box = useRef<HTMLDivElement>(null);
   const sigma = useRef<Sigma | null>(null);
   const [diff, setDiff] = useState<GraphDiff | null>(null);
@@ -38,7 +43,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
   const [hover, setHover] = useState<string | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
   const [q, setQ] = useState("");
-  const fx = useRef<ReturnType<typeof attachFx> | null>(null);
+  const fx = useRef<Overlay | null>(null);
   const state = useRef({ hover: null as string | null, focus: null as string | null, hidden: new Set<string>(), neigh: new Set<string>() });
   const toast = useToast();
 
@@ -56,8 +61,9 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
   const graph = useMemo(() => {
     if (!diff) return null;
     const g = new Graph({ type: "directed" });
-    const comm = [...new Set(diff.nodes.map((n) => n.community))];
-    const angle = new Map(comm.map((c, i) => [c, (i / Math.max(1, comm.length)) * Math.PI * 2]));
+    // Seed each directory on its own bearing so territories come out compact.
+    const lay = groupDirs(diff.nodes.map((n) => n.path), 0);
+    const angle = new Map(lay.sizes.map(([d], i) => [d, (i / Math.max(1, lay.sizes.length)) * Math.PI * 2]));
     let seed = 11;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     // Ripple halo: unchanged neighbours of a change are lit so you see what it touches.
@@ -68,14 +74,14 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
       if (changedIds.has(e.dst)) near.add(e.src);
     }
     for (const n of diff.nodes) {
-      const a = angle.get(n.community) ?? 0;
+      const a = angle.get(lay.of(n.path)) ?? 0;
       const changed = n.status !== "same";
       const halo = !changed && near.has(n.id);
       g.addNode(String(n.id), {
         x: Math.cos(a) * 80 + (rnd() - 0.5) * 50,
         y: Math.sin(a) * 80 + (rnd() - 0.5) * 50,
         color: halo ? cssVar("--text-3") : colorOf(n.status),
-        size: changed ? 10 : halo ? 4 : n.kind === "file" ? 3 : 2.2,
+        size: changed ? 8 : halo ? 4 : n.kind === "file" ? 3 : 2.2,
         zIndex: changed ? 3 : halo ? 1 : 0,
         forceLabel: changed,
         label: changed || halo ? (n.container ? `${n.container}.${n.name}` : n.name) : n.name,
@@ -87,7 +93,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
       if (s === t || !g.hasNode(s) || !g.hasNode(t) || g.hasEdge(s, t)) continue;
       const changed = e.status !== "same";
       const touchesChange = changedIds.has(e.src) || changedIds.has(e.dst);
-      g.addEdge(s, t, { color: changed ? colorOf(e.status) : touchesChange ? withAlpha(cssVar("--text-2"), 0.55) : withAlpha(cssVar("--text-3"), 0.22), size: changed ? 1.8 : touchesChange ? 0.9 : 0.4, zIndex: changed ? 2 : touchesChange ? 1 : 0, status: e.status, weight: changed ? 2 : 1 });
+      g.addEdge(s, t, { color: changed ? colorOf(e.status) : touchesChange ? withAlpha(cssVar("--text-2"), 0.55) : withAlpha(cssVar("--text-3"), 0.22), size: changed ? 1.8 : touchesChange ? 0.9 : 0.4, zIndex: changed ? 2 : touchesChange ? 1 : 0, status: e.status, weight: changed ? 2 : lay.of(g.getNodeAttribute(s, "diff").path) === lay.of(g.getNodeAttribute(t, "diff").path) ? 2 : 0.4 });
     }
     if (g.order > 1) {
       forceAtlas2.assign(g, { iterations: g.order > 3000 ? 120 : 240, settings: { ...forceAtlas2.inferSettings(g), linLogMode: true, gravity: 1.2, scalingRatio: 6, barnesHutOptimize: g.order > 800 } });
@@ -107,8 +113,8 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
         labelColor: { color: cssVar("--text") },
         labelRenderedSizeThreshold: 5,
         zIndex: true,
-        defaultEdgeType: "curved",
-        edgeProgramClasses: { curved: EdgeCurveProgram },
+        defaultEdgeType: cfg.curved ? "curved" : "line",
+        edgeProgramClasses: { line: EdgeRectangleProgram, curved: EdgeCurveProgram },
         defaultDrawNodeLabel: drawOutlinedLabel,
         defaultDrawNodeHover: drawHover,
         hideEdgesOnMove: true,
@@ -124,7 +130,9 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
       if (st.hidden.has(attr.diff.status)) { res.hidden = true; return res; }
       const active = st.hover ?? st.focus;
       if (active && id !== active && !st.neigh.has(id)) { res.color = faded; res.label = ""; res.forceLabel = false; res.size = Math.max(1.5, attr.size * 0.5); }
-      if (id === active) { res.highlighted = true; res.zIndex = 3; }
+      if (id === active) { res.zIndex = 3; }
+      // Changed symbols are tiles carrying their sign; the WebGL disc underneath stays for picking.
+      if (attr.diff.status !== "same" && attr.diff.kind !== "file" && res.color !== faded) { res.tile = res.color; res.hubTile = true; res.color = "rgba(0,0,0,0)"; }
       return res;
     });
     s.setSetting("edgeReducer", (id, attr) => {
@@ -140,21 +148,25 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
     s.on("leaveNode", () => { setHover(null); box.current!.style.cursor = ""; });
     s.on("clickNode", ({ node }) => setFocus(Number(node)));
     s.on("clickStage", () => setFocus(null));
-    // Changed symbols glow and pulse; new calls carry flowing particles.
+    // Directories as neutral territories (hue is reserved for the change status); new calls carry moving dots.
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    const effects = attachFx(s, graph, {
-      glow: (_id, a) => (a.diff.status !== "same" ? 2 : 0),
+    const dirs = groupDirs(graph.mapNodes((_id, a) => a.diff.path), cfg.dirDepth);
+    const sign: Record<string, string> = { added: "+", removed: "−", modified: "~" };
+    const effects = attachOverlay(s, graph, {
+      group: (a) => dirs.of(a.diff.path),
+      groupLabel: (k) => dirs.label(k),
+      groupColor: () => null,
+      hub: (_id, a) => a.diff.status !== "same" && a.diff.kind !== "file",
+      glyph: (a) => sign[a.diff.status] ?? "",
       reducedMotion: reduced,
     });
-    const changedIds: string[] = [];
-    graph.forEachNode((id, a) => { if (a.diff.status !== "same" && a.diff.kind !== "file") changedIds.push(id); });
     const flows: [string, string][] = [];
-    graph.forEachEdge((_e, a, src, dst) => { if (a.status === "added" && flows.length < 150) flows.push([src, dst]); });
-    effects.set({ pulse: new Set(changedIds.slice(0, 40)), flows });
+    if (cfg.flow) graph.forEachEdge((_e, a, src, dst) => { if (a.status === "added" && flows.length < 150) flows.push([src, dst]); });
+    effects.set({ flows, territories: cfg.territories, curvature: cfg.curved ? CURVATURE : 0 });
     fx.current = effects;
     sigma.current = s;
     return () => { effects.kill(); fx.current = null; s.kill(); sigma.current = null; };
-  }, [graph]);
+  }, [graph, cfg.curved, cfg.flow, cfg.territories, cfg.dirDepth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const st = state.current;
@@ -164,6 +176,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
     const active = st.hover ?? st.focus;
     st.neigh = new Set(active && graph?.hasNode(active) ? graph.neighbors(active) : []);
     sigma.current?.refresh({ skipIndexation: true });
+    fx.current?.set({ focus: st.focus && graph?.hasNode(st.focus) ? st.focus : null, quiet: !!active });
   }, [hover, focus, hidden, graph]);
 
   useEffect(() => {
@@ -176,6 +189,21 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
   const sel = diff?.nodes.find((n) => n.id === focus) ?? null;
   const toggle = (id: string) => setHidden((h) => { const n = new Set(h); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const sm = diff?.summary;
+  // Where the change lands: per-directory tallies, most-changed first.
+  const byDir = useMemo(() => {
+    if (!diff) return [];
+    const g = groupDirs(diff.nodes.map((n) => n.path), cfg.dirDepth);
+    const m = new Map<string, { added: number; removed: number; modified: number; total: number }>();
+    for (const n of diff.nodes) {
+      if (n.kind === "file") continue;
+      const d = g.of(n.path);
+      const e = m.get(d) ?? { added: 0, removed: 0, modified: 0, total: 0 };
+      e.total++;
+      if (n.status !== "same") e[n.status]++;
+      m.set(d, e);
+    }
+    return [...m].map(([d, e]) => [g.label(d), e] as const).filter(([, e]) => e.added + e.removed + e.modified > 0).sort((x, y) => (y[1].added + y[1].removed + y[1].modified) - (x[1].added + x[1].removed + x[1].modified));
+  }, [diff, cfg.dirDepth]);
 
   return (
     <div className="graph-wrap">
@@ -184,7 +212,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
       {err && <div className="loading"><Empty title="Couldn't contrast these revisions">{err}</Empty></div>}
 
       <div className="graph-overlay hud contrast-hud">
-        <button className="btn sm" onClick={onExit}><Icon.graph /> Map</button>
+        <button className="btn sm hud-btn" onClick={onExit}><Icon.graph /> Map</button>
         <div className="rev-pick">
           <select className="input" value={base} onChange={(e) => onChange(e.target.value, head)} aria-label="Base revision">
             {[...new Set([base, ...refs])].map((r) => <option key={r}>{r}</option>)}
@@ -198,6 +226,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
           <button className={showSame ? "on" : ""} onClick={() => setShowSame(true)}>Whole graph</button>
           <button className={!showSame ? "on" : ""} onClick={() => setShowSame(false)}>Changes only</button>
         </div>
+        <button className="btn sm hud-btn icon-only" onClick={openSettings} title="Graph settings  ," aria-label="Graph settings"><Icon.sliders /></button>
       </div>
 
       <aside className="contrast-panel">
@@ -221,6 +250,22 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, them
               <span>{sm.same.toLocaleString()} unchanged</span>
             </div>
           </>
+        )}
+        {byDir.length > 0 && (
+          <div className="cp-dirs">
+            {byDir.slice(0, 6).map(([d, e]) => (
+              <div key={d} className="cp-dir" title={`${e.added} added · ${e.removed} removed · ${e.modified} modified of ${e.total}`}>
+                <span className="mono lbl">{d}</span>
+                <span className="cp-dir-bar">
+                  <i style={{ flexGrow: e.added, background: "var(--green)" }} />
+                  <i style={{ flexGrow: e.modified, background: "var(--yellow)" }} />
+                  <i style={{ flexGrow: e.removed, background: "var(--red)" }} />
+                  <i style={{ flexGrow: Math.max(0, e.total - e.added - e.modified - e.removed), background: "var(--line)" }} />
+                </span>
+                <span className="n mono">{e.added + e.removed + e.modified}/{e.total}</span>
+              </div>
+            ))}
+          </div>
         )}
         {sel && (
           <div className="cp-sel">

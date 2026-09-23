@@ -630,14 +630,20 @@ pub struct Hotspot {
     pub score: f64,
 }
 
-/// Files that change often *and* sit at the centre of the graph: where bugs and review effort concentrate.
-pub fn hotspots(repo: &Repo, store: &Store, days: u32, limit: usize) -> Result<Vec<Hotspot>> {
+/// Commits touching each file in the last `days` days.
+pub fn churn(repo: &Repo, days: u32) -> HashMap<String, usize> {
     let since = format!("--since={days}.days");
     let raw = repo.run(&["log", &since, "--name-only", "--format=", "--no-renames"]).unwrap_or_default();
     let mut churn: HashMap<String, usize> = HashMap::new();
     for l in raw.lines().filter(|l| !l.trim().is_empty()) {
         *churn.entry(l.to_string()).or_default() += 1;
     }
+    churn
+}
+
+/// Files that change often *and* sit at the centre of the graph: where bugs and review effort concentrate.
+pub fn hotspots(repo: &Repo, store: &Store, days: u32, limit: usize) -> Result<Vec<Hotspot>> {
+    let churn = churn(repo, days);
     let mut out = Vec::new();
     for (path, c) in churn {
         let (symbols, degree): (i64, i64) = store

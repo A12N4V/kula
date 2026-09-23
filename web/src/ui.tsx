@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
-import { colorFor, type Node } from "./api";
+import type { Node } from "./api";
+import { GLYPH, kindColor } from "./colors";
 
 // ---------- icons (1.6px stroke, 24 grid) ----------
 const P = { fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round" } as const;
@@ -21,6 +22,8 @@ export const Icon = {
   plus: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M12 5v14M5 12h14" /></svg>),
   minus: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M5 12h14" /></svg>),
   target: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /></svg>),
+  sliders: () => (<svg viewBox="0 0 24 24" {...P} width="15" height="15"><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><rect x="13" y="5" width="4" height="4" rx="1" /><rect x="7" y="15" width="4" height="4" rx="1" /></svg>),
+  chevron: () => (<svg viewBox="0 0 24 24" {...P} width="13" height="13"><path d="m6 9 6 6 6-6" /></svg>),
   sun: () => (<svg viewBox="0 0 24 24" {...P} width="15" height="15"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>),
 };
 
@@ -45,10 +48,10 @@ export function Logo({ spin = false }: { spin?: boolean }) {
 }
 
 
-/** Letter badge for a symbol kind, tinted by its cluster colour. */
-export function Kind({ kind, community, size = 16 }: { kind: string; community: number; size?: number }) {
-  const letter = ({ file: "", class: "C", interface: "I", method: "M", function: "F" } as Record<string, string>)[kind] ?? "·";
-  const c = colorFor(community);
+/** Square glyph for a symbol kind – the same tile the graph draws for hubs. */
+export function Kind({ kind, size = 16 }: { kind: string; community?: number; size?: number }) {
+  const letter = GLYPH[kind] ?? "·";
+  const c = kindColor(kind);
   return (
     <span className="kind-badge" title={kind} style={{ width: size, height: size, color: c, background: `color-mix(in oklab, ${c} 16%, transparent)`, fontSize: size * 0.62 }}>
       {kind === "file" ? <svg viewBox="0 0 16 16" width={size * 0.62} height={size * 0.62} fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 2h5l3 3v9H4z" /><path d="M9 2v3h3" /></svg> : letter}

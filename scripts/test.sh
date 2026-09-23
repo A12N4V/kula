@@ -77,6 +77,7 @@ if want e2e; then
     curl -s "$U/" | grep -q 'name="kula-token" content="e2e-token"' && ok "injects session token into UI" || bad "injects session token"
     curl -s "${H[@]}" "$U/api/repo" | grep -q '"index":"current"' && ok "GET /api/repo" || bad "GET /api/repo"
     curl -s "${H[@]}" "$U/api/graph" | grep -q '"name":"b"' && ok "GET /api/graph" || bad "GET /api/graph"
+    curl -s "${H[@]}" "$U/api/graph" | grep -q '"churn":{"[^"]*":[0-9]' && ok "GET /api/graph churn per file" || bad "GET /api/graph churn"
     ID=$(curl -s "${H[@]}" "$U/api/search?q=b" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
     curl -s "${H[@]}" "$U/api/impact/$ID" | grep -q '"name":"a"' && ok "GET /api/impact (b ← a)" || bad "GET /api/impact"
     printf 'hello\n' > "$R/NOTES.txt"
@@ -126,7 +127,8 @@ if want pkg; then
 
   run "crate contains embedded UI" sh -c "cargo package --list --allow-dirty 2>/dev/null | grep -q 'web/dist/index.html'"
   if has cargo-deb; then run "deb package" cargo deb --no-build -o "$(mktemp -d)"; else skip "deb package" "cargo-deb not installed; built in CI"; fi
-  if has ruby; then run "homebrew formula syntax" ruby -c packaging/homebrew/kula.rb; else skip "homebrew formula" "ruby missing"; fi
+  if has ruby; then run "homebrew formula syntax" ruby -c packaging/homebrew/kula.rb packaging/homebrew/kula-core.rb; else skip "homebrew formula" "ruby missing"; fi
+  run "apt repo script syntax" sh -n packaging/apt/build-repo.sh
   run "install.sh syntax" sh -n scripts/install.sh
   if has nix; then run "nix flake eval" nix flake show --no-write-lock-file; else skip "nix flake" "nix not installed; evaluated in CI"; fi
 fi
