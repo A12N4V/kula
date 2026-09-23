@@ -1,5 +1,5 @@
 {
-  description = "kula — git, with a map";
+  description = "kula – git, with a map";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -41,7 +41,7 @@
           nativeCheckInputs = [ pkgs.git ];
           meta = with pkgs.lib; {
             description = "Local-first git client with a knowledge-graph view";
-            homepage = "https://github.com/arnavsharma/kula";
+            homepage = "https://github.com/A12N4V/kula";
             license = licenses.mit;
             mainProgram = "kula";
           };

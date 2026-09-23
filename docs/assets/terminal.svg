@@ -15,7 +15,7 @@
   <rect class="win" x=".5" y=".5" width="879" height="469" rx="12"/>
   <path class="bar" d="M.5 12.5a12 12 0 0 1 12-12h855a12 12 0 0 1 12 12V36H.5z"/>
   <circle cx="22" cy="18" r="6" fill="#f0827a"/><circle cx="42" cy="18" r="6" fill="#f2cc60"/><circle cx="62" cy="18" r="6" fill="#8fd694"/>
-  <text x="440" y="23" text-anchor="middle" class="d">~/code/api — zsh</text>
+  <text x="440" y="23" text-anchor="middle" class="d">~/code/api – zsh</text>
 
   <!-- Each line fades in on a timeline via keyframe offsets below. -->
   <g font-size="14">

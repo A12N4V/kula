@@ -1,10 +1,10 @@
 {
   "name": "kula-cli",
   "version": "0.1.0",
-  "description": "git, with a map — a local-first git client with a knowledge-graph view, local issues/PRs, notes and an MCP server.",
+  "description": "git, with a map – a local-first git client with a knowledge-graph view, local issues/PRs, notes and an MCP server.",
   "license": "MIT",
-  "repository": { "type": "git", "url": "git+https://github.com/arnavsharma/kula.git" },
-  "homepage": "https://github.com/arnavsharma/kula",
+  "repository": { "type": "git", "url": "git+https://github.com/A12N4V/kula.git" },
+  "homepage": "https://github.com/A12N4V/kula",
   "keywords": ["git", "knowledge-graph", "mcp", "code-intelligence", "tree-sitter", "cli"],
   "bin": { "kula": "bin/kula.js" },
   "files": ["bin/kula.js", "README.md"],

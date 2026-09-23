@@ -1,8 +1,8 @@
 #!/bin/sh
-# kula installer —  curl -fsSL https://raw.githubusercontent.com/arnavsharma/kula/main/scripts/install.sh | sh
+# kula installer –  curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh | sh
 # Env: KULA_VERSION (default: latest), KULA_INSTALL_DIR (default: ~/.local/bin)
 set -eu
-repo="arnavsharma/kula"
+repo="A12N4V/kula"
 dir="${KULA_INSTALL_DIR:-$HOME/.local/bin}"
 os=$(uname -s); arch=$(uname -m)
 case "$os-$arch" in
@@ -10,7 +10,7 @@ case "$os-$arch" in
   Darwin-x86_64) target=x86_64-apple-darwin ;;
   Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
   Linux-aarch64|Linux-arm64) target=aarch64-unknown-linux-gnu ;;
-  *) echo "kula: unsupported platform $os-$arch — try: cargo install kula" >&2; exit 1 ;;
+  *) echo "kula: unsupported platform $os-$arch – try: cargo install kula" >&2; exit 1 ;;
 esac
 if [ -n "${KULA_VERSION:-}" ]; then tag="v$KULA_VERSION"; else
   tag=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)

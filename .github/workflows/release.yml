@@ -1,10 +1,15 @@
-# Tag `vX.Y.Z` → binaries for 5 targets, .deb, wheels (PyPI), npm packages,
-# crates.io, and a Homebrew formula bump. Required secrets:
-#   NPM_TOKEN, CARGO_REGISTRY_TOKEN, TAP_TOKEN (push to arnavsharma/homebrew-tap)
-# PyPI uses trusted publishing (configure the `pypi` environment on PyPI).
+# Tag `vX.Y.Z` → binaries for 5 targets, .deb packages and install.sh on a
+# GitHub release, then the registries. Registry steps run only when their
+# credential is configured, so a release never fails for a missing token:
+#   NPM_TOKEN             npm (needs the @kula-cli org on npmjs.com)
+#   CARGO_REGISTRY_TOKEN  crates.io
+#   PyPI                  trusted publishing (add this repo + workflow on pypi.org),
+#                         or set the PYPI_API_TOKEN secret
+#   TAP_TOKEN             push the Homebrew formula to A12N4V/homebrew-tap
 name: release
 on:
   push: { tags: ["v*"] }
+  workflow_dispatch:
 permissions: { contents: write, id-token: write }
 
 jobs:
@@ -13,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 10 }
+        with: { version: 11 }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: pnpm -C web install --frozen-lockfile && pnpm -C web build
@@ -27,7 +32,7 @@ jobs:
       matrix:
         include:
           - { target: aarch64-apple-darwin, os: macos-latest, npm: darwin-arm64 }
-          - { target: x86_64-apple-darwin, os: macos-13, npm: darwin-x64 }
+          - { target: x86_64-apple-darwin, os: macos-latest, npm: darwin-x64 }
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04, npm: linux-x64 }
           - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm, npm: linux-arm64 }
           - { target: x86_64-pc-windows-msvc, os: windows-latest, npm: win32-x64 }
@@ -58,47 +63,76 @@ jobs:
             *.deb
             npm-out
       - uses: PyO3/maturin-action@v1
-        with: { command: build, args: "--release --out wheels", target: "${{ matrix.target }}" }
+        with: { command: build, args: "--release --out wheels", target: "${{ matrix.target }}", manylinux: "2_28" }
       - uses: actions/upload-artifact@v4
         with: { name: "wheels-${{ matrix.target }}", path: wheels }
 
-  publish:
+  release:
     needs: build
     runs-on: ubuntu-latest
-    environment: pypi
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: artifacts }
-      - name: GitHub release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
             artifacts/bin-*/kula-*.tar.gz*
             artifacts/bin-*/*.deb
             scripts/install.sh
-      - name: PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with: { packages-dir: artifacts, skip-existing: true }
-        continue-on-error: true
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    continue-on-error: true  # until trusted publishing is configured on pypi.org
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { pattern: "wheels-*", path: dist, merge-multiple: true }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  npm:
+    needs: build
+    runs-on: ubuntu-latest
+    env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { pattern: "bin-*", path: artifacts }
       - uses: actions/setup-node@v4
         with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
-      - name: npm
-        env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
+      - if: env.NODE_AUTH_TOKEN != ''
         run: |
           v="${GITHUB_REF_NAME#v}"
-          for d in artifacts/bin-*/npm-out/*/; do npm publish "$d" --access public; done
+          for d in artifacts/bin-*/npm-out/*/; do npm publish "$d" --access public || true; done
           cd packaging/npm/kula-cli && cp ../../../README.md . \
-            && npm version "$v" --no-git-tag-version --allow-same-version \
             && sed -i "s/\"0\.1\.0\"/\"$v\"/g" package.json && npm publish --access public
-      - name: crates.io
-        env: { CARGO_REGISTRY_TOKEN: "${{ secrets.CARGO_REGISTRY_TOKEN }}" }
-        run: |
-          cp -r artifacts/web-dist web/dist
-          cargo publish --allow-dirty
-      - name: Homebrew tap
-        env: { TAP_TOKEN: "${{ secrets.TAP_TOKEN }}" }
+
+  crates:
+    needs: build
+    runs-on: ubuntu-latest
+    env: { CARGO_REGISTRY_TOKEN: "${{ secrets.CARGO_REGISTRY_TOKEN }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: web/dist }
+      - uses: dtolnay/rust-toolchain@stable
+      - if: env.CARGO_REGISTRY_TOKEN != ''
+        run: cargo publish --allow-dirty
+
+  homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    env: { TAP_TOKEN: "${{ secrets.TAP_TOKEN }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { pattern: "bin-*", path: artifacts }
+      - if: env.TAP_TOKEN != ''
         run: |
           v="${GITHUB_REF_NAME#v}"; f=packaging/homebrew/kula.rb
           sed -i "s/version \".*\"/version \"$v\"/" $f
@@ -106,6 +140,6 @@ jobs:
             sha=$(cut -d' ' -f1 artifacts/bin-$t/kula-$t.tar.gz.sha256)
             key=SHA256_$(echo $t | tr 'a-z-' 'A-Z_'); sed -i "s/$key/$sha/" $f
           done
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/arnavsharma/homebrew-tap" tap
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/A12N4V/homebrew-tap" tap
           mkdir -p tap/Formula && cp $f tap/Formula/kula.rb
           cd tap && git add -A && git -c user.name=kula-bot -c user.email=bot@kula.dev commit -m "kula $v" && git push

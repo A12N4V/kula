@@ -1,11 +1,11 @@
-# `pip install kula` — maturin packages the Rust binary into a platform wheel.
+# `pip install kula` – maturin packages the Rust binary into a platform wheel.
 [build-system]
 requires = ["maturin>=1.7,<2"]
 build-backend = "maturin"
 
 [project]
 name = "kula"
-description = "git, with a map — a local-first git client with a knowledge-graph view, local issues/PRs, notes and an MCP server."
+description = "git, with a map – a local-first git client with a knowledge-graph view, local issues/PRs, notes and an MCP server."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.8"
@@ -20,8 +20,8 @@ classifiers = [
 dynamic = ["version"]
 
 [project.urls]
-Homepage = "https://github.com/arnavsharma/kula"
-Repository = "https://github.com/arnavsharma/kula"
+Homepage = "https://github.com/A12N4V/kula"
+Repository = "https://github.com/A12N4V/kula"
 
 [tool.maturin]
 bindings = "bin"

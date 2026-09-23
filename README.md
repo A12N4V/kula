@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="kula — git, with a map" width="100%">
+  <img src="docs/assets/hero.svg" alt="kula – git, with a map" width="100%">
 </p>
 
 <p align="center">
@@ -39,13 +39,13 @@ Kula is a single static binary (about 11 MB) with the web UI embedded. Its only 
 
 | Package manager | Command |
 |---|---|
-| **curl** (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/arnavsharma/kula/main/scripts/install.sh \| sh` |
-| **Homebrew** | `brew install arnavsharma/tap/kula` |
+| **curl** (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh \| sh` |
+| **Homebrew** | `brew install A12N4V/tap/kula` |
 | **npm / pnpm / bun** | `npm i -g kula-cli` · `pnpm add -g kula-cli` · `bunx kula-cli` |
 | **pip / uv / pipx** | `pip install kula` · `uv tool install kula` · `pipx install kula` |
 | **cargo** | `cargo install kula` |
 | **apt** (Debian, Ubuntu) | download `kula_*.deb` from [Releases](../../releases), then `sudo apt install ./kula_*.deb` |
-| **nix** | `nix run github:arnavsharma/kula` · `nix profile install github:arnavsharma/kula` |
+| **nix** | `nix run github:A12N4V/kula` · `nix profile install github:A12N4V/kula` |
 
 > [!NOTE]
 > Registry packages are published by the release workflow on the first tagged release. Until then, build from source: `pnpm -C web install && pnpm -C web build && cargo install --path .`
