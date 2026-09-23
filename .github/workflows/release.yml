@@ -63,7 +63,7 @@ jobs:
             *.deb
             npm-out
       - uses: PyO3/maturin-action@v1
-        with: { command: build, args: "--release --out wheels", target: "${{ matrix.target }}", manylinux: "2_28" }
+        with: { command: build, args: "--release --out wheels --target-dir target-wheels", target: "${{ matrix.target }}", manylinux: "2_28" }
       - uses: actions/upload-artifact@v4
         with: { name: "wheels-${{ matrix.target }}", path: wheels }
 
