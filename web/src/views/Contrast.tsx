@@ -3,7 +3,9 @@ import Graph from "graphology";
 import Sigma from "sigma";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import noverlap from "graphology-layout-noverlap";
-import { api, type DiffNode, type DiffStatus, type GraphDiff } from "../api";
+import { api, type Compare as CompareT, type DiffNode, type DiffStatus, type GraphDiff } from "../api";
+import { CompareReport } from "./GitViews";
+import type { ContrastMode } from "../nav";
 import { Empty, Icon, Kind, Logo, useToast } from "../ui";
 import EdgeCurveProgram from "@sigma/edge-curve";
 import { EdgeRectangleProgram } from "sigma/rendering";
@@ -20,6 +22,8 @@ type Props = {
   /** Jump to a symbol in the regular map. */
   openInMap: (name: string, path: string) => void;
   openSettings: () => void;
+  mode: ContrastMode;
+  onMode: (m: ContrastMode) => void;
 };
 
 const STATUS: { id: Exclude<DiffStatus, "same">; label: string; sign: string; color: string }[] = [
@@ -30,11 +34,15 @@ const STATUS: { id: Exclude<DiffStatus, "same">; label: string; sign: string; co
 const colorOf = (s: DiffStatus) => (s === "same" ? cssVar("--line-2") : cssVar(STATUS.find((x) => x.id === s)!.color));
 
 /** Two revisions' knowledge graphs, overlaid: what the change does to the architecture. */
-export default function Contrast({ base, head, onChange, onExit, openInMap, openSettings }: Props) {
+export default function Contrast({ base, head, onChange, onExit, openInMap, openSettings, mode, onMode: setMode }: Props) {
   const cfg = useSettings();
   const theme = cfg.theme;
   const box = useRef<HTMLDivElement>(null);
-  const sigma = useRef<Sigma | null>(null);
+  const boxA = useRef<HTMLDivElement>(null);
+  const boxB = useRef<HTMLDivElement>(null);
+  const views = useRef<{ s: Sigma; ov: Overlay }[]>([]);
+  const [report, setReport] = useState<CompareT | null>(null);
+
   const [diff, setDiff] = useState<GraphDiff | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [refs, setRefs] = useState<string[]>([]);
@@ -43,7 +51,6 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
   const [hover, setHover] = useState<string | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
   const [q, setQ] = useState("");
-  const fx = useRef<Overlay | null>(null);
   const state = useRef({ hover: null as string | null, focus: null as string | null, hidden: new Set<string>(), neigh: new Set<string>() });
   const toast = useToast();
 
@@ -102,27 +109,34 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
     return g;
   }, [diff, theme]);
 
-  useEffect(() => {
-    if (!graph || !box.current) return;
-    let s: Sigma;
-    try {
-      s = new Sigma(graph, box.current, {
-        labelFont: "Geist Variable, system-ui, sans-serif",
-        labelSize: 11,
-        labelWeight: "500",
-        labelColor: { color: cssVar("--text") },
-        labelRenderedSizeThreshold: 5,
-        zIndex: true,
-        defaultEdgeType: cfg.curved ? "curved" : "line",
-        edgeProgramClasses: { line: EdgeRectangleProgram, curved: EdgeCurveProgram },
-        defaultDrawNodeLabel: drawOutlinedLabel,
-        defaultDrawNodeHover: drawHover,
-        hideEdgesOnMove: true,
-      });
-    } catch {
-      setErr("This browser could not start WebGL, which the graph needs.");
-      return;
-    }
+  // Each revision on its own: the base graph (without additions) and the head graph
+  // (without removals), sharing one layout so the same symbol sits in the same place.
+  const sides = useMemo(() => {
+    if (!graph) return null;
+    const cut = (drop: DiffStatus) => {
+      const g = new Graph({ type: "directed" });
+      graph.forEachNode((id, a) => { if (a.diff.status !== drop) g.addNode(id, { ...a }); });
+      graph.forEachEdge((_e, a, x, y) => { if (a.status !== drop && g.hasNode(x) && g.hasNode(y) && !g.hasEdge(x, y)) g.addEdge(x, y, { ...a }); });
+      return g;
+    };
+    return { base: cut("added"), head: cut("removed") };
+  }, [graph]);
+
+  /** Mount one renderer (reducers, overlay, events) on `el` for graph `g`. */
+  const mount = (el: HTMLDivElement, g: Graph) => {
+    const s = new Sigma(g, el, {
+      labelFont: "Geist Variable, system-ui, sans-serif",
+      labelSize: 11,
+      labelWeight: "500",
+      labelColor: { color: cssVar("--text") },
+      labelRenderedSizeThreshold: 5,
+      zIndex: true,
+      defaultEdgeType: cfg.curved ? "curved" : "line",
+      edgeProgramClasses: { line: EdgeRectangleProgram, curved: EdgeCurveProgram },
+      defaultDrawNodeLabel: drawOutlinedLabel,
+      defaultDrawNodeHover: drawHover,
+      hideEdgesOnMove: true,
+    });
     const faded = cssVar("--line");
     s.setSetting("nodeReducer", (id, attr) => {
       const st = state.current;
@@ -138,21 +152,21 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
     s.setSetting("edgeReducer", (id, attr) => {
       const st = state.current;
       const res: any = { ...attr };
-      const [a, b] = graph.extremities(id);
+      const [a, b] = g.extremities(id);
       const active = st.hover ?? st.focus;
-      if (st.hidden.has(graph.getNodeAttribute(a, "diff").status) || st.hidden.has(graph.getNodeAttribute(b, "diff").status)) res.hidden = true;
+      if (st.hidden.has(g.getNodeAttribute(a, "diff").status) || st.hidden.has(g.getNodeAttribute(b, "diff").status)) res.hidden = true;
       else if (active && a !== active && b !== active) res.hidden = true;
       return res;
     });
-    s.on("enterNode", ({ node }) => { setHover(node); box.current!.style.cursor = "pointer"; });
-    s.on("leaveNode", () => { setHover(null); box.current!.style.cursor = ""; });
+    s.on("enterNode", ({ node }) => { setHover(node); el.style.cursor = "pointer"; });
+    s.on("leaveNode", () => { setHover(null); el.style.cursor = ""; });
     s.on("clickNode", ({ node }) => setFocus(Number(node)));
     s.on("clickStage", () => setFocus(null));
     // Directories as neutral territories (hue is reserved for the change status); new calls carry moving dots.
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    const dirs = groupDirs(graph.mapNodes((_id, a) => a.diff.path), cfg.dirDepth);
+    const dirs = groupDirs(g.mapNodes((_id, a) => a.diff.path), cfg.dirDepth);
     const sign: Record<string, string> = { added: "+", removed: "−", modified: "~" };
-    const effects = attachOverlay(s, graph, {
+    const ov = attachOverlay(s, g, {
       group: (a) => dirs.of(a.diff.path),
       groupLabel: (k) => dirs.label(k),
       groupColor: () => null,
@@ -161,12 +175,31 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
       reducedMotion: reduced,
     });
     const flows: [string, string][] = [];
-    if (cfg.flow) graph.forEachEdge((_e, a, src, dst) => { if (a.status === "added" && flows.length < 150) flows.push([src, dst]); });
-    effects.set({ flows, territories: cfg.territories, curvature: cfg.curved ? CURVATURE : 0 });
-    fx.current = effects;
-    sigma.current = s;
-    return () => { effects.kill(); fx.current = null; s.kill(); sigma.current = null; };
-  }, [graph, cfg.curved, cfg.flow, cfg.territories, cfg.dirDepth]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (cfg.flow) g.forEachEdge((_e, a, src, dst) => { if (a.status === "added" && flows.length < 150) flows.push([src, dst]); });
+    ov.set({ flows, territories: cfg.territories, curvature: cfg.curved ? CURVATURE : 0 });
+    return { s, ov };
+  };
+
+  useEffect(() => {
+    if (!graph || !sides || mode === "report") return;
+    const made: { s: Sigma; ov: Overlay }[] = [];
+    try {
+      if (mode === "overlay" && box.current) made.push(mount(box.current, graph));
+      if (mode === "split" && boxA.current && boxB.current) {
+        made.push(mount(boxA.current, sides.base), mount(boxB.current, sides.head));
+        // One camera for both: pan or zoom either side and the other follows.
+        const [a, b] = made.map((m) => m.s.getCamera());
+        let syncing = false;
+        const link = (from: typeof a, to: typeof a) => from.on("updated", (st) => { if (syncing) return; syncing = true; to.setState(st); syncing = false; });
+        link(a, b);
+        link(b, a);
+      }
+    } catch {
+      setErr("This browser could not start WebGL, which the graph needs.");
+    }
+    views.current = made;
+    return () => { made.forEach(({ s, ov }) => { ov.kill(); s.kill(); }); views.current = []; };
+  }, [graph, sides, mode, cfg.curved, cfg.flow, cfg.territories, cfg.dirDepth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const st = state.current;
@@ -175,15 +208,26 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
     st.hidden = hidden;
     const active = st.hover ?? st.focus;
     st.neigh = new Set(active && graph?.hasNode(active) ? graph.neighbors(active) : []);
-    sigma.current?.refresh({ skipIndexation: true });
-    fx.current?.set({ focus: st.focus && graph?.hasNode(st.focus) ? st.focus : null, quiet: !!active });
-  }, [hover, focus, hidden, graph]);
+    for (const { s, ov } of views.current) {
+      s.refresh({ skipIndexation: true });
+      ov.set({ focus: st.focus && s.getGraph().hasNode(st.focus) ? st.focus : null, quiet: !!active });
+    }
+  }, [hover, focus, hidden, graph, mode]);
 
   useEffect(() => {
-    if (focus == null || !sigma.current || !graph?.hasNode(String(focus))) return;
-    const p = sigma.current.getNodeDisplayData(String(focus));
-    if (p) sigma.current.getCamera().animate({ x: p.x, y: p.y, ratio: 0.4 }, { duration: 500 });
-  }, [focus, graph]);
+    const s = views.current.find((v) => focus != null && v.s.getGraph().hasNode(String(focus)))?.s;
+    if (focus == null || !s) return;
+    const p = s.getNodeDisplayData(String(focus));
+    if (p) s.getCamera().animate({ x: p.x, y: p.y, ratio: 0.4 }, { duration: 500 });
+  }, [focus, graph, mode]);
+
+  // Textual analysis: the symbol-level branch report (committed revisions only).
+  const textual = base !== "WORKTREE" && head !== "WORKTREE";
+  useEffect(() => {
+    if (mode !== "report" || !textual) return;
+    setReport(null);
+    api.compare(base, head).then(setReport).catch((e) => toast(e.message, "err"));
+  }, [mode, base, head]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const changed = (diff?.nodes ?? []).filter((n) => n.status !== "same" && n.kind !== "file" && (!q || n.name.toLowerCase().includes(q.toLowerCase())));
   const sel = diff?.nodes.find((n) => n.id === focus) ?? null;
@@ -207,12 +251,44 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
 
   return (
     <div className="graph-wrap">
-      <div ref={box} className="graph-canvas contrast-canvas" />
+      {mode === "overlay" && <div ref={box} className="graph-canvas contrast-canvas" />}
+      {mode === "split" && (
+        <div className="contrast-canvas split-canvas">
+          {(["base", "head"] as const).map((k) => (
+            <div key={k} className="split-pane">
+              <div ref={k === "base" ? boxA : boxB} className="graph-canvas" />
+              <div className="split-tag">
+                <span className="split-k">{k === "base" ? "Before" : "After"}</span>
+                <span className="mono">{k === "base" ? base : head}</span>
+                {sides && <span className="muted">{sides[k].order.toLocaleString()} nodes</span>}
+                {sm && k === "base" && sm.removed > 0 && <span style={{ color: "var(--red)" }}>−{sm.removed}</span>}
+                {sm && k === "head" && sm.added > 0 && <span style={{ color: "var(--green)" }}>+{sm.added}</span>}
+                {sm && sm.modified > 0 && <span style={{ color: "var(--yellow)" }}>~{sm.modified}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {mode === "report" && (
+        <div className="contrast-canvas contrast-report">
+          <div className="detail-pad">
+            <div className="eyebrow">Report · {base} → {head}</div>
+            {!textual && <div className="card-empty">The textual report compares committed revisions. For uncommitted work, the symbol list on the right is the report, and <b>Overlay</b> or <b>Side by side</b> show it on the graph.</div>}
+            {textual && !report && <div className="muted">Comparing…</div>}
+            {textual && report && <CompareReport c={report} openSymbol={(id) => { const n = report.files.flatMap((f) => f.symbols).concat(report.affected.map((h) => h.node)).find((x) => x.id === id); if (n) openInMap(n.name, n.path); }} />}
+          </div>
+        </div>
+      )}
       {!diff && !err && <div className="loading"><div className="stack" style={{ alignItems: "center" }}><Logo spin /><span>Building both graphs from git…</span></div></div>}
       {err && <div className="loading"><Empty title="Couldn't contrast these revisions">{err}</Empty></div>}
 
       <div className="graph-overlay hud contrast-hud">
         <button className="btn sm hud-btn" onClick={onExit}><Icon.graph /> Map</button>
+        <div className="seg" role="tablist" aria-label="Contrast view">
+          <button className={mode === "overlay" ? "on" : ""} onClick={() => setMode("overlay")} title="Both revisions in one graph">Overlay</button>
+          <button className={mode === "split" ? "on" : ""} onClick={() => setMode("split")} title="Before and after, side by side, one camera">Side by side</button>
+          <button className={mode === "report" ? "on" : ""} onClick={() => setMode("report")} title="Textual analysis">Report</button>
+        </div>
         <div className="rev-pick">
           <select className="input" value={base} onChange={(e) => onChange(e.target.value, head)} aria-label="Base revision">
             {[...new Set([base, ...refs])].map((r) => <option key={r}>{r}</option>)}
@@ -222,10 +298,12 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
             {[...new Set([head, ...refs])].map((r) => <option key={r}>{r}</option>)}
           </select>
         </div>
-        <div className="seg">
-          <button className={showSame ? "on" : ""} onClick={() => setShowSame(true)}>Whole graph</button>
-          <button className={!showSame ? "on" : ""} onClick={() => setShowSame(false)}>Changes only</button>
-        </div>
+        {mode !== "report" && (
+          <div className="seg">
+            <button className={showSame ? "on" : ""} onClick={() => setShowSame(true)}>Whole graph</button>
+            <button className={!showSame ? "on" : ""} onClick={() => setShowSame(false)}>Changes only</button>
+          </div>
+        )}
         <button className="btn sm hud-btn icon-only" onClick={openSettings} title="Graph settings  ," aria-label="Graph settings"><Icon.sliders /></button>
       </div>
 

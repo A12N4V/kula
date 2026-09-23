@@ -1,5 +1,8 @@
 @import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource/antonio/500.css";
+@import "@fontsource/antonio/600.css";
+@import "@fontsource/antonio/700.css";
 
 :root {
   --bg: #08080b;
@@ -26,7 +29,8 @@
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--line);
   --radius: 10px;
   --font: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  --mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  --display: "Antonio", "Arial Narrow", ui-sans-serif, sans-serif;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: dark;
 }
@@ -536,3 +540,73 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 .hover-card { top: auto; bottom: 14px; }
 @keyframes card-in { from { opacity: 0; transform: translate(-50%, 3px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (max-width: 760px) { .hover-card { bottom: auto; top: 58px; } }
+
+/* contrast: side by side + report */
+.split-canvas { position: absolute; inset: 0 360px 0 0; display: grid; grid-template-columns: 1fr 1fr; }
+.split-pane { position: relative; min-width: 0; }
+.split-pane + .split-pane { border-left: 1px solid var(--line); }
+.split-pane .graph-canvas { position: absolute; inset: 0; }
+.split-tag { position: absolute; left: 12px; bottom: 12px; z-index: 4; display: flex; align-items: baseline; gap: 8px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in oklab, var(--panel) 90%, transparent); font-size: 11.5px; }
+.split-k { font-family: var(--display); font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: var(--text); }
+.contrast-report { position: absolute; inset: 0 360px 0 0; overflow: auto; padding-top: 56px; }
+@media (max-width: 760px) { .split-canvas { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } .split-pane + .split-pane { border-left: 0; border-top: 1px solid var(--line); } }
+
+/* ================================================================ type
+   Three voices: Antonio (compressed display) for titles and figures,
+   JetBrains Mono for labels, paths and code, Geist for reading. */
+code, pre, .mono { font-size: 11.5px; }
+.section-title, .eyebrow, .kpi-label, .set-sec, .legend-head, .cp-group, .palette .grp, .help-sep, .hot-headrow, .split-tag .muted, .inspector header .kind {
+  font-family: var(--mono); font-weight: 500; font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+}
+.ov-title h1, .detail h1, .list-head h2, .card-head h2, .settings header h2, .help-head h2, .empty h3 {
+  font-family: var(--display); font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
+}
+.ov-title h1 { font-size: 32px; line-height: 1; letter-spacing: .01em; }
+.detail h1 { font-size: 24px; line-height: 1.05; }
+.card-head h2, .list-head h2 { font-size: 16px; }
+.settings header h2, .help-head h2 { font-size: 16px; }
+.kpi-cell b, .stat b, .cp-stat b { font-family: var(--display); font-weight: 500; font-size: 32px; line-height: 1; letter-spacing: 0; }
+.stat b, .cp-stat b { font-size: 26px; }
+.eyebrow { color: var(--accent); }
+.inspector header h2 { font-size: 16px; letter-spacing: -.01em; }
+.brand span { font-family: var(--display); font-size: 19px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.hud-stats b, .hc-stats b, .insp-facts b { font-family: var(--mono); font-weight: 600; font-size: 11px; }
+
+/* ================================================================ opening */
+.dither { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.opening { position: fixed; inset: 0; z-index: 300; background: var(--bg); overflow: hidden; cursor: pointer; animation: op-in .3s ease-out both;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: calc(100% / 8) calc(100% / 6); background-position: -1px -1px; }
+.opening::before { content: ""; position: absolute; inset: 0; background: color-mix(in oklab, var(--bg) 78%, transparent); }
+.opening.leaving { animation: op-out .42s var(--ease) both; }
+@keyframes op-in { from { opacity: 0; } }
+@keyframes op-out { to { opacity: 0; transform: scale(1.015); } }
+.op-dither { position: absolute; left: 10%; top: 5%; width: 80% !important; height: 66% !important; }
+.op-ruler { position: absolute; top: 14px; left: 36px; right: 36px; display: grid; grid-template-columns: repeat(8, 1fr); border-bottom: 1px solid var(--line-2); font: 500 10px var(--mono); letter-spacing: .1em; color: var(--text-3); }
+.op-ruler span { padding: 0 0 4px 6px; border-left: 1px solid var(--line-2); }
+.op-corner { position: absolute; width: 18px; height: 18px; border-color: var(--text-3); border-style: solid; border-width: 0; }
+.op-corner.tl { top: 10px; left: 10px; border-top-width: 1px; border-left-width: 1px; }
+.op-corner.tr { top: 10px; right: 10px; border-top-width: 1px; border-right-width: 1px; }
+.op-corner.bl { bottom: 10px; left: 10px; border-bottom-width: 1px; border-left-width: 1px; }
+.op-corner.br { bottom: 10px; right: 10px; border-bottom-width: 1px; border-right-width: 1px; }
+.op-foot { position: absolute; left: 36px; right: 36px; bottom: 34px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.op-word { font: 700 clamp(84px, 16vw, 220px)/.92 var(--display); letter-spacing: .01em; color: var(--text); animation: op-word .9s var(--ease) .15s both; }
+@keyframes op-word { from { opacity: 0; transform: translateY(18px); letter-spacing: .12em; } }
+.op-tag { margin-top: 20px; font: 500 11px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--text-3); }
+.op-facts { margin: 0; display: grid; grid-template-columns: auto auto; gap: 4px 18px; font: 500 11.5px var(--mono); min-width: 260px; }
+.op-facts div { display: contents; }
+.op-facts dt { color: var(--text-3); text-transform: uppercase; letter-spacing: .14em; font-size: 10px; align-self: center; animation: rise .25s ease-out both; }
+.op-facts dd { margin: 0; color: var(--text); text-align: right; animation: rise .25s ease-out both; }
+.op-skip { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); font: 500 10px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--text-3); }
+@media (max-width: 760px) { .op-foot { flex-direction: column; align-items: flex-start; } .op-facts { min-width: 0; width: 100%; } .op-dither { inset: 8% 4% 44% 4%; } }
+
+/* console hero */
+.console-hero { display: grid; grid-template-columns: minmax(220px, 380px) 1fr; gap: 28px; align-items: center; margin: 4px 0 28px; padding-bottom: 24px; border-bottom: 1px dashed var(--line-2); font-family: var(--font); }
+.ch-dither { height: 260px; }
+.ch-eyebrow { font: 500 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+.ch-title { margin: 6px 0 18px; font: 700 clamp(56px, 8vw, 112px)/.9 var(--display); letter-spacing: .01em; text-transform: uppercase; color: var(--text); }
+.ch-text p { margin: 0 0 14px; max-width: 520px; color: var(--text-2); font-size: 13px; }
+.ch-text b { color: var(--text); font-family: var(--mono); font-weight: 500; font-size: 12px; }
+@media (max-width: 760px) { .console-hero { grid-template-columns: 1fr; } .ch-dither { height: 180px; } }
+/* Code shows the characters that are in the file: no ligatures anywhere mono is used. */
+code, pre, kbd, .mono, .diff, .console, .code, input.mono, .kind-badge { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }

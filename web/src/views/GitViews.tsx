@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, relTime, type Branch, type Commit, type Compare, type FileStatus } from "../api";
+import { api, relTime, type Branch, type Commit, type Compare, type FileStatus, type GraphData, type RepoInfo } from "../api";
+import Dither from "../Dither";
 import type { Go, Target } from "../nav";
 import { Diff, Empty, Icon, ShowOutput, Sym, useToast } from "../ui";
 
@@ -116,7 +117,7 @@ function computeLanes(commits: Commit[]) {
   });
 }
 
-export function History({ version, target }: Nav) {
+export function History({ version, target, go }: Nav) {
   const [commits, setCommits] = useState<Commit[]>([]);
   const [sel, setSel] = useState<string | null>(target?.sha ?? null);
   const [show, setShow] = useState("");
@@ -163,6 +164,7 @@ export function History({ version, target }: Nav) {
             <div className="row" style={{ marginBottom: 12, flexWrap: "wrap" }}>
               <span className="tag mono">{sel.slice(0, 10)}</span>
               <span className="spacer" />
+              <button className="btn sm primary" title="Contrast this commit's knowledge graph with its parent's" onClick={() => go?.("graph", { contrast: { base: `${sel}^`, head: sel! } })}><Icon.compare /> Graph vs parent</button>
               <button className="btn sm" onClick={() => api.git("cherry_pick", { name: sel }).then(() => toast("Cherry-picked")).catch((e) => toast(e.message, "err"))}>Cherry-pick</button>
               <button className="btn sm" onClick={() => { if (confirm("Create a revert commit?")) api.git("revert", { name: sel }).then(() => toast("Reverted")).catch((e) => toast(e.message, "err")); }}>Revert</button>
               <button className="btn sm" onClick={() => { const n = prompt("Tag name"); if (n) api.git("tag", { name: n }).then(() => toast(`Tagged ${n}`)).catch((e) => toast(e.message, "err")); }}>Tag…</button>
@@ -177,7 +179,7 @@ export function History({ version, target }: Nav) {
 }
 
 // ============================================================ Branches + Compare
-export function Branches({ onChanged, openSymbol, version, initialCompare }: Nav & { initialCompare?: { base: string; head: string } | null }) {
+export function Branches({ onChanged, openSymbol, version, initialCompare, go }: Nav & { initialCompare?: { base: string; head: string } | null }) {
   const [data, setData] = useState<{ branches: Branch[]; tags: string[]; stashes: string[] } | null>(null);
   const [base, setBase] = useState("");
   const [head, setHead] = useState("");
@@ -257,7 +259,7 @@ export function Branches({ onChanged, openSymbol, version, initialCompare }: Nav
             )}
           </div>
           {busy && <div className="muted">Comparing…</div>}
-          {cmp && <CompareReport c={cmp} openSymbol={openSymbol} />}
+          {cmp && <><div className="row" style={{ marginBottom: 10 }}><button className="btn sm" onClick={() => go?.("graph", { contrast: { base, head } })}><Icon.graph /> See both graphs</button><span className="muted">overlay or side by side, one click back to this report</span></div><CompareReport c={cmp} openSymbol={openSymbol} /></>}
         </div>
       </div>
     </div>
@@ -308,7 +310,10 @@ export function Console({ onChanged }: Nav) {
   const [line, setLine] = useState("");
   const [cursor, setCursor] = useState(-1);
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ behavior: "smooth" }), [hist]);
+  const [graph, setGraph] = useState<GraphData | null>(null);
+  const [repo, setRepo] = useState<RepoInfo | null>(null);
+  useEffect(() => { api.graph("symbol").then(setGraph).catch(() => {}); api.repo().then(setRepo).catch(() => {}); }, []);
+  useEffect(() => { if (hist.length) end.current?.scrollIntoView({ behavior: "smooth" }); }, [hist]);
   const run = (e: React.FormEvent) => { e.preventDefault(); exec(line); };
   const exec = async (input: string) => {
     const cmd = input.trim().replace(/^(git|kula)\s+/, "");
@@ -324,14 +329,19 @@ export function Console({ onChanged }: Nav) {
   return (
     <div className="console">
       <div className="out">
-        <div className="muted" style={{ marginBottom: 16 }}>Full git, in the browser. Anything you type runs as <span style={{ color: "var(--text)" }}>git &lt;args&gt;</span> in this repository. Non-interactive commands only; try <span style={{ color: "var(--text)" }}>log --oneline -5</span>.</div>
-        {hist.length === 0 && (
-          <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
-            {["status -sb", "log --oneline --graph -15", "branch -avv", "stash list", "remote -v", "shortlog -sn"].map((c) => (
-              <button key={c} className="btn sm mono" onClick={() => exec(c)}>{c}</button>
-            ))}
+        <section className="console-hero">
+          <Dither data={graph} pixel={3} speed={0.6} className="ch-dither" />
+          <div className="ch-text">
+            <div className="ch-eyebrow">{repo ? `${repo.name} · ${repo.branch} @ ${repo.head?.slice(0, 7) ?? ""}` : "…"}</div>
+            <h1 className="ch-title">Console</h1>
+            <p>Every git command, in the browser. Whatever you type runs as <b>git &lt;args&gt;</b> in this repository; non-interactive commands only.</p>
+            <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+              {["status -sb", "log --oneline --graph -15", "branch -avv", "stash list", "remote -v", "shortlog -sn"].map((c) => (
+                <button key={c} className="btn sm mono" onClick={() => exec(c)}>{c}</button>
+              ))}
+            </div>
           </div>
-        )}
+        </section>
         {hist.map((h, i) => (
           <div key={i} className="entry">
             <div className="cmd">git {h.cmd} {h.code !== 0 && <span style={{ color: "var(--red)" }}>· exit {h.code}</span>}</div>

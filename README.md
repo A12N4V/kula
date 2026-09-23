@@ -103,13 +103,21 @@ kula commit -am "ship it"  # …and it's still just git
 
 <table>
 <tr><td colspan="2">
+<img src="docs/assets/ui-opening.png" alt="Opening sequence">
+<p align="center"><b>Opening.</b> Once per session your repository assembles itself out of noise: its real knowledge graph, one cluster per directory, rendered in 1-bit ordered dither. Any key skips it; <kbd>,</kbd> turns it off.</p>
+</td></tr>
+<tr><td colspan="2">
 <img src="docs/assets/ui-overview.png" alt="Overview">
 <p align="center"><b>Overview.</b> The review queue on one screen: proposals ranked by risk, open issues, branches ahead and behind, hotspots and recent commits. Every row is one click from the detail.</p>
 </td></tr>
 <tr><td colspan="2">
 <img src="docs/assets/ui-contrast.png" alt="Contrast view">
-<p align="center"><b>Contrast.</b> Overlay the knowledge graphs of any two branches, tags or commits, or your uncommitted working tree. Changed symbols become tiles marked <code>+</code> <code>−</code> <code>~</code>, their direct neighbours stay lit, and directory names show where each change lands. The side panel tallies changes per directory.</p>
+<p align="center"><b>Contrast.</b> Three ways to compare any two branches, tags, commits or your working tree: overlay, side by side, or report. In the overlay, changed symbols become tiles marked <code>+</code> <code>−</code> <code>~</code>, their direct neighbours stay lit, and directory names show where each change lands. The side panel tallies changes per directory.</p>
 </td></tr>
+<tr>
+<td width="50%"><img src="docs/assets/ui-split.png" alt="Contrast side by side"><p align="center"><b>Side by side.</b> Before and after as two graphs on one layout and one camera: pan either and both follow.</p></td>
+<td width="50%"><img src="docs/assets/ui-report.png" alt="Contrast report"><p align="center"><b>Report.</b> The same comparison as text: files, symbols, ripples, risk, commits. One click back to the graphs.</p></td>
+</tr>
 <tr><td colspan="2">
 <img src="docs/assets/ui-graph.png" alt="Graph view">
 <p align="center"><b>Graph.</b> Every function, class and file. Each directory settles into its own tinted territory, named in place; the most-connected symbols become square tiles that carry their kind (<code>ƒ</code> <code>m</code> <code>C</code> <code>I</code>) or language. Hover for callers, callees, size and churn; the legend doubles as a filter. Rendered with WebGL, so thousands of nodes stay smooth.</p>
@@ -123,7 +131,7 @@ kula commit -am "ship it"  # …and it's still just git
 <td><img src="docs/assets/ui-changes.png" alt="Changes"><p align="center"><b>Changes.</b> Stage per file, review diffs, commit or amend (<kbd>⌘</kbd><kbd>↵</kbd>).</p></td>
 </tr>
 <tr>
-<td><img src="docs/assets/ui-history.png" alt="History"><p align="center"><b>History.</b> A lane graph of every branch, plus cherry-pick, revert, tag and branch-from-here.</p></td>
+<td><img src="docs/assets/ui-history.png" alt="History"><p align="center"><b>History.</b> A lane graph of every branch. Contrast any commit's graph with its parent's, cherry-pick, revert, tag or branch from it.</p></td>
 <td><img src="docs/assets/ui-issues.png" alt="Issues"><p align="center"><b>Issues.</b> Labels, discussion, and anchors to the symbols they're about.</p></td>
 </tr>
 </table>
@@ -132,7 +140,7 @@ Also included:
 - **Notes** on the repo, a file, a symbol or a commit, with `[[symbol]]` links.
 - **Flows:** execution paths traced from entry points.
 - **Symbol history:** the owners and commits behind any function (`git log -L`), in the inspector.
-- **Git console:** any non-interactive git command, in the browser.
+- **Git console:** any non-interactive git command, in the browser, under a slowly turning dithered portrait of the repo.
 - **One palette** (<kbd>⌘K</kbd>) for everything. Prefix `#` for issues and proposals, `@` for branches, `>` for commands.
 - **Navigation:** number keys <kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd> switch views; <kbd>[</kbd> <kbd>]</kbd> go back and forward through inspected symbols; <kbd>?</kbd> shows every shortcut.
 - **Shareable deep links** such as `#graph/<id>/impact`, `#graph/contrast/main/feat%2Fx` and `#issues/3`.
@@ -146,7 +154,8 @@ Also included:
 3. **Keyboard first.** Everything is reachable through <kbd>⌘K</kbd>, and every view has a number key.
 4. **Honest status.** The top bar always says whether the graph matches `HEAD`.
 5. **Motion explains cause.** Selecting a symbol dims everything that isn't connected to it, and small dots run along its calls in the direction they go. `prefers-reduced-motion` is respected everywhere.
-6. **Density over decoration.** Every number sits next to what it means: KPIs carry a sub-fact, hotspots show commits and edges, the hover card shows in, out, lines and churn.
+6. **Three voices of type.** Antonio, compressed, for titles and figures; JetBrains Mono (ligatures off, so code reads as written) for labels, paths and code; Geist for reading.
+7. **Density over decoration.** Every number sits next to what it means: KPIs carry a sub-fact, hotspots show commits and edges, the hover card shows in, out, lines and churn.
 
 ## Commands
 

@@ -157,7 +157,7 @@ export function attachOverlay(sigma: Sigma, graph: Graph, opts: OverlayOptions) 
         marks.stroke();
         if (half >= 6 && !p.d.dimmed) {
           const g = opts.glyph(a);
-          marks.font = `650 ${Math.round(half * (g.length > 1 ? 0.8 : 1.15))}px "Geist Mono Variable", ui-monospace, monospace`;
+          marks.font = `650 ${Math.round(half * (g.length > 1 ? 0.8 : 1.15))}px "JetBrains Mono Variable", ui-monospace, monospace`;
           marks.textAlign = "center";
           marks.textBaseline = "middle";
           marks.fillStyle = lum(fill) > 150 ? "#101014" : "#ffffff";
@@ -206,7 +206,7 @@ export function attachOverlay(sigma: Sigma, graph: Graph, opts: OverlayOptions) 
         }
       });
       const placed: Box[] = [];
-      marks.font = `600 11.5px "Geist Mono Variable", ui-monospace, monospace`;
+      marks.font = `600 11.5px "JetBrains Mono Variable", ui-monospace, monospace`;
       marks.textAlign = "left";
       marks.textBaseline = "alphabetic";
       const spots: [number, number][] = [[0, 0]];

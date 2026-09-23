@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
-import type { Go, Target, View } from "./nav";
+import type { ContrastMode, Go, Target, View } from "./nav";
 import GraphView from "./views/GraphView";
 import Overview from "./views/Overview";
 import { Branches, Changes, Console, History } from "./views/GitViews";
 import { Flows, Issues, Notes, Proposals } from "./views/MetaViews";
 import SettingsPanel from "./SettingsPanel";
 import { settings } from "./settings";
+import Opening from "./Opening";
 
 type Rail = { id: View; label: string; icon: () => React.ReactElement; key: string };
 // Grouped by intent: understand · change · collaborate · escape hatch.
@@ -31,13 +32,13 @@ const GROUPS: Rail[][] = [
 ];
 const VIEWS = GROUPS.flat();
 
-type Contrast = { base: string; head: string } | null;
+type Contrast = { base: string; head: string; mode?: ContrastMode } | null;
 
 /** URL ⇄ state: #overview · #graph/<id>/<tab> · #graph/contrast/<base>/<head> · #issues/<id> … */
 function parseHash() {
-  const [v, a, b, c] = location.hash.slice(1).split("/").map(decodeURIComponent);
+  const [v, a, b, c, d] = location.hash.slice(1).split("/").map(decodeURIComponent);
   const view = (VIEWS.some((x) => x.id === v) ? v : "overview") as View;
-  const contrast: Contrast = view === "graph" && a === "contrast" && b && c ? { base: b, head: c } : null;
+  const contrast: Contrast = view === "graph" && a === "contrast" && b && c ? { base: b, head: c, mode: (["overlay", "split", "report"].includes(d) ? d : undefined) as ContrastMode | undefined } : null;
   const focus = view === "graph" && !contrast && Number(a) > 0 ? Number(a) : null;
   const target: Target = {};
   if (view === "issues" && Number(a)) target.issue = Number(a);
@@ -60,6 +61,15 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const [indexing, setIndexing] = useState(false);
   const [prefs, setPrefs] = useState(false);
+  // The opening plays once per session (or on demand with ?opening), never under reduced motion.
+  const [opening, setOpening] = useState(() => {
+    const forced = new URLSearchParams(location.search).has("opening");
+    let seen = false;
+    try { seen = sessionStorage.getItem("kula.opened") === "1"; sessionStorage.setItem("kula.opened", "1"); } catch { /* ignore */ }
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    return forced || (settings.get().opening && !seen && !reduced);
+  });
+  const endOpening = useCallback(() => setOpening(false), []);
   const lastHead = useRef<string | null>(null);
   const toast = useToast();
 
@@ -81,7 +91,7 @@ export default function App() {
   useEffect(() => {
     const enc = encodeURIComponent;
     let h = view as string;
-    if (view === "graph" && contrast) h += `/contrast/${enc(contrast.base)}/${enc(contrast.head)}`;
+    if (view === "graph" && contrast) h += `/contrast/${enc(contrast.base)}/${enc(contrast.head)}${contrast.mode ? `/${contrast.mode}` : ""}`;
     else if (view === "graph" && focus != null) h += `/${focus}`;
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
@@ -190,6 +200,7 @@ export default function App() {
       {palette && <Palette meta={meta} onClose={() => setPalette(false)} go={(v, t) => { setPalette(false); go(v, t); }} onReindex={() => { setPalette(false); reindex(); }} onSettings={() => { setPalette(false); setPrefs(true); }} />}
       {help && <Help onClose={() => setHelp(false)} />}
       {prefs && <SettingsPanel onClose={() => setPrefs(false)} />}
+      {opening && <Opening repo={repo} onDone={endOpening} />}
     </div>
   );
 }

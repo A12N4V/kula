@@ -12,11 +12,11 @@ import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLY
 import { knownDirs, useSettings, type Settings } from "../settings";
 import { Empty, Icon, Kind, Logo, Md, Sym, useToast } from "../ui";
 import Contrast from "./Contrast";
-import type { Go } from "../nav";
+import type { ContrastMode, Go } from "../nav";
 
 type Props = {
   focus: number | null; setFocus: (id: number | null) => void; onChanged: () => void; version: number;
-  contrast: { base: string; head: string } | null; setContrast: (c: { base: string; head: string } | null) => void; go: Go;
+  contrast: { base: string; head: string; mode?: ContrastMode } | null; setContrast: (c: { base: string; head: string; mode?: ContrastMode } | null) => void; go: Go;
   openSettings: () => void;
 };
 
@@ -44,7 +44,9 @@ export default function GraphView(props: Props) {
       <Contrast
         base={contrast.base}
         head={contrast.head}
-        onChange={(base, head) => setContrast({ base, head })}
+        mode={contrast.mode ?? "overlay"}
+        onMode={(mode) => setContrast({ ...contrast, mode })}
+        onChange={(base, head) => setContrast({ ...contrast, base, head })}
         onExit={() => setContrast(null)}
         openSettings={props.openSettings}
         openInMap={async (name, path) => {

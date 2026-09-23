@@ -7,6 +7,8 @@ export type ColorBy = "directory" | "cluster" | "kind" | "churn";
 export interface Settings {
   theme: "system" | "dark" | "light";
   density: "compact" | "comfortable";
+  /** Dithered opening sequence, once per browser session. */
+  opening: boolean;
   colorBy: ColorBy;
   /** Directory depth used for territories and colours; 0 = pick automatically. */
   dirDepth: 0 | 1 | 2 | 3;
@@ -25,6 +27,7 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   theme: "system",
   density: "compact",
+  opening: true,
   colorBy: "directory",
   dirDepth: 0,
   territories: true,

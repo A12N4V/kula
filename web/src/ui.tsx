@@ -2,20 +2,23 @@ import { createContext, useCallback, useContext, useState, type ReactNode } from
 import type { Node } from "./api";
 import { GLYPH, kindColor } from "./colors";
 
-// ---------- icons (1.6px stroke, 24 grid) ----------
-const P = { fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+// ---------- icons ----------
+// One grammar on a 24 grid, 1.5 stroke: rounded squares are structure (files,
+// hubs, heads), circles are points in time or graph nodes, a filled mark is
+// "you are here". Mirrors the graph, where hubs are square tiles.
+const P = { fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 export const Icon = {
-  home: () => (<svg viewBox="0 0 24 24" {...P}><path d="M12 3.5 20 8.5v7l-8 5-8-5v-7z" /><path d="M12 8.5v7M8.5 10.5l7 3M15.5 10.5l-7 3" /></svg>),
-  graph: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="18" r="2" /><circle cx="12" cy="10" r="1.6" /><path d="M6.7 7.1 10.6 9.2M17.3 7.1l-3.9 2.1M12 11.6v4.4" /></svg>),
-  changes: () => (<svg viewBox="0 0 24 24" {...P}><rect x="4" y="3.5" width="16" height="17" rx="2.5" /><path d="M12 8v6M9 11h6M9 17h6" /></svg>),
-  history: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="12" cy="12" r="3" /><path d="M12 3v6M12 15v6" /></svg>),
-  branches: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="7" r="2" /><path d="M6 7v10M18 9c0 5-12 3-12 8" /></svg>),
-  compare: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="6" cy="6" r="2" /><circle cx="18" cy="18" r="2" /><path d="M6 8v5a4 4 0 0 0 4 4h6M18 16v-5a4 4 0 0 0-4-4H8" /><path d="m14 15 2 2-2 2M10 5 8 7l2 2" /></svg>),
-  issues: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /></svg>),
-  pr: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="6" cy="5.5" r="2" /><circle cx="6" cy="18.5" r="2" /><circle cx="18" cy="18.5" r="2" /><path d="M6 7.5v9M18 16.5V9a3 3 0 0 0-3-3h-4m0 0 2.5-2.5M11 6l2.5 2.5" /></svg>),
-  notes: () => (<svg viewBox="0 0 24 24" {...P}><path d="M5 4h10l4 4v12H5z" /><path d="M15 4v4h4M8.5 12h7M8.5 15.5h5" /></svg>),
-  flows: () => (<svg viewBox="0 0 24 24" {...P}><path d="M4 7h9a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h11" /><path d="m17 16 3 3-3 3" /></svg>),
-  console: () => (<svg viewBox="0 0 24 24" {...P}><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="m7 10 3 2.5L7 15M12.5 15H17" /></svg>),
+  home: () => (<svg viewBox="0 0 24 24" {...P}><rect x="4" y="4" width="7" height="7" rx="1.5" fill="currentColor" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></svg>),
+  graph: () => (<svg viewBox="0 0 24 24" {...P}><path d="M12 12 5.5 6.5M12 12l6.5-5.5M12 12v7" /><rect x="9.5" y="9.5" width="5" height="5" rx="1.2" fill="currentColor" /><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="20" r="2" /></svg>),
+  changes: () => (<svg viewBox="0 0 24 24" {...P}><rect x="4" y="4" width="16" height="16" rx="2.5" /><path d="M12 7.5v6M9 10.5h6M9 16.5h6" /></svg>),
+  history: () => (<svg viewBox="0 0 24 24" {...P}><path d="M12 3v5.5M12 10.5v3M12 15.5V21" /><circle cx="12" cy="9.5" r="1.1" fill="currentColor" /><circle cx="12" cy="14.5" r="1.1" fill="currentColor" /><circle cx="12" cy="9.5" r="2.5" /><circle cx="12" cy="14.5" r="2.5" /></svg>),
+  branches: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="7" cy="5" r="2" /><circle cx="7" cy="19" r="2" /><rect x="15" y="6" width="4" height="4" rx="1" /><path d="M7 7v10M17 10c0 4-3 5-10 7" /></svg>),
+  compare: () => (<svg viewBox="0 0 24 24" {...P}><rect x="3.5" y="3.5" width="11" height="11" rx="2" /><rect x="9.5" y="9.5" width="11" height="11" rx="2" stroke-dasharray="2.2 2.2" /><rect x="9.5" y="9.5" width="5" height="5" fill="currentColor" stroke="none" /></svg>),
+  issues: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="12" cy="12" r="8.5" /><rect x="10.5" y="10.5" width="3" height="3" rx=".6" fill="currentColor" /></svg>),
+  pr: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="6" cy="5.5" r="2" /><circle cx="6" cy="18.5" r="2" /><rect x="16" y="16.5" width="4" height="4" rx="1" /><path d="M6 7.5v9M18 16.5V9a3 3 0 0 0-3-3h-4" /><path d="m13 3.5-2.5 2.5L13 8.5" /></svg>),
+  notes: () => (<svg viewBox="0 0 24 24" {...P}><path d="M5 4h10l4 4v12H5z" /><path d="M15 4v4h4" /><path d="M8.5 12h7M8.5 15.5h4" /></svg>),
+  flows: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="5" cy="6" r="2" /><path d="M7 6h7.5a3.5 3.5 0 0 1 0 7h-5a3.5 3.5 0 0 0 0 7H19" /><path d="m16.5 17.5 2.5 2.5-2.5 2.5" /></svg>),
+  console: () => (<svg viewBox="0 0 24 24" {...P}><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="m7 9.5 3 2.5-3 2.5M12.5 15h4.5" /></svg>),
   search: () => (<svg viewBox="0 0 24 24" {...P} width="15" height="15"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></svg>),
   close: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M6 6l12 12M18 6 6 18" /></svg>),
   refresh: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" /></svg>),

@@ -58,6 +58,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         <div className="set-body">
           <div className="set-sec">Appearance</div>
           <Row label="Theme"><Seg value={s.theme} options={[["system", "System"], ["dark", "Dark"], ["light", "Light"]]} onChange={(theme) => settings.set({ theme })} /></Row>
+          <Toggle k="opening" label="Opening sequence" hint="Your repo's graph, dithered, once per session" />
           <Row label="Density"><Seg value={s.density} options={[["compact", "Compact"], ["comfortable", "Comfortable"]]} onChange={(density) => settings.set({ density })} /></Row>
 
           <div className="set-sec">Graph encoding</div>
