@@ -1,0 +1,8 @@
+/target
+web/node_modules
+web/dist
+.kula/
+*.whl
+dist/
+packaging/npm/*/bin/kula*
+!packaging/npm/kula-cli/bin/kula.js

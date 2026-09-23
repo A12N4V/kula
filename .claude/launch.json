@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "kula", "runtimeExecutable": "./target/debug/kula", "runtimeArgs": ["view", "--no-open", "--port", "7420"], "port": 7420 }
+  ]
+}

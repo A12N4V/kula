@@ -1,0 +1,54 @@
+[package]
+name = "kula"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "Git, with a map. A local-first git client that turns your repository into a living knowledge graph."
+license = "MIT"
+repository = "https://github.com/arnavsharma/kula"
+homepage = "https://github.com/arnavsharma/kula"
+readme = "README.md"
+keywords = ["git", "knowledge-graph", "code-intelligence", "mcp", "tree-sitter"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = ["web/node_modules", "docs", "packaging", ".github"]
+
+[[bin]]
+name = "kula"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4.6", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.40", features = ["bundled"] }
+tree-sitter = "0.27"
+tree-sitter-rust = "0.24"
+tree-sitter-python = "0.25"
+tree-sitter-javascript = "0.25"
+tree-sitter-typescript = "0.23"
+tree-sitter-go = "0.25"
+ignore = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+axum = "0.8"
+rust-embed = "8"
+mime_guess = "2"
+open = "5"
+streaming-iterator = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[package.metadata.deb]
+maintainer = "Arnav Sharma <arnavs15@uci.edu>"
+copyright = "2026, Arnav Sharma"
+extended-description = "Kula is a local-first git client with a knowledge-graph view, local issues, proposals (PRs), notes and an MCP server for AI agents."
+depends = "git"
+section = "vcs"
+priority = "optional"
+assets = [["target/release/kula", "usr/bin/", "755"], ["README.md", "usr/share/doc/kula/README", "644"]]
