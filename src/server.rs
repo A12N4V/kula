@@ -30,6 +30,28 @@ struct Assets;
 struct AppState {
     repo: Repo,
     token: Arc<String>,
+    /// Revision graphs by commit sha, for fast repeated branch contrasts.
+    snapshots: Arc<std::sync::Mutex<HashMap<String, Arc<index::Built>>>>,
+}
+
+impl AppState {
+    fn snapshot(&self, rev: &str) -> anyhow::Result<(String, Arc<index::Built>)> {
+        if rev.eq_ignore_ascii_case("worktree") {
+            return Ok(("WORKTREE".into(), Arc::new(index::worktree(&self.repo))));
+        }
+        validate_rev(rev)?;
+        let sha = self.repo.run(&["rev-parse", "--verify", &format!("{rev}^{{commit}}")])?.trim().to_string();
+        if let Some(b) = self.snapshots.lock().unwrap().get(&sha) {
+            return Ok((sha, b.clone()));
+        }
+        let built = Arc::new(index::snapshot(&self.repo, &sha)?);
+        let mut cache = self.snapshots.lock().unwrap();
+        if cache.len() >= 8 {
+            cache.clear();
+        }
+        cache.insert(sha.clone(), built.clone());
+        Ok((sha, built))
+    }
 }
 
 struct ApiErr(anyhow::Error);
@@ -205,6 +227,79 @@ async fn compare(State(s): State<AppState>, Query(q): Query<HashMap<String, Stri
         let head = q.get("head").cloned().unwrap_or_else(|| s.repo.branch());
         let st = Store::open(&s.repo).ok();
         Ok(json!(graph::compare(&s.repo, st.as_ref(), &base, &head)?))
+    })
+    .await
+}
+
+async fn graph_diff(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let base = q.get("base").cloned().ok_or_else(|| anyhow!("base required"))?;
+        let head = q.get("head").cloned().unwrap_or_else(|| s.repo.branch());
+        let focus = q.get("focus").map(|f| f == "changed");
+        let (_, b) = s.snapshot(&base)?;
+        let (_, h) = s.snapshot(&head)?;
+        Ok(json!(graph::graph_diff(&b, &h, &base, &head, focus)))
+    })
+    .await
+}
+
+async fn history(State(s): State<AppState>, Path(id): Path<i64>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        let n = st.node(id)?.ok_or_else(|| anyhow!("no node {id}"))?;
+        Ok(json!(graph::symbol_history(&s.repo, &n)?))
+    })
+    .await
+}
+
+/// Everything that needs a human's attention, in one payload.
+async fn overview(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        let st = Store::open(r).ok();
+        let branches = r.branches().unwrap_or_default();
+        let default = ["main", "master", "trunk", "develop"]
+            .iter()
+            .find(|d| branches.iter().any(|b| !b.remote && b.name == **d))
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| r.branch());
+        let mut local: Vec<Value> = branches
+            .iter()
+            .filter(|b| !b.remote)
+            .map(|b| {
+                let (ahead, behind) = r.ahead_behind(&default, &b.name);
+                json!({ "name": b.name, "current": b.current, "time": b.time, "subject": b.subject, "ahead": ahead, "behind": behind, "upstream": b.upstream, "track": b.track })
+            })
+            .collect();
+        local.sort_by_key(|b| -b["time"].as_i64().unwrap_or(0));
+        let m = meta::load(r)?;
+        let proposals: Vec<Value> = m
+            .proposals
+            .iter()
+            .filter(|p| p.status == "open")
+            .take(10)
+            .map(|p| match graph::compare(r, st.as_ref(), &p.base, &p.head) {
+                Ok(c) => json!({ "proposal": p, "risk": c.risk, "touched": c.touched, "affected": c.affected.len(), "ahead": c.ahead, "behind": c.behind, "files": c.files.len() }),
+                Err(_) => json!({ "proposal": p, "risk": "unknown" }),
+            })
+            .collect();
+        let mut issues: Vec<_> = m.issues.iter().filter(|i| i.status == "open").cloned().collect();
+        issues.sort_by_key(|i| std::cmp::Reverse(i.created));
+        let hot = match &st {
+            Some(st) => graph::hotspots(r, st, 90, 8)?,
+            None => vec![],
+        };
+        Ok(json!({
+            "default_branch": default,
+            "branches": local,
+            "proposals": proposals,
+            "issues": issues.into_iter().take(8).collect::<Vec<_>>(),
+            "issues_open": m.issues.iter().filter(|i| i.status == "open").count(),
+            "notes": m.notes.len(),
+            "hotspots": hot,
+            "recent": r.log(8, Some("HEAD")).unwrap_or_default(),
+            "changes": r.status().map(|f| f.len()).unwrap_or(0),
+        }))
     })
     .await
 }
@@ -393,12 +488,15 @@ async fn meta_action(State(s): State<AppState>, Path((kind, action)): Path<(Stri
 }
 
 pub fn router(repo: Repo, token: String) -> Router {
-    let state = AppState { repo, token: Arc::new(token) };
+    let state = AppState { repo, token: Arc::new(token), snapshots: Default::default() };
     Router::new()
         .route("/api/repo", get(repo_info))
         .route("/api/index", post(reindex))
         .route("/api/graph", get(graph_data))
         .route("/api/search", get(search))
+        .route("/api/graphdiff", get(graph_diff))
+        .route("/api/history/{id}", get(history))
+        .route("/api/overview", get(overview))
         .route("/api/symbol/{id}", get(symbol))
         .route("/api/impact/{id}", get(impact))
         .route("/api/flows", get(flows))
@@ -417,11 +515,30 @@ pub fn router(repo: Repo, token: String) -> Router {
         .with_state(state)
 }
 
+/// Keep the graph honest: reindex in the background whenever HEAD moves.
+fn spawn_auto_reindex(repo: Repo) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            let r = repo.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                let indexed = Store::open(&r).ok().and_then(|s| s.meta("indexed_head"));
+                let head = r.head();
+                if head.is_some() && indexed.as_deref() != head.as_deref() {
+                    let _ = index::run(&r, true);
+                }
+            })
+            .await;
+        }
+    });
+}
+
 pub fn serve(repo: Repo, port: u16, open_browser: bool) -> anyhow::Result<()> {
     let token = std::env::var("KULA_TOKEN").unwrap_or_else(|_| random_token());
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async move {
         let name = repo.name();
+        spawn_auto_reindex(repo.clone());
         let app = router(repo, token);
         // Try the requested port, then the next few.
         let mut listener = None;

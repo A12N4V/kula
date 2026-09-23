@@ -31,7 +31,25 @@
 
 In the Trobriand Islands, the **kula ring** is a circuit of gifts. Shell necklaces travel one way around the islands and armbands travel the other. Nobody keeps them. Their value is the history of hands they have passed through. A commit works the same way: a sign whose meaning is its lineage. In Peirce's terms the code is the *sign*, the graph is its *object*, and your notes are the *interpretant*. Kula puts all three in one place, with the map drawn before you touch the code.
 
-The logo is the ring itself: six nodes on a closed circuit around a centre.
+<img src="docs/assets/logo.svg" width="44" align="right" alt="">The mark is a **K drawn inside the kula ring**. Every stroke lies on the hexagon's own geometry: the stem is a chord, the arms are two of its radii, and the junction is the centre node. The letter is literally a subgraph of the circuit.
+
+## Where Kula fits
+
+Developer tooling around git splits into camps, and each leaves a gap:
+
+| Camp | Examples | What it's good at | The gap |
+|---|---|---|---|
+| Git clients | GitKraken, Fork, Tower, lazygit | Branches, staging, history | Show *text* changes; no idea what the code means or what a change breaks |
+| Code-graph engines | GitNexus, Sourcegraph | Call graphs and code intelligence | Not a git client; GitNexus is PolyForm Noncommercial, Sourcegraph is server-first |
+| Forges | GitHub, GitLab, Gitea | Issues, PRs, review | Need a server and an account; no offline issues; review is line-by-line, not architectural |
+| Behavioural analysis | CodeScene | Hotspots and risk | Commercial and separate from your daily git workflow |
+| Git-native tracking | git-bug | Offline issues in git | No graph, no git UI |
+
+Kula collapses these into **one MIT-licensed binary**. The same graph powers your git client, your reviews and your AI agent. Three things are unusual:
+
+1. **Architectural review.** `graph-diff` and the Contrast view show what a branch does to the *structure* (symbols gained, lost and rewritten, call edges added and cut), not just which lines moved.
+2. **Review that works offline.** Proposals, issues and notes are git objects on `refs/kula/meta`, so they work on a plane and sync through any remote.
+3. **Triage built in.** The Overview ranks open proposals by risk and surfaces hotspots (files with high churn *and* high centrality) without a separate SaaS product.
 
 ## Install
 
@@ -48,7 +66,7 @@ Kula is a single static binary (about 11 MB) with the web UI embedded. Its only 
 | **nix** | `nix run github:A12N4V/kula` · `nix profile install github:A12N4V/kula` |
 
 > [!NOTE]
-> Registry packages are published by the release workflow on the first tagged release. Until then, build from source: `pnpm -C web install && pnpm -C web build && cargo install --path .`
+> Available today: the curl installer, Homebrew tap, `.deb` packages and prebuilt binaries on [Releases](../../releases). The npm, PyPI, crates.io and nix channels are rolling out. You can always build from source: `pnpm -C web install && pnpm -C web build && cargo install --path .`
 
 ## Sixty seconds
 
@@ -58,6 +76,7 @@ kula index                 # build the knowledge graph  → .kula/graph.db
 kula view                  # open the graph + git UI    → http://localhost:7420
 kula impact parseConfig    # what breaks if I change this?
 kula compare main feat/x   # graph-aware branch diff
+kula graph-diff main WORKTREE  # what my uncommitted work does to the architecture
 kula commit -am "ship it"  # …and it's still just git
 ```
 
@@ -69,6 +88,14 @@ kula commit -am "ship it"  # …and it's still just git
 `kula view` serves a local app at **localhost:7420**. It binds to `127.0.0.1` only and is protected by a per-session token.
 
 <table>
+<tr><td colspan="2">
+<img src="docs/assets/ui-overview.png" alt="Overview">
+<p align="center"><b>Overview.</b> The review queue on one screen: proposals ranked by risk, open issues, branches ahead and behind, hotspots and recent commits. Every row is one click from the detail.</p>
+</td></tr>
+<tr><td colspan="2">
+<img src="docs/assets/ui-contrast.png" alt="Contrast view">
+<p align="center"><b>Contrast.</b> Overlay the knowledge graphs of any two branches, tags or commits, or your uncommitted working tree. Added, removed and modified symbols glow; their direct neighbours light up so you can see what each change touches.</p>
+</td></tr>
 <tr><td colspan="2">
 <img src="docs/assets/ui-graph.png" alt="Graph view">
 <p align="center"><b>Graph.</b> Every function, class and file, clustered by what calls what. Hover to trace neighbours, click a cluster to isolate it. Rendered with WebGL, so thousands of nodes stay smooth.</p>
@@ -87,11 +114,20 @@ kula commit -am "ship it"  # …and it's still just git
 </tr>
 </table>
 
-Also included: **Notes** (annotate the repo, a file, a symbol or a commit, with `[[symbol]]` links), **Flows** (execution paths traced from entry points), a **git console** (any non-interactive git command, in the browser), a <kbd>⌘K</kbd> **palette** that jumps to any symbol, number keys <kbd>1</kbd>–<kbd>9</kbd> to switch views, deep links (`#graph/<id>/impact`), and light, dark and system themes.
+Also included:
+- **Notes** on the repo, a file, a symbol or a commit, with `[[symbol]]` links.
+- **Flows:** execution paths traced from entry points.
+- **Symbol history:** the owners and commits behind any function (`git log -L`), in the inspector.
+- **Git console:** any non-interactive git command, in the browser.
+- **One palette** (<kbd>⌘K</kbd>) for everything. Prefix `#` for issues and proposals, `@` for branches, `>` for commands.
+- **Navigation:** number keys <kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd> switch views; <kbd>[</kbd> <kbd>]</kbd> go back and forward through inspected symbols; <kbd>?</kbd> shows every shortcut.
+- **Shareable deep links** such as `#graph/<id>/impact`, `#graph/contrast/main/feat%2Fx` and `#issues/3`.
+- **Always-fresh graph:** `kula view` reindexes in the background whenever `HEAD` moves.
+- Light, dark and system themes, each with its own tuned palette.
 
 ### Design principles
 
-1. **The graph is home; git is the lens.** Commits, branches and proposals are filters on the map, not separate apps.
+1. **Triage first, then the map.** You land on what needs you; every item opens straight into the graph, the diff or the thread.
 2. **Colour carries meaning.** Hue means cluster. Coral means focus or change. Red and amber only ever mean risk.
 3. **Keyboard first.** Everything is reachable through <kbd>⌘K</kbd>, and every view has a number key.
 4. **Honest status.** The top bar always says whether the graph matches `HEAD`.
@@ -113,7 +149,8 @@ Kula is a **superset of git**. Any command it doesn't recognise goes straight to
 | `kula trace <from> <to>` | Shortest call path between two symbols |
 | `kula flows` | Execution flows from entry points |
 | `kula clusters` | Functional communities |
-| `kula compare <base> [head]` | Graph-aware branch diff |
+| `kula compare <base> [head]` | Graph-aware branch diff: changed symbols and what they ripple into |
+| `kula graph-diff <base> [head]` | Contrast two revisions' knowledge graphs (`head` may be `WORKTREE`) |
 | `kula issue new\|list\|show\|comment\|close\|reopen` | Local issues |
 | `kula pr new\|list\|show\|comment\|merge\|close` | Proposals (local pull requests) |
 | `kula note add\|list\|edit\|rm` | Notes on `repo`, `file:<path>`, `symbol:<name>`, `commit:<sha>` |
@@ -125,7 +162,7 @@ Every graph command accepts `--json`, and `-C <path>` works like git's.
 
 ## For AI agents (MCP)
 
-`kula mcp` gives agents the graph as tools: `query`, `context`, `impact`, `trace`, `compare`, `flows`, `notes`, `issues`. Agents can check the blast radius before editing and read the notes your team left.
+`kula mcp` gives agents the graph as tools: `query`, `context`, `impact`, `trace`, `compare`, `graph_diff`, `flows`, `notes`, `issues`. Agents can check the blast radius before editing and read the notes your team left.
 
 ```jsonc
 // Claude Code:  claude mcp add kula -- kula mcp
@@ -138,6 +175,7 @@ Every graph command accepts `--json`, and `-C <path>` works like git's.
 <p align="center"><img src="docs/assets/architecture.svg" alt="Architecture diagram" width="100%"></p>
 
 - **Indexing.** Files are walked in parallel (respecting `.gitignore`) and parsed with tree-sitter. Kula extracts definitions (functions, methods, classes, interfaces), call sites and imports. Imports are resolved per language (relative JS/TS paths, Python packages, Rust `mod`/`use`, Go packages). Calls are resolved by preferring the same file, then imported files, then an unambiguous global match. A stoplist keeps generic names like `.get()` and `.map()` from creating false edges.
+- **Contrast.** Any revision's graph is built straight from git objects (`git ls-tree` plus a single `git cat-file --batch`), with no checkout, and cached per commit. Symbols are matched across revisions by kind, path, container and name, and compared by a hash of their source.
 - **Clusters.** Weighted label propagation over calls, containment and imports. Each cluster is named after its dominant directory and its central class or file.
 - **Storage.** `.kula/graph.db` is SQLite with FTS5. It is git-ignored automatically and rebuilt by `kula index`. A small codebase indexes in well under a second.
 - **Issues, proposals and notes** live in one JSON document committed onto **`refs/kula/meta`**. Every change is a commit, so there is full history and nothing touches your branches. `kula sync` fetches, merges and pushes that ref through any git remote.

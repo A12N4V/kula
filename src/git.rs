@@ -77,6 +77,39 @@ impl Repo {
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
     }
 
+    /// Read many blobs at `rev` through one `git cat-file --batch` process.
+    pub fn cat_files(&self, rev: &str, paths: &[&str]) -> Result<std::collections::HashMap<String, String>> {
+        use std::io::{BufRead, BufReader, Read, Write};
+        validate_rev(rev)?;
+        let mut child =
+            self.cmd().args(["cat-file", "--batch"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()?;
+        let mut stdin = child.stdin.take().unwrap();
+        let input: String = paths.iter().map(|p| format!("{rev}:{p}\n")).collect();
+        // Write on a thread so a large batch can't deadlock against our reads.
+        let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
+        let mut out = BufReader::new(child.stdout.take().unwrap());
+        let mut map = std::collections::HashMap::new();
+        for p in paths {
+            let mut header = String::new();
+            if out.read_line(&mut header)? == 0 {
+                break;
+            }
+            if header.trim_end().ends_with("missing") {
+                continue;
+            }
+            let size: usize = header.split_whitespace().nth(2).and_then(|s| s.parse().ok()).unwrap_or(0);
+            let mut buf = vec![0u8; size + 1]; // content + trailing LF
+            out.read_exact(&mut buf)?;
+            buf.pop();
+            if let Ok(text) = String::from_utf8(buf) {
+                map.insert(p.to_string(), text);
+            }
+        }
+        let _ = writer.join();
+        let _ = child.wait();
+        Ok(map)
+    }
+
     pub fn head(&self) -> Option<String> {
         self.run(&["rev-parse", "HEAD"]).ok().map(|s| s.trim().to_string())
     }

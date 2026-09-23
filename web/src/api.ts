@@ -60,6 +60,20 @@ export interface Compare {
   touched: number; affected: ImpactHit[]; communities: string[]; risk: string;
 }
 export interface Flow { entry: Node; steps: ImpactHit[]; reach: number }
+export type DiffStatus = "added" | "removed" | "modified" | "same";
+export interface DiffNode { id: number; status: DiffStatus; kind: Node["kind"]; name: string; path: string; start_line: number; community: number; container: string | null }
+export interface DiffEdge { src: number; dst: number; kind: string; status: DiffStatus }
+export interface GraphDiff {
+  base: string; head: string; nodes: DiffNode[]; edges: DiffEdge[]; communities: Community[]; focused: boolean;
+  summary: { added: number; removed: number; modified: number; same: number; edges_added: number; edges_removed: number; files_touched: number };
+}
+export interface SymbolHistory { commits: { sha: string; short: string; author: string; time: number; subject: string }[]; owners: [string, number][] }
+export interface Hotspot { path: string; churn: number; symbols: number; degree: number; score: number }
+export interface BranchRow { name: string; current: boolean; time: number; subject: string; ahead: number; behind: number; upstream: string; track: string }
+export interface Overview {
+  default_branch: string; branches: BranchRow[]; issues: Issue[]; issues_open: number; notes: number; hotspots: Hotspot[]; recent: Commit[]; changes: number;
+  proposals: { proposal: Proposal; risk: string; touched?: number; affected?: number; ahead?: number; behind?: number; files?: number }[];
+}
 
 export const api = {
   repo: () => get<RepoInfo>("/api/repo"),
@@ -79,6 +93,9 @@ export const api = {
   git: (action: string, body: Record<string, unknown> = {}) => post<{ ok: boolean; output: string }>(`/api/git/${action}`, body),
   exec: (args: string[]) => post<{ code: number; stdout: string; stderr: string }>("/api/git/exec", { args }),
   meta: () => get<Meta>("/api/meta"),
+  graphDiff: (base: string, head?: string, focus?: "changed" | "all") => get<GraphDiff>(`/api/graphdiff?${q({ base, head, focus })}`),
+  history: (id: number) => get<SymbolHistory>(`/api/history/${id}`),
+  overview: () => get<Overview>("/api/overview"),
   metaAction: <T = unknown>(kind: "issues" | "proposals" | "notes", action: string | number, body: Record<string, unknown>) =>
     post<T>(`/api/meta/${kind}/${action}`, body),
 };

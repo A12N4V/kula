@@ -4,6 +4,7 @@ import { colorFor, type Node } from "./api";
 // ---------- icons (1.6px stroke, 24 grid) ----------
 const P = { fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 export const Icon = {
+  home: () => (<svg viewBox="0 0 24 24" {...P}><path d="M12 3.5 20 8.5v7l-8 5-8-5v-7z" /><path d="M12 8.5v7M8.5 10.5l7 3M15.5 10.5l-7 3" /></svg>),
   graph: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="18" r="2" /><circle cx="12" cy="10" r="1.6" /><path d="M6.7 7.1 10.6 9.2M17.3 7.1l-3.9 2.1M12 11.6v4.4" /></svg>),
   changes: () => (<svg viewBox="0 0 24 24" {...P}><rect x="4" y="3.5" width="16" height="17" rx="2.5" /><path d="M12 8v6M9 11h6M9 17h6" /></svg>),
   history: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="12" cy="12" r="3" /><path d="M12 3v6M12 15v6" /></svg>),
@@ -23,17 +24,22 @@ export const Icon = {
   sun: () => (<svg viewBox="0 0 24 24" {...P} width="15" height="15"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>),
 };
 
+/**
+ * The mark: a K drawn inside the kula ring. Every stroke lies on the
+ * hexagon's own geometry – the stem is a chord, the arms are two radii,
+ * and the junction is the centre node.
+ */
 export function Logo({ spin = false }: { spin?: boolean }) {
-  // Six nodes on a closed ring around a centre: the Kula circuit.
-  const pts = [0, 60, 120, 180, 240, 300].map((a) => {
-    const r = (a - 90) * (Math.PI / 180);
-    return [16 + 11 * Math.cos(r), 16 + 11 * Math.sin(r)];
-  });
   return (
-    <svg viewBox="0 0 32 32" className={spin ? "orbit" : undefined}>
-      <polygon points={pts.map((p) => p.join(",")).join(" ")} fill="none" stroke="var(--accent)" strokeWidth="1.6" opacity="0.8" />
-      {pts.map(([x, y], i) => (<circle key={i} cx={x} cy={y} r={i === 0 ? 2.8 : 2.2} fill="var(--accent)" />))}
-      <circle cx="16" cy="16" r="3.4" fill="var(--text)" />
+    <svg viewBox="0 0 32 32" className={spin ? "logo logo-draw" : "logo"} aria-hidden="true">
+      <polygon className="logo-ring" points="28,16 22,26.39 10,26.39 4,16 10,5.61 22,5.61" fill="none" stroke="var(--accent)" strokeOpacity=".38" strokeWidth="1.4" strokeLinejoin="round" />
+      <path className="logo-k" d="M10 5.61V26.39M10 16H16M22 5.61 16 16 22 26.39" fill="none" stroke="var(--accent)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" pathLength={100} />
+      <g fill="var(--accent)">
+        {[[10, 5.61], [10, 26.39], [22, 5.61], [22, 26.39]].map(([x, y]) => <circle key={`${x}${y}`} cx={x} cy={y} r="2.3" />)}
+        <circle cx="28" cy="16" r="1.6" fillOpacity=".6" />
+        <circle cx="4" cy="16" r="1.6" fillOpacity=".6" />
+      </g>
+      <circle className="logo-core" cx="16" cy="16" r="3.1" fill="var(--text)" />
     </svg>
   );
 }

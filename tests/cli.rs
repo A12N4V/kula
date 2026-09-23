@@ -192,3 +192,45 @@ fn mcp_stdio_roundtrip() {
     let text = lines[2]["result"]["content"][0]["text"].as_str().unwrap();
     assert!(text.contains("hashToken"), "{text}");
 }
+
+#[test]
+fn graph_diff_between_branches_and_worktree() {
+    let t = fixture();
+    let d = t.path();
+    git(d, &["switch", "-qc", "feat/diff"]);
+    // modify salt, remove logout, add rotateToken (which calls hashToken)
+    write(
+        d,
+        "src/util/crypto.ts",
+        "export function hashToken(t: string) { return salt(t) + t; }\nfunction salt(t: string) { return t.slice(0, 8); }\nexport function rotateToken(t: string) { return hashToken(t + \"!\"); }\n",
+    );
+    write(
+        d,
+        "src/api/routes.ts",
+        "import { login } from \"../auth/session\";\nexport function handleLogin(req: any) { return login(req.user); }\n",
+    );
+    git(d, &["commit", "-qam", "rotate tokens"]);
+
+    let g = kula_json(d, &["graph-diff", "main", "feat/diff"]);
+    let names = |status: &str| -> Vec<String> {
+        g["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|n| n["status"] == status && n["kind"] != "file")
+            .map(|n| n["name"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(names("added"), vec!["rotateToken"]);
+    let removed = names("removed");
+    assert!(removed.contains(&"logout".to_string()) && removed.contains(&"handleLogout".to_string()), "{removed:?}");
+    assert_eq!(names("modified"), vec!["salt"]);
+    assert_eq!(g["summary"]["added"], 1);
+    assert!(g["summary"]["edges_added"].as_u64().unwrap() >= 1, "rotateToken → hashToken call edge");
+
+    // Uncommitted code is contrasted with WORKTREE.
+    write(d, "src/util/extra.ts", "export function brandNew() { return 1; }\n");
+    let w = kula_json(d, &["graph-diff", "HEAD", "WORKTREE"]);
+    assert!(w["nodes"].to_string().contains("brandNew"));
+    assert_eq!(w["summary"]["added"], 1);
+}

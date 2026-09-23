@@ -6,3 +6,4 @@ web/dist
 dist/
 packaging/npm/*/bin/kula*
 !packaging/npm/kula-cli/bin/kula.js
+.claude/

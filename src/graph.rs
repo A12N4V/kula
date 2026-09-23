@@ -378,3 +378,284 @@ pub fn resolve_one(store: &Store, r: &str) -> Result<Node> {
     let s = store.search(r, 1)?;
     s.into_iter().next().ok_or_else(|| anyhow::anyhow!("no symbol matches {r:?}"))
 }
+
+// ------------------------------------------------------------------ graph diff
+
+#[derive(Serialize, Clone)]
+pub struct DiffNode {
+    pub id: i64,
+    pub status: &'static str, // added | removed | modified | same
+    pub kind: String,
+    pub name: String,
+    pub path: String,
+    pub start_line: i64,
+    pub community: i64,
+    pub container: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct DiffEdge {
+    pub src: i64,
+    pub dst: i64,
+    pub kind: String,
+    pub status: &'static str,
+}
+
+#[derive(Serialize, Default)]
+pub struct DiffSummary {
+    pub added: usize,
+    pub removed: usize,
+    pub modified: usize,
+    pub same: usize,
+    pub edges_added: usize,
+    pub edges_removed: usize,
+    pub files_touched: usize,
+}
+
+#[derive(Serialize)]
+pub struct GraphDiff {
+    pub base: String,
+    pub head: String,
+    pub nodes: Vec<DiffNode>,
+    pub edges: Vec<DiffEdge>,
+    pub communities: Vec<Community>,
+    pub summary: DiffSummary,
+    /// true when only changed symbols and their neighbours are included.
+    pub focused: bool,
+}
+
+/// Stable identity of a node across revisions: kind, path, container, name (+ ordinal for overloads).
+fn node_keys(b: &crate::index::Built) -> Vec<String> {
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    b.nodes
+        .iter()
+        .map(|n| {
+            let container = n.parent.map(|p| &b.nodes[p as usize]).filter(|p| p.kind != "file").map(|p| p.name.as_str()).unwrap_or("");
+            let k = format!("{}|{}|{}|{}", n.kind, n.path, container, n.name);
+            let c = seen.entry(k.clone()).or_default();
+            *c += 1;
+            if *c > 1 {
+                format!("{k}#{c}")
+            } else {
+                k
+            }
+        })
+        .collect()
+}
+
+/// Compare the knowledge graphs of two revisions. `focus` keeps only changed
+/// symbols plus their direct neighbours (automatic for large graphs).
+pub fn graph_diff(
+    base: &crate::index::Built,
+    head: &crate::index::Built,
+    base_name: &str,
+    head_name: &str,
+    focus: Option<bool>,
+) -> GraphDiff {
+    let (bk, hk) = (node_keys(base), node_keys(head));
+    let bmap: HashMap<&str, usize> = bk.iter().enumerate().map(|(i, k)| (k.as_str(), i)).collect();
+    let hmap: HashMap<&str, usize> = hk.iter().enumerate().map(|(i, k)| (k.as_str(), i)).collect();
+
+    let mut nodes: Vec<DiffNode> = Vec::new();
+    let mut uid: HashMap<String, i64> = HashMap::new();
+    let mut summary = DiffSummary::default();
+    let mut touched_files: HashSet<String> = HashSet::new();
+    let container =
+        |b: &crate::index::Built, n: &Node| n.parent.map(|p| &b.nodes[p as usize]).filter(|p| p.kind != "file").map(|p| p.name.clone());
+
+    for (i, n) in head.nodes.iter().enumerate() {
+        let status = match bmap.get(hk[i].as_str()) {
+            None => "added",
+            Some(&j) if n.kind != "file" && base.hashes[j] != head.hashes[i] => "modified",
+            Some(_) => "same",
+        };
+        if n.lang.is_empty() {
+            continue; // non-source files add noise
+        }
+        if n.kind != "file" {
+            match status {
+                "added" => summary.added += 1,
+                "modified" => summary.modified += 1,
+                _ => summary.same += 1,
+            }
+        }
+        if status != "same" {
+            touched_files.insert(n.path.clone());
+        }
+        let id = nodes.len() as i64;
+        uid.insert(hk[i].clone(), id);
+        nodes.push(DiffNode {
+            id,
+            status,
+            kind: n.kind.clone(),
+            name: n.name.clone(),
+            path: n.path.clone(),
+            start_line: n.start_line,
+            community: n.community,
+            container: container(head, n),
+        });
+    }
+    for (j, n) in base.nodes.iter().enumerate() {
+        if hmap.contains_key(bk[j].as_str()) || n.lang.is_empty() {
+            continue;
+        }
+        if n.kind != "file" {
+            summary.removed += 1;
+        }
+        touched_files.insert(n.path.clone());
+        let id = nodes.len() as i64;
+        uid.insert(bk[j].clone(), id);
+        nodes.push(DiffNode {
+            id,
+            status: "removed",
+            kind: n.kind.clone(),
+            name: n.name.clone(),
+            path: n.path.clone(),
+            start_line: n.start_line,
+            community: n.community,
+            container: container(base, n),
+        });
+    }
+    summary.files_touched = touched_files.len();
+
+    let ekeys = |b: &crate::index::Built, keys: &[String]| -> HashSet<(String, String, String)> {
+        b.edges.iter().map(|e| (keys[e.src as usize].clone(), keys[e.dst as usize].clone(), e.kind.clone())).collect()
+    };
+    let (be, he) = (ekeys(base, &bk), ekeys(head, &hk));
+    let mut edges = Vec::new();
+    for (set, other, status) in [(&he, &be, "added"), (&be, &he, "removed")] {
+        for k in set.iter() {
+            let st = if other.contains(k) { "same" } else { status };
+            if st == "same" && status == "removed" {
+                continue; // already emitted from the head side
+            }
+            if let (Some(&s), Some(&d)) = (uid.get(&k.0), uid.get(&k.1)) {
+                if st == "added" && k.2 != "CONTAINS" {
+                    summary.edges_added += 1;
+                }
+                if st == "removed" && k.2 != "CONTAINS" {
+                    summary.edges_removed += 1;
+                }
+                edges.push(DiffEdge { src: s, dst: d, kind: k.2.clone(), status: st });
+            }
+        }
+    }
+
+    // Focus: changed nodes + endpoints of changed edges + 1-hop neighbours.
+    let focused = focus.unwrap_or(nodes.len() > 2500);
+    if focused {
+        let mut keep: HashSet<i64> = nodes.iter().filter(|n| n.status != "same").map(|n| n.id).collect();
+        for e in &edges {
+            if e.status != "same" {
+                keep.insert(e.src);
+                keep.insert(e.dst);
+            }
+        }
+        let core = keep.clone();
+        for e in &edges {
+            if core.contains(&e.src) || core.contains(&e.dst) {
+                keep.insert(e.src);
+                keep.insert(e.dst);
+            }
+        }
+        nodes.retain(|n| keep.contains(&n.id));
+        edges.retain(|e| keep.contains(&e.src) && keep.contains(&e.dst));
+    }
+    GraphDiff { base: base_name.into(), head: head_name.into(), nodes, edges, communities: head.communities.clone(), summary, focused }
+}
+
+// ------------------------------------------------------------------ symbol history
+
+#[derive(Serialize)]
+pub struct Touch {
+    pub sha: String,
+    pub short: String,
+    pub author: String,
+    pub time: i64,
+    pub subject: String,
+}
+
+#[derive(Serialize)]
+pub struct SymbolHistory {
+    pub commits: Vec<Touch>,
+    /// (author, commits touching this symbol), most active first.
+    pub owners: Vec<(String, usize)>,
+}
+
+/// Commits that touched a symbol's line range (`git log -L`), plus ownership.
+pub fn symbol_history(repo: &Repo, n: &Node) -> Result<SymbolHistory> {
+    if n.path.starts_with('-') || n.path.contains("..") {
+        bail!("bad path");
+    }
+    let range =
+        if n.kind == "file" { String::new() } else { format!("{},{}:{}", n.start_line.max(1), n.end_line.max(n.start_line), n.path) };
+    let fmt = "--format=%x1e%H%x1f%h%x1f%an%x1f%at%x1f%s";
+    let raw = if range.is_empty() {
+        repo.run(&["log", "-n", "30", fmt, "--", &n.path])
+    } else {
+        repo.run(&["log", "-n", "30", "-s", fmt, "-L", &range])
+    }
+    .unwrap_or_default();
+    let commits: Vec<Touch> = raw
+        .split('\x1e')
+        .filter_map(|rec| {
+            let first = rec.lines().next()?;
+            let f: Vec<&str> = first.split('\x1f').collect();
+            (f.len() >= 5).then(|| Touch {
+                sha: f[0].into(),
+                short: f[1].into(),
+                author: f[2].into(),
+                time: f[3].parse().unwrap_or(0),
+                subject: f[4].into(),
+            })
+        })
+        .collect();
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for c in &commits {
+        *counts.entry(c.author.clone()).or_default() += 1;
+    }
+    let mut owners: Vec<(String, usize)> = counts.into_iter().collect();
+    owners.sort_by_key(|o| std::cmp::Reverse(o.1));
+    Ok(SymbolHistory { commits, owners })
+}
+
+// ------------------------------------------------------------------ overview / review queue
+
+#[derive(Serialize)]
+pub struct Hotspot {
+    pub path: String,
+    pub churn: usize,
+    pub symbols: i64,
+    pub degree: i64,
+    pub score: f64,
+}
+
+/// Files that change often *and* sit at the centre of the graph: where bugs and review effort concentrate.
+pub fn hotspots(repo: &Repo, store: &Store, days: u32, limit: usize) -> Result<Vec<Hotspot>> {
+    let since = format!("--since={days}.days");
+    let raw = repo.run(&["log", &since, "--name-only", "--format=", "--no-renames"]).unwrap_or_default();
+    let mut churn: HashMap<String, usize> = HashMap::new();
+    for l in raw.lines().filter(|l| !l.trim().is_empty()) {
+        *churn.entry(l.to_string()).or_default() += 1;
+    }
+    let mut out = Vec::new();
+    for (path, c) in churn {
+        let (symbols, degree): (i64, i64) = store
+            .conn
+            .query_row(
+                "SELECT count(*), coalesce(sum((SELECT count(*) FROM edges e WHERE e.kind = 'CALLS' AND (e.src = n.id OR e.dst = n.id))), 0)
+                 FROM nodes n WHERE n.path = ?1 AND n.kind != 'file'",
+                [&path],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap_or((0, 0));
+        if symbols == 0 {
+            continue;
+        }
+        let score = (c as f64) * ((degree as f64) + 1.0).ln_1p();
+        out.push(Hotspot { path, churn: c, symbols, degree, score });
+    }
+    out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    out.truncate(limit);
+    Ok(out)
+}

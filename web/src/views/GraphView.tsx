@@ -3,17 +3,22 @@ import Graph from "graphology";
 import Sigma from "sigma";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import noverlap from "graphology-layout-noverlap";
-import { api, colorFor, type Context, type GraphData, type Impact, type Node } from "../api";
+import { api, colorFor, relTime, type Context, type GraphData, type Impact, type Node, type SymbolHistory } from "../api";
 import { Empty, Icon, Kind, Logo, Md, Sym, useToast } from "../ui";
+import Contrast from "./Contrast";
+import type { Go } from "../nav";
 
-type Props = { focus: number | null; setFocus: (id: number | null) => void; onChanged: () => void; version: number; theme?: string | null };
+type Props = {
+  focus: number | null; setFocus: (id: number | null) => void; onChanged: () => void; version: number; theme?: string | null;
+  contrast: { base: string; head: string } | null; setContrast: (c: { base: string; head: string } | null) => void; go: Go;
+};
 
-function cssVar(name: string) {
+export function cssVar(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
 }
 
 // Dark-aware hover label (sigma's default is a white box).
-function drawHover(ctx: CanvasRenderingContext2D, data: any, settings: any) {
+export function drawHover(ctx: CanvasRenderingContext2D, data: any, settings: any) {
   const size = settings.labelSize + 1;
   ctx.font = `500 ${size}px ${settings.labelFont}`;
   const label = data.label ?? "";
@@ -37,7 +42,28 @@ function drawHover(ctx: CanvasRenderingContext2D, data: any, settings: any) {
   ctx.stroke();
 }
 
-export default function GraphView({ focus, setFocus, onChanged, version, theme }: Props) {
+export default function GraphView(props: Props) {
+  const { contrast, setContrast, setFocus } = props;
+  if (contrast)
+    return (
+      <Contrast
+        base={contrast.base}
+        head={contrast.head}
+        theme={props.theme}
+        onChange={(base, head) => setContrast({ base, head })}
+        onExit={() => setContrast(null)}
+        openInMap={async (name, path) => {
+          const hits = await api.search(name);
+          const hit = hits.find((h) => h.path === path) ?? hits[0];
+          setContrast(null);
+          if (hit) setFocus(hit.id);
+        }}
+      />
+    );
+  return <MapView {...props} />;
+}
+
+function MapView({ focus, setFocus, onChanged, version, theme, setContrast, go }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const sigma = useRef<Sigma | null>(null);
   const [level, setLevel] = useState<"symbol" | "file">("symbol");
@@ -207,6 +233,7 @@ export default function GraphView({ focus, setFocus, onChanged, version, theme }
           <button className={level === "file" ? "on" : ""} onClick={() => setLevel("file")}>Files</button>
         </div>
         <div className="seg"><button className={showLegend ? "on" : ""} onClick={() => setShowLegend((v) => !v)}>Clusters</button></div>
+        <button className="btn sm" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs"><Icon.compare /> Contrast</button>
         {data && <span className="chip hide-sm">{data.nodes.length.toLocaleString()} nodes · {data.edges.length.toLocaleString()} edges{data.truncated ? " · top by degree" : ""}</span>}
       </div>
 
@@ -229,14 +256,37 @@ export default function GraphView({ focus, setFocus, onChanged, version, theme }
         <button className="btn" aria-label="Reset view" onClick={() => cam((c) => c.animatedReset({ duration: 300 }))}><Icon.target /></button>
       </div>
 
-      {focus != null && <Inspector id={focus} onClose={() => setFocus(null)} setFocus={setFocus} impact={impact} setImpact={setImpact} />}
+      {focus != null && <Inspector id={focus} onClose={() => setFocus(null)} setFocus={setFocus} impact={impact} setImpact={setImpact} go={go} />}
     </div>
   );
 }
 
-function Inspector({ id, onClose, setFocus, impact, setImpact }: { id: number; onClose: () => void; setFocus: (id: number) => void; impact: Impact | null; setImpact: (i: Impact | null) => void }) {
+function Inspector({ id, onClose, setFocus, impact, setImpact, go: goView }: { id: number; onClose: () => void; setFocus: (id: number) => void; impact: Impact | null; setImpact: (i: Impact | null) => void; go: Go }) {
   const [ctx, setCtx] = useState<Context | null>(null);
-  const [tab, setTab] = useState<"context" | "impact" | "source" | "notes">("context");
+  const [tab, setTab] = useState<"context" | "impact" | "history" | "source" | "notes">("context");
+  const [hist, setHist] = useState<SymbolHistory | null>(null);
+  // Browser-style back/forward through symbols you've inspected.
+  const trail = useRef<{ stack: number[]; at: number }>({ stack: [], at: -1 });
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const t = trail.current;
+    if (t.stack[t.at] !== id) { t.stack = [...t.stack.slice(0, t.at + 1), id]; t.at = t.stack.length - 1; bump((x) => x + 1); }
+  }, [id]);
+  const step = (d: number) => {
+    const t = trail.current;
+    const at = t.at + d;
+    if (at < 0 || at >= t.stack.length) return;
+    t.at = at; bump((x) => x + 1); setFocus(t.stack[at]);
+  };
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) return;
+      if (e.key === "[") step(-1);
+      if (e.key === "]") step(1);
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  });
   const [dir, setDir] = useState<"up" | "down">("up");
   const [note, setNote] = useState("");
   const toast = useToast();
@@ -247,6 +297,7 @@ function Inspector({ id, onClose, setFocus, impact, setImpact }: { id: number; o
   useEffect(() => {
     if (tab === "impact") api.impact(id, dir).then(setImpact).catch((e) => toast(e.message, "err"));
     else setImpact(null);
+    if (tab === "history") { setHist(null); api.history(id).then(setHist).catch((e) => toast(e.message, "err")); }
   }, [tab, dir, id]);
 
   const go = (n: Node) => setFocus(n.id);
@@ -259,14 +310,16 @@ function Inspector({ id, onClose, setFocus, impact, setImpact }: { id: number; o
         <div className="row">
           <div className="kind">{ctx && <Kind kind={ctx.node.kind} community={ctx.node.community} size={15} />}{ctx?.node.kind ?? "loading"}</div>
           <span className="spacer" />
-          <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
+          <button className="btn ghost sm" disabled={trail.current.at <= 0} onClick={() => step(-1)} aria-label="Back" title="Back  [">←</button>
+          <button className="btn ghost sm" disabled={trail.current.at >= trail.current.stack.length - 1} onClick={() => step(1)} aria-label="Forward" title="Forward  ]">→</button>
+          <button className="btn ghost sm" onClick={onClose} aria-label="Close" title="Close  esc"><Icon.close /></button>
         </div>
         <h2>{ctx?.node.name ?? "…"}</h2>
         {ctx && <div className="muted mono" style={{ fontSize: 11.5 }}>{ctx.node.path}:{ctx.node.start_line}–{ctx.node.end_line}</div>}
         {ctx?.community && <div style={{ marginTop: 8 }}><span className="tag" style={{ color: colorFor(ctx.node.community) }}>■ {ctx.community}</span></div>}
       </header>
       <div className="tabs">
-        {(["context", "impact", "source", "notes"] as const).map((t) => (
+        {(["context", "impact", "history", "source", "notes"] as const).map((t) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
             {t[0].toUpperCase() + t.slice(1)}{t === "notes" && ctx?.notes.length ? ` ${ctx.notes.length}` : ""}
           </button>
@@ -312,6 +365,29 @@ function Inspector({ id, onClose, setFocus, impact, setImpact }: { id: number; o
               </>
             )}
           </>
+        ) : tab === "history" ? (
+          !hist ? <div className="muted" style={{ padding: "16px 0" }}>Reading git history…</div> : (
+            <>
+              <div className="section-title">Owners</div>
+              {hist.owners.length === 0 && <div className="muted">No commits touch this yet.</div>}
+              {hist.owners.slice(0, 5).map(([who, n]) => (
+                <div key={who} className="owner-row">
+                  <span className="avatar">{who.slice(0, 1).toUpperCase()}</span>
+                  <span>{who}</span>
+                  <div className="owner-bar"><i style={{ width: `${(n / hist.owners[0][1]) * 100}%` }} /></div>
+                  <span className="muted">{n}</span>
+                </div>
+              ))}
+              <div className="section-title">Commits touching {ctx.node.kind === "file" ? "this file" : "these lines"} <span className="count">{hist.commits.length}</span></div>
+              {hist.commits.map((c) => (
+                <div key={c.sha} className="sym" onClick={() => goView("history", { sha: c.sha })}>
+                  <span className="mono muted" style={{ fontSize: 11 }}>{c.short}</span>
+                  <span className="nm" style={{ fontFamily: "var(--font)" }}>{c.subject}</span>
+                  <span className="p">{c.author} · {relTime(c.time)}</span>
+                </div>
+              ))}
+            </>
+          )
         ) : tab === "source" ? (
           <pre className="code" style={{ marginTop: 12, maxHeight: "none" }}>{ctx.snippet || "(empty)"}</pre>
         ) : (

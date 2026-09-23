@@ -81,6 +81,15 @@ enum Cmd {
     Clusters,
     /// Graph-aware branch comparison.
     Compare { base: String, head: Option<String> },
+    /// Contrast the knowledge graphs of two revisions (use WORKTREE for uncommitted code).
+    #[command(name = "graph-diff", alias = "gdiff")]
+    GraphDiff {
+        base: String,
+        head: Option<String>,
+        /// Also list unchanged symbols' counts per file.
+        #[arg(long)]
+        all: bool,
+    },
     /// Local issues stored in git.
     #[command(subcommand)]
     Issue(IssueCmd),
@@ -420,6 +429,17 @@ fn run(cli: Cli) -> Result<()> {
             }
             print_compare(&c);
         }
+        Cmd::GraphDiff { base, head, all } => {
+            let head = head.unwrap_or_else(|| repo.branch());
+            let b = index::snapshot_any(&repo, &base)?;
+            let h = index::snapshot_any(&repo, &head)?;
+            let d = graph::graph_diff(&b, &h, &base, &head, Some(!all));
+            if json {
+                out(&d);
+                return Ok(());
+            }
+            print_graph_diff(&d);
+        }
         Cmd::Issue(ic) => issue_cmd(&repo, ic, json)?,
         Cmd::Pr(pc) => pr_cmd(&repo, pc, json)?,
         Cmd::Note(nc) => note_cmd(&repo, nc, json)?,
@@ -463,6 +483,51 @@ fn print_compare(c: &graph::Compare) {
         println!("\n  {} {}", bold("ripples into"), dim(&format!("({} dependents)", c.affected.len())));
         for h in c.affected.iter().take(15) {
             println!("  {} {}  {}", accent(&format!("d{}", h.depth)), h.node.name, dim(&h.node.path));
+        }
+    }
+}
+
+fn print_graph_diff(d: &graph::GraphDiff) {
+    let s = &d.summary;
+    header(&format!("graph {} {} {}", d.base, dim("→"), d.head));
+    println!(
+        "  {} added · {} removed · {} modified · {} unchanged   {} calls added · {} removed · {} files\n",
+        green(&format!("+{}", s.added)),
+        red(&format!("-{}", s.removed)),
+        yellow(&format!("~{}", s.modified)),
+        dim(&s.same.to_string()),
+        green(&format!("+{}", s.edges_added)),
+        red(&format!("-{}", s.edges_removed)),
+        s.files_touched
+    );
+    for (status, mark, label) in [("added", green("+"), "added"), ("removed", red("-"), "removed"), ("modified", yellow("~"), "modified")] {
+        let list: Vec<_> = d.nodes.iter().filter(|n| n.status == status && n.kind != "file").collect();
+        if list.is_empty() {
+            continue;
+        }
+        println!("  {} {}", bold(label), dim(&format!("({})", list.len())));
+        for n in list.iter().take(40) {
+            let owner = n.container.as_ref().map(|c| format!("{c}.")).unwrap_or_default();
+            println!(
+                "  {mark} {} {}{}  {}",
+                community(n.community, kind_glyph(&n.kind)),
+                dim(&owner),
+                bold(&n.name),
+                dim(&format!("{}:{}", n.path, n.start_line))
+            );
+        }
+        if list.len() > 40 {
+            println!("    {}", dim(&format!("… {} more", list.len() - 40)));
+        }
+        println!();
+    }
+    let calls: Vec<_> = d.edges.iter().filter(|e| e.status != "same" && e.kind == "CALLS").collect();
+    if !calls.is_empty() {
+        println!("  {} {}", bold("call graph"), dim(&format!("({} changed edges)", calls.len())));
+        let name = |id: i64| d.nodes.iter().find(|n| n.id == id).map(|n| n.name.clone()).unwrap_or_default();
+        for e in calls.iter().take(20) {
+            let m = if e.status == "added" { green("+") } else { red("-") };
+            println!("  {m} {} → {}", name(e.src), name(e.dst));
         }
     }
 }

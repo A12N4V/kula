@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { api, colorFor, relTime, type Compare, type Flow, type Meta, type Node } from "../api";
 import { Empty, Icon, Kind, Md, Sym, useToast } from "../ui";
 import { CompareReport } from "./GitViews";
+import type { Go, Target } from "../nav";
 
-type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number };
+type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
 
 async function openByName(name: string, openSymbol: (id: number) => void) {
   const hits = await api.search(name.replace(/^(symbol|file):/, "").split(":").pop() ?? name);
@@ -28,9 +29,9 @@ function Thread({ comments, onSend }: { comments: { author: string; body: string
 }
 
 // ============================================================ Issues
-export function Issues({ version, onChanged, openSymbol }: Nav) {
+export function Issues({ version, onChanged, openSymbol, target }: Nav) {
   const [meta, setMeta] = useState<Meta | null>(null);
-  const [sel, setSel] = useState<number | "new" | null>(null);
+  const [sel, setSel] = useState<number | "new" | null>(target?.issue ?? null);
   const [show, setShow] = useState<"open" | "closed">("open");
   const [form, setForm] = useState({ title: "", body: "", labels: "", anchors: "" });
   const toast = useToast();
@@ -96,9 +97,9 @@ export function Issues({ version, onChanged, openSymbol }: Nav) {
 }
 
 // ============================================================ Proposals (local PRs)
-export function Proposals({ version, onChanged, openSymbol }: Nav) {
+export function Proposals({ version, onChanged, openSymbol, target }: Nav) {
   const [meta, setMeta] = useState<Meta | null>(null);
-  const [sel, setSel] = useState<number | null>(null);
+  const [sel, setSel] = useState<number | null>(target?.proposal ?? null);
   const [cmp, setCmp] = useState<Compare | null>(null);
   const [show, setShow] = useState<"open" | "done">("open");
   const toast = useToast();

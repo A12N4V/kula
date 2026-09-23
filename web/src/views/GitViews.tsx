@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, relTime, type Branch, type Commit, type Compare, type FileStatus } from "../api";
+import type { Go, Target } from "../nav";
 import { Diff, Empty, Icon, ShowOutput, Sym, useToast } from "../ui";
 
-type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number };
+type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
 
 // ============================================================ Changes
 export function Changes({ onChanged, version }: Nav) {
@@ -115,9 +116,9 @@ function computeLanes(commits: Commit[]) {
   });
 }
 
-export function History({ version }: Nav) {
+export function History({ version, target }: Nav) {
   const [commits, setCommits] = useState<Commit[]>([]);
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(target?.sha ?? null);
   const [show, setShow] = useState("");
   const [filter, setFilter] = useState("");
   const toast = useToast();

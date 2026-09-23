@@ -107,6 +107,8 @@ struct Def {
     start_byte: usize,
     end_byte: usize,
     parent_name: Option<String>,
+    /// Hash of the definition's source text, used to detect modified symbols.
+    hash: u64,
 }
 
 #[derive(Debug, Default)]
@@ -137,10 +139,7 @@ fn walk(root: &Path) -> Vec<(String, Option<&'static str>)> {
         .git_ignore(true)
         .filter_entry(|e| {
             let n = e.file_name().to_string_lossy();
-            !matches!(
-                n.as_ref(),
-                ".git" | ".kula" | "node_modules" | "target" | "dist" | "build" | "vendor" | "__pycache__" | ".venv" | "venv"
-            )
+            !SKIP_DIRS.contains(&n.as_ref())
         })
         .build();
     for entry in walker.flatten() {
@@ -161,9 +160,8 @@ fn walk(root: &Path) -> Vec<(String, Option<&'static str>)> {
     out
 }
 
-fn parse_file(root: &Path, rel: &str, lang: &langs::Lang, parser: &mut Parser) -> Option<ParsedFile> {
-    let src = std::fs::read_to_string(root.join(rel)).ok()?;
-    let tree = parser.parse(&src, None)?;
+fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -> Option<ParsedFile> {
+    let tree = parser.parse(src, None)?;
     let bytes = src.as_bytes();
     let mut pf = ParsedFile { path: rel.to_string(), lang: lang.id, loc: src.lines().count() as u32, ..Default::default() };
     let mut seen_defs: HashSet<(usize, usize)> = HashSet::new();
@@ -236,6 +234,7 @@ fn parse_file(root: &Path, rel: &str, lang: &langs::Lang, parser: &mut Parser) -
                         start_byte: def_node.start_byte(),
                         end_byte: def_node.end_byte(),
                         parent_name,
+                        hash: fnv(&bytes[def_node.start_byte()..def_node.end_byte()]),
                     });
                 } else if cname == "call" {
                     if !text.is_empty() {
@@ -364,10 +363,26 @@ fn resolve_import(
     }
 }
 
-pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
-    let t0 = Instant::now();
-    let root = repo.root.clone();
-    let files = walk(&root);
+/// FNV-1a, stable across runs and platforms.
+fn fnv(b: &[u8]) -> u64 {
+    b.iter().fold(0xcbf29ce484222325u64, |h, x| (h ^ *x as u64).wrapping_mul(0x100000001b3))
+}
+
+/// A fully built (not yet stored) knowledge graph.
+pub struct Built {
+    pub nodes: Vec<Node>,
+    pub edges: Vec<Edge>,
+    pub communities: Vec<crate::store::Community>,
+    /// Source hash per node id (0 for files).
+    pub hashes: Vec<u64>,
+    pub files: usize,
+    pub parsed: usize,
+}
+
+pub type Reader<'a> = &'a (dyn Fn(&str) -> Option<String> + Sync);
+
+/// Build a graph from a file list and a content reader (working tree or git objects).
+pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
     let source: Vec<(String, &'static str)> = files.iter().filter_map(|(p, l)| l.map(|l| (p.clone(), l))).collect();
 
     // Parse in parallel.
@@ -377,8 +392,8 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         let handles: Vec<_> = source
             .chunks(chunk)
             .map(|batch| {
-                let root = &root;
                 s.spawn(move || {
+                    let read = read;
                     let mut cache: HashMap<&str, langs::Lang> = HashMap::new();
                     let mut parser = Parser::new();
                     let mut out = Vec::new();
@@ -392,7 +407,8 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
                         if parser.set_language(&lang.language).is_err() {
                             continue;
                         }
-                        if let Some(pf) = parse_file(root, path, lang, &mut parser) {
+                        let Some(src) = read(path) else { continue };
+                        if let Some(pf) = parse_source(path, &src, lang, &mut parser) {
                             out.push(pf);
                         }
                     }
@@ -410,7 +426,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     let lang_of: HashMap<&str, &str> = parsed.iter().map(|p| (p.path.as_str(), p.lang)).collect();
 
     let loc_of: HashMap<&str, u32> = parsed.iter().map(|p| (p.path.as_str(), p.loc)).collect();
-    for (path, _) in &files {
+    for (path, _) in files {
         let id = nodes.len();
         let loc = loc_of.get(path.as_str()).copied().unwrap_or(0);
         nodes.push(Node {
@@ -437,6 +453,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     }
 
     // Symbols per file, with ids.
+    let mut hashes: Vec<u64> = vec![0; nodes.len()];
     let mut sym_ids: Vec<Vec<usize>> = Vec::with_capacity(parsed.len());
     let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
     for pf in &parsed {
@@ -456,6 +473,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
                 community: 0,
             });
             by_name.entry(d.name.clone()).or_default().push(id);
+            hashes.push(d.hash);
             ids.push(id);
         }
         // Owner links (class → method), else file → symbol.
@@ -534,6 +552,15 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
 
     // Communities.
     let communities = crate::graph::detect_communities(&mut nodes, &edges);
+    Built { nodes, edges, communities, hashes, files: files.len(), parsed: parsed.len() }
+}
+
+pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
+    let t0 = Instant::now();
+    let root = repo.root.clone();
+    let files = walk(&root);
+    let read = |p: &str| std::fs::read_to_string(root.join(p)).ok();
+    let Built { nodes, edges, communities, files: nfiles, parsed, .. } = build(&files, &read);
 
     let store = Store::create(repo)?;
     store.write_all(&nodes, &edges, &communities)?;
@@ -544,9 +571,9 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     )?;
 
     let stats = IndexStats {
-        files: files.len(),
-        parsed: parsed.len(),
-        symbols: nodes.len() - files.len(),
+        files: nfiles,
+        parsed,
+        symbols: nodes.len() - nfiles,
         edges: edges.len(),
         communities: communities.len(),
         millis: t0.elapsed().as_millis(),
@@ -556,6 +583,50 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         eprintln!();
     }
     Ok(stats)
+}
+
+const SKIP_DIRS: &[&str] = &[".git", ".kula", "node_modules", "target", "dist", "build", "vendor", "__pycache__", ".venv", "venv"];
+
+/// The working tree's graph, built in memory (not stored).
+pub fn worktree(repo: &Repo) -> Built {
+    let files = walk(&repo.root);
+    let root = repo.root.clone();
+    let read = |p: &str| std::fs::read_to_string(root.join(p)).ok();
+    build(&files, &read)
+}
+
+/// `WORKTREE` (uncommitted state) or any revision.
+pub fn snapshot_any(repo: &Repo, rev: &str) -> Result<Built> {
+    if rev.eq_ignore_ascii_case("worktree") {
+        Ok(worktree(repo))
+    } else {
+        snapshot(repo, rev)
+    }
+}
+
+/// Build the graph of any revision straight from git objects – no checkout.
+pub fn snapshot(repo: &Repo, rev: &str) -> Result<Built> {
+    crate::git::validate_rev(rev)?;
+    let listing = repo.run(&["ls-tree", "-r", "-l", "-z", "--full-tree", rev])?;
+    let mut files: Vec<(String, Option<&'static str>)> = Vec::new();
+    for entry in listing.split('\0').filter(|e| !e.is_empty()) {
+        // "<mode> blob <sha> <size>\t<path>"
+        let Some((meta, path)) = entry.split_once('\t') else { continue };
+        let mut it = meta.split_whitespace();
+        let (_mode, kind, _sha, size) = (it.next(), it.next(), it.next(), it.next());
+        if kind != Some("blob") || size.and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(u64::MAX) > MAX_FILE_BYTES {
+            continue;
+        }
+        if path.split('/').any(|seg| SKIP_DIRS.contains(&seg)) {
+            continue;
+        }
+        files.push((path.to_string(), langs::for_path(path)));
+    }
+    files.sort();
+    let wanted: Vec<&str> = files.iter().filter(|(_, l)| l.is_some()).map(|(p, _)| p.as_str()).collect();
+    let blobs = repo.cat_files(rev, &wanted)?;
+    let read = |p: &str| blobs.get(p).cloned();
+    Ok(build(&files, &read))
 }
 
 impl Node {

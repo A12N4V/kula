@@ -86,6 +86,10 @@ if want e2e; then
     curl -s "${H[@]}" -H 'content-type: application/json' -d '{"target":"symbol:b","body":"note"}' "$U/api/meta/notes/new" | grep -q '"target":"symbol:b"' && ok "POST note" || bad "POST note"
     curl -s "${H[@]}" -H 'content-type: application/json' -d '{"args":["rev-parse","--abbrev-ref","HEAD"]}' "$U/api/git/exec" | grep -q '"stdout":"main' && ok "git console exec" || bad "git console exec"
     curl -s "${H[@]}" -H 'content-type: application/json' -d '{"name":"--upload-pack=x"}' "$U/api/git/checkout" | grep -q 'invalid revision' && ok "rejects option injection" || bad "rejects option injection"
+    git -C "$R" switch -qc feat/e2e && printf 'export function c() { return a(); }\n' >> "$R/src/x.ts" && git -C "$R" commit -qam "add c"
+    curl -s "${H[@]}" "$U/api/graphdiff?base=main&head=feat/e2e" | grep -q '"name":"c","path":"src/x.ts","start_line":3,"status":"added"' && ok "GET /api/graphdiff (branch contrast)" || bad "GET /api/graphdiff"
+    curl -s "${H[@]}" "$U/api/overview" | grep -q '"default_branch":"main"' && ok "GET /api/overview (review queue)" || bad "GET /api/overview"
+    curl -s "${H[@]}" "$U/api/history/$ID" | grep -q '"owners":\[\["e2e"' && ok "GET /api/history (symbol ownership)" || bad "GET /api/history"
   fi
   kill $SRV 2>/dev/null; wait $SRV 2>/dev/null
 fi

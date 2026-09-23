@@ -21,6 +21,8 @@ fn tools() -> Value {
           "inputSchema": s(json!({ "from": { "type": "string" }, "to": { "type": "string" } }), &["from", "to"]) },
         { "name": "compare", "description": "Graph-aware diff between two revisions: changed symbols and what they ripple into.",
           "inputSchema": s(json!({ "base": { "type": "string" }, "head": { "type": "string" } }), &["base"]) },
+        { "name": "graph_diff", "description": "Contrast the knowledge graphs of two revisions (head may be WORKTREE): symbols added/removed/modified and call edges gained/lost.",
+          "inputSchema": s(json!({ "base": { "type": "string" }, "head": { "type": "string" } }), &["base"]) },
         { "name": "flows", "description": "Execution flows reachable from entry points.",
           "inputSchema": s(json!({ "limit": { "type": "integer" } }), &[]) },
         { "name": "notes", "description": "Human notes and annotations attached to the repo, files and symbols.",
@@ -55,6 +57,15 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
         "compare" => {
             let head = a.get("head").and_then(|v| v.as_str()).map(String::from).unwrap_or_else(|| repo.branch());
             json!(graph::compare(repo, st().ok().as_ref(), &str_arg("base"), &head)?)
+        }
+        "graph_diff" => {
+            let head = a.get("head").and_then(|v| v.as_str()).map(String::from).unwrap_or_else(|| repo.branch());
+            let b = crate::index::snapshot_any(repo, &str_arg("base"))?;
+            let h = crate::index::snapshot_any(repo, &head)?;
+            let d = graph::graph_diff(&b, &h, &str_arg("base"), &head, Some(true));
+            // Agents only need what changed.
+            let changed: Vec<_> = d.nodes.iter().filter(|n| n.status != "same").collect();
+            json!({ "summary": d.summary, "changed": changed })
         }
         "flows" => json!(graph::flows(&st()?, int_arg("limit", 10))?),
         "notes" => {
