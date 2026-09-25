@@ -20,8 +20,32 @@ pub struct Lang {
     pub def_kinds: &'static [&'static str],
 }
 
+/// Compile patterns in parallel: each tree-sitter query compile is slow for the
+/// larger grammars (TS/TSX), and they're independent.
 fn compile(language: &Language, patterns: &[&str]) -> Vec<Query> {
-    patterns.iter().filter_map(|p| Query::new(language, p).ok()).collect()
+    // Validate each pattern on its own (one bad pattern must not sink the rest),
+    // then fuse the good ones into a single query: one tree walk per file
+    // instead of one per pattern.
+    let ok: Vec<&str> = std::thread::scope(|s| {
+        let hs: Vec<_> = patterns.iter().map(|p| s.spawn(move || Query::new(language, p).is_ok().then_some(*p))).collect();
+        hs.into_iter().filter_map(|h| h.join().ok().flatten()).collect()
+    });
+    match Query::new(language, &ok.join("\n")) {
+        Ok(q) => vec![q],
+        Err(_) => ok.iter().filter_map(|p| Query::new(language, p).ok()).collect(),
+    }
+}
+
+/// Warm every language a file list needs, concurrently, before parsing starts.
+pub fn warm(ids: impl IntoIterator<Item = &'static str>) {
+    let mut uniq: Vec<&str> = ids.into_iter().collect();
+    uniq.sort_unstable();
+    uniq.dedup();
+    std::thread::scope(|s| {
+        for id in uniq {
+            s.spawn(move || get(id));
+        }
+    });
 }
 
 const RUST: &[&str] = &[
@@ -90,6 +114,15 @@ pub fn for_path(path: &str) -> Option<&'static str> {
         "go" => "go",
         _ => return None,
     })
+}
+
+/// A language's grammar and compiled queries, built once per process and shared
+/// by every parser thread (query compilation dominates small indexes otherwise).
+pub fn get(id: &str) -> Option<&'static Lang> {
+    use std::sync::OnceLock;
+    static CELLS: [OnceLock<Option<Lang>>; 6] = [const { OnceLock::new() }; 6];
+    let i = ["rust", "python", "javascript", "typescript", "tsx", "go"].iter().position(|l| *l == id)?;
+    CELLS[i].get_or_init(|| load(id)).as_ref()
 }
 
 pub fn load(id: &str) -> Option<Lang> {

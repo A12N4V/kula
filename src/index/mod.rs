@@ -426,6 +426,7 @@ pub type Reader<'a> = &'a (dyn Fn(&str) -> Option<String> + Sync);
 pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
     let source: Vec<(String, &'static str)> = files.iter().filter_map(|(p, l)| l.map(|l| (p.clone(), l))).collect();
 
+    langs::warm(source.iter().map(|(_, l)| *l));
     // Parse in parallel.
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(16);
     let chunk = source.len().div_ceil(threads).max(1);
@@ -435,16 +436,10 @@ pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
             .map(|batch| {
                 s.spawn(move || {
                     let read = read;
-                    let mut cache: HashMap<&str, langs::Lang> = HashMap::new();
                     let mut parser = Parser::new();
                     let mut out = Vec::new();
                     for (path, lid) in batch {
-                        if !cache.contains_key(lid) {
-                            if let Some(l) = langs::load(lid) {
-                                cache.insert(lid, l);
-                            }
-                        }
-                        let Some(lang) = cache.get(lid) else { continue };
+                        let Some(lang) = langs::get(lid) else { continue };
                         if parser.set_language(&lang.language).is_err() {
                             continue;
                         }
