@@ -155,7 +155,7 @@ Also included:
 3. **Keyboard first.** Everything is reachable through <kbd>⌘K</kbd>, and every view has a number key.
 4. **Honest status.** The top bar always says whether the graph matches `HEAD`.
 5. **Motion explains cause.** Selecting a symbol dims everything that isn't connected to it, and small dots run along its calls in the direction they go. `prefers-reduced-motion` is respected everywhere.
-6. **Three voices of type.** Homonin's: Cormorant Garamond for titles and figures; JetBrains Mono (ligatures off, so code reads as written) for everything else – labels, paths, code and reading.
+6. **One voice of type.** JetBrains Mono (ligatures off, so code reads as written) for everything: heavy and tight for titles, uppercase and tracked for labels, tabular for figures. It's a tool for developers, so it speaks in their medium.
 7. **Density over decoration.** Every number sits next to what it means: KPIs carry a sub-fact, hotspots show commits and edges, the hover card shows in, out, lines and churn.
 
 ## Commands
