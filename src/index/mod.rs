@@ -7,11 +7,62 @@ use crate::store::{Edge, Node, Store};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Parser, QueryCursor};
 
 const MAX_FILE_BYTES: u64 = 1_000_000;
+
+/// Live progress of the stored index build (`run`), polled by the web UI's loader.
+/// Snapshot and worktree builds for contrast views don't report here.
+pub struct Progress {
+    active: AtomicBool,
+    phase: AtomicU8,
+    done: AtomicUsize,
+    total: AtomicUsize,
+    started_ms: AtomicU64,
+}
+
+pub static PROGRESS: Progress = Progress {
+    active: AtomicBool::new(false),
+    phase: AtomicU8::new(0),
+    done: AtomicUsize::new(0),
+    total: AtomicUsize::new(0),
+    started_ms: AtomicU64::new(0),
+};
+
+const PHASES: [&str; 6] = ["idle", "walk", "parse", "link", "cluster", "write"];
+
+impl Progress {
+    fn phase(&self, p: u8, total: usize) {
+        self.phase.store(p, Relaxed);
+        self.done.store(0, Relaxed);
+        self.total.store(total, Relaxed);
+    }
+
+    pub fn json(&self) -> serde_json::Value {
+        let active = self.active.load(Relaxed);
+        let started = self.started_ms.load(Relaxed);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        serde_json::json!({
+            "active": active,
+            "phase": PHASES[self.phase.load(Relaxed) as usize % PHASES.len()],
+            "done": self.done.load(Relaxed),
+            "total": self.total.load(Relaxed),
+            "elapsed_ms": if active { now.saturating_sub(started) } else { 0 },
+        })
+    }
+}
+
+/// Marks the build finished even if it bails out early.
+struct ProgressGuard;
+impl Drop for ProgressGuard {
+    fn drop(&mut self) {
+        PROGRESS.phase(0, 0);
+        PROGRESS.active.store(false, Relaxed);
+    }
+}
 
 /// Names so generic that a cross-file, name-only match is almost always wrong
 /// (iterator/collection/stdlib methods). Same-file matches are still linked.
@@ -424,8 +475,15 @@ pub type Reader<'a> = &'a (dyn Fn(&str) -> Option<String> + Sync);
 
 /// Build a graph from a file list and a content reader (working tree or git objects).
 pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
+    build_with(files, read, None)
+}
+
+fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: Option<&'static Progress>) -> Built {
     let source: Vec<(String, &'static str)> = files.iter().filter_map(|(p, l)| l.map(|l| (p.clone(), l))).collect();
 
+    if let Some(p) = progress {
+        p.phase(2, source.len());
+    }
     langs::warm(source.iter().map(|(_, l)| *l));
     // Parse in parallel.
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(16);
@@ -447,6 +505,9 @@ pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
                         if let Some(pf) = parse_source(path, &src, lang, &mut parser) {
                             out.push(pf);
                         }
+                        if let Some(p) = progress {
+                            p.done.fetch_add(1, Relaxed);
+                        }
                     }
                     out
                 })
@@ -455,6 +516,9 @@ pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
         handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
     });
 
+    if let Some(p) = progress {
+        p.phase(3, 0);
+    }
     // ---- Build nodes ----------------------------------------------------
     let mut nodes: Vec<Node> = Vec::new();
     let mut edges: Vec<Edge> = Vec::new();
@@ -613,17 +677,28 @@ pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
     }
 
     // Communities.
+    if let Some(p) = progress {
+        p.phase(4, 0);
+    }
     let communities = crate::graph::detect_communities(&mut nodes, &edges);
     Built { nodes, edges, communities, hashes, files: files.len(), parsed: parsed.len() }
 }
 
 pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     let t0 = Instant::now();
+    PROGRESS.active.store(true, Relaxed);
+    PROGRESS.started_ms.store(
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
+        Relaxed,
+    );
+    PROGRESS.phase(1, 0);
+    let _done = ProgressGuard;
     let root = repo.root.clone();
     let files = walk(&root);
     let read = |p: &str| std::fs::read_to_string(root.join(p)).ok();
-    let Built { nodes, edges, communities, files: nfiles, parsed, .. } = build(&files, &read);
+    let Built { nodes, edges, communities, files: nfiles, parsed, .. } = build_with(&files, &read, Some(&PROGRESS));
 
+    PROGRESS.phase(5, 0);
     let store = Store::create(repo)?;
     store.write_all(&nodes, &edges, &communities)?;
     store.set_meta("indexed_head", &repo.head().unwrap_or_default())?;

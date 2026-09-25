@@ -157,6 +157,11 @@ async fn reindex(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(index::run(&s.repo, true)?))).await
 }
 
+/// Where the stored index build is, for the loader's progress bar. Cheap: no store access.
+async fn index_progress() -> Json<Value> {
+    Json(index::PROGRESS.json())
+}
+
 async fn graph_data(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let st = Store::open(&s.repo)?;
@@ -494,6 +499,7 @@ pub fn router(repo: Repo, token: String) -> Router {
     Router::new()
         .route("/api/repo", get(repo_info))
         .route("/api/index", post(reindex))
+        .route("/api/index/progress", get(index_progress))
         .route("/api/graph", get(graph_data))
         .route("/api/search", get(search))
         .route("/api/graphdiff", get(graph_diff))
@@ -520,8 +526,13 @@ pub fn router(repo: Repo, token: String) -> Router {
 /// Keep the graph honest: reindex in the background whenever HEAD moves.
 fn spawn_auto_reindex(repo: Repo) {
     tokio::spawn(async move {
+        // Check straight away (a first run indexes behind the UI's loader), then every 3s.
+        let mut first = true;
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            if !first {
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            }
+            first = false;
             let r = repo.clone();
             let _ = tokio::task::spawn_blocking(move || {
                 let indexed = Store::open(&r).ok().and_then(|s| s.meta("indexed_head"));
