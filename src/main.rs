@@ -1,9 +1,11 @@
 //! kula – git, with a map.
 
+mod config;
 mod git;
 mod graph;
 mod index;
 mod mcp;
+mod project;
 mod meta;
 mod server;
 mod store;
@@ -21,7 +23,7 @@ use term::*;
     version,
     about = "git, with a map – a local-first git client with a knowledge-graph view",
     long_about = "Kula is a superset of git. Any git command works (`kula commit`, `kula rebase -i`…),\nplus a knowledge graph of your code, local issues & proposals, notes, and a web UI.",
-    after_help = "Any command not listed here is passed straight to git.\nExamples:\n  kula index            build the knowledge graph\n  kula view             open the graph + git UI at localhost\n  kula impact parseArgs what breaks if I change parseArgs?\n  kula compare main feat/x   graph-aware branch diff\n  kula commit -am \"fix\"  plain git passthrough"
+    after_help = "Any command not listed here is passed straight to git.\nExamples:\n  kula init             set kula up here: kula.toml, hooks, MCP, CI\n  kula index            build the knowledge graph\n  kula view             open the graph + git UI at localhost\n  kula impact parseArgs what breaks if I change parseArgs?\n  kula compare main feat/x   graph-aware branch diff\n  kula commit -am \"fix\"  plain git passthrough"
 )]
 struct Cli {
     /// Run as if started in this directory.
@@ -36,8 +38,63 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Set kula up in this project: kula.toml, hooks, MCP, CI, first graph (like `npm init`).
+    Init {
+        /// Accept every default without asking.
+        #[arg(short, long)]
+        yes: bool,
+        /// Install git hooks that reindex after commit/checkout/merge.
+        #[arg(long, overrides_with = "no_hooks")]
+        hooks: bool,
+        #[arg(long)]
+        no_hooks: bool,
+        /// Register the MCP server in .mcp.json for AI agents.
+        #[arg(long, overrides_with = "no_agents")]
+        agents: bool,
+        #[arg(long)]
+        no_agents: bool,
+        /// Add a CI check: github | gitlab | none.
+        #[arg(long, value_name = "PROVIDER")]
+        ci: Option<String>,
+        /// Don't build the graph at the end.
+        #[arg(long)]
+        no_index: bool,
+    },
     /// Build or rebuild the knowledge graph (.kula/graph.db).
-    Index,
+    Index {
+        /// Only rebuild when HEAD moved since the last index (what the hooks run).
+        #[arg(long)]
+        if_stale: bool,
+        /// Print nothing.
+        #[arg(short, long)]
+        quiet: bool,
+    },
+    /// External packages: who imports them, and whether manifests declare them.
+    Deps {
+        /// Only packages imported but not declared in any manifest.
+        #[arg(long)]
+        undeclared: bool,
+        /// Only packages declared but never imported by indexed code.
+        #[arg(long)]
+        unused: bool,
+    },
+    /// CI gate: the graph blast radius of HEAD against a base; fails above max_risk.
+    Check {
+        /// Base ref (defaults to kula.toml's default_branch).
+        #[arg(long)]
+        base: Option<String>,
+        /// none | low | medium | high (defaults to kula.toml's check.max_risk).
+        #[arg(long)]
+        max_risk: Option<String>,
+        /// Markdown for a PR comment or job summary.
+        #[arg(long)]
+        md: bool,
+    },
+    /// Git hooks that keep the graph current: install | uninstall | status.
+    Hooks {
+        #[arg(default_value = "status")]
+        action: String,
+    },
     /// Open the web UI (graph, changes, history, branches, issues, notes).
     View {
         #[arg(short, long, default_value_t = 7420)]
@@ -237,14 +294,27 @@ fn run(cli: Cli) -> Result<()> {
     if let Cmd::Doctor = cmd {
         return doctor(&cwd);
     }
+    if let Cmd::Init { yes, hooks, no_hooks, agents, no_agents, ci, no_index } = cmd {
+        let pick = |on: bool, off: bool| if on { Some(true) } else if off { Some(false) } else { None };
+        return project::init(&cwd, project::InitOpts { yes, hooks: pick(hooks, no_hooks), agents: pick(agents, no_agents), ci, index: !no_index });
+    }
     let repo = Repo::discover(&cwd)?;
     let out = |v: &dyn erased::Json| println!("{}", v.to_json());
 
     match cmd {
-        Cmd::Index => {
-            eprint!("{} indexing {} …", accent("◯"), bold(&repo.name()));
-            let s = index::run(&repo, false)?;
-            if json {
+        Cmd::Index { if_stale, quiet } => {
+            if if_stale {
+                let fresh = Store::open(&repo).ok().and_then(|st| st.meta("indexed_head")).map(|h| Some(h) == repo.head()).unwrap_or(false);
+                if fresh {
+                    return Ok(());
+                }
+            }
+            if !quiet {
+                eprint!("{} indexing {} …", accent("◯"), bold(&repo.name()));
+            }
+            let s = index::run(&repo, quiet)?;
+            if quiet {
+            } else if json {
                 out(&s);
             } else {
                 println!(
@@ -257,6 +327,63 @@ fn run(cli: Cli) -> Result<()> {
                     s.communities,
                     dim(&format!("{}ms", s.millis))
                 );
+            }
+        }
+        Cmd::Deps { undeclared, unused } => {
+            let st = open_or_index(&repo)?;
+            let all = project::deps(&repo, &st)?;
+            let list: Vec<&project::Dep> = all
+                .iter()
+                .filter(|d| (!undeclared || (!d.declared && !d.builtin && d.importers > 0)) && (!unused || (d.declared && d.importers == 0)))
+                .collect();
+            if json {
+                out(&list.iter().map(|d| serde_json::to_value(d).unwrap()).collect::<Vec<_>>());
+            } else {
+                header(&format!("{} packages", list.len()));
+                for d in &list {
+                    let state = if d.builtin { dim("builtin") } else if d.declared && d.importers > 0 { green("declared") } else if d.declared { yellow("unused") } else { red("undeclared") };
+                    println!("  {:<34} {:<6} {:>4} {}  {}", bold(&d.name), dim(d.ecosystem), d.importers, dim("files"), state);
+                }
+                let bad = all.iter().filter(|d| !d.declared && !d.builtin && d.importers > 0).count();
+                if bad > 0 && !undeclared {
+                    println!("\n  {} {} imported but not declared – `kula deps --undeclared`", yellow("!"), bad);
+                }
+            }
+        }
+        Cmd::Check { base, max_risk, md } => {
+            let cfg = config::Config::load(&repo.root)?;
+            let base = base.unwrap_or_else(|| project::default_branch(&repo, &cfg));
+            let max = max_risk.unwrap_or(cfg.check.max_risk);
+            let st = Store::open(&repo).ok();
+            let r = project::check(&repo, st.as_ref(), &base, &max)?;
+            if json {
+                out(&serde_json::to_value(&r)?);
+            } else if md {
+                print!("{}", project::check_markdown(&r));
+            } else {
+                header(&format!("check {} {} {}", r.base, dim("…"), r.head));
+                println!("  risk {} {}  ·  {} files · {} symbols touched · {} dependents", risk(&r.risk), dim(&format!("(gate {})", r.max_risk)), r.files, r.touched, r.affected);
+                for (n, p, d) in &r.top {
+                    println!("    {} {}  {}", dim(&"·".repeat(*d)), bold(n), dim(p));
+                }
+                if !r.undeclared.is_empty() {
+                    println!("  {} undeclared: {}", yellow("!"), r.undeclared.join(", "));
+                }
+                println!("\n  {}", if r.pass { green("✓ within the gate") } else { red("✗ above the gate") });
+            }
+            if !r.pass {
+                std::process::exit(2);
+            }
+        }
+        Cmd::Hooks { action } => {
+            match action.as_str() {
+                "install" => println!("{} {} hooks installed", green("✓"), project::hooks_install(&repo)?),
+                "uninstall" | "remove" => println!("{} {} hooks removed", green("✓"), project::hooks_uninstall(&repo)?),
+                _ => {
+                    for (h, on) in project::hooks_status(&repo)? {
+                        println!("  {} {}", if on { green("●") } else { dim("○") }, h);
+                    }
+                }
             }
         }
         Cmd::View { port, no_open } => {
@@ -445,9 +572,18 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Note(nc) => note_cmd(&repo, nc, json)?,
         Cmd::Sync { remote } => print!("{}", meta::sync(&repo, &remote)?),
         Cmd::Mcp => mcp::run(repo)?,
-        Cmd::Doctor | Cmd::Git { .. } | Cmd::External(_) => unreachable!(),
+        Cmd::Doctor | Cmd::Init { .. } | Cmd::Git { .. } | Cmd::External(_) => unreachable!(),
     }
     Ok(())
+}
+
+/// The store, building the graph first if this repo has none yet.
+fn open_or_index(repo: &Repo) -> Result<Store> {
+    if !Store::path(repo).exists() {
+        eprint!("{} first run – indexing …", accent("◯"));
+        index::run(repo, false)?;
+    }
+    Store::open(repo)
 }
 
 fn print_compare(c: &graph::Compare) {

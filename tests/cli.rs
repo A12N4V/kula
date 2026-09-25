@@ -234,3 +234,84 @@ fn graph_diff_between_branches_and_worktree() {
     assert!(w["nodes"].to_string().contains("brandNew"));
     assert_eq!(w["summary"]["added"], 1);
 }
+
+#[test]
+fn init_sets_up_a_project_idempotently() {
+    let t = tempfile::tempdir().unwrap();
+    let d = t.path();
+    write(d, "src/app.ts", "import React from \"react\";\nimport { z } from \"zod\";\nexport function App() { return React; }\n");
+    write(d, "package.json", "{\"dependencies\":{\"react\":\"19\",\"left-pad\":\"1\"}}");
+    // Not a repo yet: init makes one, like `npm init` makes package.json.
+    kula(d, &["init", "-y", "--hooks", "--agents", "--ci", "github"]);
+    assert!(d.join(".git").exists());
+    let toml = std::fs::read_to_string(d.join("kula.toml")).unwrap();
+    assert!(toml.contains("[check]") && toml.contains("max_risk"), "{toml}");
+    let mcp: Value = serde_json::from_str(&std::fs::read_to_string(d.join(".mcp.json")).unwrap()).unwrap();
+    assert_eq!(mcp["mcpServers"]["kula"]["args"][0], "mcp");
+    assert!(d.join(".github/workflows/kula.yml").exists());
+    assert!(d.join(".kula/graph.db").exists(), "init builds the first graph");
+    let hook = std::fs::read_to_string(d.join(".git/hooks/post-commit")).unwrap();
+    assert!(hook.contains("kula index --if-stale"));
+
+    // Idempotent: a second run changes nothing and keeps one hook block.
+    std::fs::write(d.join("kula.toml"), "[check]\nmax_risk = \"high\"\n").unwrap();
+    kula(d, &["init", "-y", "--hooks", "--no-agents", "--ci", "none", "--no-index"]);
+    assert_eq!(std::fs::read_to_string(d.join("kula.toml")).unwrap(), "[check]\nmax_risk = \"high\"\n");
+    assert_eq!(std::fs::read_to_string(d.join(".git/hooks/post-commit")).unwrap().matches(">>> kula").count(), 1);
+
+    // hooks uninstall leaves no trace in hooks it created.
+    kula(d, &["hooks", "uninstall"]);
+    assert!(!d.join(".git/hooks/post-commit").exists());
+}
+
+#[test]
+fn deps_reports_imported_declared_and_undeclared() {
+    let t = tempfile::tempdir().unwrap();
+    let d = t.path();
+    git(d, &["init", "-q", "-b", "main"]);
+    write(d, "src/app.ts", "import React from \"react\";\nimport { z } from \"zod\";\nimport fs from \"node:fs\";\nimport { a } from \"./a\";\nexport function App() { return [React, z, fs, a]; }\n");
+    write(d, "src/a.ts", "export const a = 1;\n");
+    write(d, "package.json", "{\"dependencies\":{\"react\":\"19\",\"left-pad\":\"1\"}}");
+    kula(d, &["index"]);
+    let deps = kula_json(d, &["deps"]);
+    let get = |n: &str| deps.as_array().unwrap().iter().find(|x| x["name"] == n).cloned().unwrap_or(Value::Null);
+    assert_eq!(get("react")["declared"], true);
+    assert_eq!(get("react")["importers"], 1);
+    assert_eq!(get("zod")["declared"], false);
+    assert_eq!(get("node:fs")["builtin"], true);
+    assert_eq!(get("left-pad")["importers"], 0);
+    assert!(get("./a").is_null(), "relative imports are not packages");
+    let und = kula_json(d, &["deps", "--undeclared"]);
+    assert_eq!(und.as_array().unwrap().len(), 1);
+    assert_eq!(und[0]["name"], "zod");
+}
+
+#[test]
+fn check_gates_on_risk_and_speaks_markdown() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+    git(d, &["checkout", "-qb", "feat"]);
+    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return salt(t) + t + \"!\"; }\nfunction salt(t: string) { return t.slice(0, 3); }\n");
+    git(d, &["commit", "-qam", "tweak"]);
+    let r = kula_json(d, &["check", "--base", "main", "--max-risk", "high"]);
+    assert_eq!(r["pass"], true);
+    assert!(r["touched"].as_u64().unwrap() >= 1);
+    let md = kula(d, &["check", "--base", "main", "--max-risk", "high", "--md"]);
+    assert!(md.starts_with("### kula check"), "{md}");
+    // A gate of "none" fails any change, with exit code 2.
+    let out = Command::new(KULA).arg("-C").arg(d).args(["check", "--base", "main", "--max-risk", "none"]).env("NO_COLOR", "1").output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+}
+
+#[test]
+fn index_if_stale_skips_when_current() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index", "--quiet"]);
+    let db = d.join(".kula/graph.db");
+    let m1 = std::fs::metadata(&db).unwrap().modified().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    assert_eq!(kula(d, &["index", "--if-stale", "--quiet"]), "");
+    assert_eq!(std::fs::metadata(&db).unwrap().modified().unwrap(), m1, "no rebuild when HEAD is unchanged");
+}
