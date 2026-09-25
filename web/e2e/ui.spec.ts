@@ -27,12 +27,31 @@ test.describe("shell", () => {
     await expect(bar.getByRole("button", { name: "Settings" })).toBeVisible();
   });
 
-  test("mark is the dithered graph-sphere, drawn on the pixel grid", async ({ page }) => {
+  test("mark is the kula ring drawn with kula rings, everywhere", async ({ page, request }) => {
     await open(page);
     const mark = page.locator(".brand svg.logo");
     await expect(mark).toHaveAttribute("shape-rendering", "crispEdges");
-    const d = await mark.locator("path").getAttribute("d");
-    expect(d?.match(/M\d+ \d+h1v1h-1z/g)?.length ?? 0).toBeGreaterThan(150);
+    // One level in the top bar (a 7×7 ring and its centre: 17 cells)…
+    expect((await mark.locator("path").getAttribute("d"))?.match(/M\d+ \d+h1v1h-1z/g)?.length).toBe(17);
+    // …two levels in the tab icon: every cell is the ring again (17 × 17).
+    const fav = await (await request.get("/favicon.svg")).text();
+    expect(fav.match(/M\d+ \d+h1v1h-1z/g)?.length).toBe(17 * 17);
+    expect(await page.locator("link[rel=icon]").getAttribute("href")).toBe("/favicon.svg");
+  });
+
+  test("simple icons: one round-capped stroke, and settings is a gear", async ({ page }) => {
+    await open(page);
+    for (const svg of await page.locator(".rail button svg").all()) {
+      expect(await svg.getAttribute("stroke-linecap")).toBe("round");
+      expect(await svg.getAttribute("stroke-width")).toBe("1.5");
+    }
+    const gear = page.locator(".topbar").getByRole("button", { name: "Settings" }).locator("svg");
+    await expect(gear.locator("circle")).toHaveCount(1);
+    expect(((await gear.locator("path").getAttribute("d")) ?? "").split("L").length).toBeGreaterThan(30); // eight teeth
+    // No icon balloons to its container: every icon in the chrome stays at text size.
+    const big = await page.evaluate(() => [...document.querySelectorAll(".topbar svg, .rail svg, .statusbar svg, .btn svg, .chip svg")]
+      .filter((el) => el.getBoundingClientRect().height > 26).length);
+    expect(big).toBe(0);
   });
 
   test("⌘K opens the palette and it can reindex", async ({ page }) => {
@@ -98,15 +117,19 @@ test.describe("graph", () => {
 });
 
 test.describe("overview + code panel", () => {
-  test("the orrery plate draws the repository and its planets", async ({ page }) => {
+  test("coupling: one functional figure – directories × directories, loops marked", async ({ page }) => {
     await open(page);
-    await expect(page.locator(".orrery svg")).toBeVisible();
-    await expect(page.locator(".orr-planet").first()).toBeVisible();
-    const a = await page.locator(".orr-planet").first().getAttribute("transform");
-    await page.waitForTimeout(600);
-    expect(await page.locator(".orr-planet").first().getAttribute("transform")).not.toBe(a); // it turns
-    await page.waitForTimeout(600);
-    await page.screenshot({ path: "test-results/overview.png" });
+    const c = page.locator(".coupling");
+    await expect(c.locator(".cpl-row").first()).toBeVisible();
+    const k = await c.locator(".cpl-row").count();
+    await expect(c.locator(".cpl-cell")).toHaveCount(k * k);
+    await expect(c.locator(".cpl-loops")).toHaveText(/\d+ loops?/);
+    await c.locator(".cpl-cell").nth(1).hover();
+    await expect(c.locator(".cpl-read")).toContainText("→");
+    // No decorative motion on the dashboard: nothing on it animates forever.
+    const infinite = await page.evaluate(() => document.getAnimations().filter((a) => (a.effect?.getTiming().iterations ?? 1) === Infinity && (a.effect as KeyframeEffect)?.target?.closest?.(".overview")).length);
+    expect(infinite).toBe(0);
+    await page.screenshot({ path: "test-results/overview.png", fullPage: true });
   });
 
   test("a hotspot opens its file in the code panel", async ({ page }) => {
@@ -144,17 +167,39 @@ test.describe("graph chrome", () => {
     await expect(page.getByRole("button", { name: /settings/i })).toHaveCount(1);
   });
 
-  test("the mark assembles, centred, while the graph loads", async ({ page }) => {
+  test("while the graph loads it is blocked by the recursive mark and a progress bar", async ({ page }) => {
+    await page.route("**/api/graph*", async (r) => { await new Promise((f) => setTimeout(f, 1500)); await r.continue(); });
+    await open(page, "graph");
+    const gl = page.locator(".graph-loader");
+    await expect(gl).toBeVisible();
+    // It covers the whole graph area, opaque, and takes the pointer.
+    const [box, wrap] = await Promise.all([gl.boundingBox(), page.locator(".graph-wrap").boundingBox()]);
+    expect(box).toEqual(wrap);
+    expect(await gl.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(5, 5, 5)");
+    // The ASCII field animates: the zoom falls into the centre, frame after frame.
+    const ascii = gl.locator(".ascii-mark");
+    await expect.poll(() => ascii.evaluate((el) => el.textContent?.trim().length ?? 0)).toBeGreaterThan(100);
+    const frames = new Set<string>();
+    for (let i = 0; i < 8; i++) { frames.add(await ascii.evaluate((el) => el.textContent ?? "")); await page.waitForTimeout(250); }
+    expect(frames.size).toBeGreaterThan(2);
+    // Progress is a real number that only moves forward.
+    const bar = page.getByRole("progressbar", { name: "Loading the graph" });
+    const a = Number(await bar.getAttribute("aria-valuenow"));
+    await page.screenshot({ path: "test-results/graph-loading.png" });
+    await expect.poll(async () => Number(await bar.getAttribute("aria-valuenow") ?? 100), { timeout: 10_000 }).toBeGreaterThan(a);
+    await expect(gl).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.locator(".graph-wrap canvas").first()).toBeVisible();
+  });
+
+  test("under reduced motion the loader holds still", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.route("**/api/graph*", async (r) => { await new Promise((f) => setTimeout(f, 1200)); await r.continue(); });
     await open(page, "graph");
-    const ll = page.locator(".logo-loader");
-    await expect(ll).toBeVisible();
-    const [box, wrap] = await Promise.all([ll.locator(".ll-mark").boundingBox(), page.locator(".main").boundingBox()]);
-    expect(Math.abs(box!.x + box!.width / 2 - (wrap!.x + wrap!.width / 2))).toBeLessThan(4);
-    expect(Math.abs(box!.y + box!.height / 2 - (wrap!.y + wrap!.height / 2))).toBeLessThan(30);
-    await page.waitForTimeout(700);
-    await page.screenshot({ path: "test-results/graph-loading.png" });
-    await expect(ll).toHaveCount(0, { timeout: 15_000 });
+    const ascii = page.locator(".graph-loader .ascii-mark");
+    await expect.poll(() => ascii.evaluate((el) => el.textContent?.trim().length ?? 0)).toBeGreaterThan(100);
+    const a = await ascii.evaluate((el) => el.textContent);
+    await page.waitForTimeout(500);
+    expect(await ascii.evaluate((el) => el.textContent)).toBe(a);
   });
 });
 
@@ -173,8 +218,64 @@ test.describe("api", () => {
   });
 });
 
-test("@mobile overview fits a phone without sideways scroll", async ({ page }) => {
-  await open(page);
-  const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  expect(over).toBeLessThanOrEqual(0);
+test.describe("animation", () => {
+  test("the opening plays once and any key dismisses it", async ({ page }) => {
+    await page.addInitScript(() => { try { localStorage.setItem("kula.settings.v1", JSON.stringify({ opening: true })); } catch { /* */ } });
+    await page.goto("/#overview");
+    const op = page.locator(".opening");
+    await expect(op).toBeVisible();
+    await expect(op.locator(".op-facts > div").first()).toBeVisible({ timeout: 3000 });
+    await page.keyboard.press("Space");
+    await expect(op).toHaveCount(0, { timeout: 3000 });
+    await page.reload();
+    await expect(page.locator(".ov-title h1")).toBeVisible();
+    await expect(op).toHaveCount(0); // once per session
+  });
+
+  test("panels resize by their edge and remember it", async ({ page }) => {
+    await open(page, "history");
+    const list = page.locator(".split > .list");
+    const grip = page.locator(".split > .grip");
+    const w0 = (await list.boundingBox())!.width;
+    const g = (await grip.boundingBox())!;
+    await page.mouse.move(g.x + g.width / 2, g.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(g.x + g.width / 2 + 120, g.y + 200, { steps: 6 });
+    await page.mouse.up();
+    expect((await list.boundingBox())!.width).toBeGreaterThan(w0 + 100);
+    await page.reload();
+    expect((await list.boundingBox())!.width).toBeGreaterThan(w0 + 100);
+    await grip.dblclick();
+    expect(Math.abs((await list.boundingBox())!.width - w0)).toBeLessThan(2);
+  });
+
+  test("settings slides in and Escape closes it", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press(",");
+    const s = page.getByRole("dialog", { name: "Settings" });
+    await expect(s).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(s).toHaveCount(0);
+  });
 });
+
+// Every view at every size: nothing scrolls sideways and the view's own content shows.
+const VIEWS: [string, string][] = [
+  ["overview", ".ov-title h1"], ["graph", ".graph-wrap"], ["changes", ".list-head"], ["history", ".list-head"],
+  ["branches", ".list-head"], ["issues", ".list-head"], ["notes", ".list-head"], ["console", ".console"],
+];
+for (const [view, sel] of VIEWS) {
+  test(`@responsive ${view} fits without sideways scroll`, async ({ page }, info) => {
+    await open(page, view);
+    await expect(page.locator(sel).first()).toBeVisible();
+    if (view === "graph") await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 15_000 });
+    await page.waitForTimeout(300);
+    const over = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
+    expect(over).toBeLessThanOrEqual(0);
+    // Nothing important is pushed off the right edge.
+    const clipped = await page.evaluate(() => [...document.querySelectorAll(".topbar button, .rail button, .kpi-cell, .card-head h2, .list-head h2, .hud button, .zoom button")]
+      .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > window.innerWidth + 1; }).map((el) => el.textContent?.trim().slice(0, 30)));
+    expect(clipped).toEqual([]);
+    await page.screenshot({ path: `test-results/${info.project.name}-${view}.png` });
+  });
+}

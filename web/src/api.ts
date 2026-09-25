@@ -75,9 +75,13 @@ export interface Overview {
   proposals: { proposal: Proposal; risk: string; touched?: number; affected?: number; ahead?: number; behind?: number; files?: number }[];
 }
 
+/** The stored index build, as the server reports it while it runs. */
+export interface IndexProgress { active: boolean; phase: "idle" | "walk" | "parse" | "link" | "cluster" | "write"; done: number; total: number; elapsed_ms: number }
+
 export const api = {
   repo: () => get<RepoInfo>("/api/repo"),
   reindex: () => post("/api/index"),
+  progress: () => get<IndexProgress>("/api/index/progress"),
   graph: (level = "symbol") => get<GraphData>(`/api/graph?${q({ level })}`),
   search: (s: string) => get<Node[]>(`/api/search?${q({ q: s })}`),
   symbol: (id: number) => get<Context>(`/api/symbol/${id}`),

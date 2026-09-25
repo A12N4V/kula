@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, relTime, type Overview as O, type RepoInfo } from "../api";
-import { Empty, Icon, Logo } from "../ui";
+import { Empty, Icon } from "../ui";
 import type { Go } from "../nav";
-import Orrery from "../Orrery";
+import Coupling from "../Coupling";
 import { useCode } from "../CodePanel";
+import AsciiMark from "../AsciiMark";
 
 type Props = { repo: RepoInfo | null; version: number; go: Go };
 
@@ -19,7 +20,7 @@ export default function Overview({ repo, version, go }: Props) {
   useEffect(() => { api.overview().then(setO).catch((e) => setErr(e.message)); }, [version]);
 
   if (err) return <Empty title="Overview unavailable">{err}</Empty>;
-  if (!o) return <div className="loading"><div className="stack" style={{ alignItems: "center" }}><Logo spin /><span>Gathering the review queue…</span></div></div>;
+  if (!o) return <div className="loading"><div className="mini-loader"><div className="ml-field"><AsciiMark period={3.2} /></div><span>Gathering the review queue…</span></div></div>;
 
   const maxScore = Math.max(1, ...o.hotspots.map((h) => h.score));
   const maxAB = Math.max(1, ...o.branches.map((b) => Math.max(b.ahead, b.behind)));
@@ -39,11 +40,10 @@ export default function Overview({ repo, version, go }: Props) {
         </div>
         <div className="row" style={{ gap: 8 }}>
           <button className="btn" onClick={() => go("graph")}><Icon.graph /> Open map</button>
-          <button className="btn primary" onClick={() => go("graph", { contrast: { base: o.default_branch, head: repo?.branch === o.default_branch ? "WORKTREE" : repo?.branch ?? "WORKTREE" } })}><Icon.compare /> Contrast with {o.default_branch}</button>
+          <button className="btn primary" onClick={() => go("graph", { contrast: { base: o.default_branch, head: repo?.branch === o.default_branch ? "WORKTREE" : repo?.branch ?? "WORKTREE" } })}><Icon.compare /> {repo?.branch === o.default_branch ? "Contrast HEAD with working tree" : `Contrast with ${o.default_branch}`}</button>
         </div>
       </header>
 
-      <Orrery o={o} name={repo?.name ?? ""} onDir={(d) => go("graph", { search: d })} onHot={(p) => code.open({ path: p })} />
 
       <section className="kpi-strip">
         {([
@@ -61,6 +61,8 @@ export default function Overview({ repo, version, go }: Props) {
           </button>
         ))}
       </section>
+
+      <Coupling onDir={(d) => go("graph", { search: d })} />
 
       <div className="ov-grid">
         <div className="ov-col">

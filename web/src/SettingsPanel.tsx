@@ -52,7 +52,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       <aside className="settings" role="dialog" aria-label="Settings" onMouseDown={(e) => e.stopPropagation()}>
         <Grip id="settings" edge="left" min={300} max={720} label="Resize settings" />
         <header>
-          <Icon.sliders />
+          <Icon.gear />
           <h2>Settings</h2>
           <span className="spacer" />
           <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>

@@ -6,7 +6,7 @@ import noverlap from "graphology-layout-noverlap";
 import { api, type Compare as CompareT, type DiffNode, type DiffStatus, type GraphDiff } from "../api";
 import { CompareReport } from "./GitViews";
 import type { ContrastMode } from "../nav";
-import { Empty, Icon, Kind, Logo, useToast } from "../ui";
+import { Empty, Icon, Kind, useToast } from "../ui";
 import EdgeCurveProgram from "@sigma/edge-curve";
 import { EdgeRectangleProgram } from "sigma/rendering";
 import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../graphfx";
@@ -14,6 +14,7 @@ import { groupDirs } from "../colors";
 import { useSettings } from "../settings";
 import { CURVATURE, cssVar, withAlpha } from "./GraphView";
 import { Grip } from "../resize";
+import AsciiMark from "../AsciiMark";
 
 type Props = {
   base: string;
@@ -281,7 +282,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
           </div>
         </div>
       )}
-      {!diff && !err && <div className="loading"><div className="stack" style={{ alignItems: "center" }}><Logo spin /><span>Building both graphs from git…</span></div></div>}
+      {!diff && !err && <div className="loading"><div className="mini-loader"><div className="ml-field"><AsciiMark period={3.2} /></div><span>Building both graphs from git…</span></div></div>}
       {err && <div className="loading"><Empty title="Couldn't contrast these revisions">{err}</Empty></div>}
 
       <div className="graph-overlay hud contrast-hud">
@@ -306,7 +307,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
             <button className={!showSame ? "on" : ""} onClick={() => setShowSame(false)}>Changes only</button>
           </div>
         )}
-        <button className="btn sm hud-btn icon-only" onClick={openSettings} title="Graph settings  ," aria-label="Graph settings"><Icon.sliders /></button>
+        <button className="btn sm hud-btn icon-only" onClick={openSettings} title="Graph settings  ," aria-label="Graph settings"><Icon.gear /></button>
       </div>
 
       <aside className="contrast-panel">

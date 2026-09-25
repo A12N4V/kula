@@ -31,7 +31,7 @@
 
 In the Trobriand Islands, the **kula ring** is a circuit of gifts. Shell necklaces travel one way around the islands and armbands travel the other. Nobody keeps them. Their value is the history of hands they have passed through. A commit works the same way: a sign whose meaning is its lineage. In Peirce's terms the code is the *sign*, the graph is its *object*, and your notes are the *interpretant*. Kula puts all three in one place, with the map drawn before you touch the code.
 
-<img src="docs/assets/logo.svg" width="44" align="right" alt="">The mark is a **K drawn inside the kula ring**. Every stroke lies on the hexagon's own geometry: the stem is a chord, the arms are two of its radii, and the junction is the centre node. The letter is literally a subgraph of the circuit.
+<img src="docs/assets/logo.svg" width="44" align="right" alt="">The mark is **the kula ring drawn with kula rings**: a 7×7 ring around a centre node, where every lit cell is the whole mark again. The centre is a fixed point that holds a complete copy of the ring, so the loader can zoom into it forever and land on the frame it started from – the circuit, read at any scale, is made of circuits. `scripts/logo.mjs` renders the tab icon and these assets from the same seven rows the app uses.
 
 ## Where Kula fits
 

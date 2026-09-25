@@ -10,7 +10,9 @@ import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../gr
 import { api, colorFor, relTime, type Context, type GraphData, type Impact, type Node, type SymbolHistory } from "../api";
 import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLYPH, makeColorer } from "../colors";
 import { knownDirs, settings, useSettings, type Settings } from "../settings";
-import { Empty, Icon, Kind, Logo, LogoLoader, Md, Sym, useToast } from "../ui";
+import { Empty, Icon, Kind, Logo, Md, Sym, useToast } from "../ui";
+import { GraphLoader, type LoadStep } from "../AsciiMark";
+import type { IndexProgress } from "../api";
 import Contrast from "./Contrast";
 import type { ContrastMode, Go } from "../nav";
 import { Grip } from "../resize";
@@ -111,10 +113,50 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go }: Props
   const state = useRef({ hover: null as string | null, focus: null as number | null, filter: null as Filter, impact: null as Map<string, number> | null, neigh: new Set<string>() });
 
   useEffect(() => {
+    let dead = false;
     setData(null);
     setErr(null);
-    api.graph(level).then(setData).catch((e) => setErr(String(e.message ?? e)));
+    // A first run indexes behind the loader: while the server is building, keep waiting instead of failing.
+    const load = (tries: number) => api.graph(level).then((d) => { if (!dead) { setData(d); setSettling(true); } }).catch(async (e) => {
+      const p = await api.progress().catch(() => null);
+      if (dead) return;
+      if (tries < 600 && (p?.active || tries < 4)) window.setTimeout(() => load(tries + 1), p?.active ? 200 : 600);
+      else setErr(String(e.message ?? e));
+    });
+    load(0);
+    return () => { dead = true; };
   }, [level, version]);
+
+  // Honest progress while the view is blocked: the server's index phases (when it is building), then fetch and layout.
+  const [prog, setProg] = useState<IndexProgress | null>(null);
+  const [sawIndex, setSawIndex] = useState(false);
+  const settle = useRef({ t0: 0, ms: 1 });
+  useEffect(() => {
+    if (!busy) return;
+    setSawIndex(false);
+    let on = true;
+    const tick = () => api.progress().then((p) => { if (!on) return; setProg(p); if (p.active) setSawIndex(true); }).catch(() => {});
+    tick();
+    const t = window.setInterval(tick, 150);
+    return () => { on = false; clearInterval(t); };
+  }, [busy]);
+  const steps: LoadStep[] = [
+    ...(sawIndex ? [
+      { id: "walk", label: "Walk", weight: 0.4 },
+      { id: "parse", label: "Parse", weight: 3 },
+      { id: "link", label: "Link", weight: 0.8 },
+      { id: "cluster", label: "Cluster", weight: 0.5 },
+      { id: "write", label: "Store", weight: 0.4 },
+    ] : []),
+    { id: "fetch", label: "Read graph", weight: 0.8 },
+    { id: "layout", label: "Lay out", weight: 2.4 },
+  ];
+  const stepAt = (id: string) => Math.max(0, steps.findIndex((x) => x.id === id));
+  const [load, loadFrac, loadDetail] = prog?.active
+    ? [stepAt(prog.phase), prog.phase === "parse" && prog.total ? prog.done / prog.total : 0.5,
+       prog.phase === "parse" ? `${prog.done.toLocaleString()} / ${prog.total.toLocaleString()} files` : undefined]
+    : !data ? [stepAt("fetch"), 0.5, undefined]
+    : [stepAt("layout"), settling ? (performance.now() - settle.current.t0) / settle.current.ms : 1, `${data.nodes.length.toLocaleString()} nodes · ${data.edges.length.toLocaleString()} edges`];
 
   const churn = data?.churn ?? {};
   // Territories and colours follow the chosen depth; the layout always uses the automatic one.
@@ -288,14 +330,17 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go }: Props
     if (!reduced && graph.order > 2) {
       worker = new FA2Layout(graph, { settings: layoutSettings(graph) });
       worker.start();
+      const settleMs = Math.min(4500, 1400 + graph.order * 4);
+      settle.current = { t0: performance.now(), ms: settleMs };
       setSettling(true);
       timer = window.setTimeout(() => {
         worker?.stop();
         noverlap.assign(graph, { maxIterations: 40, settings: { margin: 3, ratio: 1.15 } });
         placePackages(graph);
         setSettling(false);
-      }, Math.min(4500, 1400 + graph.order * 4));
+      }, settleMs);
     } else {
+      setSettling(false);
       forceAtlas2.assign(graph, { iterations: 200, settings: layoutSettings(graph) });
       noverlap.assign(graph, { maxIterations: 40, settings: { margin: 3, ratio: 1.15 } });
       placePackages(graph);
@@ -370,7 +415,7 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go }: Props
   return (
     <div className={`graph-wrap ${focus != null ? "inspecting" : ""}`}>
       <div ref={box} className="graph-canvas" />
-      {loaderOn && <LogoLoader label={data ? "Settling the layout" : "Reading the graph"} leaving={!busy} />}
+      {loaderOn && <GraphLoader steps={steps} at={busy ? load : steps.length} frac={busy ? loadFrac : 1} detail={busy ? loadDetail : undefined} leaving={!busy} />}
       {err && <div className="loading"><Empty title={err.includes("WebGL") ? "Graph unavailable" : "No graph yet"}>{err}{!err.includes("WebGL") && <div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => api.reindex().then(onChanged)}>Build graph</button></div>}</Empty></div>}
 
       <div className="graph-overlay hud">

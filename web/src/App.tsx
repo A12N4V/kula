@@ -151,7 +151,7 @@ export default function App() {
         <span className="spacer" />
         <div className="search-trigger" onClick={() => setPalette(true)} role="button" aria-label="Search"><Icon.search /> <span className="st-label">Search symbols, issues, branches, commands…</span> <kbd>⌘K</kbd></div>
         <span className="spacer" />
-        <button className="btn sm ghost" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.sliders /></button>
+        <button className="btn sm ghost" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.gear /></button>
       </header>
 
       <nav className="rail" aria-label="Views">
