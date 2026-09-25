@@ -78,12 +78,15 @@ export interface Overview {
 /** The stored index build, as the server reports it while it runs. */
 export interface IndexProgress { active: boolean; phase: "idle" | "walk" | "parse" | "link" | "cluster" | "write"; done: number; total: number; elapsed_ms: number }
 
+/** A located symbol in an agent answer (src/agent.rs Ref). */
+export interface AgentRef { name: string; path: string; line: number; detail?: string }
 /** Before editing a symbol (src/agent.rs pre_edit). */
-export interface PreEdit { symbol: Node; risk: string; dependents: number; files: number; direct_callers: string[]; tests: string[]; co_changes: [string, number][]; notes: string[]; advice: string[] }
+export interface PreEdit { symbol: Node; risk: string; dependents: number; files: number; direct_callers: string[]; tests: string[]; co_changes: [string, number][]; notes: string[]; advice: string[]; direct_caller_refs: AgentRef[]; test_refs: AgentRef[] }
 /** The working tree's graph against HEAD (src/agent.rs verify_edit). */
 export interface Verify {
   summary: { added: number; removed: number; modified: number; same: number; edges_added: number; edges_removed: number; files_touched: number };
   changed: string[]; dangling: string[]; recheck: string[]; ok: boolean;
+  changed_refs: AgentRef[]; dangling_refs: AgentRef[]; recheck_refs: AgentRef[];
 }
 
 export const api = {

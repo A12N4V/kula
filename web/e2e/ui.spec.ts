@@ -214,13 +214,16 @@ test.describe("agent checks, for people", () => {
     await expect(ac.locator(".risk")).toHaveText(/low|medium|high/);
     await expect(ac.locator(".ac-advice li").first()).toBeVisible();
     await expect(ac).not.toContainText("verify_edit"); // advice is phrased for people here
+    // Rows come from structured refs: every one names a real path.
+    for (const p of await ac.locator(".ac-ref .p").allTextContents()) expect(p).toMatch(/^[\w./-]+(:\d+)?$/);
   });
 
   test("verify reads the working tree against HEAD", async ({ request }) => {
     const v = await (await request.get("/api/agent/verify", { headers: { "x-kula-token": "test" } })).json();
     expect(typeof v.ok).toBe("boolean");
     expect(v.summary).toHaveProperty("modified");
-    expect(Array.isArray(v.dangling)).toBe(true);
+    for (const k of ["changed_refs", "dangling_refs", "recheck_refs"]) expect(Array.isArray(v[k]), k).toBe(true);
+    for (const r of v.changed_refs) expect(r).toMatchObject({ name: expect.any(String), path: expect.any(String), line: expect.any(Number) });
   });
 });
 
