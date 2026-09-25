@@ -28,6 +28,12 @@ fn tools() -> Value {
         { "name": "notes", "description": "Human notes and annotations attached to the repo, files and symbols.",
           "inputSchema": s(json!({ "target": { "type": "string" } }), &[]) },
         { "name": "issues", "description": "Local issues and proposals tracked in git.",
+          "inputSchema": s(json!({}), &[]) },
+        { "name": "context_pack", "description": "The code you need for a task, not whole files: give symbols, files or a plain-language question; get their definitions plus what they use, who uses them, containers and tests, ranked by graph distance and fitted to a token budget (big bodies shrink to signatures). Use it before reading files.",
+          "inputSchema": s(json!({ "targets": { "type": "array", "items": { "type": "string" }, "description": "symbol names, path:name, file paths, or a question" }, "budget": { "type": "integer", "description": "token budget (default 6000)" } }), &["targets"]) },
+        { "name": "pre_edit", "description": "Call before changing a symbol: direct callers, total dependents and risk, the tests that reach it through the call graph, files that historically change with it, human notes, and concrete advice.",
+          "inputSchema": s(json!({ "symbol": { "type": "string" } }), &["symbol"]) },
+        { "name": "verify_edit", "description": "Call after editing: the working tree against HEAD through the graph – symbols added/removed/modified, callers left pointing at removed code (dangling), and callers of modified symbols in other files to re-check. ok=false means something is broken.",
           "inputSchema": s(json!({}), &[]) }
     ])
 }
@@ -77,6 +83,12 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             let m = crate::meta::load(repo)?;
             json!({ "issues": m.issues, "proposals": m.proposals })
         }
+        "context_pack" => {
+            let targets: Vec<String> = a.get("targets").and_then(|v| v.as_array()).map(|v| v.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+            json!(crate::agent::context_pack(repo, &st()?, &targets, int_arg("budget", 6000))?)
+        }
+        "pre_edit" => json!(crate::agent::pre_edit(repo, &st()?, &str_arg("symbol"))?),
+        "verify_edit" => json!(crate::agent::verify_edit(repo)?),
         _ => anyhow::bail!("unknown tool {name}"),
     })
 }

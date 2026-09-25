@@ -328,3 +328,76 @@ fn kula_toml_excludes_and_size_limit_shape_the_graph() {
     assert!(!q("huge"), "files over max_file_kb are skipped");
     assert!(q("hashToken"), "everything else is indexed");
 }
+
+#[test]
+fn agent_context_pack_fits_the_budget_and_ranks_by_graph() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+    let p = kula_json(d, &["pack", "hashToken", "--budget", "4000"]);
+    let items = p["items"].as_array().unwrap();
+    assert_eq!(items[0]["name"], "hashToken");
+    assert_eq!(items[0]["why"], "seed");
+    let whys: Vec<(&str, &str)> = items.iter().map(|i| (i["name"].as_str().unwrap(), i["why"].as_str().unwrap())).collect();
+    assert!(whys.contains(&("salt", "uses")), "{whys:?}");
+    assert!(whys.iter().any(|(n, w)| *w == "used by" && (*n == "validate" || *n == "login")), "{whys:?}");
+    assert!(p["used"].as_u64().unwrap() <= 4000);
+    // A tiny budget keeps the seed (as a signature if need be) and says what it left out.
+    let small = kula_json(d, &["pack", "hashToken", "--budget", "60"]);
+    assert!(small["items"].as_array().unwrap().len() <= 1);
+    assert!(!small["omitted"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn agent_before_and_verify_bracket_an_edit() {
+    let t = fixture();
+    let d = t.path();
+    write(d, "src/util/crypto.test.ts", "import { hashToken } from \"./crypto\";\nexport function testHash() { return hashToken(\"ab\"); }\n");
+    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return salt(t) + t; }\nfunction salt(t: string) { return t.slice(0, 2); }\n// v2\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "test + crypto"]);
+    write(d, "src/util/crypto.test.ts", "import { hashToken } from \"./crypto\";\nexport function testHash() { return hashToken(\"abc\"); }\n");
+    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return salt(t) + t; }\nfunction salt(t: string) { return t.slice(0, 3); }\n// v3\n");
+    git(d, &["commit", "-qam", "tweak both"]);
+    kula(d, &["index"]);
+
+    let b = kula_json(d, &["before", "salt"]);
+    assert!(b["direct_callers"].as_array().unwrap().iter().any(|c| c.as_str().unwrap().starts_with("hashToken")));
+    assert!(b["tests"].as_array().unwrap().iter().any(|c| c.as_str().unwrap().starts_with("testHash")), "{b}");
+    let co = kula_json(d, &["before", "hashToken"]);
+    assert!(co["co_changes"].as_array().unwrap().iter().any(|c| c[0] == "src/util/crypto.test.ts"), "{co}");
+
+    // Clean tree: nothing moved.
+    assert_eq!(kula_json(d, &["verify"])["ok"], true);
+    // Delete salt but leave hashToken calling it: verify names the dangling caller and exits 2.
+    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return salt(t) + t; }\n");
+    let out = Command::new(KULA).arg("-C").arg(d).args(["--json", "verify"]).env("NO_COLOR", "1").output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(v["dangling"][0].as_str().unwrap().contains("hashToken"), "{v}");
+}
+
+#[test]
+fn mcp_lists_and_runs_the_agent_tools() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+    let mut child = Command::new(KULA).arg("-C").arg(d).arg("mcp").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        writeln!(stdin, r#"{{"jsonrpc":"2.0","id":1,"method":"tools/list"}}"#).unwrap();
+        writeln!(stdin, r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"context_pack","arguments":{{"targets":["login"],"budget":2000}}}}}}"#).unwrap();
+        writeln!(stdin, r#"{{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{{"name":"pre_edit","arguments":{{"symbol":"login"}}}}}}"#).unwrap();
+    }
+    drop(child.stdin.take());
+    let out = child.wait_with_output().unwrap();
+    let lines: Vec<Value> = String::from_utf8_lossy(&out.stdout).lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let names: Vec<&str> = lines[0]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    for n in ["context_pack", "pre_edit", "verify_edit"] {
+        assert!(names.contains(&n), "{names:?}");
+    }
+    let pack = lines[1]["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(pack.contains("\"why\": \"seed\"") || pack.contains("\"why\":\"seed\""), "{pack}");
+    let pre = lines[2]["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(pre.contains("handleLogin"), "{pre}");
+}

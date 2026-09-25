@@ -1,5 +1,6 @@
 //! kula – git, with a map.
 
+mod agent;
 mod config;
 mod git;
 mod graph;
@@ -78,6 +79,18 @@ enum Cmd {
         #[arg(long)]
         unused: bool,
     },
+    /// Agent context: the code a task needs, ranked by graph distance and fitted to a token budget.
+    Pack {
+        /// Symbols, files or a question.
+        #[arg(required = true)]
+        targets: Vec<String>,
+        #[arg(short, long, default_value_t = 6000)]
+        budget: usize,
+    },
+    /// Before editing a symbol: callers, tests that reach it, co-changing files, risk, advice.
+    Before { symbol: String },
+    /// After editing: the worktree against HEAD through the graph; exits 2 on dangling callers.
+    Verify,
     /// CI gate: the graph blast radius of HEAD against a base; fails above max_risk.
     Check {
         /// Base ref (defaults to kula.toml's default_branch).
@@ -348,6 +361,62 @@ fn run(cli: Cli) -> Result<()> {
                 if bad > 0 && !undeclared {
                     println!("\n  {} {} imported but not declared – `kula deps --undeclared`", yellow("!"), bad);
                 }
+            }
+        }
+        Cmd::Pack { targets, budget } => {
+            let st = open_or_index(&repo)?;
+            let p = agent::context_pack(&repo, &st, &targets, budget)?;
+            if json {
+                out(&serde_json::to_value(&p)?);
+            } else {
+                header(&format!("context pack · {} of {} tokens · {} items", p.used, p.budget, p.items.len()));
+                for it in &p.items {
+                    println!("\n{} {}  {}  {}", accent("■"), bold(&it.name), dim(&format!("{}:{}–{}", it.path, it.lines[0], it.lines[1])), dim(&format!("[{}{}]", it.why, if it.signature_only { " · signature" } else { "" })));
+                    println!("{}", it.code);
+                }
+                if !p.omitted.is_empty() {
+                    println!("\n{} over budget: {}", dim("…"), p.omitted.join(", "));
+                }
+            }
+        }
+        Cmd::Before { symbol } => {
+            let st = open_or_index(&repo)?;
+            let r = agent::pre_edit(&repo, &st, &symbol)?;
+            if json {
+                out(&serde_json::to_value(&r)?);
+            } else {
+                header(&format!("before editing {}", r.symbol.name));
+                println!("  risk {}  ·  {} dependents in {} files", risk(&r.risk), r.dependents, r.files);
+                let list = |t: &str, v: &[String]| {
+                    if !v.is_empty() {
+                        println!("\n  {}", dim(t));
+                        v.iter().take(12).for_each(|x| println!("    {x}"));
+                    }
+                };
+                list("direct callers", &r.direct_callers);
+                list("tests that reach it", &r.tests);
+                list("changes with", &r.co_changes.iter().map(|(f, c)| format!("{f}  {}", dim(&format!("{c}×")))).collect::<Vec<_>>());
+                list("notes", &r.notes);
+                println!();
+                r.advice.iter().for_each(|a| println!("  {} {a}", accent("›")));
+            }
+        }
+        Cmd::Verify => {
+            let r = agent::verify_edit(&repo)?;
+            if json {
+                out(&serde_json::to_value(&r)?);
+            } else {
+                header(&format!("verify · {} changed", r.changed.len()));
+                r.changed.iter().for_each(|c| println!("  {c}"));
+                r.dangling.iter().for_each(|c| println!("  {} {c}", red("✗")));
+                if !r.recheck.is_empty() {
+                    println!("\n  {}", dim("re-read these callers"));
+                    r.recheck.iter().for_each(|c| println!("    {c}"));
+                }
+                println!("\n  {}", if r.ok { green("✓ no dangling calls") } else { red("✗ callers point at removed code") });
+            }
+            if !r.ok {
+                std::process::exit(2);
             }
         }
         Cmd::Check { base, max_risk, md } => {

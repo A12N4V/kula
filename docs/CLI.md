@@ -62,6 +62,7 @@ The scheme is `kula <verb>`. Graph verbs answer questions, project verbs keep th
 |---|---|
 | project | `init` · `index [--if-stale] [--quiet]` · `hooks install\|uninstall\|status` · `doctor` |
 | graph | `query` · `context` · `impact [--down]` · `trace` · `flows` · `clusters` · `deps` |
+| agents | `pack` · `before` · `verify` (also MCP tools `context_pack`, `pre_edit`, `verify_edit`) |
 | review | `compare` · `graph-diff` · `check` · `pr` · `issue` · `note` · `sync` |
 | surfaces | `view` (web UI) · `mcp` (agents over stdio) · `status` · `lg` |
 | git | anything else: `kula commit -am …`, `kula rebase -i`, or `kula git <args>` |
@@ -77,6 +78,20 @@ kula deps --unused       # declared but never imported by indexed code
 ```
 
 Standard-library and runtime modules (`node:fs`, `std`, `os`, Go's stdlib) are marked builtin and never flagged.
+
+### For agents: `pack`, `before`, `verify`
+
+These three are the reason to hand an agent kula rather than grep. They're on the CLI and, under the same names, as MCP tools (`context_pack`, `pre_edit`, `verify_edit`) once `kula init --agents` has registered the server.
+
+```
+kula pack "how does login validate a token" --budget 6000
+kula before hashToken
+kula verify
+```
+
+- **`pack`**: takes symbols, files or a plain-language question and returns the code that explains them, not whole files. That's their definitions, what they call, who calls them, their containing class and the tests that reach them, ranked by graph distance and fitted to a token budget. Bodies too large for the budget shrink to signatures, and anything left out is listed by name.
+- **`before`**: run before changing a symbol. It lists direct callers, the total dependents and risk, the tests that reach the symbol through the call graph, files that historically change in the same commits, human notes, and concrete advice.
+- **`verify`**: run after editing. It compares the working tree with HEAD through the graph: symbols added, removed or modified, callers still pointing at removed code (exit **2**), and callers of modified symbols in other files to re-read.
 
 ### `kula check`, the CI gate
 
