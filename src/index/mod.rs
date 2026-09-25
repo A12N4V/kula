@@ -271,6 +271,47 @@ fn normalize(parts: &str) -> String {
     out.join("/")
 }
 
+/// The package an unresolved import names, or None when it points inside the repo.
+/// `@scope/pkg/x` → `@scope/pkg`, `lodash/fp` → `lodash`, `numpy.linalg` → `numpy`,
+/// `serde::Deserialize` → `serde`, `github.com/a/b/c` → `github.com/a/b`.
+pub(crate) fn package_name(raw: &str, lang: &str) -> Option<String> {
+    let s = raw.trim().trim_matches(|c| c == '"' || c == '\'' || c == '`');
+    if s.is_empty() {
+        return None;
+    }
+    let name = match lang {
+        "javascript" | "typescript" | "tsx" => {
+            if s.starts_with('.') || s.starts_with('/') || s.starts_with('@') && !s.contains('/') || s.starts_with("~/") || s.starts_with("@/") {
+                return None;
+            }
+            let s = s.strip_prefix("node:").map(|b| format!("node:{}", b.split('/').next().unwrap_or(b))).unwrap_or_else(|| s.to_string());
+            let mut it = s.split('/');
+            let first = it.next()?;
+            if first.starts_with('@') { format!("{first}/{}", it.next()?) } else { first.to_string() }
+        }
+        "python" => {
+            if s.starts_with('.') {
+                return None;
+            }
+            s.split('.').next()?.to_string()
+        }
+        "rust" => {
+            let first = s.split("::").next()?.trim();
+            if matches!(first, "crate" | "self" | "super" | "") || !s.contains("::") {
+                return None;
+            }
+            first.to_string()
+        }
+        "go" => {
+            let segs: Vec<&str> = s.split('/').collect();
+            if segs[0].contains('.') { segs.iter().take(3).copied().collect::<Vec<_>>().join("/") } else { segs[0].to_string() }
+        }
+        _ => return None,
+    };
+    let ok = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.@/:".contains(c));
+    ok.then_some(name)
+}
+
 /// Resolve an import string to indexed files.
 fn resolve_import(
     raw: &str,
@@ -491,12 +532,38 @@ pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
         sym_ids.push(ids);
     }
 
-    // Imports.
+    // Imports. What resolves to no indexed file and names a package becomes a
+    // `package` node (path `pkg:<name>`), so dependencies sit in the graph too.
     let mut imports_of: HashMap<usize, HashSet<usize>> = HashMap::new();
+    let mut pkg_id: HashMap<String, usize> = HashMap::new();
+    let mut pkg_edges: HashSet<(usize, usize)> = HashSet::new();
     for pf in &parsed {
         let fid = file_id[&pf.path];
         for imp in &pf.imports {
-            for target in resolve_import(imp, &pf.path, pf.lang, &by_stem, &by_dir) {
+            let targets = resolve_import(imp, &pf.path, pf.lang, &by_stem, &by_dir);
+            if targets.is_empty() {
+                if let Some(name) = package_name(imp, pf.lang) {
+                    let pid = *pkg_id.entry(name.clone()).or_insert_with(|| {
+                        nodes.push(Node {
+                            id: nodes.len() as i64,
+                            kind: "package".into(),
+                            path: format!("pkg:{name}"),
+                            name,
+                            lang: pf.lang.into(),
+                            start_line: 0,
+                            end_line: 0,
+                            parent: None,
+                            community: 0,
+                        });
+                        hashes.push(0);
+                        nodes.len() - 1
+                    });
+                    if pkg_edges.insert((fid, pid)) {
+                        edges.push(Edge { src: fid as i64, dst: pid as i64, kind: "IMPORTS".into(), weight: 1.0 });
+                    }
+                }
+            }
+            for target in targets {
                 if target != fid && imports_of.entry(fid).or_default().insert(target) {
                     edges.push(Edge { src: fid as i64, dst: target as i64, kind: "IMPORTS".into(), weight: 1.0 });
                 }
@@ -573,7 +640,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     let stats = IndexStats {
         files: nfiles,
         parsed,
-        symbols: nodes.len() - nfiles,
+        symbols: nodes.iter().filter(|n| n.kind != "file" && n.kind != "package").count(),
         edges: edges.len(),
         communities: communities.len(),
         millis: t0.elapsed().as_millis(),

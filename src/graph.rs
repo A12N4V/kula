@@ -341,7 +341,7 @@ pub struct GraphExport {
 pub fn export(store: &Store, level: &str, limit: usize) -> Result<GraphExport> {
     let communities = store.communities()?;
     if level == "file" {
-        let nodes = store.nodes_where("kind = 'file' AND lang != '' ORDER BY id", [])?;
+        let nodes = store.nodes_where("kind IN ('file', 'package') AND lang != '' ORDER BY id", [])?;
         let ids: HashSet<i64> = nodes.iter().map(|n| n.id).collect();
         // Lift symbol calls to file→file dependencies.
         let mut st = store.conn.prepare(
@@ -349,7 +349,10 @@ pub fn export(store: &Store, level: &str, limit: usize) -> Result<GraphExport> {
              JOIN nodes a ON a.id = e.src JOIN nodes b ON b.id = e.dst
              JOIN nodes fa ON fa.kind = 'file' AND fa.path = a.path
              JOIN nodes fb ON fb.kind = 'file' AND fb.path = b.path
-             WHERE e.kind IN ('CALLS','IMPORTS') AND fa.id != fb.id GROUP BY fa.id, fb.id",
+             WHERE e.kind IN ('CALLS','IMPORTS') AND fa.id != fb.id GROUP BY fa.id, fb.id
+             UNION ALL
+             SELECT e.src, e.dst, 'IMPORTS', 1 FROM edges e JOIN nodes p ON p.id = e.dst AND p.kind = 'package'
+             WHERE e.kind = 'IMPORTS'",
         )?;
         let edges = st
             .query_map([], |r| Ok(Edge { src: r.get(0)?, dst: r.get(1)?, kind: r.get(2)?, weight: r.get::<_, i64>(3)? as f64 }))?

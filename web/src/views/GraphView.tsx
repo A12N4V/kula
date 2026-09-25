@@ -9,7 +9,7 @@ import EdgeCurveProgram from "@sigma/edge-curve";
 import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../graphfx";
 import { api, colorFor, relTime, type Context, type GraphData, type Impact, type Node, type SymbolHistory } from "../api";
 import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLYPH, makeColorer } from "../colors";
-import { knownDirs, useSettings, type Settings } from "../settings";
+import { knownDirs, settings, useSettings, type Settings } from "../settings";
 import { Empty, Icon, Kind, Logo, Md, Sym, useToast } from "../ui";
 import Contrast from "./Contrast";
 import type { ContrastMode, Go } from "../nav";
@@ -22,6 +22,27 @@ type Props = {
 };
 
 /** ForceAtlas2 tuned for code graphs: tight directories, readable bridges. */
+const PKG = "__pkg";
+
+/** Pin packages on a ring just outside the code, each at the mean bearing of its importers. */
+function placePackages(g: Graph) {
+  let cx = 0, cy = 0, n = 0, R = 0;
+  g.forEachNode((_id, a) => { if (!a.virtual && a.dir !== PKG) { cx += a.x; cy += a.y; n++; } });
+  if (!n) return;
+  cx /= n; cy /= n;
+  g.forEachNode((_id, a) => { if (!a.virtual && a.dir !== PKG) R = Math.max(R, Math.hypot(a.x - cx, a.y - cy)); });
+  const pk = g.filterNodes((_id, a) => a.dir === PKG).map((id) => {
+    let sx = 0, sy = 0;
+    g.forEachInNeighbor(id, (_m, b) => { sx += b.x - cx; sy += b.y - cy; });
+    return { id, t: sx || sy ? Math.atan2(sy, sx) : 0 };
+  }).sort((a, b) => a.t - b.t);
+  // keep a minimum arc between neighbours so the rim never stacks
+  const gap = (Math.PI * 2) / Math.max(pk.length, 24);
+  for (let i = 1; i < pk.length; i++) pk[i].t = Math.max(pk[i].t, pk[i - 1].t + gap);
+  const ring = R * 1.22 + 40;
+  for (const { id, t } of pk) g.mergeNodeAttributes(id, { x: cx + Math.cos(t) * ring, y: cy + Math.sin(t) * ring, fixed: true });
+}
+
 export function layoutSettings(g: Graph) {
   return { ...forceAtlas2.inferSettings(g), linLogMode: true, outboundAttractionDistribution: true, edgeWeightInfluence: 1, gravity: 1.1, scalingRatio: 7, slowDown: 3, barnesHutOptimize: g.order > 600 };
 }
@@ -89,7 +110,7 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
 
   const churn = data?.churn ?? {};
   // Territories and colours follow the chosen depth; the layout always uses the automatic one.
-  const groups = useMemo(() => groupDirs(data?.nodes.map((n) => n.path) ?? [], s.dirDepth), [data, s.dirDepth]);
+  const groups = useMemo(() => groupDirs(data?.nodes.filter((n) => n.kind !== "package").map((n) => n.path) ?? [], s.dirDepth), [data, s.dirDepth]);
   const colorer = useMemo(() => makeColorer(s, groups, churn), [s.colorBy, s.dirColors, s.theme, groups, data]); // eslint-disable-line react-hooks/exhaustive-deps
   const look = useRef({ groups, colorer });
   look.current = { groups, colorer };
@@ -99,7 +120,7 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
   const graph = useMemo(() => {
     if (!data) return null;
     const g = new Graph({ multi: false, type: "directed" });
-    const lay = groupDirs(data.nodes.map((n) => n.path), 0);
+    const lay = groupDirs(data.nodes.filter((n) => n.kind !== "package").map((n) => n.path), 0);
     const golden = Math.PI * (3 - Math.sqrt(5));
     const spread = Math.sqrt(data.nodes.length) * 14;
     const centre = new Map(lay.sizes.map(([d], i) => {
@@ -109,6 +130,7 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (const n of data.nodes) {
+      if (n.kind === "package") { g.addNode(String(n.id), { x: 0, y: 0, label: n.name, color: "#888", size: 2, node: n, dir: PKG, fixed: true }); continue; }
       const d = lay.of(n.path);
       const c = centre.get(d)!;
       const j = Math.sqrt(lay.sizes.find(([k]) => k === d)?.[1] ?? 1) * 5;
@@ -126,7 +148,8 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
     ranked.forEach((id, i) => {
       const deg = g.degree(id);
       const kind = g.getNodeAttribute(id, "node").kind;
-      g.mergeNodeAttributes(id, { rank: i, deg, din: g.inDegree(id), dout: g.outDegree(id), size: Math.min(18, (kind === "file" || kind === "class" ? 3.6 : 2.4) + Math.sqrt(deg) * 1.35) });
+      const size = kind === "package" ? Math.min(14, 6 + Math.sqrt(deg) * 1.2) : Math.min(18, (kind === "file" || kind === "class" ? 3.6 : 2.4) + Math.sqrt(deg) * 1.35);
+      g.mergeNodeAttributes(id, { rank: kind === "package" ? Infinity : i, deg, din: g.inDegree(id), dout: g.outDegree(id), size });
     });
     // One invisible anchor per directory, tied to its members: the layout pulls each
     // directory into its own region, so territories read as places rather than a blend.
@@ -135,8 +158,10 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
       const c = centre.get(d)!;
       g.addNode(anchor, { x: c.x, y: c.y, size: 0.1, virtual: true, label: "" });
     }
-    g.forEachNode((id, a) => { if (!a.virtual) g.addEdge(`__dir:${a.dir}`, id, { virtual: true, weight: 1.2, size: 0.1, color: "#000" }); });
+    g.forEachNode((id, a) => { if (!a.virtual && a.dir !== PKG) g.addEdge(`__dir:${a.dir}`, id, { virtual: true, weight: 1.2, size: 0.1, color: "#000" }); });
+    placePackages(g);
     if (g.order > 1) forceAtlas2.assign(g, { iterations: 40, settings: layoutSettings(g) });
+    placePackages(g);
     return g;
   }, [data]);
 
@@ -179,6 +204,7 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
     r.setSetting("nodeReducer", (id, attr) => {
       const st = state.current, c = cfg.current, { colorer, groups } = look.current, theme = tok.current;
       if (attr.virtual) return { ...attr, hidden: true };
+      if (attr.dir === PKG && !c.packages) return { ...attr, hidden: true };
       const res: any = { ...attr, color: colorer.node(attr.node) };
       const hub = c.hubIcons && isHub(attr);
       if (hub) res.forceLabel = true;
@@ -197,6 +223,7 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
         else if (st.neigh.has(id)) { res.zIndex = 2; res.forceLabel = true; }
         else dim();
       }
+      if (attr.dir === PKG) { res.pkg = res.dimmed ? theme.faded : theme.text3; res.color = TRANSPARENT; res.forceLabel = false; res.label = ""; res.zIndex = Math.max(res.zIndex ?? 0, 1); return res; }
       if (hub && !res.dimmed) { res.tile = res.color; res.hubTile = true; res.color = TRANSPARENT; res.zIndex = Math.max(res.zIndex ?? 0, 1); }
       return res;
     });
@@ -239,7 +266,7 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
 
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     const ov = attachOverlay(r, graph, {
-      group: (a) => (a.virtual ? null : look.current.groups.of(a.node.path)),
+      group: (a) => (a.virtual || a.dir === PKG ? null : look.current.groups.of(a.node.path)),
       groupLabel: (k) => look.current.groups.label(k),
       groupColor: (k) => (look.current.colorer.mode === "directory" ? dirColor(k, look.current.groups, cfg.current) : null),
       hub: (_id, a) => cfg.current.hubIcons && isHub(a),
@@ -257,11 +284,13 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
       timer = window.setTimeout(() => {
         worker?.stop();
         noverlap.assign(graph, { maxIterations: 40, settings: { margin: 3, ratio: 1.15 } });
+        placePackages(graph);
         setSettling(false);
       }, Math.min(4500, 1400 + graph.order * 4));
     } else {
       forceAtlas2.assign(graph, { iterations: 200, settings: layoutSettings(graph) });
       noverlap.assign(graph, { maxIterations: 40, settings: { margin: 3, ratio: 1.15 } });
+      placePackages(graph);
     }
     sigma.current = r;
     return () => {
@@ -313,7 +342,7 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
       focusMode: !!active || !!st.impact,
       activeGroup: peek ?? (filter?.type === "dir" ? filter.key : activeNode ? groups.of(activeNode.node.path) : null),
     });
-  }, [hover, focus, filter, impact, graph, s.flow, peek, groups]);
+  }, [hover, focus, filter, impact, graph, s.flow, peek, groups, s.packages]);
 
   // Fly to the focused node.
   useEffect(() => {
@@ -327,6 +356,7 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
 
   const cam = (f: (c: ReturnType<Sigma["getCamera"]>) => void) => sigma.current && f(sigma.current.getCamera());
   const hovered = hover && graph?.hasNode(hover) && !hover.startsWith("__dir:") ? graph.getNodeAttributes(hover) : null;
+  const pkgCount = data ? data.nodes.filter((n) => n.kind === "package").length : 0;
   const hubCount = graph ? graph.filterNodes((_id, a) => isHub(a)).length : 0;
 
   return (
@@ -340,6 +370,9 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
           <button className={level === "symbol" ? "on" : ""} onClick={() => setLevel("symbol")}>Symbols</button>
           <button className={level === "file" ? "on" : ""} onClick={() => setLevel("file")}>Files</button>
         </div>
+        <button className={`btn sm hud-btn ${s.packages ? "on" : ""}`} aria-pressed={s.packages} onClick={() => settings.set({ packages: !s.packages })} title="Show external packages on the rim">
+          <Icon.box /> Packages{pkgCount ? <span className="muted"> {pkgCount}</span> : null}
+        </button>
         <button className="btn sm hud-btn" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs"><Icon.compare /> Contrast</button>
         <button className="btn sm hud-btn icon-only" onClick={openSettings} title="Graph settings  ," aria-label="Graph settings"><Icon.sliders /></button>
         {data && (

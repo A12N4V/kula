@@ -82,6 +82,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           )}
           <Row label="Labels"><Seg value={s.labels} options={[["few", "Fewer"], ["normal", "Normal"], ["many", "More"]]} onChange={(labels) => settings.set({ labels })} /></Row>
           <Toggle k="imports" label="Import edges" hint="Off shows calls only" />
+          <Toggle k="packages" label="Packages" hint="Dependencies on the rim, tied to their importers" />
           <Toggle k="curved" label="Curved edges" />
           <Toggle k="flow" label="Call direction dots" hint="Moving dots on the focused symbol's calls" />
 

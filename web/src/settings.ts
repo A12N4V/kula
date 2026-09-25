@@ -19,6 +19,8 @@ export interface Settings {
   labels: "few" | "normal" | "many";
   curved: boolean;
   imports: boolean;
+  /** External packages as rectangles on the graph's rim. */
+  packages: boolean;
   flow: boolean;
   /** User colour overrides, keyed by directory path. */
   dirColors: Record<string, string>;
@@ -36,6 +38,7 @@ export const DEFAULTS: Settings = {
   labels: "normal",
   curved: false,
   imports: true,
+  packages: false,
   flow: true,
   dirColors: {},
 };

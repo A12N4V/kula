@@ -50,7 +50,8 @@ const lum = (c: string) => { const [r, g, b] = rgb(c); return (r * 299 + g * 587
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, half: number, r: number) {
   ctx.beginPath();
-  ctx.roundRect(x - half, y - half, half * 2, half * 2, r);
+  void r; // sharp: Homonin's kit draws square tiles
+  ctx.rect(x - half, y - half, half * 2, half * 2);
 }
 
 export function attachOverlay(sigma: Sigma, graph: Graph, opts: OverlayOptions) {
@@ -168,6 +169,28 @@ export function attachOverlay(sigma: Sigma, graph: Graph, opts: OverlayOptions) 
         }
       });
     }
+
+    // Packages: labelled rectangles on the rim, in the ground colour with a hairline.
+    graph.forEachNode((id, a) => {
+      if (a.dir !== "__pkg") return;
+      const p = vp(id);
+      if (!p || !p.d.pkg) return;
+      const fs = Math.max(9, Math.min(13, p.r * 0.9));
+      marks.font = `600 ${fs}px "JetBrains Mono Variable", ui-monospace, monospace`;
+      const label = a.node.name as string;
+      const w = marks.measureText(label).width + fs * 1.4, hh = fs * 0.95;
+      marks.fillStyle = theme.bg;
+      marks.fillRect(p.x - w / 2, p.y - hh, w, hh * 2);
+      marks.lineWidth = 1;
+      marks.strokeStyle = p.d.pkg;
+      marks.strokeRect(Math.round(p.x - w / 2) + 0.5, Math.round(p.y - hh) + 0.5, Math.round(w), Math.round(hh * 2));
+      marks.fillStyle = p.d.dimmed ? p.d.pkg : p.d.pkg;
+      marks.fillRect(Math.round(p.x - w / 2) + 0.5, Math.round(p.y - hh) + 0.5, 3, Math.round(hh * 2));
+      marks.textAlign = "center";
+      marks.textBaseline = "middle";
+      marks.fillStyle = p.d.dimmed ? p.d.pkg : theme.text;
+      marks.fillText(label, p.x + 1.5, p.y + 0.5);
+    });
 
     // Rings: focus in the text colour, others in their own colour.
     const ring = (id: string, color: string, width: number) => {
@@ -322,7 +345,8 @@ export function drawHover(ctx: CanvasRenderingContext2D, data: any, settings: an
   ctx.lineWidth = 1.5;
   ctx.strokeStyle = css("--text") || "#fff";
   ctx.beginPath();
-  if (data.hubTile) { const h = Math.max(6.5, data.size * 1.1) + 3; ctx.roundRect(data.x - h, data.y - h, h * 2, h * 2, h * 0.3); }
+  if (data.hubTile) { const h = Math.max(6.5, data.size * 1.1) + 3; ctx.rect(data.x - h, data.y - h, h * 2, h * 2); }
+  else if (data.pkg) return;
   else ctx.arc(data.x, data.y, data.size + 3, 0, Math.PI * 2);
   ctx.stroke();
   drawOutlinedLabel(ctx, { ...data, size: data.size + (data.hubTile ? 1 : 3) }, { ...settings, labelWeight: "600" });

@@ -149,12 +149,6 @@ export default function App() {
         <span className="spacer" />
         <div className="search-trigger" onClick={() => setPalette(true)} role="button" aria-label="Search"><Icon.search /> <span className="st-label">Search symbols, issues, branches, commands…</span> <kbd>⌘K</kbd></div>
         <span className="spacer" />
-        <span className="chip hide-sm" title={repo?.index === "current" ? "Graph matches HEAD" : "HEAD moved; the graph is being rebuilt"}>
-          <span className={`dot ${repo?.index === "current" ? "ok" : repo?.index === "stale" ? "warn pulse" : "bad"}`} />
-          {repo?.index === "current" ? "graph current" : repo?.index === "stale" ? "reindexing…" : "no graph"}
-        </span>
-        <button className="btn sm" onClick={reindex} disabled={indexing}><Icon.refresh /> {indexing ? "Indexing…" : "Reindex"}</button>
-        <button className="btn sm ghost" aria-label="Keyboard shortcuts" title="Shortcuts  ?" onClick={() => setHelp(true)}>?</button>
         <button className="btn sm ghost" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.sliders /></button>
       </header>
 
@@ -188,7 +182,8 @@ export default function App() {
       </main>
 
       <footer className="statusbar">
-        <span><Logo /> kula {repo?.version}</span>
+        <span>kula {repo?.version}</span>
+        {(indexing || repo?.index !== "current") && <span className="sb-warn">{indexing || repo?.index === "stale" ? "reindexing…" : "no graph – ⌘K › Reindex"}</span>}
         {repo?.stats && <span>{repo.stats.files} files · {repo.stats.symbols} symbols · {repo.stats.edges} edges · {repo.stats.communities} clusters</span>}
         <span className="spacer" />
         <span>{changes ? `${changes} changed` : "clean"}</span>

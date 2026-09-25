@@ -21,8 +21,8 @@ export const hue = (i: number) => { const p = palette(); return p[((i % p.length
 /** Palette slot `i`, or grey once the categorical hues run out. */
 export const rankHue = (i: number) => (i < palette().length ? palette()[i] : isLight() ? REST.light : REST.dark);
 
-const KIND_DARK: Record<string, string> = { function: "#6aa5dc", method: "#5fbdbb", class: "#b597df", interface: "#d8bf62", file: "#9a968f" };
-const KIND_LIGHT: Record<string, string> = { function: "#2f6db0", method: "#1d8583", class: "#7f56b3", interface: "#8f720c", file: "#7a756c" };
+const KIND_DARK: Record<string, string> = { function: "#6aa5dc", method: "#5fbdbb", class: "#b597df", interface: "#d8bf62", file: "#9a968f", package: "#c2b9ac" };
+const KIND_LIGHT: Record<string, string> = { function: "#2f6db0", method: "#1d8583", class: "#7f56b3", interface: "#8f720c", file: "#7a756c", package: "#5d5850" };
 export const kindColor = (k: string) => (isLight() ? KIND_LIGHT : KIND_DARK)[k] ?? "#888888";
 
 /** 0 → neutral, 1 → hot. Log-scaled by the caller. */
@@ -36,7 +36,7 @@ export function churnColor(t: number) {
   return "#" + a.map((x, i) => Math.round(x + (b[i] - x) * f).toString(16).padStart(2, "0")).join("");
 }
 
-export const GLYPH: Record<string, string> = { function: "ƒ", method: "m", class: "C", interface: "I", file: "·" };
+export const GLYPH: Record<string, string> = { function: "ƒ", method: "m", class: "C", interface: "I", file: "·", package: "▭" };
 export const LANG_GLYPH: Record<string, string> = { typescript: "TS", tsx: "TX", javascript: "JS", python: "PY", rust: "RS", go: "GO" };
 
 /** Directory of `path`, cut to `depth` segments ("src/index/mod.rs", 1 → "src"). */

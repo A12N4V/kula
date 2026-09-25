@@ -23,7 +23,7 @@ const q = (o: Record<string, string | number | undefined>) =>
 
 export interface Node {
   id: number;
-  kind: "file" | "function" | "method" | "class" | "interface";
+  kind: "file" | "function" | "method" | "class" | "interface" | "package";
   name: string;
   path: string;
   lang: string;
