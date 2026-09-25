@@ -88,7 +88,7 @@ kula check                          # base and gate from kula.toml
 kula check --base origin/main --md  # markdown for a PR comment or job summary
 ```
 
-The GitHub workflow that `init` writes puts that markdown into the job summary of every pull request. It installs kula with npm; until that channel is live, swap in the curl line above.
+The GitHub workflow that `init` writes puts that markdown into the job summary of every pull request. It installs kula with the curl installer.
 
 ## Tests
 

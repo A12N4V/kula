@@ -178,10 +178,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm i -g kula-cli
+      - name: Install kula
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: kula index --quiet
       - name: Blast radius
         run: kula check --base "origin/${{ github.base_ref }}" --md >> "$GITHUB_STEP_SUMMARY"
@@ -189,11 +189,13 @@ jobs:
 
 const GITLAB_JOB: &str = r#"# include: { local: .kula-ci.yml } from .gitlab-ci.yml
 kula:check:
-  image: node:22
+  image: debian:stable-slim
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
-    - npm i -g kula-cli
+    - apt-get update -qq && apt-get install -yqq curl git ca-certificates
+    - curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh | sh
+    - export PATH="$HOME/.local/bin:$PATH"
     - git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
     - kula index --quiet
     - kula check --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --md | tee kula-check.md
