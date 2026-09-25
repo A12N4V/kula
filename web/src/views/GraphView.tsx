@@ -10,7 +10,7 @@ import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../gr
 import { api, colorFor, relTime, type Context, type GraphData, type Impact, type Node, type SymbolHistory } from "../api";
 import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLYPH, makeColorer } from "../colors";
 import { knownDirs, settings, useSettings, type Settings } from "../settings";
-import { Empty, Icon, Kind, Logo, Md, Sym, useToast } from "../ui";
+import { Empty, Icon, Kind, Logo, LogoLoader, Md, Sym, useToast } from "../ui";
 import Contrast from "./Contrast";
 import type { ContrastMode, Go } from "../nav";
 import { Grip } from "../resize";
@@ -84,7 +84,7 @@ export default function GraphView(props: Props) {
 
 type Filter = { type: "dir" | "cluster" | "kind"; key: string } | null;
 
-function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSettings }: Props) {
+function MapView({ focus, setFocus, onChanged, version, setContrast, go }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const sigma = useRef<Sigma | null>(null);
   const s = useSettings();
@@ -99,6 +99,14 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
   const [impact, setImpact] = useState<Impact | null>(null);
   const [legendOpen, setLegendOpen] = useState(() => window.innerWidth > 760);
   const [settling, setSettling] = useState(false);
+  // The loader outlives the load by its exit animation.
+  const busy = !err && (!data || settling);
+  const [loaderOn, setLoaderOn] = useState(true);
+  useEffect(() => {
+    if (busy) { setLoaderOn(true); return; }
+    const t = window.setTimeout(() => setLoaderOn(false), 500);
+    return () => clearTimeout(t);
+  }, [busy]);
   const overlay = useRef<Overlay | null>(null);
   const state = useRef({ hover: null as string | null, focus: null as number | null, filter: null as Filter, impact: null as Map<string, number> | null, neigh: new Set<string>() });
 
@@ -362,7 +370,7 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
   return (
     <div className={`graph-wrap ${focus != null ? "inspecting" : ""}`}>
       <div ref={box} className="graph-canvas" />
-      {!data && !err && <div className="loading"><div className="stack" style={{ alignItems: "center" }}><Logo spin /><span>Laying out the graph…</span></div></div>}
+      {loaderOn && <LogoLoader label={data ? "Settling the layout" : "Reading the graph"} leaving={!busy} />}
       {err && <div className="loading"><Empty title={err.includes("WebGL") ? "Graph unavailable" : "No graph yet"}>{err}{!err.includes("WebGL") && <div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => api.reindex().then(onChanged)}>Build graph</button></div>}</Empty></div>}
 
       <div className="graph-overlay hud">
@@ -374,7 +382,6 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
           <Icon.box /> Packages{pkgCount ? <span className="muted"> {pkgCount}</span> : null}
         </button>
         <button className="btn sm hud-btn" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs"><Icon.compare /> Contrast</button>
-        <button className="btn sm hud-btn icon-only" onClick={openSettings} title="Graph settings  ," aria-label="Graph settings"><Icon.sliders /></button>
         {data && (
           <span className="hud-stats hide-sm">
             {settling ? <><span className="dot warn pulse" /> settling</> : <>

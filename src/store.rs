@@ -183,7 +183,7 @@ impl Store {
         let sql = "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community
              FROM nodes_fts f JOIN nodes n ON n.id = f.rowid
              WHERE nodes_fts MATCH ?1
-             ORDER BY (lower(n.name) = lower(?2)) DESC, (n.kind = 'file') ASC, bm25(nodes_fts, 5.0, 1.0) LIMIT ?3";
+             ORDER BY (lower(n.name) = lower(?2)) DESC, (n.kind = 'package') ASC, (n.kind = 'file') ASC, bm25(nodes_fts, 5.0, 1.0) LIMIT ?3";
         let mut st = self.conn.prepare(sql)?;
         let mut rows = st.query_map(params![fts, q.trim(), limit as i64], row_node)?.collect::<rusqlite::Result<Vec<_>>>()?;
         if rows.is_empty() {

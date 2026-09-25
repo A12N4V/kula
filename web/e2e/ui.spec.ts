@@ -97,6 +97,67 @@ test.describe("graph", () => {
   });
 });
 
+test.describe("overview + code panel", () => {
+  test("the orrery plate draws the repository and its planets", async ({ page }) => {
+    await open(page);
+    await expect(page.locator(".orrery svg")).toBeVisible();
+    await expect(page.locator(".orr-planet").first()).toBeVisible();
+    const a = await page.locator(".orr-planet").first().getAttribute("transform");
+    await page.waitForTimeout(600);
+    expect(await page.locator(".orr-planet").first().getAttribute("transform")).not.toBe(a); // it turns
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: "test-results/overview.png" });
+  });
+
+  test("a hotspot opens its file in the code panel", async ({ page }) => {
+    await open(page);
+    await page.locator(".hot-row:not(.hot-headrow)").first().click();
+    const panel = page.locator(".code-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.locator(".cp-code > div").first()).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+  });
+
+  test("inspector rows open source with the definition lit; locate still moves the graph", async ({ page }) => {
+    await open(page, "graph");
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.keyboard.type("parseHash");
+    await page.locator(".palette").getByText("parseHash", { exact: true }).first().click();
+    const row = page.locator(".inspector .sym:has(.kind-badge[title=\"function\"])").first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.click();
+    const panel = page.locator(".code-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.locator(".cp-code > div.lit").first()).toBeVisible();
+    await page.screenshot({ path: "test-results/code-panel.png" });
+    const before = page.url();
+    await row.hover();
+    await row.locator(".sym-locate").click();
+    await expect.poll(() => page.url()).not.toBe(before);
+  });
+});
+
+test.describe("graph chrome", () => {
+  test("one settings control, not two", async ({ page }) => {
+    await open(page, "graph");
+    await expect(page.getByRole("button", { name: /settings/i })).toHaveCount(1);
+  });
+
+  test("the mark assembles, centred, while the graph loads", async ({ page }) => {
+    await page.route("**/api/graph*", async (r) => { await new Promise((f) => setTimeout(f, 1200)); await r.continue(); });
+    await open(page, "graph");
+    const ll = page.locator(".logo-loader");
+    await expect(ll).toBeVisible();
+    const [box, wrap] = await Promise.all([ll.locator(".ll-mark").boundingBox(), page.locator(".main").boundingBox()]);
+    expect(Math.abs(box!.x + box!.width / 2 - (wrap!.x + wrap!.width / 2))).toBeLessThan(4);
+    expect(Math.abs(box!.y + box!.height / 2 - (wrap!.y + wrap!.height / 2))).toBeLessThan(30);
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: "test-results/graph-loading.png" });
+    await expect(ll).toHaveCount(0, { timeout: 15_000 });
+  });
+});
+
 test.describe("api", () => {
   test("refuses requests without the session token", async ({ request }) => {
     const r = await request.get("/api/repo");

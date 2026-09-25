@@ -1,3 +1,4 @@
+import { CodeProvider } from "./CodePanel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
@@ -138,6 +139,7 @@ export default function App() {
   const current = VIEWS.find((v) => v.id === view)!;
 
   return (
+    <CodeProvider onLocate={(id) => go("graph", { symbol: id })}>
     <div className="shell">
       <header className="topbar">
         <button className="brand" onClick={() => go("overview")} aria-label="Overview"><Logo /><span>kula</span></button>
@@ -197,6 +199,7 @@ export default function App() {
       {prefs && <SettingsPanel onClose={() => setPrefs(false)} />}
       {opening && <Opening repo={repo} onDone={endOpening} />}
     </div>
+    </CodeProvider>
   );
 }
 

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api, relTime, type Overview as O, type RepoInfo } from "../api";
 import { Empty, Icon, Logo } from "../ui";
 import type { Go } from "../nav";
+import Orrery from "../Orrery";
+import { useCode } from "../CodePanel";
 
 type Props = { repo: RepoInfo | null; version: number; go: Go };
 
@@ -13,6 +15,7 @@ function Risk({ r }: { r: string }) {
 export default function Overview({ repo, version, go }: Props) {
   const [o, setO] = useState<O | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const code = useCode();
   useEffect(() => { api.overview().then(setO).catch((e) => setErr(e.message)); }, [version]);
 
   if (err) return <Empty title="Overview unavailable">{err}</Empty>;
@@ -39,6 +42,8 @@ export default function Overview({ repo, version, go }: Props) {
           <button className="btn primary" onClick={() => go("graph", { contrast: { base: o.default_branch, head: repo?.branch === o.default_branch ? "WORKTREE" : repo?.branch ?? "WORKTREE" } })}><Icon.compare /> Contrast with {o.default_branch}</button>
         </div>
       </header>
+
+      <Orrery o={o} name={repo?.name ?? ""} onDir={(d) => go("graph", { search: d })} onHot={(p) => code.open({ path: p })} />
 
       <section className="kpi-strip">
         {([
@@ -130,7 +135,7 @@ export default function Overview({ repo, version, go }: Props) {
             {o.hotspots.length === 0 && <div className="card-empty">Not enough history yet.</div>}
             {o.hotspots.length > 0 && <div className="hot-row hot-headrow muted"><span>file</span><span>score</span><span>commits</span><span>edges</span></div>}
             {o.hotspots.map((h) => (
-              <div key={h.path} className="hot-row" onClick={() => go("graph", { search: h.path })} title={`${h.churn} commits · ${h.symbols} symbols · ${h.degree} call edges`}>
+              <div key={h.path} className={`hot-row ${code.target?.path === h.path ? "on" : ""}`} onClick={() => code.open({ path: h.path })} title={`${h.churn} commits · ${h.symbols} symbols · ${h.degree} call edges`}>
                 <span className="mono hot-path">{h.path}</span>
                 <div className="hot-bar"><i style={{ width: `${(h.score / maxScore) * 100}%` }} /></div>
                 <span className="hot-n">{h.churn}</span>
