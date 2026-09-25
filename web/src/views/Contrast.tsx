@@ -13,6 +13,7 @@ import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../gr
 import { groupDirs } from "../colors";
 import { useSettings } from "../settings";
 import { CURVATURE, cssVar, withAlpha } from "./GraphView";
+import { Grip } from "../resize";
 
 type Props = {
   base: string;
@@ -257,6 +258,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
           {(["base", "head"] as const).map((k) => (
             <div key={k} className="split-pane">
               <div ref={k === "base" ? boxA : boxB} className="graph-canvas" />
+              {k === "base" && <Grip id="before" edge="right" min={160} max={4000} label="Resize before and after" />}
               <div className="split-tag">
                 <span className="split-k">{k === "base" ? "Before" : "After"}</span>
                 <span className="mono">{k === "base" ? base : head}</span>
@@ -308,6 +310,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
       </div>
 
       <aside className="contrast-panel">
+        <Grip id="contrast" edge="left" min={260} max={900} label="Resize contrast panel" />
         <div className="cp-head">
           <div className="eyebrow">Contrast</div>
           <div className="mono cp-revs"><span>{base}</span><span className="muted">→</span><span>{head}</span></div>

@@ -146,6 +146,7 @@ Also included:
 - **Shareable deep links** such as `#graph/<id>/impact`, `#graph/contrast/main/feat%2Fx` and `#issues/3`.
 - **Always-fresh graph:** `kula view` reindexes in the background whenever `HEAD` moves.
 - **Settings** (<kbd>,</kbd>): colour the graph by directory, cluster, kind or 90-day churn; pick any directory's colour; set directory depth, hub share, label density, import edges and curved edges; light, dark or system theme; compact or comfortable density.
+- **Resizable panels**: drag any panel edge (lists, inspector, legend, contrast panel, the before/after divider, settings) to size it; double-click an edge to reset. Sizes are remembered per browser, and arrow keys work on a focused edge.
 
 ### Design principles
 

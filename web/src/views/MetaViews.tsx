@@ -3,6 +3,7 @@ import { api, colorFor, relTime, type Compare, type Flow, type Meta, type Node }
 import { Empty, Icon, Kind, Md, Sym, useToast } from "../ui";
 import { CompareReport } from "./GitViews";
 import type { Go, Target } from "../nav";
+import { Grip, listWidth } from "../resize";
 
 type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
 
@@ -46,7 +47,7 @@ export function Issues({ version, onChanged, openSymbol, target }: Nav) {
   const split = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
   return (
-    <div className="split">
+    <div className="split" style={listWidth("issues", 340)}>
       <div className="list">
         <div className="list-head">
           <h2>Issues</h2>
@@ -64,6 +65,7 @@ export function Issues({ version, onChanged, openSymbol, target }: Nav) {
           </div>
         ))}
       </div>
+      <Grip id="issues" edge="right" target="prev" min={220} max={900} label="Resize list" />
       <div className="detail">
         {sel === "new" ? (
           <div className="detail-pad stack" style={{ maxWidth: 720 }}>
@@ -114,7 +116,7 @@ export function Proposals({ version, onChanged, openSymbol, target }: Nav) {
     try { await api.metaAction("proposals", p.id, body); if (ok) toast(ok); await load(); onChanged(); } catch (e: any) { toast(e.message, "err"); }
   };
   return (
-    <div className="split">
+    <div className="split" style={listWidth("proposals", 340)}>
       <div className="list">
         <div className="list-head">
           <h2>Proposals</h2>
@@ -131,6 +133,7 @@ export function Proposals({ version, onChanged, openSymbol, target }: Nav) {
           </div>
         ))}
       </div>
+      <Grip id="proposals" edge="right" target="prev" min={220} max={900} label="Resize list" />
       <div className="detail">
         {p ? (
           <div className="detail-pad">
@@ -186,7 +189,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
     } catch (e: any) { toast(e.message, "err"); }
   };
   return (
-    <div className="split" style={{ gridTemplateColumns: "minmax(320px, 420px) 1fr" }}>
+    <div className="split" style={listWidth("notes", 380)}>
       <div className="list">
         <div className="list-head" style={{ flexDirection: "column", alignItems: "stretch" }}>
           <div className="row"><h2>{editing ? `Edit note #${editing}` : "New note"}</h2><span className="spacer" />{editing && <button className="btn sm ghost" onClick={() => { setEditing(null); setBody(""); }}>Cancel</button>}</div>
@@ -207,6 +210,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
           <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn primary" disabled={!body.trim()} onClick={save}>{editing ? "Update" : "Save note"}</button></div>
         </div>
       </div>
+      <Grip id="notes" edge="right" target="prev" min={220} max={900} label="Resize list" />
       <div className="detail">
         <div className="detail-pad">
           <div className="row" style={{ marginBottom: 16 }}><h1>Notes</h1><span className="muted">{meta?.notes.length ?? 0}</span><span className="spacer" /><input className="input" style={{ width: 240 }} placeholder="Search notes…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -241,7 +245,7 @@ export function Flows({ openSymbol, version }: Nav) {
   useEffect(() => { api.flows().then(setFlows).catch(() => setFlows([])); }, [version]);
   const f = flows?.[sel];
   return (
-    <div className="split">
+    <div className="split" style={listWidth("flows", 340)}>
       <div className="list">
         <div className="list-head"><h2>Execution flows</h2><span className="muted">{flows?.length ?? ""}</span></div>
         {flows?.length === 0 && <Empty title="No flows found">Entry points are functions nothing calls that call at least two others.</Empty>}
@@ -252,6 +256,7 @@ export function Flows({ openSymbol, version }: Nav) {
           </div>
         ))}
       </div>
+      <Grip id="flows" edge="right" target="prev" min={220} max={900} label="Resize list" />
       <div className="detail">
         {f && (
           <div className="detail-pad">

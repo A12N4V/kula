@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { dirColor, groupDirs, rankHue } from "./colors";
 import { settings, useKnownDirs, useSettings, type Settings } from "./settings";
 import { Icon } from "./ui";
+import { Grip, hasCustomSizes, resetSizes } from "./resize";
 
 function Seg<T extends string | number>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
   return (
@@ -49,6 +50,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="scrim clear" onMouseDown={onClose}>
       <aside className="settings" role="dialog" aria-label="Settings" onMouseDown={(e) => e.stopPropagation()}>
+        <Grip id="settings" edge="left" min={300} max={720} label="Resize settings" />
         <header>
           <Icon.sliders />
           <h2>Settings</h2>
@@ -59,6 +61,9 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           <div className="set-sec">Appearance</div>
           <Row label="Theme"><Seg value={s.theme} options={[["system", "System"], ["dark", "Dark"], ["light", "Light"]]} onChange={(theme) => settings.set({ theme })} /></Row>
           <Toggle k="opening" label="Opening sequence" hint="Your repo's graph, dithered, once per session" />
+          <Row label="Panel sizes" hint="Drag any panel edge; double-click an edge to reset it">
+            <button className="btn sm" disabled={!hasCustomSizes()} onClick={() => { resetSizes(); settings.set({}); }}>Reset all</button>
+          </Row>
           <Row label="Density"><Seg value={s.density} options={[["compact", "Compact"], ["comfortable", "Comfortable"]]} onChange={(density) => settings.set({ density })} /></Row>
 
           <div className="set-sec">Graph encoding</div>
@@ -107,7 +112,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <footer>
-          <button className="btn sm ghost" onClick={() => settings.reset()}>Restore defaults</button>
+          <button className="btn sm ghost" onClick={() => { resetSizes(); settings.reset(); }}>Restore defaults</button>
           <span className="spacer" />
           <span className="muted">Saved in this browser</span>
         </footer>

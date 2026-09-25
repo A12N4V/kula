@@ -610,3 +610,47 @@ code, pre, .mono { font-size: 11.5px; }
 @media (max-width: 760px) { .console-hero { grid-template-columns: 1fr; } .ch-dither { height: 180px; } }
 /* Code shows the characters that are in the file: no ligatures anywhere mono is used. */
 code, pre, kbd, .mono, .diff, .console, .code, input.mono, .kind-badge { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+
+/* ── resizable panels ── every pane edge is a grip; sizes are --size-<id> on <html> (resize.tsx) */
+.grip { position: absolute; z-index: 8; touch-action: none; outline: none; }
+.grip-left, .grip-right { top: 0; bottom: 0; width: 7px; cursor: col-resize; }
+.grip-top, .grip-bottom { left: 0; right: 0; height: 7px; cursor: row-resize; }
+.grip-left { left: 0; } .grip-right { right: 0; } .grip-top { top: 0; } .grip-bottom { bottom: 0; }
+.grip::after { content: ""; position: absolute; background: var(--accent); opacity: 0; transition: opacity .12s var(--ease); }
+.grip-left::after { top: 0; bottom: 0; left: 0; width: 2px; }
+.grip-right::after { top: 0; bottom: 0; right: 0; width: 2px; }
+.grip-top::after { left: 0; right: 0; top: 0; height: 2px; }
+.grip-bottom::after { left: 0; right: 0; bottom: 0; height: 2px; }
+.grip:hover::after, .grip:focus-visible::after, .grip:active::after { opacity: .85; }
+html[data-resizing] { user-select: none; -webkit-user-select: none; }
+html[data-resizing="x"] * { cursor: col-resize !important; }
+html[data-resizing="y"] * { cursor: row-resize !important; }
+
+.split { position: relative; grid-template-columns: var(--list-w, 340px) minmax(0, 1fr); }
+.split > .grip { right: auto; left: calc(var(--list-w, 340px) - 4px); }
+.split > .grip::after { right: auto; left: 3px; }
+
+.inspector { width: var(--size-inspector, 380px); }
+.graph-wrap.inspecting .zoom { right: calc(var(--size-inspector, 380px) + 24px); }
+
+.legend { width: var(--size-legend, 264px); max-height: var(--size-legend-h, 48%); }
+.legend:not(.closed) { height: var(--size-legend-h, auto); }
+.legend .grip-right::after { top: 8px; bottom: 8px; }
+.legend .grip-top::after { left: 8px; right: 8px; }
+
+.contrast-panel { width: var(--size-contrast, 360px); }
+.contrast-canvas { right: var(--size-contrast, 360px); }
+.split-canvas, .contrast-report { inset: 0 var(--size-contrast, 360px) 0 0; }
+.split-canvas { grid-template-columns: minmax(160px, var(--size-before, 1fr)) minmax(160px, 1fr); }
+
+.settings { position: relative; width: min(var(--size-settings, 380px), 100vw); }
+
+@media (max-width: 760px) {
+  .grip { display: none; }
+  .split { grid-template-columns: 1fr; }
+  .inspector { width: auto; }
+  .graph-wrap.inspecting .zoom { right: 14px; }
+  .contrast-canvas, .split-canvas, .contrast-report { right: 0; bottom: 45%; }
+  .contrast-panel { width: 100%; }
+  .split-canvas { grid-template-columns: 1fr; }
+}

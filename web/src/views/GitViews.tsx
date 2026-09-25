@@ -3,6 +3,7 @@ import { api, relTime, type Branch, type Commit, type Compare, type FileStatus, 
 import Dither from "../Dither";
 import type { Go, Target } from "../nav";
 import { Diff, Empty, Icon, ShowOutput, Sym, useToast } from "../ui";
+import { Grip, listWidth } from "../resize";
 
 type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
 
@@ -61,7 +62,7 @@ export function Changes({ onChanged, version }: Nav) {
   );
 
   return (
-    <div className="split">
+    <div className="split" style={listWidth("changes", 340)}>
       <div className="list" style={{ display: "flex", flexDirection: "column" }}>
         <div className="list-head"><h2>Changes</h2><span className="spacer" /><button className="btn sm ghost" onClick={refresh}><Icon.refresh /></button></div>
         <div style={{ flex: 1, overflow: "auto" }}>
@@ -77,6 +78,7 @@ export function Changes({ onChanged, version }: Nav) {
           </div>
         </div>
       </div>
+      <Grip id="changes" edge="right" target="prev" min={220} max={900} label="Resize list" />
       <div className="detail">
         {sel ? (
           <div className="detail-pad">
@@ -131,7 +133,7 @@ export function History({ version, target, go }: Nav) {
   const visible = commits.map((c, i) => ({ c, i })).filter(({ c }) => !filter || (c.subject + c.author + c.short).toLowerCase().includes(filter.toLowerCase()));
 
   return (
-    <div className="split" style={{ gridTemplateColumns: "minmax(360px, 460px) 1fr" }}>
+    <div className="split" style={listWidth("history", 420)}>
       <div className="list">
         <div className="list-head"><h2>History</h2><span className="muted">{commits.length}</span><span className="spacer" /><input className="input" style={{ width: 160, height: 26 }} placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
         {commits.length === 0 && <Empty title="No commits yet" />}
@@ -158,6 +160,7 @@ export function History({ version, target, go }: Nav) {
           );
         })}
       </div>
+      <Grip id="history" edge="right" target="prev" min={220} max={900} label="Resize list" />
       <div className="detail">
         {sel ? (
           <div className="detail-pad">
@@ -224,7 +227,7 @@ export function Branches({ onChanged, openSymbol, version, initialCompare, go }:
   );
 
   return (
-    <div className="split">
+    <div className="split" style={listWidth("branches", 360)}>
       <div className="list">
         <div className="list-head">
           <h2>Branches</h2><span className="spacer" />
@@ -243,6 +246,7 @@ export function Branches({ onChanged, openSymbol, version, initialCompare, go }:
         </div>
         {data?.stashes.map((s) => <div key={s} className="item"><span className="sub mono">{s}</span></div>)}
       </div>
+      <Grip id="branches" edge="right" target="prev" min={220} max={900} label="Resize list" />
       <div className="detail">
         <div className="detail-pad">
           <div className="row" style={{ marginBottom: 6 }}><Icon.compare /><h1 style={{ fontSize: 17 }}>Compare</h1></div>

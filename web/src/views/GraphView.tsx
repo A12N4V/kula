@@ -13,6 +13,7 @@ import { knownDirs, useSettings, type Settings } from "../settings";
 import { Empty, Icon, Kind, Logo, Md, Sym, useToast } from "../ui";
 import Contrast from "./Contrast";
 import type { ContrastMode, Go } from "../nav";
+import { Grip } from "../resize";
 
 type Props = {
   focus: number | null; setFocus: (id: number | null) => void; onChanged: () => void; version: number;
@@ -418,6 +419,8 @@ function Legend({ open, setOpen, mode, groups, settings: s, data, churn, filter,
 
   return (
     <div className={`graph-overlay legend ${open ? "" : "closed"}`}>
+      <Grip id="legend" edge="right" min={200} max={560} label="Resize legend width" />
+      {open && <Grip id="legend-h" edge="top" min={80} max={900} label="Resize legend height" />}
       <button className="legend-head" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span>{title}</span>
         {mode !== "churn" && <span className="count">{rows.length}</span>}
@@ -510,6 +513,7 @@ function Inspector({ id, onClose, setFocus, impact, setImpact, go: goView, churn
 
   return (
     <aside className="inspector" aria-label="Symbol inspector">
+      <Grip id="inspector" edge="left" min={300} max={960} label="Resize inspector" />
       <header>
         <div className="row">
           <div className="kind">{ctx && <Kind kind={ctx.node.kind} size={15} />}{ctx?.node.kind ?? "loading"}</div>

@@ -63,6 +63,9 @@ export function attachOverlay(sigma: Sigma, graph: Graph, opts: OverlayOptions) 
   const marks: CanvasRenderingContext2D = s.canvasContexts.marks;
   // Layers added after sigma's first resize start at 300×150; size them now.
   s.resize(true);
+  // Sigma only listens to window resizes; panes resized by hand change the container alone.
+  const ro = new ResizeObserver(() => sigma.scheduleRefresh());
+  ro.observe(sigma.getContainer());
   const state: OverlayState = {
     territories: true, hubIcons: true, curvature: 0, focus: null, flows: [], rings: new Map(), activeGroup: null, quiet: false, focusMode: false,
   };
@@ -290,6 +293,7 @@ export function attachOverlay(sigma: Sigma, graph: Graph, opts: OverlayOptions) 
     retheme() { readTheme(); onRender(); },
     kill() {
       alive = false;
+      ro.disconnect();
       cancelAnimationFrame(raf);
       sigma.off("afterRender", onRender);
     },
