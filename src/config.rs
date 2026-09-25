@@ -35,13 +35,11 @@ pub struct Index {
     pub exclude: Vec<String>,
     /// Skip source files larger than this (generated bundles, vendored blobs).
     pub max_file_kb: u64,
-    /// Put external packages in the graph as `package` nodes.
-    pub packages: bool,
 }
 
 impl Default for Index {
     fn default() -> Self {
-        Index { exclude: vec![], max_file_kb: 1024, packages: true }
+        Index { exclude: vec![], max_file_kb: 1024 }
     }
 }
 
@@ -97,8 +95,7 @@ impl Config {
              default_branch = {}   # what proposals and `kula check` compare against\n\n\
              [index]\n\
              exclude = [{}]   # gitignore-style globs, on top of .gitignore\n\
-             max_file_kb = {}\n\
-             packages = {}   # external dependencies as nodes on the graph's rim\n\n\
+             max_file_kb = {}\n\n\
              [hooks]\n\
              reindex = {}   # keep the graph current after commit / checkout / merge\n\n\
              [check]\n\
@@ -107,7 +104,6 @@ impl Config {
             q(&self.project.default_branch),
             excl,
             self.index.max_file_kb,
-            self.index.packages,
             self.hooks.reindex,
             q(&self.check.max_risk),
         )

@@ -44,7 +44,6 @@ default_branch = "main"   # what proposals and `kula check` compare against
 [index]
 exclude = ["**/generated/**"]   # gitignore-style, on top of .gitignore
 max_file_kb = 1024
-packages = true                 # external dependencies as nodes on the graph's rim
 
 [hooks]
 reindex = true

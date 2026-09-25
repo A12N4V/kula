@@ -185,7 +185,18 @@ pub struct IndexStats {
 /// Collect candidate source files, honouring .gitignore.
 fn walk(root: &Path) -> Vec<(String, Option<&'static str>)> {
     let mut out = Vec::new();
-    let walker = ignore::WalkBuilder::new(root)
+    // kula.toml: extra excludes (gitignore-style) and the size ceiling.
+    let cfg = crate::config::Config::load(root).unwrap_or_default();
+    let max_bytes = if cfg.index.max_file_kb > 0 { cfg.index.max_file_kb * 1024 } else { MAX_FILE_BYTES };
+    let mut ov = ignore::overrides::OverrideBuilder::new(root);
+    for g in &cfg.index.exclude {
+        let _ = ov.add(&format!("!{g}"));
+    }
+    let mut walker = ignore::WalkBuilder::new(root);
+    if let Ok(o) = ov.build() {
+        walker.overrides(o);
+    }
+    let walker = walker
         .hidden(true)
         .git_ignore(true)
         .filter_entry(|e| {
@@ -197,7 +208,7 @@ fn walk(root: &Path) -> Vec<(String, Option<&'static str>)> {
         if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
             continue;
         }
-        if entry.metadata().map(|m| m.len() > MAX_FILE_BYTES).unwrap_or(true) {
+        if entry.metadata().map(|m| m.len() > max_bytes).unwrap_or(true) {
             continue;
         }
         let rel = match entry.path().strip_prefix(root) {

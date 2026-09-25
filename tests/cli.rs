@@ -315,3 +315,16 @@ fn index_if_stale_skips_when_current() {
     assert_eq!(kula(d, &["index", "--if-stale", "--quiet"]), "");
     assert_eq!(std::fs::metadata(&db).unwrap().modified().unwrap(), m1, "no rebuild when HEAD is unchanged");
 }
+
+#[test]
+fn kula_toml_excludes_and_size_limit_shape_the_graph() {
+    let t = fixture();
+    let d = t.path();
+    write(d, "gen/big.ts", &format!("export function huge() {{ return 1; }}\n{}", "// pad\n".repeat(400)));
+    write(d, "kula.toml", "[index]\nexclude = [\"worker/**\"]\nmax_file_kb = 2\n");
+    kula(d, &["index"]);
+    let q = |s: &str| kula_json(d, &["query", s]).as_array().map(|a| a.iter().any(|n| n["name"] == s)).unwrap_or(false);
+    assert!(!q("schedule_nightly"), "worker/** is excluded");
+    assert!(!q("huge"), "files over max_file_kb are skipped");
+    assert!(q("hashToken"), "everything else is indexed");
+}

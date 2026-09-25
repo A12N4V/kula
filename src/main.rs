@@ -387,10 +387,7 @@ fn run(cli: Cli) -> Result<()> {
             }
         }
         Cmd::View { port, no_open } => {
-            if !Store::path(&repo).exists() {
-                eprint!("{} first run – indexing …", accent("◯"));
-                index::run(&repo, false)?;
-            }
+            // A missing graph is built by the server itself, behind the UI's progress loader.
             server::serve(repo, port, !no_open)?;
         }
         Cmd::Status => status(&repo, json)?,
