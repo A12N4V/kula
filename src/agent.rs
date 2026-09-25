@@ -16,6 +16,10 @@ use anyhow::Result;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
+// Contract: list rows are "name (path:line)" (verify's rows may prefix a status or
+// suffix a reason). The web UI parses that shape to open rows in the code panel –
+// change it only together with web/src (see the kula UI's Before-edit tab and Graph check).
+
 /// Rough token count for code: ~4 characters per token.
 fn tokens(s: &str) -> usize {
     s.len().div_ceil(4)
