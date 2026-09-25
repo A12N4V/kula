@@ -16,9 +16,8 @@ use anyhow::Result;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
-// Contract: list rows are "name (path:line)" (verify's rows may prefix a status or
-// suffix a reason), and each list has a structured `*_refs` twin ({name, path, line,
-// detail}). Prefer the refs; keep the strings' shape for older UIs and humans.
+// Contract: the structured `*_refs` ({name, path, line, detail}) are what the web UI
+// reads. The row strings are for humans and agents reading JSON; their wording is free.
 
 /// Rough token count for code: ~4 characters per token.
 fn tokens(s: &str) -> usize {
