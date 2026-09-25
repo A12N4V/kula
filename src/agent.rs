@@ -17,8 +17,8 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
 // Contract: list rows are "name (path:line)" (verify's rows may prefix a status or
-// suffix a reason). The web UI parses that shape to open rows in the code panel –
-// change it only together with web/src (see the kula UI's Before-edit tab and Graph check).
+// suffix a reason), and each list has a structured `*_refs` twin ({name, path, line,
+// detail}). Prefer the refs; keep the strings' shape for older UIs and humans.
 
 /// Rough token count for code: ~4 characters per token.
 fn tokens(s: &str) -> usize {
@@ -30,6 +30,21 @@ pub fn is_test_path(p: &str) -> bool {
     l.starts_with("test/") || l.starts_with("tests/") || l.contains("/test/") || l.contains("/tests/") || l.contains("__tests__")
         || l.contains(".test.") || l.contains(".spec.") || l.contains("_test.") || l.rsplit('/').next().is_some_and(|f| f.starts_with("test_"))
         || l.starts_with("e2e/") || l.contains("/e2e/")
+}
+
+/// A structured row: the same thing the strings say, without parsing.
+#[derive(Serialize, Clone)]
+pub struct Ref {
+    pub name: String,
+    pub path: String,
+    pub line: i64,
+    /// verify: added | removed | modified; for dangling, the removed callee.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+fn r(n: &Node) -> Ref {
+    Ref { name: n.name.clone(), path: n.path.clone(), line: n.start_line, detail: None }
 }
 
 // ------------------------------------------------------------------ context pack
@@ -152,6 +167,9 @@ pub struct PreEdit {
     pub co_changes: Vec<(String, usize)>,
     pub notes: Vec<String>,
     pub advice: Vec<String>,
+    /// Structured twins of direct_callers and tests.
+    pub direct_caller_refs: Vec<Ref>,
+    pub test_refs: Vec<Ref>,
 }
 
 /// Files that historically change in the same commits as `path` (its last 150 commits).
@@ -207,7 +225,10 @@ pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
         advice.push("High blast radius: prefer an additive change (new function, then migrate callers).".into());
     }
     advice.push("After editing, call verify_edit to see what actually moved.".into());
-    Ok(PreEdit { risk: up.risk.clone(), dependents: up.hits.len(), files: up.files, direct_callers: direct, tests, co_changes: co, notes, advice, symbol: n })
+    let direct_caller_refs: Vec<Ref> = up.hits.iter().filter(|h| h.depth == 1).map(|h| r(&h.node)).collect();
+    let mut test_refs: Vec<Ref> = up.hits.iter().filter(|h| is_test_path(&h.node.path)).map(|h| r(&h.node)).collect();
+    test_refs.dedup_by(|a, b| a.name == b.name && a.path == b.path);
+    Ok(PreEdit { risk: up.risk.clone(), dependents: up.hits.len(), files: up.files, direct_callers: direct, tests, co_changes: co, notes, advice, direct_caller_refs, test_refs, symbol: n })
 }
 
 // ------------------------------------------------------------------ verify
@@ -221,6 +242,10 @@ pub struct Verify {
     /// Existing callers of modified symbols, in other files: re-read them.
     pub recheck: Vec<String>,
     pub ok: bool,
+    /// Structured twins of changed, dangling and recheck.
+    pub changed_refs: Vec<Ref>,
+    pub dangling_refs: Vec<Ref>,
+    pub recheck_refs: Vec<Ref>,
 }
 
 pub fn verify_edit(repo: &Repo) -> Result<Verify> {
@@ -229,9 +254,14 @@ pub fn verify_edit(repo: &Repo) -> Result<Verify> {
     let d = graph::graph_diff(&base, &head, "HEAD", "WORKTREE", Some(false));
     let by: HashMap<i64, &graph::DiffNode> = d.nodes.iter().map(|n| (n.id, n)).collect();
     let label = |n: &graph::DiffNode| format!("{} {} ({}:{})", n.status, n.name, n.path, n.start_line);
-    let changed: Vec<String> = d.nodes.iter().filter(|n| n.status != "same" && n.kind != "file" && n.kind != "package").map(label).collect();
+    let dref = |n: &graph::DiffNode, detail: String| Ref { name: n.name.clone(), path: n.path.clone(), line: n.start_line, detail: Some(detail) };
+    let moved: Vec<&graph::DiffNode> = d.nodes.iter().filter(|n| n.status != "same" && n.kind != "file" && n.kind != "package").collect();
+    let changed: Vec<String> = moved.iter().map(|n| label(n)).collect();
+    let changed_refs: Vec<Ref> = moved.iter().map(|n| dref(n, n.status.to_string())).collect();
     let mut dangling = Vec::new();
+    let mut dangling_refs = Vec::new();
     let mut recheck: HashSet<String> = HashSet::new();
+    let mut recheck_refs: Vec<Ref> = Vec::new();
     for e in &d.edges {
         let (Some(a), Some(b)) = (by.get(&e.src), by.get(&e.dst)) else { continue };
         if e.kind != "CALLS" {
@@ -239,12 +269,16 @@ pub fn verify_edit(repo: &Repo) -> Result<Verify> {
         }
         if e.status == "removed" && b.status == "removed" && a.status != "removed" {
             dangling.push(format!("{} ({}:{}) called {} which is gone", a.name, a.path, a.start_line, b.name));
+            dangling_refs.push(dref(a, b.name.clone()));
         }
         if b.status == "modified" && a.status == "same" && a.path != b.path {
-            recheck.insert(format!("{} ({}:{}) calls modified {}", a.name, a.path, a.start_line, b.name));
+            if recheck.insert(format!("{} ({}:{}) calls modified {}", a.name, a.path, a.start_line, b.name)) {
+                recheck_refs.push(dref(a, b.name.clone()));
+            }
         }
     }
     let mut recheck: Vec<String> = recheck.into_iter().collect();
     recheck.sort();
-    Ok(Verify { ok: dangling.is_empty(), summary: d.summary, changed, dangling, recheck })
+    recheck_refs.sort_by(|x, y| (&x.name, &x.path, x.line).cmp(&(&y.name, &y.path, y.line)));
+    Ok(Verify { ok: dangling.is_empty(), summary: d.summary, changed, dangling, recheck, changed_refs, dangling_refs, recheck_refs })
 }

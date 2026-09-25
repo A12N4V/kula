@@ -375,6 +375,10 @@ fn agent_before_and_verify_bracket_an_edit() {
     assert_eq!(out.status.code(), Some(2));
     let v: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(v["dangling"][0].as_str().unwrap().contains("hashToken"), "{v}");
+    assert_eq!(v["dangling_refs"][0]["name"], "hashToken");
+    assert_eq!(v["dangling_refs"][0]["path"], "src/util/crypto.ts");
+    assert_eq!(v["dangling_refs"][0]["detail"], "salt");
+    assert!(b["test_refs"].as_array().unwrap().iter().any(|t| t["name"] == "testHash" && t["line"] == 2), "{b}");
 }
 
 #[test]
