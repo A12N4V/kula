@@ -72,9 +72,9 @@ export function attachOverlay(sigma: Sigma, graph: Graph, opts: OverlayOptions) 
   let raf = 0;
   const t0 = performance.now();
   let alive = true;
-  let theme = { bg: "#08080b", text: "#ece8e1", text2: "#a9a49c", text3: "#6d6a66", light: false };
+  let theme = { bg: "#000000", text: "#e8e2d9", text2: "#b5ac9f", text3: "#7a7269", light: false };
   const readTheme = () => {
-    const bg = css("--bg") || "#08080b";
+    const bg = css("--bg") || "#000000";
     theme = { bg, text: css("--text"), text2: css("--text-2"), text3: css("--text-3"), light: lum(bg) > 140 };
   };
   readTheme();
@@ -195,7 +195,7 @@ export function attachOverlay(sigma: Sigma, graph: Graph, opts: OverlayOptions) 
       const hit = (a: Box, b: Box) => !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]);
       const obstacles: Box[] = [];
       const labelled: Set<string> = s.displayedNodeLabels ?? new Set();
-      const lf = `500 11.5px "Geist Variable", system-ui, sans-serif`;
+      const lf = `500 10.5px "JetBrains Mono Variable", ui-monospace, monospace`;
       marks.font = lf;
       graph.forEachNode((id, a) => {
         if (a.virtual) return;
@@ -311,7 +311,7 @@ export function drawOutlinedLabel(ctx: CanvasRenderingContext2D, data: any, sett
   const y = data.y + size / 3;
   ctx.lineWidth = 3;
   ctx.lineJoin = "round";
-  ctx.strokeStyle = css("--bg") || "#07070a";
+  ctx.strokeStyle = css("--bg") || "#000000";
   ctx.strokeText(data.label, x, y);
   ctx.fillStyle = data.dimmed ? css("--text-3") : settings.labelColor.color;
   ctx.fillText(data.label, x, y);

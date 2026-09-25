@@ -126,7 +126,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, open
   /** Mount one renderer (reducers, overlay, events) on `el` for graph `g`. */
   const mount = (el: HTMLDivElement, g: Graph) => {
     const s = new Sigma(g, el, {
-      labelFont: "Geist Variable, system-ui, sans-serif",
+      labelFont: "JetBrains Mono Variable, ui-monospace, monospace",
       labelSize: 11,
       labelWeight: "500",
       labelColor: { color: cssVar("--text") },

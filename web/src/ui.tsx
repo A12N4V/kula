@@ -38,14 +38,13 @@ export const Icon = {
 export function Logo({ spin = false }: { spin?: boolean }) {
   return (
     <svg viewBox="0 0 32 32" className={spin ? "logo logo-draw" : "logo"} aria-hidden="true">
-      <polygon className="logo-ring" points="28,16 22,26.39 10,26.39 4,16 10,5.61 22,5.61" fill="none" stroke="var(--accent)" strokeOpacity=".38" strokeWidth="1.4" strokeLinejoin="round" />
-      <path className="logo-k" d="M10 5.61V26.39M10 16H16M22 5.61 16 16 22 26.39" fill="none" stroke="var(--accent)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" pathLength={100} />
+      {/* a kula ring: seven nodes passing one thing round, every one tied across the circle */}
+      <path className="logo-k" d="M16 4 21.21 26.81 6.62 8.52 27.7 18.67 4.3 18.67 25.38 8.52 10.79 26.81Z" fill="none" stroke="var(--accent)" strokeOpacity=".55" strokeWidth=".9" strokeLinejoin="round" pathLength={100} />
+      <path className="logo-ring" d="M16 4 25.38 8.52 27.7 18.67 21.21 26.81 10.79 26.81 4.3 18.67 6.62 8.52Z" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinejoin="round" />
       <g fill="var(--accent)">
-        {[[10, 5.61], [10, 26.39], [22, 5.61], [22, 26.39]].map(([x, y]) => <circle key={`${x}${y}`} cx={x} cy={y} r="2.3" />)}
-        <circle cx="28" cy="16" r="1.6" fillOpacity=".6" />
-        <circle cx="4" cy="16" r="1.6" fillOpacity=".6" />
+        {[[16, 4], [25.38, 8.52], [27.7, 18.67], [21.21, 26.81], [10.79, 26.81], [4.3, 18.67], [6.62, 8.52]].map(([x, y]) => <circle key={`${x}${y}`} cx={x} cy={y} r="1.9" />)}
       </g>
-      <circle className="logo-core" cx="16" cy="16" r="3.1" fill="var(--text)" />
+      <circle className="logo-core" cx="16" cy="16" r="2.4" fill="var(--text)" />
     </svg>
   );
 }

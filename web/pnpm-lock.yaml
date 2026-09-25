@@ -8,13 +8,10 @@ importers:
 
   .:
     dependencies:
-      '@fontsource-variable/geist':
-        specifier: ^5.3.0
-        version: 5.3.0
       '@fontsource-variable/jetbrains-mono':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource/antonio':
+      '@fontsource/cormorant-garamond':
         specifier: ^5.3.0
         version: 5.3.0
       '@sigma/edge-curve':
@@ -60,14 +57,11 @@ importers:
 
 packages:
 
-  '@fontsource-variable/geist@5.3.0':
-    resolution: {integrity: sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA==}
-
   '@fontsource-variable/jetbrains-mono@5.3.0':
     resolution: {integrity: sha512-F32xpS2NsGYoQi2ADSkKTgpJj7ozajsGgDJ8woTnqjmIB+dxDIqImjl4pXZVEExu8UFZ2ndhmX18EBS/hdz3Lw==}
 
-  '@fontsource/antonio@5.3.0':
-    resolution: {integrity: sha512-LB0XN3BDXKLWsHaR9qouHKGs6PT7NhVmIOPv+a3Kv8UpZSZs67lLH7vX99pOXE0v0rh9bToJQWqvO6X0fiVKxA==}
+  '@fontsource/cormorant-garamond@5.3.0':
+    resolution: {integrity: sha512-weuGsCirGVWBWqpt6YUp0yLThTe4G8YO45noq8wxeJCRvEpq5lFrxNMFSTxcyOyV5k5otzJ8guDzYegdYlcLMQ==}
 
   '@oxc-project/types@0.150.0':
     resolution: {integrity: sha512-rDS5/31E9HfPl/CIzGrn0DOlvBbXFseQ5URJ9sYMfstbKLD/c6Gm9vmRzRGDdAXyOIL4zmO37lc9RIwYqVruZw==}
@@ -416,11 +410,9 @@ packages:
 
 snapshots:
 
-  '@fontsource-variable/geist@5.3.0': {}
-
   '@fontsource-variable/jetbrains-mono@5.3.0': {}
 
-  '@fontsource/antonio@5.3.0': {}
+  '@fontsource/cormorant-garamond@5.3.0': {}
 
   '@oxc-project/types@0.150.0': {}
 

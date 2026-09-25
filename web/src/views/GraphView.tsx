@@ -157,7 +157,7 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go, openSet
     try {
       r = new Sigma(graph, box.current, {
         renderEdgeLabels: false,
-        labelFont: "Geist Variable, system-ui, sans-serif",
+        labelFont: "JetBrains Mono Variable, ui-monospace, monospace",
         labelSize: 11.5,
         labelWeight: "500",
         labelColor: { color: cssVar("--text") },

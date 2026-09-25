@@ -68,7 +68,7 @@ export default function Dither({ data, pixel = 3, className, speed = 1, assemble
     const ctx = cv.getContext("2d")!;
     const { pts, links, noise } = scene(data);
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    const ink = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#ff9e6d";
+    const ink = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#f97f3a";
     const n = parseInt(ink.replace("#", "").slice(0, 6), 16);
     const [ir, ig, ib] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
     let w = 0, h = 0, buf = new Float32Array(0), img: ImageData | null = null;

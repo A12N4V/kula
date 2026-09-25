@@ -19,10 +19,10 @@
 </p>
 
 <p align="center">
-  <img alt="license MIT" src="https://img.shields.io/badge/license-MIT-ff9e6d?style=flat-square&labelColor=141418">
-  <img alt="rust" src="https://img.shields.io/badge/core-rust-ff9e6d?style=flat-square&labelColor=141418">
-  <img alt="languages" src="https://img.shields.io/badge/parses-TS%20·%20JS%20·%20Python%20·%20Rust%20·%20Go-7cb7ff?style=flat-square&labelColor=141418">
-  <img alt="mcp" src="https://img.shields.io/badge/MCP-ready-8fd694?style=flat-square&labelColor=141418">
+  <img alt="license MIT" src="https://img.shields.io/badge/license-MIT-f97f3a?style=flat-square&labelColor=000000">
+  <img alt="rust" src="https://img.shields.io/badge/core-rust-f97f3a?style=flat-square&labelColor=000000">
+  <img alt="languages" src="https://img.shields.io/badge/parses-TS%20·%20JS%20·%20Python%20·%20Rust%20·%20Go-7cb7ff?style=flat-square&labelColor=000000">
+  <img alt="mcp" src="https://img.shields.io/badge/MCP-ready-8fd694?style=flat-square&labelColor=000000">
 </p>
 
 ---
@@ -155,7 +155,7 @@ Also included:
 3. **Keyboard first.** Everything is reachable through <kbd>⌘K</kbd>, and every view has a number key.
 4. **Honest status.** The top bar always says whether the graph matches `HEAD`.
 5. **Motion explains cause.** Selecting a symbol dims everything that isn't connected to it, and small dots run along its calls in the direction they go. `prefers-reduced-motion` is respected everywhere.
-6. **Three voices of type.** Antonio, compressed, for titles and figures; JetBrains Mono (ligatures off, so code reads as written) for labels, paths and code; Geist for reading.
+6. **Three voices of type.** Homonin's: Cormorant Garamond for titles and figures; JetBrains Mono (ligatures off, so code reads as written) for everything else – labels, paths, code and reading.
 7. **Density over decoration.** Every number sits next to what it means: KPIs carry a sub-fact, hotspots show commits and edges, the hover card shows in, out, lines and churn.
 
 ## Commands
@@ -237,7 +237,7 @@ src/
   meta.rs        issues / proposals / notes on refs/kula/meta
   server.rs      axum HTTP API + embedded UI
   mcp.rs         MCP stdio server
-web/src/         React UI (sigma.js graph, Geist type)
+web/src/         React UI (sigma.js graph, Homonin type)
 packaging/       npm launcher · Homebrew formula
 scripts/         test.sh · install.sh
 ```
