@@ -78,10 +78,20 @@ export interface Overview {
 /** The stored index build, as the server reports it while it runs. */
 export interface IndexProgress { active: boolean; phase: "idle" | "walk" | "parse" | "link" | "cluster" | "write"; done: number; total: number; elapsed_ms: number }
 
+/** Before editing a symbol (src/agent.rs pre_edit). */
+export interface PreEdit { symbol: Node; risk: string; dependents: number; files: number; direct_callers: string[]; tests: string[]; co_changes: [string, number][]; notes: string[]; advice: string[] }
+/** The working tree's graph against HEAD (src/agent.rs verify_edit). */
+export interface Verify {
+  summary: { added: number; removed: number; modified: number; same: number; edges_added: number; edges_removed: number; files_touched: number };
+  changed: string[]; dangling: string[]; recheck: string[]; ok: boolean;
+}
+
 export const api = {
   repo: () => get<RepoInfo>("/api/repo"),
   reindex: () => post("/api/index"),
   progress: () => get<IndexProgress>("/api/index/progress"),
+  preEdit: (id: number) => get<PreEdit>(`/api/agent/pre_edit/${id}`),
+  verify: () => get<Verify>("/api/agent/verify"),
   graph: (level = "symbol") => get<GraphData>(`/api/graph?${q({ level })}`),
   search: (s: string) => get<Node[]>(`/api/search?${q({ q: s })}`),
   symbol: (id: number) => get<Context>(`/api/symbol/${id}`),

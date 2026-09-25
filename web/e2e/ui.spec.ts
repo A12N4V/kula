@@ -203,6 +203,27 @@ test.describe("graph chrome", () => {
   });
 });
 
+test.describe("agent checks, for people", () => {
+  test("the inspector says what to know before editing a symbol", async ({ page }) => {
+    await open(page, "graph");
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.keyboard.type("parseHash");
+    await page.locator(".palette").getByText("parseHash", { exact: true }).first().click();
+    await page.getByRole("button", { name: "Before edit" }).click();
+    const ac = page.locator(".inspector .ac");
+    await expect(ac.locator(".risk")).toHaveText(/low|medium|high/);
+    await expect(ac.locator(".ac-advice li").first()).toBeVisible();
+    await expect(ac).not.toContainText("verify_edit"); // advice is phrased for people here
+  });
+
+  test("verify reads the working tree against HEAD", async ({ request }) => {
+    const v = await (await request.get("/api/agent/verify", { headers: { "x-kula-token": "test" } })).json();
+    expect(typeof v.ok).toBe("boolean");
+    expect(v.summary).toHaveProperty("modified");
+    expect(Array.isArray(v.dangling)).toBe(true);
+  });
+});
+
 test.describe("api", () => {
   test("refuses requests without the session token", async ({ request }) => {
     const r = await request.get("/api/repo");

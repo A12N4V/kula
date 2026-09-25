@@ -12,6 +12,7 @@ import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLY
 import { knownDirs, settings, useSettings, type Settings } from "../settings";
 import { Empty, Icon, Kind, Logo, Md, Sym, useToast } from "../ui";
 import { GraphLoader, type LoadStep } from "../AsciiMark";
+import { PreEditPanel } from "../AgentChecks";
 import type { IndexProgress } from "../api";
 import Contrast from "./Contrast";
 import type { ContrastMode, Go } from "../nav";
@@ -555,7 +556,7 @@ function Inspector({ id, onClose, setFocus, impact, setImpact, go: goView, churn
   churn: Record<string, number>; deg: [number, number] | null;
 }) {
   const [ctx, setCtx] = useState<Context | null>(null);
-  const [tab, setTab] = useState<"context" | "impact" | "history" | "source" | "notes">("context");
+  const [tab, setTab] = useState<"context" | "impact" | "edit" | "history" | "source" | "notes">("context");
   const [hist, setHist] = useState<SymbolHistory | null>(null);
   // Browser-style back/forward through symbols you've inspected.
   const trail = useRef<{ stack: number[]; at: number }>({ stack: [], at: -1 });
@@ -621,9 +622,9 @@ function Inspector({ id, onClose, setFocus, impact, setImpact, go: goView, churn
         )}
       </header>
       <div className="tabs">
-        {(["context", "impact", "history", "source", "notes"] as const).map((t) => (
+        {(["context", "impact", "edit", "history", "source", "notes"] as const).map((t) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-            {t[0].toUpperCase() + t.slice(1)}{t === "notes" && ctx?.notes.length ? ` ${ctx.notes.length}` : ""}
+            {t === "edit" ? "Before edit" : t[0].toUpperCase() + t.slice(1)}{t === "notes" && ctx?.notes.length ? ` ${ctx.notes.length}` : ""}
           </button>
         ))}
       </div>
@@ -667,6 +668,8 @@ function Inspector({ id, onClose, setFocus, impact, setImpact, go: goView, churn
               </>
             )}
           </>
+        ) : tab === "edit" ? (
+          <PreEditPanel id={id} />
         ) : tab === "history" ? (
           !hist ? <div className="muted" style={{ padding: "16px 0" }}>Reading git history…</div> : (
             <>

@@ -4,6 +4,7 @@ import Dither from "../Dither";
 import type { Go, Target } from "../nav";
 import { Diff, Empty, Icon, ShowOutput, Sym, useToast } from "../ui";
 import { Grip, listWidth } from "../resize";
+import { VerifyPanel } from "../AgentChecks";
 
 type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
 
@@ -68,6 +69,7 @@ export function Changes({ onChanged, version }: Nav) {
         <div style={{ flex: 1, overflow: "auto" }}>
           {files.length === 0 ? <Empty title="Working tree clean">Nothing to commit.</Empty> : (<>{group("Staged", staged, true)}{group("Changes", unstaged, false)}</>)}
         </div>
+        {files.length > 0 && <VerifyPanel version={files.map((f) => f.path + f.index + f.worktree).join("|") + version} />}
         <div style={{ padding: 12, borderTop: "1px solid var(--line)" }} className="stack">
           <textarea className="textarea" placeholder="Commit message  (⌘↵ to commit)" value={msg} onChange={(e) => setMsg(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && msg.trim()) commit(); }} style={{ minHeight: 70 }} />

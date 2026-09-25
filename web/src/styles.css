@@ -790,3 +790,24 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 /* graph HUD: wraps instead of running off a narrow screen */
 .graph-overlay.hud { right: 14px; flex-wrap: wrap; align-content: flex-start; pointer-events: none; }
 .graph-overlay.hud > * { pointer-events: auto; }
+
+/* agent checks (AgentChecks.tsx): before an edit in the inspector, after it in Changes */
+.ac .stat-row { margin-top: 12px; }
+.ac-advice { margin: 4px 0 6px; padding-left: 18px; color: var(--text-2); font-size: 12px; line-height: 1.55; }
+.ac-advice li + li { margin-top: 4px; }
+.ac-ref { display: grid; gap: 1px; padding: 4px 6px; margin: 0 -6px; cursor: pointer; font-size: 12px; }
+.ac-ref:hover { background: var(--panel-2); }
+.ac-ref .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.ac-ref .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: 10.5px; }
+.ac-ref.bad .nm { color: var(--red); }
+.ac-ref.warn .nm { color: var(--yellow); }
+.ac-empty { font-size: 12px; padding: 4px 0; }
+.verify { border-top: 1px solid var(--line); font-size: 12px; }
+.verify.muted { padding: 10px 12px; }
+.verify-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border: 0; background: none; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; }
+.verify-head:hover { background: var(--panel-2); }
+.verify-head b { color: var(--text); font-weight: 600; }
+.verify-head .add { color: var(--green); } .verify-head .del { color: var(--red); } .verify-head .mod { color: var(--yellow); }
+.verify-body { max-height: 38vh; overflow: auto; padding: 0 12px 10px; }
+.verify-body .section-title:first-child { margin-top: 2px; }
+.inspector .tabs button { white-space: nowrap; flex: none; }

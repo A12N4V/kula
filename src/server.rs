@@ -157,6 +157,20 @@ async fn reindex(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(index::run(&s.repo, true)?))).await
 }
 
+/// Before editing a symbol: dependents, direct callers, tests that reach it, files that change with it, advice.
+async fn agent_pre_edit(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        Ok(json!(crate::agent::pre_edit(&s.repo, &st, &id)?))
+    })
+    .await
+}
+
+/// After editing: the working tree's graph against HEAD – callers left dangling, callers to re-read.
+async fn agent_verify(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!(crate::agent::verify_edit(&s.repo)?))).await
+}
+
 /// Where the stored index build is, for the loader's progress bar. Cheap: no store access.
 async fn index_progress() -> Json<Value> {
     Json(index::PROGRESS.json())
@@ -500,6 +514,8 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/repo", get(repo_info))
         .route("/api/index", post(reindex))
         .route("/api/index/progress", get(index_progress))
+        .route("/api/agent/pre_edit/{id}", get(agent_pre_edit))
+        .route("/api/agent/verify", get(agent_verify))
         .route("/api/graph", get(graph_data))
         .route("/api/search", get(search))
         .route("/api/graphdiff", get(graph_diff))
