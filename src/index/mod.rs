@@ -727,6 +727,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         millis: t0.elapsed().as_millis(),
     };
     store.set_meta("stats", &serde_json::to_string(&stats)?)?;
+    store.publish()?;
     if !quiet {
         eprintln!();
     }

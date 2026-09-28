@@ -35,10 +35,12 @@ pub struct Community {
 
 pub struct Store {
     pub conn: Connection,
+    /// Set while a fresh index is being built: (temporary file, final path). See `publish`.
+    staged: Option<(std::path::PathBuf, std::path::PathBuf)>,
 }
 
 const SCHEMA: &str = r#"
-PRAGMA journal_mode = WAL;
+PRAGMA journal_mode = DELETE;
 CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, path TEXT NOT NULL,
   lang TEXT, start_line INTEGER, end_line INTEGER, parent INTEGER, community INTEGER
@@ -74,19 +76,48 @@ impl Store {
         repo.kula_dir().join("graph.db")
     }
 
-    /// Fresh database for a full (re)index.
+    /// Fresh database for a full (re)index, built beside the live one. Nothing
+    /// reads it until `publish` swaps it in with one rename, so a running server's
+    /// open connections never see a half-written or vanishing file. (Deleting the
+    /// live WAL's -shm under open readers is what used to crash `kula view` with a
+    /// bus error when it reindexed.)
     pub fn create(repo: &Repo) -> Result<Store> {
+        static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let dir = repo.kula_dir();
         std::fs::create_dir_all(&dir)?;
         // Keep the index out of version control without touching the user's .gitignore.
         std::fs::write(dir.join(".gitignore"), "*\n").ok();
-        let p = Self::path(repo);
-        for suffix in ["", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{}", p.display(), suffix));
+        let dest = Self::path(repo);
+        // Builds that died before publishing leave their temp file; clear any older than ten minutes.
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for e in rd.flatten() {
+                let stale = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 600);
+                if stale && e.file_name().to_string_lossy().starts_with("graph.db.building-") {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
         }
-        let conn = Connection::open(&p)?;
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = dir.join(format!("graph.db.building-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_file(&tmp);
+        let conn = Connection::open(&tmp)?;
         conn.execute_batch(SCHEMA)?;
-        Ok(Store { conn })
+        Ok(Store { conn, staged: Some((tmp, dest)) })
+    }
+
+    /// Swap a freshly built index in for the live one. Readers holding the old
+    /// file keep reading it until they close; new opens get the new one.
+    pub fn publish(self) -> Result<()> {
+        let Store { conn, staged } = self;
+        let Some((tmp, dest)) = staged else { return Ok(()) };
+        conn.close().map_err(|(_, e)| e)?;
+        // Indexes from before this change used WAL; unlink (never truncate) its files
+        // so the new database doesn't inherit them. Open mappings survive an unlink.
+        for suffix in ["-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{}", dest.display(), suffix));
+        }
+        std::fs::rename(&tmp, &dest)?;
+        Ok(())
     }
 
     pub fn open(repo: &Repo) -> Result<Store> {
@@ -96,7 +127,7 @@ impl Store {
         }
         let conn = Connection::open(&p)?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
-        Ok(Store { conn })
+        Ok(Store { conn, staged: None })
     }
 
     pub fn write_all(&self, nodes: &[Node], edges: &[Edge], communities: &[Community]) -> Result<()> {
