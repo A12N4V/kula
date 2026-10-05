@@ -1,6 +1,33 @@
 # The launch film
 
-An 84-second film cut to its own score. Everything in it is made by the scripts in this folder from the real app – no screen recorder, no stock footage, no licensed music.
+Two cuts, both made by the scripts in this folder from the real app – no screen recorder, no stock footage, no licensed music.
+
+- **The film** (`promo/film`, Remotion, 58 s): voiceover, an isometric world built from the mark, and a camera that zooms in on every click and burst of typing. This is `docs/assets/promo.mp4`.
+- **The long cut** (`cut.py`, ffmpeg, 84 s): the same score at full length, hard cuts on the bar, captions baked into the shots.
+
+## The film
+
+```sh
+sh promo/film.sh              # score → voiceover → app shots → Remotion render → web copies
+sh promo/film.sh render       # just re-render after editing promo/film/src
+cd promo/film && pnpm studio  # scrub it in Remotion Studio
+```
+
+| bars | section | picture | voice |
+|---|---|---|---|
+| 0–3 | intro | an isometric city of code – the mark's cells as files, calls along the ground – loses its shape | "Your AI writes more of your code every day. But it can't see the shape of it…" |
+| 3–4 | build | the city folds flat into the mark; KULA 1.0 | "This is kula." |
+| 4–10 | drop A | the map, impact, contrast, SPARQL, the console – the camera finds each click | "Your repository, as a map…" |
+| 10–12 | break | fences rise around the city; an agent is turned back at one | "Now, let your agents in. On your terms." |
+| 12–18 | drop B | workflows, fences, the hook, memory, any agent | "Workflows… Fences… Memory…" |
+| 18–21 | outro | the mark, the name, the install line typed out | "Kula, one point oh. Git, with a map." |
+
+- **Camera.** `capture.mjs` (with `PROMO_FILM=1`) logs every click and typing burst with its position. `src/Shot.tsx` eases the camera toward each one, holds while it happens and lets go, keeps the frame inside the picture, and adds a slow push-in and a punch on every cut.
+- **Type.** Captions and headlines are typed in Remotion, with a block cursor that blinks on the eighth notes.
+- **Isometric world.** `src/Iso.tsx` projects the mark's 17 cells as cubes on a grid; one parameter blends the isometric view into a straight-down one, which is how the city becomes the logo.
+- **Voice.** `voice.py` places each line on the score from `cues.json`, speaks it with Kokoro when it is installed (`pip install kokoro soundfile`; voice `af_heart`) or macOS `say` otherwise (`KULA_VOICE=Samantha`), and masters it to -16 LUFS. The score ducks about 7 dB under every line.
+
+## The long cut
 
 ```sh
 python3 promo/score.py          # the score            → promo/out/score.wav, cues.json

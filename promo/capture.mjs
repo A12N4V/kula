@@ -19,7 +19,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(ROOT, "web/package.json"));
 const { chromium } = require("@playwright/test");
 
-const OUT = join(ROOT, "promo/out/clips");
+// PROMO_FILM=1: clips for the Remotion film – no baked captions (Remotion types them),
+// and every click and burst of typing logged so the camera can zoom to it.
+const FILM = !!process.env.PROMO_FILM;
+const OUT = FILM ? join(ROOT, "promo/film/public/clips") : join(ROOT, "promo/out/clips");
+let EVENTS = [];
 const FPS = 30, W = 1920, H = 1080, PORT = Number(process.env.PROMO_PORT ?? 7490);
 const BASE = `http://localhost:${PORT}`;
 const BAR = 8 / 3;
@@ -101,6 +105,7 @@ async function point(page, loc, { click = true, dx = 0.5, dy = 0.5 } = {}) {
   const b = await loc.boundingBox();
   if (!b) return;
   const x = b.x + b.width * dx, y = b.y + b.height * dy;
+  EVENTS.push({ kind: click ? "click" : "point", t: Date.now() / 1000 + 0.6, x, y });
   await page.evaluate(([x, y]) => { const c = document.getElementById("promo-cur"); if (c) c.style.transform = `translate(${x}px, ${y}px)`; }, [x, y]);
   await sleep(600);
   if (click) {
@@ -110,7 +115,10 @@ async function point(page, loc, { click = true, dx = 0.5, dy = 0.5 } = {}) {
 }
 
 async function typeSlow(page, s, delay = 55) {
+  const r = await page.evaluate(() => { const b = document.activeElement?.getBoundingClientRect(); return b ? { x: b.left + Math.min(b.width, 420) / 2, y: b.top + b.height / 2 } : null; });
+  const t0 = Date.now() / 1000;
   for (const ch of s) { await page.keyboard.type(ch); await sleep(delay); }
+  if (r) EVENTS.push({ kind: "type", t: t0, end: Date.now() / 1000, x: r.x, y: r.y });
 }
 
 const settled = (page) => page.locator(".graph-loader").waitFor({ state: "detached", timeout: 30_000 }).catch(() => {});
@@ -236,7 +244,8 @@ async function recordApp(browser, s) {
     cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
   });
   if (!s.prepare) await page.goto(`${BASE}/#${s.hash}`);
-  await chrome(page, s.cap);
+  await chrome(page, FILM ? null : s.cap);
+  EVENTS = [];
   await cdp.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
   const t0 = Date.now() / 1000;
   await Promise.race([s.act(page), sleep(s.dur * 1000)]).catch((e) => console.warn(s.name, e.message));
@@ -257,7 +266,9 @@ async function recordApp(browser, s) {
   writeFileSync(join(dir, "list.txt"), list);
   ffmpeg(["-f", "concat", "-safe", "0", "-i", join(dir, "list.txt"), "-vf", `fps=${FPS},scale=${W}:${H}:flags=lanczos,format=yuv420p`, "-c:v", "libx264", "-preset", "slow", "-crf", "15", "-t", String(s.dur), join(OUT, s.name + ".mp4")]);
   rmSync(dir, { recursive: true, force: true });
-  writeFileSync(join(OUT, s.name + ".json"), JSON.stringify({ duration: s.dur, frames: frames.length }));
+  const rel = (t) => +(t - start).toFixed(3);
+  const events = EVENTS.map((e) => ({ ...e, t: rel(e.t), ...(e.end ? { end: rel(e.end) } : {}) }));
+  writeFileSync(join(OUT, s.name + ".json"), JSON.stringify({ duration: s.dur, frames: frames.length, events }));
   console.log("app  ", s.name, frames.length, "frames");
 }
 

@@ -11,3 +11,6 @@ target-wheels/
 web/test-results/
 web/playwright-report/
 promo/out/
+promo/film/node_modules/
+promo/film/out/
+promo/film/public/

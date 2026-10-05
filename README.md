@@ -41,7 +41,7 @@ kula view                        # the map, at http://localhost:7420
 ```
 
 <p align="center"><img src="docs/assets/promo.gif" alt="kula in 20 seconds: the graph, contrast, fences and the agent loop" width="100%"></p>
-<p align="center"><sub>Twenty seconds of the <a href="docs/assets/promo.mp4">launch film</a> (with sound). Rendered by <a href="promo/">promo/</a> from the real app.</sub></p>
+<p align="center"><sub>The drop of the <a href="docs/assets/promo.mp4">58-second launch film</a> – watch it with sound. Made in <a href="promo/">promo/</a> from the real app: Remotion, an original score, a voiceover.</sub></p>
 
 ## Why kula
 
@@ -351,7 +351,7 @@ The internals – resolution, the store, risk, the meta ref, the API – are in 
 | [docs/AGENTS.md](docs/AGENTS.md) | workflows, fences, tasks, memory, the brief, suggestions, the hook per agent, every MCP tool |
 | [docs/KNOWLEDGE-GRAPH.md](docs/KNOWLEDGE-GRAPH.md) | the RDF vocabulary, IRIs, SPARQL examples, result shapes |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | indexing, resolution, storage, contrast, risk, the meta ref, the HTTP API, tests |
-| [promo/](promo/) | the launch film: how it is captured, scored and cut |
+| [promo/](promo/) | the launch film: score, voiceover, capture, and the Remotion edit |
 
 ## Development
 

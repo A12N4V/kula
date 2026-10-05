@@ -17,7 +17,7 @@ The arrangement is the film's structure, bar for bar (90 BPM, 8/3 s a bar):
   drop B   8 bars  beat back, pizzicato canon line     workflows, fences, memory
   outro    4 bars  one last hit, the final D major     kula 1.0
 
-usage: python3 promo/score.py [out.wav]  → also writes cues.json beside it
+usage: python3 promo/score.py [out.wav] [--layout=long|film]  → also writes cues.json beside it
 """
 
 import json
@@ -34,7 +34,15 @@ BAR = 4 * BEAT
 SWING = 0.57  # 16ths: the off-beat 16th lands at 57% of the 8th
 RNG = np.random.default_rng(1680)
 
-SECTIONS = [("intro", 4), ("build", 2), ("dropA", 8), ("break", 4), ("dropB", 8), ("outro", 4)]
+LAYOUTS = {
+    # the long cut (promo/cut.py): 30 bars, 80 s
+    "long": [("intro", 4), ("build", 2), ("dropA", 8), ("break", 4), ("dropB", 8), ("outro", 4)],
+    # the film (promo/film, Remotion): 21 bars, 56 s
+    "film": [("intro", 3), ("build", 1), ("dropA", 6), ("break", 2), ("dropB", 6), ("outro", 3)],
+}
+LAYOUT = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--layout=")), "long")
+SECTIONS = LAYOUTS[LAYOUT]
+OUTRO = dict(SECTIONS)["outro"]
 BARS = sum(n for _, n in SECTIONS)
 TAIL = 4.0
 N = int((BARS * BAR + TAIL) * SR)
@@ -248,9 +256,9 @@ def render():
             root, inner, top = CHORDS[ci]
             at = bar * BAR + half * 2 * BEAT
             dur = 2 * BEAT
-            last = sec == "outro" and i >= 2
-            if sec == "outro" and i == 3:
-                continue  # the final chord rings from bar 2 of the outro
+            last = sec == "outro" and i >= OUTRO - 2
+            if sec == "outro" and i == OUTRO - 1:
+                continue  # the final chord rings through the last two bars
             if last:
                 root, inner, top, dur = "D2", ["A3", "D4", "F#4"], "D5", 2 * BAR
                 if half:
@@ -323,7 +331,7 @@ def render():
                 k = shape(kick(0.8), lowpass(180 + 300 * i, 2))
                 place(drums[0], k, tt)
                 place(drums[1], k, tt)
-            if i == 1:
+            if i == dict(SECTIONS)["build"] - 1:
                 for s in range(8, 16):
                     v = 0.25 + 0.07 * (s - 8)
                     place(drums[0], snare(v), bar * BAR + s * BEAT / 4)
@@ -331,7 +339,7 @@ def render():
 
     # Riser across the build: noise swept up through a band-pass.
     b0 = bar_start("build") * BAR
-    nr = int(2 * BAR * SR)
+    nr = int(dict(SECTIONS)["build"] * BAR * SR)
     t = t_of(nr)
     noise = RNG.normal(0, 1, nr)
     chunks = 32
@@ -416,7 +424,8 @@ def write_wav(path, x):
 
 
 def main():
-    out = Path(sys.argv[1] if len(sys.argv) > 1 else "promo/out/score.wav")
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    out = Path(args[0] if args else "promo/out/score.wav")
     out.parent.mkdir(parents=True, exist_ok=True)
     mix, kicks = render()
     write_wav(out, mix)
