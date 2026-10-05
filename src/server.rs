@@ -192,6 +192,28 @@ async fn search(State(s): State<AppState>, Query(q): Query<HashMap<String, Strin
     .await
 }
 
+/// What is near a file: the file, the symbols it defines (in source order) and
+/// its sibling files – the autofill for notes and memories written beside code.
+async fn near(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        let path = q.get("path").cloned().unwrap_or_default();
+        let dir = path.rsplit_once('/').map(|x| x.0).unwrap_or("").to_string();
+        let file = st.nodes_where("kind = 'file' AND path = ?1", rusqlite::params![path])?;
+        let symbols =
+            st.nodes_where("kind NOT IN ('file','package') AND path = ?1 ORDER BY start_line LIMIT 40", rusqlite::params![path])?;
+        let like = if dir.is_empty() { "%".to_string() } else { format!("{dir}/%") };
+        let siblings: Vec<_> = st
+            .nodes_where("kind = 'file' AND path LIKE ?1 AND path != ?2 ORDER BY path LIMIT 60", rusqlite::params![like, path])?
+            .into_iter()
+            .filter(|n| n.path[if dir.is_empty() { 0 } else { dir.len() + 1 }..].find('/').is_none())
+            .take(12)
+            .collect();
+        Ok(json!({ "file": file.first(), "symbols": symbols, "siblings": siblings }))
+    })
+    .await
+}
+
 async fn symbol(State(s): State<AppState>, Path(id): Path<i64>) -> ApiResult {
     blocking(move || {
         let st = Store::open(&s.repo)?;
@@ -507,6 +529,14 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "mcp_registered": read(".mcp.json").contains("\"kula\""),
             "hook_installed": read(".claude/settings.json").contains("kula guard hook"),
             "kula_toml": crate::config::Config::exists(&r.root),
+            "workflows": crate::workflow::all(&cfg),
+            "workflow": g.workflow(),
+            "workflow_rules": g.workflow_rules().into_iter().map(|(rule, level)| json!({ "level": level, "paths": rule.paths, "symbols": rule.symbols, "reason": rule.reason })).collect::<Vec<_>>(),
+            "raw_rules": cfg.guards,
+            "docs_list": cfg.agents.docs,
+            "connections": crate::agents::connections(&r.root),
+            "docs": crate::agents::docs(r)?,
+            "suggestions": crate::agents::suggestions(r),
         }))
     })
     .await
@@ -520,6 +550,12 @@ struct AgentReq {
     target: String,
     text: String,
     id: u64,
+    workflow: String,
+    path: String,
+    agent: String,
+    rules: Vec<crate::config::GuardRule>,
+    workflows: Vec<crate::workflow::Workflow>,
+    agents: Option<crate::config::Agents>,
 }
 
 async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Json(a): Json<AgentReq>) -> ApiResult {
@@ -529,8 +565,64 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
             "task_start" => json!(crate::guard::task_start(
                 r,
                 &a.title,
-                a.scope.into_iter().map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()
+                a.scope.into_iter().map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect(),
+                (!a.workflow.is_empty()).then_some(a.workflow.as_str()),
+                &r.user()
             )?),
+            "memory_edit" => json!(crate::memory::edit(
+                r,
+                &Store::open(r)?,
+                a.id,
+                (!a.text.is_empty()).then_some(a.text.as_str()),
+                (!a.target.is_empty()).then_some(a.target.as_str())
+            )?),
+            "memory_stale" => json!(crate::memory::mark_stale(r, a.id)?),
+            "guards_save" => {
+                crate::config::set_guards(&r.root, &a.rules)?;
+                json!({ "ok": true })
+            }
+            "workflows_save" => {
+                crate::config::set_workflows(&r.root, &a.workflows)?;
+                json!({ "ok": true })
+            }
+            "settings_save" => {
+                let ag = a.agents.ok_or_else(|| anyhow!("agents settings required"))?;
+                crate::config::set_agents(&r.root, &ag)?;
+                json!({ "ok": true })
+            }
+            "doc_read" => json!({ "path": a.path, "text": crate::agents::doc_read(r, &a.path)? }),
+            "doc_save" => {
+                crate::agents::doc_save(r, &a.path, &a.text)?;
+                json!({ "ok": true })
+            }
+            "docs_sync" => json!({ "written": crate::agents::sync(r, &[])? }),
+            "brief" => json!({ "text": crate::agents::brief(&crate::config::Config::load(&r.root)?) }),
+            "connect" => json!({ "files": crate::agents::connect(&r.root, &a.agent)? }),
+            "suggestion_accept" => json!(crate::agents::accept(r, a.id)?),
+            "suggestion_dismiss" => {
+                crate::agents::dismiss(r, a.id)?;
+                json!({ "ok": true })
+            }
+            "preview" => {
+                // The fence map a workflow would draw, without starting it.
+                let cfg = crate::config::Config::load(&r.root)?;
+                let t = crate::guard::Task {
+                    title: "preview".into(),
+                    workflow: a.workflow.clone(),
+                    scope: crate::workflow::find(&cfg, &a.workflow).map(|w| w.scope).unwrap_or_default(),
+                    ..Default::default()
+                };
+                let g = crate::guard::Guards::new(&cfg, (!a.workflow.is_empty()).then_some(t))?;
+                let st = Store::open(r)?;
+                let mut levels = serde_json::Map::new();
+                for n in st.nodes_where("kind != 'package'", [])? {
+                    let v = g.node(&n);
+                    if v.level != crate::guard::Level::Open {
+                        levels.insert(n.id.to_string(), json!(v.level));
+                    }
+                }
+                json!({ "levels": levels })
+            }
             "task_done" => json!(crate::guard::task_done(r)?),
             "remember" => json!(crate::memory::remember(r, &Store::open(r)?, &a.target, &a.text, &r.user())?),
             "confirm" => json!(crate::memory::confirm(r, &Store::open(r)?, a.id)?),
@@ -645,6 +737,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/agent/verify", get(agent_verify))
         .route("/api/graph", get(graph_data))
         .route("/api/search", get(search))
+        .route("/api/near", get(near))
         .route("/api/graphdiff", get(graph_diff))
         .route("/api/history/{id}", get(history))
         .route("/api/overview", get(overview))

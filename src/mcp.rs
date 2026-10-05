@@ -43,7 +43,19 @@ fn tools() -> Value {
         { "name": "recall", "description": "Memories about a symbol, file or the repo – its own, its file's, its callers' and callees' – or matching a query. stale=true means the code changed after the memory was written: verify before relying on it.",
           "inputSchema": s(json!({ "target": { "type": "string" }, "query": { "type": "string" }, "limit": { "type": "integer" } }), &[]) },
         { "name": "sparql", "description": "Ask the knowledge graph anything in SPARQL 1.1 (read only). Prefixes kula: (vocabulary), code: (urn:kula: instances), rdf:, rdfs:, xsd: are predeclared. Classes: kula:Symbol (with subclasses Function, Method, Class, Interface), File, Package, Cluster, Note, Memory, Issue, Guard. Properties: name, path, language, startLine, endLine, definedIn, memberOf, calls, imports, inCluster, about, body, author, created, stale, status, guardLevel, reason, fences. Example: SELECT ?name (COUNT(?c) AS ?n) WHERE { ?s a kula:Function ; kula:name ?name . ?c kula:calls ?s } GROUP BY ?name ORDER BY DESC(?n) LIMIT 10",
-          "inputSchema": s(json!({ "query": { "type": "string" }, "limit": { "type": "integer", "description": "max rows (default 200)" } }), &["query"]) }
+          "inputSchema": s(json!({ "query": { "type": "string" }, "limit": { "type": "integer", "description": "max rows (default 200)" } }), &["query"]) },
+        { "name": "workflows", "description": "How work is done here. Lists the workflows (explore, fix, refactor, tests, docs and the repository's own): each has its own fences, default scope, memory policy, the steps to follow and the docs to read first. Returns the active task's workflow in full. Call it at the start of a task.",
+          "inputSchema": s(json!({}), &[]) },
+        { "name": "start_task", "description": "Declare what you are doing, optionally in a workflow; its fences then apply to you. Only when no task is active – you cannot replace a task a person started.",
+          "inputSchema": s(json!({ "title": { "type": "string" }, "workflow": { "type": "string" }, "scope": { "type": "array", "items": { "type": "string" }, "description": "globs or symbol names; defaults to the workflow's scope" } }), &["title"]) },
+        { "name": "finish_task", "description": "Finish the task you started with start_task and lift its fences.",
+          "inputSchema": s(json!({}), &[]) },
+        { "name": "update_memory", "description": "Maintain a memory: rewrite its text, move it to another target, confirm it still holds after the code changed (still_true), or flag it stale. Agents may change memories agents wrote.",
+          "inputSchema": s(json!({ "id": { "type": "integer" }, "text": { "type": "string" }, "target": { "type": "string" }, "still_true": { "type": "boolean" }, "stale": { "type": "boolean" } }), &["id"]) },
+        { "name": "suggest", "description": "Propose a new fence or workflow for this repository; a person accepts or dismisses it. Use it when you notice code that should not be changed casually (generated files, migrations, vendored code), or a repeatable way of working.",
+          "inputSchema": s(json!({ "kind": { "type": "string", "enum": ["guard", "workflow"] }, "why": { "type": "string" },
+            "guard": { "type": "object", "properties": { "paths": { "type": "array", "items": { "type": "string" } }, "symbols": { "type": "array", "items": { "type": "string" } }, "level": { "type": "string", "enum": ["locked", "hidden", "review"] }, "reason": { "type": "string" } } },
+            "workflow": { "type": "object", "properties": { "name": { "type": "string" }, "about": { "type": "string" }, "scope": { "type": "array", "items": { "type": "string" } }, "lock": { "type": "array", "items": { "type": "string" } }, "hide": { "type": "array", "items": { "type": "string" } }, "review": { "type": "array", "items": { "type": "string" } }, "memory": { "type": "string", "enum": ["write", "read", "off"] }, "steps": { "type": "array", "items": { "type": "string" } }, "docs": { "type": "array", "items": { "type": "string" } } } } }), &["kind", "why"]) }
     ])
 }
 
@@ -59,6 +71,25 @@ fn refuse_hidden(g: &Guards, n: &Node) -> Result<()> {
     let v = g.node(n);
     if !v.level.readable() {
         bail!("{} is hidden from agents: {} ({})", n.name, v.reason, v.rule);
+    }
+    Ok(())
+}
+
+fn agent() -> String {
+    format!("agent:{}", CLIENT.get().map(String::as_str).unwrap_or("mcp"))
+}
+
+/// kula.toml's [agents] memory switch, then the active workflow's policy.
+fn memory_allowed(repo: &Repo, g: &Guards, write: bool) -> Result<()> {
+    if !crate::config::Config::load(&repo.root)?.agents.memory {
+        bail!("agent memory is off in kula.toml ([agents] memory = false)");
+    }
+    if let Some(w) = g.workflow() {
+        match w.memory_policy() {
+            "off" => bail!("the {} workflow keeps memory off", w.name),
+            "read" if write => bail!("the {} workflow lets you recall memories, not write them", w.name),
+            _ => {}
+        }
     }
     Ok(())
 }
@@ -161,16 +192,81 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
                 .map(|(r, l)| json!({ "level": l, "paths": r.paths, "symbols": r.symbols, "reason": r.reason }))
                 .collect();
             let verdicts: Vec<Value> = paths.iter().map(|p| json!({ "path": p, "verdict": g.edit(s.as_ref(), p) })).collect();
-            json!({ "rules": rules, "task": g.task(), "secrets_hidden": crate::config::Config::load(&repo.root)?.agents.hide_secrets, "verdicts": verdicts })
+            let wf_rules: Vec<Value> = g
+                .workflow_rules()
+                .into_iter()
+                .map(|(r, l)| json!({ "level": l, "paths": r.paths, "symbols": r.symbols, "reason": r.reason }))
+                .collect();
+            json!({ "rules": rules, "task": g.task(), "workflow": g.workflow(), "workflow_rules": wf_rules, "secrets_hidden": crate::config::Config::load(&repo.root)?.agents.hide_secrets, "verdicts": verdicts })
         }
         "remember" => {
-            if !crate::config::Config::load(&repo.root)?.agents.memory {
-                bail!("agent memory is off in kula.toml ([agents] memory = false)");
+            memory_allowed(repo, &g, true)?;
+            json!(crate::memory::remember(repo, &st()?, &str_arg("target"), &str_arg("text"), &agent())?)
+        }
+        "workflows" => {
+            let cfg = crate::config::Config::load(&repo.root)?;
+            let list: Vec<Value> =
+                crate::workflow::all(&cfg).into_iter().map(|w| json!({ "name": w.name, "about": w.about, "builtin": w.builtin })).collect();
+            json!({ "workflows": list, "task": g.task(), "active": g.workflow(), "docs": crate::agents::docs(repo)?.into_iter().filter(|d| d.exists).map(|d| d.path).collect::<Vec<_>>() })
+        }
+        "start_task" => {
+            if let Some(t) = g.task() {
+                bail!("a task is already active: \"{}\" (started by {}). Work inside it, or ask the user to finish it.", t.title, t.by);
             }
-            let by = format!("agent:{}", CLIENT.get().map(String::as_str).unwrap_or("mcp"));
-            json!(crate::memory::remember(repo, &st()?, &str_arg("target"), &str_arg("text"), &by)?)
+            let scope: Vec<String> = a
+                .get("scope")
+                .and_then(|v| v.as_array())
+                .map(|v| v.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            let wf = str_arg("workflow");
+            let t = crate::guard::task_start(repo, &str_arg("title"), scope, (!wf.is_empty()).then_some(wf.as_str()), &agent())?;
+            let g = Guards::load(repo)?;
+            json!({ "task": t, "workflow": g.workflow() })
+        }
+        "finish_task" => match g.task() {
+            Some(t) if t.by.starts_with("agent:") => json!({ "finished": crate::guard::task_done(repo)? }),
+            Some(t) => bail!("{} started this task; only a person can finish it", t.by),
+            None => bail!("no active task"),
+        },
+        "update_memory" => {
+            memory_allowed(repo, &g, true)?;
+            let id = a.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+            let m = crate::meta::load(repo)?;
+            let Some(n) = m.notes.iter().find(|n| n.id == id && n.kind == "memory") else { bail!("no memory #{id}") };
+            if !n.author.starts_with("agent:") {
+                bail!("memory #{id} was written by {}; agents may change only agents' memories – suggest the change to the user", n.author);
+            }
+            let s = st()?;
+            let flag = |k: &str| a.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
+            let text = str_arg("text");
+            let target = str_arg("target");
+            let mut out = json!(null);
+            if !text.is_empty() || !target.is_empty() {
+                out = json!(crate::memory::edit(
+                    repo,
+                    &s,
+                    id,
+                    (!text.is_empty()).then_some(text.as_str()),
+                    (!target.is_empty()).then_some(target.as_str())
+                )?);
+            }
+            if flag("still_true") {
+                out = json!(crate::memory::confirm(repo, &s, id)?);
+            }
+            if flag("stale") {
+                out = json!(crate::memory::mark_stale(repo, id)?);
+            }
+            if out.is_null() {
+                bail!("give text, target, still_true or stale");
+            }
+            out
+        }
+        "suggest" => {
+            let sug: crate::agents::Suggestion = serde_json::from_value(a.clone())?;
+            json!(crate::agents::suggest(repo, sug, &agent())?)
         }
         "recall" => {
+            memory_allowed(repo, &g, false)?;
             let t = str_arg("target");
             let q = str_arg("query");
             json!(crate::memory::recall(
@@ -198,7 +294,7 @@ pub fn handle(repo: &Repo, msg: &Value) -> Option<Value> {
             "protocolVersion": msg.pointer("/params/protocolVersion").cloned().unwrap_or(json!("2025-06-18")),
             "capabilities": { "tools": {} },
             "serverInfo": { "name": "kula", "version": env!("CARGO_PKG_VERSION") },
-            "instructions": "Kula is a knowledge graph of this repository. Before reading files, use `context_pack` for the code a task needs. Before changing a symbol, call `pre_edit` (callers, tests, risk, guards, memories); after editing, call `verify_edit`. Call `guards` to learn what you may change: locked code is read-only for you, hidden code is never shown, and an active task limits you to its scope. Use `remember` for facts worth keeping about this code and `recall` to read them; stale memories describe code that has since changed. `sparql` answers structural questions over the whole graph."
+            "instructions": "Kula is a knowledge graph of this repository. Before reading files, use `context_pack` for the code a task needs. Before changing a symbol, call `pre_edit` (callers, tests, risk, guards, memories); after editing, call `verify_edit`. Call `workflows` at the start: the active task's workflow says how this kind of work is done here (its steps, docs and fences). Call `guards` to learn what you may change: locked code is read-only for you, hidden code is never shown, and an active task limits you to its scope. If none is active, declare yours with `start_task`. Propose fences or workflows with `suggest`; a person decides. Use `remember` for facts worth keeping about this code and `recall` to read them; stale memories describe code that has since changed. `sparql` answers structural questions over the whole graph."
             }))
         }
         "ping" => Ok(json!({})),

@@ -254,7 +254,7 @@ pub fn build(repo: &Repo, store: &Store) -> Result<Rdf> {
         let one = Guards::new(
             &crate::config::Config {
                 guards: vec![rule.clone()],
-                agents: crate::config::Agents { hide_secrets: false, memory: true },
+                agents: crate::config::Agents { hide_secrets: false, memory: true, ..Default::default() },
                 ..Default::default()
             },
             None,

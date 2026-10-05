@@ -27,6 +27,28 @@ test.describe("shell", () => {
     await expect(bar.getByRole("button", { name: "Settings" })).toBeVisible();
   });
 
+  test("search is an icon beside settings, and back/forward walk through views", async ({ page }) => {
+    await open(page);
+    const actions = page.locator(".topbar .top-actions");
+    const search = actions.getByRole("button", { name: "Search" });
+    const gear = actions.getByRole("button", { name: "Settings" });
+    const [s, g] = [await search.boundingBox(), await gear.boundingBox()];
+    expect(g!.x - (s!.x + s!.width)).toBeLessThan(12);
+    await search.click();
+    await expect(page.locator(".palette")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.getByRole("tab", { name: /Memory/ }).click();
+    await expect(page).toHaveURL(/#agents\/memory$/);
+    await page.goBack();
+    await expect(page).toHaveURL(/#agents$/);
+    await expect(page.getByRole("tab", { name: /Overview/ })).toHaveAttribute("aria-selected", "true");
+    await page.goBack();
+    await expect(page.locator(".ov-title h1")).toBeVisible();
+    await page.keyboard.press("Alt+ArrowRight");
+    await expect(page).toHaveURL(/#agents$/);
+  });
+
   test("mark is the kula ring drawn with kula rings, everywhere", async ({ page, request }) => {
     await open(page);
     const mark = page.locator(".brand svg.logo");
@@ -87,7 +109,7 @@ test.describe("design language", () => {
 
   test("sharp: framed surfaces and controls have square corners", async ({ page }) => {
     await open(page);
-    for (const sel of [".card", ".kpi-strip", ".btn", ".search-trigger", ".chip"]) expect(await radius(page, sel), sel).toBe("0px");
+    for (const sel of [".card", ".kpi-strip", ".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("0px");
   });
 
   test("errors get a thin even border, not an accent bar", async ({ page }) => {
@@ -319,7 +341,7 @@ test.describe("phone chrome", () => {
     const x = async (sel: string) => (await bar.locator(sel).first().boundingBox())!.x;
     expect(await x(".brand")).toBeLessThan(await x(".rail-toggle"));
     expect(await x(".rail-toggle")).toBeLessThan(120);
-    expect(await x(".search-trigger")).toBeGreaterThan(page.viewportSize()!.width - 100);
+    expect(await x(".top-search")).toBeGreaterThan(page.viewportSize()!.width - 100);
     const rail = page.locator("nav.rail");
     await expect(rail).toBeHidden();
     await page.getByRole("button", { name: "Show sidebar" }).click();
@@ -459,21 +481,146 @@ test.describe("query", () => {
 
 test.describe("agents", () => {
   test.use({ baseURL: FIXTURE });
+  // They write kula.toml, AGENTS.md and memories in one fixture: one at a time.
+  test.describe.configure({ mode: "serial" });
+  const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
 
-  test("@responsive fences, the task and memories, as agents see them", async ({ page }, info) => {
+  test("@responsive the task, its workflow and the agent loop, and what needs a person", async ({ page }, info) => {
     await open(page, "agents");
     await expect(page.locator(".page-head h1")).toHaveText("Agents");
-    const fences = page.locator(".ag-fences");
-    await expect(fences.locator(".ag-rule")).toHaveCount(3);
-    await expect(fences.locator(".ag-rule .guard-tag.locked")).toHaveCount(2);
-    await expect(fences.locator(".ag-rule .guard-tag.review")).toHaveCount(1);
     await expect(page.locator(".ag-task-title")).toHaveText("harden the MCP server");
-    await expect(page.locator(".ag-task .tag")).toHaveText(["src/mcp.rs", "src/agent.rs"]);
+    await expect(page.locator(".ag-now .ag-chips .tag")).toHaveText(["fix", "src/mcp.rs", "src/agent.rs"]);
+    await expect(page.locator(".loop-step")).toHaveCount(6);
+    await expect(page.locator(".loop-step.gate")).toContainText("fix");
+    await expect(page.locator(".ag-steps li").first()).toContainText("recall memories");
+    await expect(page.locator(".need.sugg")).toContainText("web/dist/**");
+    await expect(page.locator(".wf-tile")).toHaveCount(5);
+    await expect(page.locator(".wf-tile.active")).toContainText("fix");
+    await page.getByRole("tab", { name: /Fences/ }).click();
+    await expect(page.locator(".fence-row")).toHaveCount(3);
+    await expect(page.locator(".fence-row select").first()).toHaveValue("locked");
+    await page.getByRole("tab", { name: /Memory/ }).click();
     expect(await page.locator(".ag-mem").count()).toBeGreaterThanOrEqual(2);
+    for (const t of ["Docs", "Connect", "Workflows"]) {
+      await page.getByRole("tab", { name: new RegExp(t) }).click();
+      await expect(page.locator(".ag-panel")).toBeVisible();
+      const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(over, `${t} scrolls sideways`).toBeLessThanOrEqual(1);
+    }
     await page.screenshot({ path: `test-results/${info.project.name}-agents-full.png`, fullPage: true });
   });
 
-  test("remember a fact from the inspector, see it on the Agents view, forget it", async ({ page }) => {
+  test("a workflow: create it with fences and steps, preview it on the graph, delete it", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents/workflows");
+    await page.getByRole("button", { name: "New workflow" }).click();
+    const form = page.locator(".wf-edit");
+    await form.getByPlaceholder("db-migrate").fill("e2e-migrate");
+    await form.getByPlaceholder("One line").fill("Schema changes, nothing else");
+    const scope = form.locator(".ff-open input");
+    await scope.fill("src/store");
+    await scope.press("Enter");
+    const lock = form.locator(".ff-locked input");
+    await lock.fill("Cargo.toml");
+    await lock.press("Enter");
+    await form.getByRole("button", { name: "recall only", exact: true }).click();
+    await form.getByRole("button", { name: "Add step" }).click();
+    await form.getByLabel("Step 1").fill("Write a migration and its rollback");
+    await form.getByRole("button", { name: "Create" }).click();
+    const tile = page.locator(".wf-tile").filter({ hasText: "e2e-migrate" });
+    await expect(tile).toContainText("kula.toml");
+    await expect(tile.locator(".guard-tag.locked")).toContainText("Cargo.toml");
+    await expect(tile).toContainText("memory read");
+    await page.getByRole("button", { name: "Preview fences" }).click();
+    await expect(page).toHaveURL(/#graph\/fences\/e2e-migrate$/);
+    await expect(page.locator(".fence-key select")).toHaveValue("e2e-migrate");
+    await expect(page.locator(".fence-key")).toContainText("editable");
+    await page.goBack();
+    await page.locator(".wf-tile").filter({ hasText: "e2e-migrate" }).click();
+    page.once("dialog", (d) => d.accept());
+    await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
+    await expect(page.locator(".wf-tile").filter({ hasText: "e2e-migrate" })).toHaveCount(0);
+  });
+
+  test("fences: add one with autofill, save it to kula.toml, accept an agent's suggestion, take both away", async ({ page, request }, info) => {
+    desktopOnly(info);
+    await open(page, "agents/fences");
+    await page.getByRole("button", { name: "Add fence" }).click();
+    const row = page.locator(".fence-row").nth(3);
+    const paths = row.getByLabel("Paths");
+    await paths.click();
+    await paths.pressSequentially("scripts/te");
+    await expect(page.locator(".af-pop")).toBeVisible();
+    await page.keyboard.press("Tab");
+    await row.getByLabel("Level").selectOption("hidden");
+    await row.getByLabel("Reason").fill("e2e: not for agents");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator(".fence-row")).toHaveCount(4);
+    await expect(page.locator(".fence-row").nth(3).locator(".chip-x")).toContainText("scripts/test.sh");
+    const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json().catch(() => null);
+    if (toml) expect(toml.content).toContain("e2e: not for agents");
+    await page.locator(".need.sugg").getByRole("button", { name: "Accept" }).click();
+    await expect(page.locator(".fence-row")).toHaveCount(5);
+    for (const i of [4, 3]) await page.locator(".fence-row").nth(i).getByRole("button", { name: "Remove fence" }).click();
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator(".fence-row")).toHaveCount(3);
+  });
+
+  test("memory: remember from where you are, rewrite it, mark it stale, still true, forget", async ({ page }, info) => {
+    desktopOnly(info);
+    const fact = `e2e memory ${Date.now()}`;
+    await open(page, "graph");
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.keyboard.type("context_pack");
+    await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
+    await expect(page.locator(".inspector h2")).toHaveText("context_pack");
+    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.getByRole("tab", { name: /Memory/ }).click();
+    const hint = page.locator(".here-hint");
+    await expect(hint).toContainText("context_pack");
+    await hint.click();
+    await expect(page.getByLabel("Memory target")).toHaveValue("symbol:src/agent.rs:context_pack");
+    await page.getByLabel("Memory text").fill(fact);
+    await page.getByRole("button", { name: "Remember" }).click();
+    const row = page.locator(".ag-mem").filter({ hasText: fact });
+    await expect(row.locator(".tag")).toHaveText("fresh");
+    await row.getByRole("button", { name: "Edit" }).click();
+    await row.getByLabel("Memory text").fill(`${fact} – rewritten`);
+    await row.getByRole("button", { name: "Save" }).click();
+    const edited = page.locator(".ag-mem").filter({ hasText: "rewritten" });
+    await expect(edited).toHaveCount(1);
+    await edited.getByRole("button", { name: "Mark stale" }).click();
+    await expect(edited.locator(".tag").first()).toHaveText("stale");
+    await edited.getByRole("button", { name: "Still true" }).click();
+    await expect(edited.locator(".tag").first()).toHaveText("fresh");
+    page.once("dialog", (d) => d.accept());
+    await edited.getByRole("button", { name: "Forget" }).click();
+    await expect(edited).toHaveCount(0);
+  });
+
+  test("docs: the brief in AGENTS.md is current, edits save, and agents connect in their own formats", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents/docs");
+    const item = page.locator(".doc-item").filter({ hasText: "AGENTS.md" });
+    await expect(item).toContainText("brief current");
+    const area = page.getByLabel("Edit AGENTS.md");
+    await expect(area).toHaveValue(/kula:begin/);
+    await area.press("ControlOrMeta+End");
+    await area.pressSequentially("\nE2E: run the tests before pushing.\n");
+    await page.locator(".docs-edit").getByRole("button", { name: "Save" }).click();
+    await expect(page.locator(".docs-edit").getByRole("button", { name: "Save" })).toBeDisabled();
+    await page.getByRole("button", { name: "Preview" }).click();
+    await expect(page.locator(".brief-preview")).toContainText("| `refactor` |");
+    await page.getByRole("tab", { name: /Connect/ }).click();
+    const cursor = page.locator(".conn").filter({ hasText: "Cursor" });
+    await expect(cursor.locator(".conn-checks .on")).toHaveCount(0);
+    await cursor.getByRole("button", { name: "Connect" }).click();
+    await expect(cursor.locator(".conn-checks .on")).toHaveCount(2);
+    await expect(page.locator(".conn").filter({ hasText: "Claude Code" }).locator(".conn-checks .on")).toHaveCount(2);
+  });
+
+  test("remember a fact from the inspector, see it on the Agents view, forget it", async ({ page }, info) => {
+    desktopOnly(info);
     const fact = `e2e fact ${Date.now()}`;
     await open(page, "graph");
     await page.keyboard.press("ControlOrMeta+k");
@@ -486,7 +633,8 @@ test.describe("agents", () => {
     await insp.locator("textarea").fill(fact);
     await insp.getByRole("button", { name: "Remember" }).click();
     await expect(insp.locator(".note.mem").filter({ hasText: fact })).toBeVisible();
-    await page.getByRole("button", { name: "Agents", exact: true }).click();
+    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.getByRole("tab", { name: /Memory/ }).click();
     const row = page.locator(".ag-mem").filter({ hasText: fact });
     await expect(row.locator(".tag")).toHaveText("fresh");
     await expect(row.locator(".ag-target")).toHaveText("src/agent.rs:context_pack");
@@ -495,7 +643,7 @@ test.describe("agents", () => {
     await expect(row).toHaveCount(0);
   });
 
-  test("the fences overlay lights locked code and the task's scope", async ({ page }) => {
+  test("the fences overlay lights locked code and the task's scope, and previews any workflow", async ({ page }) => {
     await open(page, "graph");
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 20_000 });
     await page.keyboard.press("f");
@@ -503,8 +651,12 @@ test.describe("agents", () => {
     await expect(key).toBeVisible();
     await expect(key.locator(".guard-tag.locked")).toBeVisible();
     await expect(key).toContainText("harden the MCP server");
+    await expect(key.locator("select")).toHaveValue("");
     await expect(page.getByRole("button", { name: /Fences/ })).toHaveAttribute("aria-pressed", "true");
     await page.screenshot({ path: "test-results/graph-fences.png" });
+    await key.locator("select").selectOption("refactor");
+    await expect(key).toContainText("preview");
+    await expect(key.locator(".guard-tag.locked")).toBeVisible();
     await page.keyboard.press("f");
     await expect(key).toHaveCount(0);
   });
@@ -519,6 +671,36 @@ test.describe("agents", () => {
     await insp.getByRole("button", { name: "Pre-edit" }).click();
     await expect(insp.locator(".ac-advice")).toContainText("Do not edit");
     await expect(insp.locator(".note.mem")).toContainText("Unlink, never truncate");
+  });
+});
+
+test.describe("notes autofill", () => {
+  test("near a file, the target fills itself and [[ links autocomplete", async ({ page }) => {
+    await open(page, "overview");
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.keyboard.type("context_pack");
+    await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
+    await expect(page.locator(".inspector h2")).toHaveText("context_pack");
+    await page.locator(".rail").getByRole("button", { name: "Notes" }).click();
+    const target = page.getByLabel("Note target");
+    await target.fill("");
+    await target.focus();
+    const pop = page.locator(".af-pop");
+    await expect(pop.locator(".af-grp").first()).toBeVisible();
+    await expect(pop).toContainText("You are here");
+    await expect(pop).toContainText("context_pack");
+    await pop.locator(".af-opt").filter({ hasText: "context_pack" }).first().click();
+    await expect(target).toHaveValue("symbol:src/agent.rs:context_pack");
+    await target.fill("file:src/gua");
+    await expect(page.locator(".af-ghost")).toContainText("rd.rs");
+    await target.press("Tab");
+    await expect(target).toHaveValue("file:src/guard.rs");
+    const body = page.getByLabel("Note text");
+    await body.click();
+    await body.pressSequentially("see [[resolve_tar");
+    await expect(page.locator(".af-area .af-pop")).toContainText("resolve_target");
+    await body.press("Enter");
+    await expect(body).toHaveValue("see [[resolve_target]]");
   });
 });
 

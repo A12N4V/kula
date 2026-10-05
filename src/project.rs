@@ -5,7 +5,7 @@ use crate::config::{self, Config};
 use crate::git::Repo;
 use crate::store::Store;
 use crate::term::*;
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, IsTerminal, Write};
@@ -99,11 +99,16 @@ pub fn init(dir: &Path, o: InitOpts) -> Result<()> {
     }
 
     // 5. AI agents: register the MCP server for tools that read .mcp.json.
-    if o.agents.unwrap_or_else(|| ask(o.yes, "register kula's MCP server for AI agents (.mcp.json)?", true)) {
-        write_mcp(&root)?;
-        done(".mcp.json", "kula mcp registered – agents can query the graph");
-        write_agent_hook(&root)?;
-        done(".claude/settings.json", "kula guard hook – agents can't edit locked or out-of-scope code");
+    if o.agents.unwrap_or_else(|| ask(o.yes, "connect AI agents (MCP server + pre-edit guard hook)?", true)) {
+        for id in crate::agents::detected(&root) {
+            let files = crate::agents::connect(&root, id)?;
+            let name = crate::agents::AGENTS.iter().find(|a| a.0 == id).map(|a| a.1).unwrap_or(id);
+            done(name, &format!("{} – graph tools, and no edits to locked or out-of-scope code", files.join(", ")));
+        }
+        let synced = crate::agents::sync(&repo, &[])?;
+        if !synced.is_empty() {
+            done(&synced.join(", "), "brief for every other agent: tools, fences, workflows");
+        }
     }
 
     // 6. CI: a gate that comments the blast radius of every change.
@@ -165,54 +170,6 @@ fn write_new(p: &Path, body: &str) -> Result<()> {
         std::fs::create_dir_all(d)?;
     }
     std::fs::write(p, body)?;
-    Ok(())
-}
-
-/// Merge `kula` into .mcp.json's mcpServers without touching other entries.
-fn write_mcp(root: &Path) -> Result<()> {
-    let p = root.join(".mcp.json");
-    let mut v: serde_json::Value = match std::fs::read_to_string(&p) {
-        Ok(s) => serde_json::from_str(&s).with_context(|| format!("{} is not valid JSON", p.display()))?,
-        Err(_) => serde_json::json!({}),
-    };
-    let servers = v.as_object_mut().context(".mcp.json must be an object")?.entry("mcpServers").or_insert_with(|| serde_json::json!({}));
-    servers
-        .as_object_mut()
-        .context("mcpServers must be an object")?
-        .insert("kula".into(), serde_json::json!({ "command": "kula", "args": ["mcp"] }));
-    std::fs::write(&p, serde_json::to_string_pretty(&v)? + "\n")?;
-    Ok(())
-}
-
-/// Merge kula's guard into .claude/settings.json as a PreToolUse hook, leaving
-/// every other setting and hook alone. Claude Code runs it before each file
-/// tool; exit 2 blocks the call and tells the agent why.
-fn write_agent_hook(root: &Path) -> Result<()> {
-    let dir = root.join(".claude");
-    std::fs::create_dir_all(&dir)?;
-    let p = dir.join("settings.json");
-    let mut v: serde_json::Value = match std::fs::read_to_string(&p) {
-        Ok(s) => serde_json::from_str(&s).with_context(|| format!("{} is not valid JSON", p.display()))?,
-        Err(_) => serde_json::json!({}),
-    };
-    let pre = v
-        .as_object_mut()
-        .context("settings.json must be an object")?
-        .entry("hooks")
-        .or_insert_with(|| serde_json::json!({}))
-        .as_object_mut()
-        .context("hooks must be an object")?
-        .entry("PreToolUse")
-        .or_insert_with(|| serde_json::json!([]));
-    let list = pre.as_array_mut().context("PreToolUse must be a list")?;
-    let ours = |e: &serde_json::Value| e.to_string().contains("kula guard hook");
-    if !list.iter().any(ours) {
-        list.push(serde_json::json!({
-            "matcher": "Edit|MultiEdit|Write|NotebookEdit|Read",
-            "hooks": [{ "type": "command", "command": "kula guard hook" }]
-        }));
-    }
-    std::fs::write(&p, serde_json::to_string_pretty(&v)? + "\n")?;
     Ok(())
 }
 

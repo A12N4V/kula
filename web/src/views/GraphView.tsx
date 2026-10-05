@@ -8,7 +8,9 @@ import FA2Layout from "graphology-layout-forceatlas2/worker";
 import EdgeCurveProgram from "@sigma/edge-curve";
 import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../graphfx";
 import { api, colorFor, relTime, type Context, type GraphData, type GuardLevel, type Impact, type Node, type SymbolHistory } from "../api";
-import { GuardTag } from "./Agents";
+import { GuardTag, LEVEL_MEANS } from "./Agents";
+import { visit } from "../near";
+import { LinkArea } from "../Autofill";
 import { useCode } from "../CodePanel";
 import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLYPH, makeColorer } from "../colors";
 import { knownDirs, settings, useSettings, type Settings } from "../settings";
@@ -24,6 +26,8 @@ type Props = {
   focus: number | null; setFocus: (id: number | null) => void; onChanged: () => void; version: number;
   contrast: { base: string; head: string; mode?: ContrastMode } | null; setContrast: (c: { base: string; head: string; mode?: ContrastMode } | null) => void; go: Go;
   openSettings: () => void;
+  /** Open with the fences overlay: "" for what is in force, or a workflow to preview. */
+  fences?: string;
 };
 
 /** ForceAtlas2 tuned for code graphs: tight directories, readable bridges. */
@@ -111,7 +115,8 @@ export function shortest(g: Graph, from: string, to: string): string[] | null {
   return bfs((n) => g.outNeighbors(n)) ?? bfs((n) => g.inNeighbors(n)) ?? bfs((n) => g.neighbors(n));
 }
 
-function MapView({ focus, setFocus, onChanged, version, setContrast, go }: Props) {
+function MapView(props: Props) {
+  const { focus, setFocus, onChanged, version, setContrast, go } = props;
   const box = useRef<HTMLDivElement>(null);
   const sigma = useRef<Sigma | null>(null);
   const s = useSettings();
@@ -142,11 +147,22 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go }: Props
   // Fences overlay: what agents may not touch, from kula.toml and the task.
   const [fences, setFences] = useState<Map<string, GuardLevel> | null>(null);
   const [fenceTask, setFenceTask] = useState<string | null>(null);
-  const [fencesOn, setFencesOn] = useState(false);
+  const [fencesOn, setFencesOn] = useState(props.fences !== undefined);
+  // "" shows what is in force now (kula.toml + the task's workflow); a name previews that workflow.
+  const [fenceWf, setFenceWf] = useState(props.fences ?? "");
+  const [fenceInfo, setFenceInfo] = useState<{ workflows: string[]; active: string | null; task: string | null }>({ workflows: [], active: null, task: null });
+  useEffect(() => { if (props.fences !== undefined) { setFencesOn(true); setFenceWf(props.fences); } }, [props.fences]);
   useEffect(() => {
     if (!fencesOn) { setFences(null); setFenceTask(null); return; }
-    api.agents().then((a) => { setFences(new Map(Object.entries(a.levels))); setFenceTask(a.task?.title ?? null); }).catch(() => setFences(new Map()));
-  }, [fencesOn, version]);
+    api.agents().then(async (a) => {
+      setFenceInfo({ workflows: a.workflows.map((w) => w.name), active: a.workflow?.name ?? null, task: a.task?.title ?? null });
+      if (fenceWf) {
+        const p = await api.agentAction<{ levels: Record<string, GuardLevel> }>("preview", { workflow: fenceWf });
+        const scoped = a.workflows.find((w) => w.name === fenceWf)?.scope?.length;
+        setFences(new Map(Object.entries(p.levels))); setFenceTask(scoped ? `${fenceWf} workflow` : null);
+      } else { setFences(new Map(Object.entries(a.levels))); setFenceTask(a.task?.title ?? null); }
+    }).catch(() => setFences(new Map()));
+  }, [fencesOn, version, fenceWf]);
   // Path trace: shift-click a second symbol to light the shortest path between them.
   const [trace, setTrace] = useState<{ from: string; to: string; path: string[] | null } | null>(null);
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -551,13 +567,18 @@ function MapView({ focus, setFocus, onChanged, version, setContrast, go }: Props
       )}
       {fences && !trace && graph && (
         <div className="graph-overlay fence-key" role="note">
-          <span className="eyebrow">fences</span>
+          <span className="eyebrow">{fenceWf ? "preview" : "for agents"}</span>
+          <select className="fk-wf" value={fenceWf} onChange={(e) => setFenceWf(e.target.value)} aria-label="Fences of">
+            <option value="">{fenceInfo.active ? `now · ${fenceInfo.active}` : "now"}</option>
+            {fenceInfo.workflows.map((w) => <option key={w} value={w}>{w} workflow</option>)}
+          </select>
           {(["locked", "hidden", "review"] as GuardLevel[]).map((l) => {
             const n = [...fences.values()].filter((v) => v === l).length;
-            return n ? <span key={l} className="fk"><GuardTag level={l} /> {n}</span> : null;
+            return n ? <span key={l} className="fk" title={LEVEL_MEANS[l]}><GuardTag level={l} /> {n} <span className="muted fk-means">{LEVEL_MEANS[l]}</span></span> : null;
           })}
-          {fenceTask && <span className="fk" title="Agents may change only these"><span className="guard-tag open">task scope</span> {graph.filterNodes((id, a) => !a.virtual && a.dir !== PKG && !fences.has(id)).length}<span className="muted fk-task">{fenceTask}</span></span>}
-          {![...fences.values()].some((v) => v !== "scope") && !fenceTask && <span className="muted">nothing fenced – add [[guard]] rules to kula.toml</span>}
+          {fenceTask && <span className="fk" title="Agents may change only these"><span className="guard-tag open">editable</span> {graph.filterNodes((id, a) => !a.virtual && a.dir !== PKG && !fences.has(id)).length}<span className="muted fk-task">{fenceTask}</span></span>}
+          {![...fences.values()].some((v) => v !== "scope") && !fenceTask && <span className="muted">nothing fenced – agents may change everything shown</span>}
+          <button className="btn ghost sm" onClick={() => setFencesOn(false)} aria-label="Hide fences"><Icon.close /></button>
         </div>
       )}
       {menu && graph?.hasNode(menu.id) && (
@@ -755,7 +776,7 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
   const [note, setNote] = useState("");
   const [asMemory, setAsMemory] = useState(false);
   const toast = useToast();
-  const load = () => api.symbol(id).then(setCtx).catch((e) => toast(e.message, "err"));
+  const load = () => api.symbol(id).then((c) => { setCtx(c); visit({ path: c.node.path, name: c.node.name, kind: c.node.kind, id: c.node.id }); }).catch((e) => toast(e.message, "err"));
   // `#graph/<id>/impact` opens straight onto a tab (first load only).
   const initialTab = useRef(location.hash.split("/")[2] as typeof tab | undefined);
   useEffect(() => { setCtx(null); load(); setTab(initialTab.current ?? "context"); initialTab.current = undefined; }, [id]);
@@ -901,7 +922,7 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
               <button className={!asMemory ? "on" : ""} role="radio" aria-checked={!asMemory} onClick={() => setAsMemory(false)}>Note</button>
               <button className={asMemory ? "on" : ""} role="radio" aria-checked={asMemory} onClick={() => setAsMemory(true)}>Agent memory</button>
             </div>
-            <textarea className="textarea" placeholder={asMemory ? `One fact agents should know about ${ctx.node.name}. It goes stale when this code changes.` : `Annotate ${ctx.node.name}… use [[symbol]] to link`} value={note} onChange={(e) => setNote(e.target.value)} />
+            <LinkArea placeholder={asMemory ? `One fact agents should know about ${ctx.node.name}. It goes stale when this code changes.` : `Annotate ${ctx.node.name}… type [[ to link a symbol`} value={note} onChange={setNote} label={asMemory ? "Memory" : "Note"} />
             <div className="row" style={{ marginTop: 8, justifyContent: "flex-end" }}>
               <button className="btn primary" disabled={!note.trim()} onClick={async () => {
                 try {

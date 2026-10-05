@@ -51,6 +51,8 @@ function parseHash() {
   if (view === "issues" && Number(a)) target.issue = Number(a);
   if (view === "proposals" && Number(a)) target.proposal = Number(a);
   if (view === "history" && a) target.sha = a;
+  if (view === "agents" && a) target.tab = a;
+  if (view === "graph" && a === "fences") target.fences = b ?? "";
   return { view, contrast, focus, target };
 }
 
@@ -94,16 +96,32 @@ export default function App() {
 
   useEffect(() => { refresh(); const t = setInterval(refresh, 5000); return () => clearInterval(t); }, [refresh]);
 
-  // Keep the URL shareable.
+  // Keep the URL shareable, and make back/forward walk through where you have been:
+  // each new place is a history entry; popping one restores it.
+  const popping = useRef(false);
   useEffect(() => {
     const enc = encodeURIComponent;
     let h = view as string;
     if (view === "graph" && contrast) h += `/contrast/${enc(contrast.base)}/${enc(contrast.head)}${contrast.mode ? `/${contrast.mode}` : ""}`;
     else if (view === "graph" && focus != null) h += `/${focus}`;
+    else if (view === "graph" && target.fences !== undefined) h += `/fences${target.fences ? `/${enc(target.fences)}` : ""}`;
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
-    history.replaceState(null, "", `#${h}`);
+    else if (view === "agents" && target.tab && target.tab !== "overview") h += `/${target.tab}`;
+    if (`#${h}` === location.hash) return;
+    if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
+    else history.pushState(null, "", `#${h}`);
+    popping.current = false;
   }, [view, focus, contrast, target]);
+  useEffect(() => {
+    const onPop = () => {
+      const p = parseHash();
+      popping.current = true;
+      setView(p.view); setTarget(p.target); setContrast(p.contrast); setFocus(p.focus);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   // Phones: the sidebar is a drawer, summoned from the top bar.
   const [rail, setRail] = useState(false);
@@ -120,6 +138,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
+      if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") history.back(); else history.forward(); return; }
       const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       const v = VIEWS.find((x) => x.key === e.key);
@@ -158,9 +177,11 @@ export default function App() {
         <span className="crumb-view">{contrast && view === "graph" ? "Contrast" : current.label}</span>
         <button className="chip" onClick={() => go("branches")} title="Current branch"><Icon.branches /><b className="mono">{repo?.branch ?? "…"}</b></button>
         <span className="spacer" />
-        <div className="search-trigger" onClick={() => setPalette(true)} role="button" aria-label="Search"><Icon.search /> <span className="st-label">Search symbols, issues, branches, commands…</span> <kbd>⌘K</kbd></div>
-        <span className="spacer" />
-        <button className="btn sm ghost" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.gear /></button>
+        <div className="top-actions">
+          <button className="btn sm ghost icon-only" aria-label="Back" title="Back  ⌥←" onClick={() => history.back()}><Icon.back /></button>
+          <button className="btn sm ghost top-search" aria-label="Search" title="Search symbols, issues, branches, commands  ⌘K" onClick={() => setPalette(true)}><Icon.search /><kbd>⌘K</kbd></button>
+          <button className="btn sm ghost icon-only" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.gear /></button>
+        </div>
       </header>
 
       <nav className="rail" id="rail" aria-label="Views">
@@ -182,7 +203,7 @@ export default function App() {
         {/* Keyed so each view change plays a short enter transition. */}
         <div className="view-enter" key={view + (contrast ? ":c" : "")}>
           {view === "overview" && <Overview repo={repo} version={version} go={go} />}
-          {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} />}
+          {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
           {view === "changes" && <Changes {...nav} />}
           {view === "history" && <History {...nav} />}
           {view === "branches" && <Branches {...nav} />}
@@ -257,6 +278,9 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
       ...VIEWS.map((v) => ({ label: `Go to ${v.label}`, hint: v.key, run: () => go(v.id) })),
       { label: "Contrast graph: HEAD → working tree", hint: "", run: () => go("graph", { contrast: { base: "HEAD", head: "WORKTREE" } }) },
       { label: "Reindex knowledge graph", hint: "", run: onReindex },
+      { label: "Graph: show fences", hint: "f", run: () => go("graph", { fences: "" }) },
+      ...(["explore", "fix", "refactor", "tests", "docs"]).map((w) => ({ label: `Graph: preview the ${w} workflow's fences`, hint: "", run: () => go("graph", { fences: w }) })),
+      ...(["workflows", "fences", "memory", "docs", "connect"]).map((t) => ({ label: `Agents: ${t}`, hint: "", run: () => go("agents", { tab: t }) })),
       { label: "Open settings", hint: ",", run: onSettings },
       ...(["directory", "cluster", "kind", "churn"] as const).map((c) => ({ label: `Colour graph by ${c}`, hint: "", run: () => { settings.set({ colorBy: c }); go("graph"); } })),
       ...(["dark", "light", "system"] as const).map((t) => ({ label: `Theme: ${t}`, hint: "", run: () => { settings.set({ theme: t }); onClose(); } })),
@@ -299,6 +323,9 @@ function Help({ onClose }: { onClose: () => void }) {
     ["⇧ click", "Graph: trace the path from the selected symbol"],
     ["right-click", "Graph: actions for a symbol"],
     ["f", "Graph: show fences (what agents may not touch)"],
+    ["⌥← ⌥→", "Back / forward through views"],
+    ["[[", "Notes and memories: link a symbol (autofill)"],
+    ["tab", "Accept the autofill"],
     ["esc", "Close panel or dialog"],
     ["⌘↵", "Commit (Changes) · save (Notes) · run (Query)"],
     ["↑ ↓", "Command history (Console)"],

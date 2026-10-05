@@ -10,7 +10,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        version = "0.1.0";
+        version = "1.0.0";
 
         # The web UI, built with pnpm and embedded into the binary.
         web = pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
@@ -42,7 +42,7 @@
           meta = with pkgs.lib; {
             description = "Local-first git client with a knowledge-graph view";
             homepage = "https://github.com/A12N4V/kula";
-            license = licenses.mit;
+            license = licenses.gpl3Only;
             mainProgram = "kula";
           };
         };

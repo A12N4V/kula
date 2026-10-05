@@ -1,6 +1,7 @@
 //! kula – git, with a map.
 
 mod agent;
+mod agents;
 mod config;
 mod git;
 mod graph;
@@ -14,6 +15,7 @@ mod project;
 mod server;
 mod store;
 mod term;
+mod workflow;
 
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
@@ -55,8 +57,10 @@ Work with AI agents
   pack         the code a task needs, fitted to a token budget
   before       before editing a symbol: callers, tests, risk, guards, memories
   verify       after editing: what moved, what broke, what was fenced
+  agents       connect Claude Code, Cursor, Codex, Gemini; sync AGENTS.md; suggestions
+  workflow     work modes: explore, fix, refactor, tests, docs, and your own
+  task         the task an agent is on, its workflow, and the code it may change
   guard        fences agents may not cross: list, check, and the pre-edit hook
-  task         the task an agent is on, and the code it may change
   memory       facts about the code that agents keep, marked stale when it changes
   mcp          serve all of this to agents over MCP (stdio)
 
@@ -224,9 +228,15 @@ enum Cmd {
     /// Fences for AI agents (kula.toml [[guard]]): list them, check paths, or run as an agent's pre-edit hook.
     #[command(subcommand)]
     Guard(GuardCmd),
-    /// The task an agent is on, and the part of the code it may change.
+    /// The task an agent is on, its workflow, and the part of the code it may change.
     #[command(subcommand)]
     Task(TaskCmd),
+    /// Work modes for agents: each brings its own fences, scope, steps, docs and memory policy.
+    #[command(subcommand, alias = "wf")]
+    Workflow(WorkflowCmd),
+    /// Bring any agent to kula: connect it, sync AGENTS.md, review what agents suggest.
+    #[command(subcommand)]
+    Agents(AgentsCmd),
     /// Agent memories pinned to symbols and files; marked stale when that code changes.
     #[command(subcommand, alias = "mem")]
     Memory(MemoryCmd),
@@ -324,7 +334,43 @@ enum GuardCmd {
         staged: bool,
     },
     /// Agent pre-tool hook: reads the tool call as JSON on stdin, exits 2 to block a fenced edit or read.
-    Hook,
+    Hook {
+        /// claude | cursor | codex | gemini (only changes the reply format; payloads are detected).
+        #[arg(long, default_value = "claude")]
+        agent: String,
+        /// Treat the call as a read (Cursor's beforeReadFile).
+        #[arg(long)]
+        read: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorkflowCmd {
+    /// Every workflow: built in and from kula.toml.
+    List,
+    /// One workflow: fences, scope, steps, docs, memory policy.
+    Show { name: String },
+}
+
+#[derive(Subcommand)]
+enum AgentsCmd {
+    /// Which agents are wired up (MCP server, pre-edit hook).
+    Status,
+    /// Write MCP + hook config for agents: claude, cursor, codex, gemini, or all.
+    Connect {
+        #[arg(default_value = "claude")]
+        agents: Vec<String>,
+    },
+    /// Write the brief (tools, fences, workflows) into AGENTS.md and the instruction files that exist.
+    Sync { files: Vec<String> },
+    /// Print the brief.
+    Brief,
+    /// Fences and workflows agents have suggested.
+    Suggestions,
+    /// Accept a suggestion into kula.toml.
+    Accept { id: u64 },
+    /// Dismiss a suggestion.
+    Dismiss { id: u64 },
 }
 
 #[derive(Subcommand)]
@@ -334,6 +380,9 @@ enum TaskCmd {
         title: String,
         #[arg(short, long, num_args = 1..)]
         scope: Vec<String>,
+        /// Run it in a workflow: explore, fix, refactor, tests, docs, or one from kula.toml.
+        #[arg(short, long)]
+        workflow: Option<String>,
     },
     /// The active task.
     Show,
@@ -361,6 +410,15 @@ enum MemoryCmd {
     },
     /// The memory still holds: re-anchor it to the code as it is now.
     Confirm { id: u64 },
+    /// Rewrite a memory, or move it to another target (re-anchoring it there).
+    Edit {
+        id: u64,
+        text: Option<String>,
+        #[arg(short, long)]
+        target: Option<String>,
+    },
+    /// Flag a memory as no longer trustworthy, without forgetting it.
+    Stale { id: u64 },
     /// Forget a memory.
     Rm { id: u64 },
 }
@@ -848,6 +906,8 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Note(nc) => note_cmd(&repo, nc, json)?,
         Cmd::Guard(gc) => guard_cmd(&repo, gc, json)?,
         Cmd::Task(tc) => task_cmd(&repo, tc, json)?,
+        Cmd::Workflow(wc) => workflow_cmd(&repo, wc, json)?,
+        Cmd::Agents(ac) => agents_cmd(&repo, ac, json)?,
         Cmd::Memory(mc) => memory_cmd(&repo, mc, json)?,
         Cmd::Kg(kc) => kg_cmd(&repo, kc, json)?,
         Cmd::Sync { remote } => print!("{}", meta::sync(&repo, &remote)?),
@@ -1271,43 +1331,180 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                 std::process::exit(1);
             }
         }
-        GuardCmd::Hook => {
-            // Claude Code's PreToolUse protocol (and any agent that sends a tool call as JSON):
-            // exit 0 lets it run; exit 2 blocks it and the message on stderr goes back to the agent.
+        GuardCmd::Hook { agent, read } => {
+            // One hook for every agent: Claude Code, Cursor, Codex and Gemini CLI all send the
+            // tool call as JSON on stdin and treat exit 2 as "blocked, stderr is the reason".
             let mut input = String::new();
             std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)?;
             let v: serde_json::Value = serde_json::from_str(&input).unwrap_or_default();
-            let tool = v["tool_name"].as_str().unwrap_or("");
-            let ti = &v["tool_input"];
-            let path = ["file_path", "notebook_path", "path"].iter().find_map(|k| ti[*k].as_str().or_else(|| v[*k].as_str()));
-            let Some(path) = path else { return Ok(()) };
-            let rel = repo_rel(repo, path);
-            if rel.starts_with('/') || rel.starts_with("..") {
-                return Ok(()); // outside this repository: not ours to fence
-            }
+            let reads = read || agents::hook_reads(&v);
             let g = guard::Guards::load(repo)?;
-            let reads = matches!(tool, "Read" | "Grep" | "Glob" | "NotebookRead" | "LS" | "View" | "read_file");
-            let verdict = if reads { g.path(&rel) } else { g.edit(st.as_ref(), &rel) };
-            let blocked = if reads { !verdict.level.readable() } else { !verdict.level.editable() };
-            if blocked {
+            for path in agents::hook_paths(&v) {
+                let rel = repo_rel(repo, &path);
+                if rel.starts_with('/') || rel.starts_with("..") {
+                    continue; // outside this repository: not ours to fence
+                }
+                let verdict = if reads { g.path(&rel) } else { g.edit(st.as_ref(), &rel) };
+                let blocked = if reads { !verdict.level.readable() } else { !verdict.level.editable() };
+                if !blocked {
+                    continue;
+                }
                 let what = match verdict.level {
                     guard::Level::Scope => "outside the active task".to_string(),
                     l => format!("{} for agents", l.as_str()),
                 };
-                eprintln!(
+                let msg = format!(
                     "kula guard: {} is {} – {} ({}). {}",
                     rel,
                     what,
                     verdict.reason,
                     verdict.rule,
-                    if verdict.level == guard::Level::Scope {
-                        "Stay inside the task's scope, or ask the user to widen it with `kula task start --scope`."
+                    if verdict.level == guard::Level::Scope || verdict.rule.starts_with("workflow") {
+                        "Stay inside the task and its workflow, or ask the user to change them (`kula task`)."
                     } else {
-                        "Leave it to a person, or ask the user to change kula.toml."
+                        "Leave it to a person, or suggest a change to the fence with the `suggest` tool."
                     }
                 );
+                if agent == "cursor" {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "permission": "deny", "continue": true, "user_message": msg, "agent_message": msg })
+                    );
+                }
+                eprintln!("{msg}");
                 std::process::exit(2);
             }
+        }
+    }
+    Ok(())
+}
+
+fn workflow_lines(w: &workflow::Workflow) {
+    println!("  {} {}  {}", accent(&w.name), dim(if w.builtin { "built in" } else { "kula.toml" }), w.about);
+    let row = |k: &str, v: &[String]| {
+        if !v.is_empty() {
+            println!("    {:<8}{}", dim(k), v.join(", "));
+        }
+    };
+    row("scope", &w.scope);
+    row("lock", &w.lock);
+    row("hide", &w.hide);
+    row("review", &w.review);
+    println!("    {:<8}{}", dim("memory"), w.memory_policy());
+    row("docs", &w.docs);
+    for (i, s) in w.steps.iter().enumerate() {
+        println!("    {:<8}{}. {s}", dim(if i == 0 { "steps" } else { "" }), i + 1);
+    }
+}
+
+fn workflow_cmd(repo: &Repo, c: WorkflowCmd, json: bool) -> Result<()> {
+    let cfg = config::Config::load(&repo.root)?;
+    let active = guard::task(repo).map(|t| t.workflow).unwrap_or_default();
+    match c {
+        WorkflowCmd::List => {
+            let all = workflow::all(&cfg);
+            if json {
+                println!("{}", serde_json::json!({ "workflows": all, "active": active }));
+                return Ok(());
+            }
+            header("workflows");
+            for w in all {
+                let on = if w.name == active { green(" ● active") } else { String::new() };
+                println!("  {:<10} {}{}", accent(&w.name), w.about, on);
+            }
+            println!(
+                "
+  {}",
+                dim("kula task start \"<title>\" --workflow <name>  ·  kula workflow show <name>")
+            );
+        }
+        WorkflowCmd::Show { name } => {
+            let Some(w) = workflow::find(&cfg, &name) else { bail!("no workflow called {name}") };
+            if json {
+                println!("{}", serde_json::to_string(&w)?);
+            } else {
+                workflow_lines(&w);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn agents_cmd(repo: &Repo, c: AgentsCmd, json: bool) -> Result<()> {
+    match c {
+        AgentsCmd::Status => {
+            let conns = agents::connections(&repo.root);
+            let docs = agents::docs(repo)?;
+            if json {
+                println!("{}", serde_json::json!({ "agents": conns, "docs": docs, "suggestions": agents::suggestions(repo) }));
+                return Ok(());
+            }
+            header("agents");
+            for c in conns {
+                let mark = |b: bool| if b { green("✓") } else { dim("·") };
+                println!("  {:<12} {} mcp  {} hook   {}", c.name, mark(c.mcp), mark(c.hook), dim(&c.files.join(", ")));
+            }
+            println!();
+            for d in docs {
+                let state = if !d.exists {
+                    dim("missing")
+                } else if d.current {
+                    green("brief current")
+                } else if d.synced {
+                    yellow("brief outdated")
+                } else {
+                    dim("no brief")
+                };
+                println!("  {:<34} {}  {}", d.path, state, dim(&d.readers));
+            }
+            let n = agents::suggestions(repo).len();
+            if n > 0 {
+                println!("\n  {} suggestion(s) from agents – `kula agents suggestions`", accent(&n.to_string()));
+            }
+        }
+        AgentsCmd::Connect { agents: ids } => {
+            let ids: Vec<String> =
+                if ids.iter().any(|a| a == "all") { agents::AGENTS.iter().map(|a| a.0.to_string()).collect() } else { ids };
+            for id in ids {
+                let files = agents::connect(&repo.root, &id)?;
+                println!("  {} {:<8} {}", green("✓"), id, dim(&files.join(", ")));
+            }
+        }
+        AgentsCmd::Sync { files } => {
+            let done = agents::sync(repo, &files)?;
+            if done.is_empty() {
+                println!("  {}", dim("already current"));
+            }
+            for f in done {
+                println!("  {} {}", green("✓"), f);
+            }
+        }
+        AgentsCmd::Brief => print!("{}", agents::brief(&config::Config::load(&repo.root)?)),
+        AgentsCmd::Suggestions => {
+            let all = agents::suggestions(repo);
+            if json {
+                println!("{}", serde_json::to_string(&all)?);
+                return Ok(());
+            }
+            if all.is_empty() {
+                println!("  {}", dim("no suggestions"));
+            }
+            for s in all {
+                let what = match (&s.guard, &s.workflow) {
+                    (Some(g), _) => format!("{} {}", g.level, [g.paths.clone(), g.symbols.clone()].concat().join(", ")),
+                    (_, Some(w)) => format!("workflow {} – {}", w.name, w.about),
+                    _ => String::new(),
+                };
+                println!("  {} {}  {}  {}", dim(&format!("#{}", s.id)), bold(&what), dim(&s.by), s.why);
+            }
+        }
+        AgentsCmd::Accept { id } => {
+            agents::accept(repo, id)?;
+            println!("  {} suggestion #{id} is in kula.toml", green("✓"));
+        }
+        AgentsCmd::Dismiss { id } => {
+            agents::dismiss(repo, id)?;
+            println!("  {} dismissed #{id}", green("✓"));
         }
     }
     Ok(())
@@ -1319,12 +1516,15 @@ fn task_cmd(repo: &Repo, c: TaskCmd, json: bool) -> Result<()> {
             println!("{}", serde_json::to_string(t).unwrap_or_default());
         } else {
             println!("  {} {}", accent("task"), bold(&t.title));
+            if !t.workflow.is_empty() {
+                println!("  {} {}", dim("workflow"), t.workflow);
+            }
             println!("  {} {}", dim("scope"), if t.scope.is_empty() { "whole repository".into() } else { t.scope.join(", ") });
         }
     };
     match c {
-        TaskCmd::Start { title, scope } => {
-            let t = guard::task_start(repo, &title, scope)?;
+        TaskCmd::Start { title, scope, workflow } => {
+            let t = guard::task_start(repo, &title, scope, workflow.as_deref(), &repo.user())?;
             show(&t);
             if !json {
                 println!("  {}", dim("agents may change only what is in scope until `kula task done`"));
@@ -1375,6 +1575,14 @@ fn memory_cmd(repo: &Repo, c: MemoryCmd, json: bool) -> Result<()> {
         MemoryCmd::Confirm { id } => {
             let n = memory::confirm(repo, &st, id)?;
             println!("  {} memory #{} re-anchored to {}", green("✓"), n.id, n.target);
+        }
+        MemoryCmd::Edit { id, text, target } => {
+            let n = memory::edit(repo, &st, id, text.as_deref(), target.as_deref())?;
+            println!("  {} memory #{} on {}", green("✓"), n.id, bold(&n.target));
+        }
+        MemoryCmd::Stale { id } => {
+            memory::mark_stale(repo, id)?;
+            println!("  {} memory #{id} marked stale", yellow("!"));
         }
         MemoryCmd::Rm { id } => {
             meta::note_rm(repo, id)?;

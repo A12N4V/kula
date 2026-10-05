@@ -18,6 +18,7 @@
 use crate::config::{Config, GuardRule};
 use crate::git::Repo;
 use crate::store::{Node, Store};
+use crate::workflow::{self, Workflow};
 use anyhow::{bail, Result};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
@@ -96,12 +97,17 @@ pub struct Task {
     pub scope: Vec<String>,
     pub started: i64,
     pub by: String,
+    /// The workflow it runs in (`workflow.rs`); its fences apply while the task is open.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub workflow: String,
 }
 
 struct Compiled {
     rule: GuardRule,
     globs: GlobSet,
     level: Level,
+    /// `kula.toml guard #2`, or `workflow refactor`.
+    source: String,
 }
 
 /// Every fence in force for this checkout, compiled once.
@@ -109,6 +115,7 @@ pub struct Guards {
     rules: Vec<Compiled>,
     secrets: Option<GlobSet>,
     task: Option<(Task, GlobSet, Vec<String>)>,
+    workflow: Option<Workflow>,
 }
 
 fn globset(pats: &[String]) -> Result<GlobSet> {
@@ -132,12 +139,27 @@ pub fn task(repo: &Repo) -> Option<Task> {
     serde_json::from_str(&std::fs::read_to_string(task_path(repo)).ok()?).ok()
 }
 
-pub fn task_start(repo: &Repo, title: &str, scope: Vec<String>) -> Result<Task> {
+/// Start a task, optionally in a workflow (whose scope applies when none is given).
+pub fn task_start(repo: &Repo, title: &str, scope: Vec<String>, wf: Option<&str>, by: &str) -> Result<Task> {
     if title.trim().is_empty() {
         bail!("a task needs a title");
     }
+    let wf = match wf.map(str::trim).filter(|w| !w.is_empty()) {
+        Some(name) => match workflow::find(&Config::load(&repo.root)?, name) {
+            Some(w) => Some(w),
+            None => bail!("no workflow called {name} – `kula workflow list`"),
+        },
+        None => None,
+    };
+    let scope = if scope.is_empty() { wf.as_ref().map(|w| w.scope.clone()).unwrap_or_default() } else { scope };
     globset(&scope.iter().filter(|s| looks_like_path(s)).cloned().collect::<Vec<_>>())?;
-    let t = Task { title: title.trim().into(), scope, started: crate::meta::now(), by: repo.user() };
+    let t = Task {
+        title: title.trim().into(),
+        scope,
+        started: crate::meta::now(),
+        by: by.into(),
+        workflow: wf.map(|w| w.name).unwrap_or_default(),
+    };
     std::fs::create_dir_all(repo.kula_dir())?;
     std::fs::write(task_path(repo), serde_json::to_string_pretty(&t)?)?;
     Ok(t)
@@ -162,8 +184,32 @@ impl Guards {
 
     pub fn new(cfg: &Config, task: Option<Task>) -> Result<Guards> {
         let mut rules = Vec::new();
-        for r in &cfg.guards {
-            rules.push(Compiled { globs: globset(&r.paths)?, level: Level::parse(&r.level), rule: r.clone() });
+        for (i, r) in cfg.guards.iter().enumerate() {
+            rules.push(Compiled {
+                globs: globset(&r.paths)?,
+                level: Level::parse(&r.level),
+                rule: r.clone(),
+                source: format!("kula.toml guard #{}", i + 1),
+            });
+        }
+        // The active workflow's own fences sit on top of the repository's.
+        let wf = task.as_ref().filter(|t| !t.workflow.is_empty()).and_then(|t| workflow::find(cfg, &t.workflow));
+        if let Some(w) = &wf {
+            for (pats, level, what) in
+                [(&w.lock, Level::Locked, "locks"), (&w.hide, Level::Hidden, "hides"), (&w.review, Level::Review, "flags for review")]
+            {
+                if pats.is_empty() {
+                    continue;
+                }
+                let (paths, symbols): (Vec<String>, Vec<String>) = pats.iter().cloned().partition(|s| looks_like_path(s) || s == "**");
+                let reason = format!("the {} workflow {what} this – {}", w.name, w.about);
+                rules.push(Compiled {
+                    globs: globset(&paths)?,
+                    level,
+                    rule: GuardRule { paths, symbols, level: level.as_str().into(), reason },
+                    source: format!("workflow {}", w.name),
+                });
+            }
         }
         let secrets =
             if cfg.agents.hide_secrets { Some(globset(&SECRETS.iter().map(|s| s.to_string()).collect::<Vec<_>>())?) } else { None };
@@ -176,15 +222,25 @@ impl Guards {
             Some(t) => Some((t, GlobSet::empty(), vec![])),
             None => None,
         };
-        Ok(Guards { rules, secrets, task })
+        Ok(Guards { rules, secrets, task, workflow: wf })
     }
 
     pub fn task(&self) -> Option<&Task> {
         self.task.as_ref().map(|t| &t.0)
     }
 
+    /// The workflow of the active task, if it runs in one.
+    pub fn workflow(&self) -> Option<&Workflow> {
+        self.workflow.as_ref()
+    }
+
+    /// kula.toml's rules (the active workflow's are in `workflow_rules`).
     pub fn rules(&self) -> Vec<(GuardRule, Level)> {
-        self.rules.iter().map(|c| (c.rule.clone(), c.level)).collect()
+        self.rules.iter().filter(|c| !c.source.starts_with("workflow")).map(|c| (c.rule.clone(), c.level)).collect()
+    }
+
+    pub fn workflow_rules(&self) -> Vec<(GuardRule, Level)> {
+        self.rules.iter().filter(|c| c.source.starts_with("workflow")).map(|c| (c.rule.clone(), c.level)).collect()
     }
 
     /// The verdict for a file.
@@ -211,7 +267,7 @@ impl Guards {
                 raise(Verdict { level: Level::Hidden, reason: "likely a secret (agents.hide_secrets)".into(), rule: "secrets".into() });
             }
         }
-        for (i, c) in self.rules.iter().enumerate() {
+        for c in &self.rules {
             let by_symbol = symbol.is_some_and(|name| {
                 c.rule.symbols.iter().any(|s| match s.rsplit_once(':') {
                     Some((p, n)) => n == name && (path == p || path.ends_with(&format!("/{p}"))),
@@ -220,7 +276,7 @@ impl Guards {
             });
             if by_symbol || c.globs.is_match(path) {
                 let reason = if c.rule.reason.is_empty() { format!("{} by kula.toml", c.level.as_str()) } else { c.rule.reason.clone() };
-                raise(Verdict { level: c.level, reason, rule: format!("kula.toml guard #{}", i + 1) });
+                raise(Verdict { level: c.level, reason, rule: c.source.clone() });
             }
         }
         if let Some((t, globs, syms)) = &self.task {
@@ -315,13 +371,46 @@ mod tests {
         assert_eq!(g.node(&node("token", "src/auth.rs")).level, Level::Hidden);
         assert_eq!(g.node(&node("token", "src/other.rs")).level, Level::Open);
 
-        let t = Task { title: "fix login".into(), scope: vec!["src/auth/**".into(), "login".into()], started: 0, by: "a".into() };
+        let t = Task {
+            title: "fix login".into(),
+            scope: vec!["src/auth/**".into(), "login".into()],
+            started: 0,
+            by: "a".into(),
+            workflow: "".into(),
+        };
         let g = guards("", Some(t));
         assert_eq!(g.path("src/auth/session.rs").level, Level::Open);
         assert_eq!(g.path("src/db.rs").level, Level::Scope);
         assert_eq!(g.node(&node("login", "src/web.rs")).level, Level::Open);
         assert!(!Level::Scope.editable() && Level::Scope.readable());
         assert!(!Level::Hidden.readable());
+    }
+
+    #[test]
+    fn workflows_bring_their_own_fences() {
+        let t = |wf: &str| Some(Task { title: "t".into(), scope: vec![], started: 0, by: "a".into(), workflow: wf.into() });
+        let g = guards("", t("refactor"));
+        assert_eq!(g.path("tests/cli.rs").level, Level::Locked);
+        assert_eq!(g.path("web/src/a.test.ts").level, Level::Locked);
+        assert_eq!(g.path("src/main.rs").level, Level::Open);
+        assert_eq!(g.path("tests/cli.rs").rule, "workflow refactor");
+        assert!(g.rules().is_empty() && !g.workflow_rules().is_empty());
+        let g = guards("", t("explore"));
+        assert_eq!(g.path("src/main.rs").level, Level::Locked);
+        let g = guards("[[workflow]]\nname = \"db\"\nhide = [\"data/**\"]\nreview = [\"charge\"]\n", t("db"));
+        assert_eq!(g.path("data/x.csv").level, Level::Hidden);
+        let n = Node {
+            id: 1,
+            kind: "function".into(),
+            name: "charge".into(),
+            path: "a.rs".into(),
+            lang: "rust".into(),
+            start_line: 1,
+            end_line: 2,
+            parent: None,
+            community: 0,
+        };
+        assert_eq!(g.node(&n).level, Level::Review);
     }
 
     #[test]

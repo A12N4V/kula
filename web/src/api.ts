@@ -46,12 +46,26 @@ export type GuardLevel = "open" | "review" | "scope" | "locked" | "hidden";
 export interface Verdict { level: GuardLevel; reason: string; rule: string }
 /** An agent memory as recalled (src/memory.rs): stale when its code changed since. */
 export interface Memory { id: number; target: string; body: string; author: string; created: number; stale: boolean; via: string }
-export interface Task { title: string; scope: string[]; started: number; by: string }
+export interface Task { title: string; scope: string[]; started: number; by: string; workflow?: string }
 export interface GuardRule { level: GuardLevel; paths: string[]; symbols: string[]; reason: string }
 export interface AgentsInfo {
   rules: GuardRule[]; task: Task | null; files: { path: string; verdict: Verdict }[]; levels: Record<string, GuardLevel>;
   memories: Memory[]; secrets_hidden: boolean; memory_enabled: boolean; mcp_registered: boolean; hook_installed: boolean; kula_toml: boolean;
+  workflows: Workflow[]; workflow: Workflow | null; workflow_rules: GuardRule[]; raw_rules: RawRule[]; docs_list: string[];
+  connections: Connection[]; docs: AgentDoc[]; suggestions: Suggestion[];
 }
+/** A work mode (src/workflow.rs): its own fences, scope, steps, docs and memory policy. */
+export interface Workflow {
+  name: string; about?: string; scope?: string[]; lock?: string[]; hide?: string[]; review?: string[];
+  memory?: "write" | "read" | "off" | ""; steps?: string[]; docs?: string[]; builtin?: boolean;
+}
+/** A guard rule as written in kula.toml. */
+export interface RawRule { paths?: string[]; symbols?: string[]; level: "locked" | "hidden" | "review"; reason?: string }
+export interface Connection { id: string; name: string; mcp: boolean; hook: boolean; files: string[] }
+export interface AgentDoc { path: string; readers: string; exists: boolean; bytes: number; synced: boolean; current: boolean }
+export interface Suggestion { id: number; kind: "guard" | "workflow"; guard?: RawRule; workflow?: Workflow; why: string; by: string; created: number }
+export type AgentAction = "task_start" | "task_done" | "remember" | "confirm" | "forget" | "memory_edit" | "memory_stale" | "guards_save" | "workflows_save"
+  | "settings_save" | "doc_read" | "doc_save" | "docs_sync" | "brief" | "connect" | "suggestion_accept" | "suggestion_dismiss" | "preview";
 export type SparqlValue = string | number | boolean;
 export interface SparqlResult { vars?: string[]; rows?: Record<string, SparqlValue>[]; truncated?: boolean; boolean?: boolean; triples?: [SparqlValue, SparqlValue, SparqlValue][]; millis?: number }
 export interface Context {
@@ -112,6 +126,7 @@ export const api = {
   verify: () => get<Verify>("/api/agent/verify"),
   graph: (level = "symbol") => get<GraphData>(`/api/graph?${q({ level })}`),
   search: (s: string) => get<Node[]>(`/api/search?${q({ q: s })}`),
+  near: (path: string) => get<{ file: Node | null; symbols: Node[]; siblings: Node[] }>(`/api/near?${q({ path })}`),
   symbol: (id: number) => get<Context>(`/api/symbol/${id}`),
   impact: (id: number, dir = "up", depth = 3) => get<Impact>(`/api/impact/${id}?${q({ dir, depth })}`),
   flows: () => get<Flow[]>("/api/flows"),
@@ -130,7 +145,7 @@ export const api = {
   history: (id: number) => get<SymbolHistory>(`/api/history/${id}`),
   overview: () => get<Overview>("/api/overview"),
   agents: () => get<AgentsInfo>("/api/agents"),
-  agentAction: <T = unknown>(action: "task_start" | "task_done" | "remember" | "confirm" | "forget", body: Record<string, unknown> = {}) =>
+  agentAction: <T = unknown>(action: AgentAction, body: Record<string, unknown> = {}) =>
     post<T>(`/api/agents/${action}`, body),
   sparql: (query: string, limit = 500) => post<SparqlResult>("/api/kg/sparql", { query, limit }),
   kgExport: (format: "ttl" | "nt" | "jsonld" | "rdfxml") => get<{ format: string; text: string }>(`/api/kg/export?${q({ format })}`),

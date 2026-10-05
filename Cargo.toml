@@ -1,10 +1,10 @@
 [package]
 name = "kula"
-version = "0.2.0"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.80"
 description = "Git, with a map. A local-first git client that turns your repository into a living knowledge graph."
-license = "MIT"
+license = "GPL-3.0-only"
 repository = "https://github.com/A12N4V/kula"
 homepage = "https://github.com/A12N4V/kula"
 readme = "README.md"
@@ -45,6 +45,7 @@ tree-sitter-c-sharp = "0.23"
 tree-sitter-php = "0.24"
 oxigraph = { version = "0.5", default-features = false }
 globset = "0.4"
+toml_edit = { version = "0.23", default-features = false, features = ["parse", "display"] }
 
 [dev-dependencies]
 tempfile = "3"
@@ -57,7 +58,8 @@ strip = true
 [package.metadata.deb]
 maintainer = "Arnav Sharma <arnavs15@uci.edu>"
 copyright = "2026, Arnav Sharma"
-extended-description = "Kula is a local-first git client with a knowledge-graph view, local issues, proposals (PRs), notes and an MCP server for AI agents."
+license-file = ["LICENSE", "0"]
+extended-description = "Kula is a local-first git client that turns a repository into a knowledge graph: graph-aware review, local issues, proposals and notes, and an MCP server that gives AI agents context, fences, workflows and memory anchored to the code."
 depends = "git"
 section = "vcs"
 priority = "optional"

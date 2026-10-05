@@ -56,6 +56,9 @@ test("graph, impact, fences and a path", async ({ page }) => {
   await page.keyboard.press("f");
   await page.waitForTimeout(900);
   await shot(page, "fences");
+  await at(page, "graph/fences/refactor");
+  await settled(page);
+  await shot(page, "workflow-preview");
 });
 
 test("contrast: overlay, side by side, report", async ({ page }) => {
@@ -91,11 +94,32 @@ test("proposals, issues, notes", async ({ page }) => {
   await shot(page, "notes");
 });
 
-test("agents, query, console", async ({ page }) => {
+test("agents: overview, workflows, fences, memory, docs, connect", async ({ page }) => {
   await at(page, "agents");
-  await expect(page.locator(".ag-mem").first()).toBeVisible();
+  await expect(page.locator(".loop-step").first()).toBeVisible();
   await page.waitForTimeout(700); // cards fade in
   await shot(page, "agents");
+  for (const t of ["workflows", "fences", "memory", "docs", "connect"]) {
+    await at(page, `agents/${t}`);
+    await page.waitForTimeout(900);
+    await shot(page, `agents-${t}`);
+  }
+});
+
+test("notes autofill", async ({ page }) => {
+  await at(page, "graph");
+  await settled(page);
+  await inspect(page, "resolve_target");
+  await page.locator(".rail").getByRole("button", { name: "Notes" }).click();
+  const target = page.getByLabel("Note target");
+  await target.fill("");
+  await target.focus();
+  await page.mouse.move(900, 700);
+  await page.waitForTimeout(700);
+  await shot(page, "autofill");
+});
+
+test("query, console", async ({ page }) => {
   await at(page, "query");
   await page.locator(".kq-ex").first().click();
   await expect(page.locator(".kq-table tbody tr").first()).toBeVisible();

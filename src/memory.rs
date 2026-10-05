@@ -140,7 +140,7 @@ pub fn recall(repo: &Repo, store: &Store, target: Option<&str>, query: Option<&s
         }
         let stale = match (&n.anchor, &node) {
             (Some(a), Some(x)) => *a != anchor_of(repo, x),
-            (Some(_), None) => n.target != "repo", // its target is gone from the graph
+            (Some(a), None) => n.target != "repo" || a == "stale", // gone from the graph, or flagged
             _ => false,
         };
         out.push((
@@ -170,5 +170,44 @@ pub fn confirm(repo: &Repo, store: &Store, id: u64) -> Result<Note> {
     n.updated = meta::now();
     let out = n.clone();
     meta::save(repo, &m, &format!("memory #{id} confirmed"))?;
+    Ok(out)
+}
+
+/// Rewrite a memory: new text keeps its anchor; a new target re-anchors it there.
+pub fn edit(repo: &Repo, store: &Store, id: u64, body: Option<&str>, target: Option<&str>) -> Result<Note> {
+    let mut m = meta::load(repo)?;
+    let Some(n) = m.notes.iter_mut().find(|n| n.id == id && n.kind == "memory") else { bail!("no memory #{id}") };
+    if let Some(b) = body {
+        let b = b.trim();
+        if b.is_empty() || b.chars().count() > MAX_LEN {
+            bail!("a memory is 1 to {MAX_LEN} characters");
+        }
+        n.body = b.into();
+    }
+    if let Some(t) = target.filter(|t| !t.trim().is_empty()) {
+        let (canon, node) = resolve_target(store, t)?;
+        if let Some(x) = &node {
+            let v = Guards::load(repo)?.node(x);
+            if !v.level.readable() {
+                bail!("{canon} is hidden from agents: {}", v.reason);
+            }
+        }
+        n.target = canon;
+        n.anchor = node.as_ref().map(|x| anchor_of(repo, x));
+    }
+    n.updated = meta::now();
+    let out = n.clone();
+    meta::save(repo, &m, &format!("memory #{id} edited"))?;
+    Ok(out)
+}
+
+/// Flag a memory as no longer trustworthy without forgetting it.
+pub fn mark_stale(repo: &Repo, id: u64) -> Result<Note> {
+    let mut m = meta::load(repo)?;
+    let Some(n) = m.notes.iter_mut().find(|n| n.id == id && n.kind == "memory") else { bail!("no memory #{id}") };
+    n.anchor = Some("stale".into());
+    n.updated = meta::now();
+    let out = n.clone();
+    meta::save(repo, &m, &format!("memory #{id} marked stale"))?;
     Ok(out)
 }

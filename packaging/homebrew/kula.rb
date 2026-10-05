@@ -4,8 +4,8 @@
 class Kula < Formula
   desc "Git, with a map: local-first git client with a knowledge-graph view"
   homepage "https://github.com/A12N4V/kula"
-  version "0.1.0"
-  license "MIT"
+  version "1.0.0"
+  license "GPL-3.0-only"
 
   on_macos do
     on_arm do

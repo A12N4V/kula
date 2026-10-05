@@ -5,6 +5,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, type Node } from "./api";
 import { Icon, Kind } from "./ui";
+import { visit } from "./near";
 
 export type CodeTarget = { path: string; line?: number; end?: number; name?: string; kind?: Node["kind"]; id?: number };
 
@@ -17,7 +18,7 @@ export const nodeTarget = (n: Node): CodeTarget | null =>
 
 export function CodeProvider({ children, onLocate }: { children: ReactNode; onLocate?: (id: number) => void }) {
   const [target, setTarget] = useState<CodeTarget | null>(null);
-  const open = useCallback((t: CodeTarget) => setTarget(t), []);
+  const open = useCallback((t: CodeTarget) => { visit({ path: t.path, name: t.name, kind: t.kind, id: t.id }); setTarget(t); }, []);
   const close = useCallback(() => setTarget(null), []);
   const value = useMemo(() => ({ open, close, target }), [open, close, target]);
   return (

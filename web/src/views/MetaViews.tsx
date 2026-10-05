@@ -4,6 +4,7 @@ import { Empty, Icon, Kind, Md, Sym, useToast } from "../ui";
 import { CompareReport } from "./GitViews";
 import type { Go, Target } from "../nav";
 import { Grip, listWidth } from "../resize";
+import { CodeField, HereHint, LinkArea } from "../Autofill";
 
 type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
 
@@ -168,16 +169,9 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
   const [target, setTarget] = useState("repo");
   const [body, setBody] = useState("");
   const [editing, setEditing] = useState<number | null>(null);
-  const [suggest, setSuggest] = useState<Node[]>([]);
   const toast = useToast();
   const load = () => api.meta().then(setMeta);
   useEffect(() => { load(); }, [version]);
-  useEffect(() => {
-    const t = target.replace(/^(symbol|file):/, "");
-    if (t.length < 2 || t === "repo") { setSuggest([]); return; }
-    const h = setTimeout(() => api.search(t).then((r) => setSuggest(r.slice(0, 6))).catch(() => {}), 150);
-    return () => clearTimeout(h);
-  }, [target]);
   const notes = (meta?.notes ?? []).filter((n) => !q || (n.body + n.target).toLowerCase().includes(q.toLowerCase())).sort((a, b) => b.updated - a.updated);
   const groups = new Map<string, typeof notes>();
   notes.forEach((n) => groups.set(n.target, [...(groups.get(n.target) ?? []), n]));
@@ -196,17 +190,13 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
         </div>
         <div className="stack" style={{ padding: 14 }}>
           {!editing && (
-            <div style={{ position: "relative" }}>
-              <input className="input mono" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="repo · file:path · symbol:name · commit:sha" />
-              {suggest.length > 0 && (
-                <div style={{ position: "absolute", top: 36, left: 0, right: 0, zIndex: 5, background: "var(--panel)", boxShadow: "var(--shadow)", borderRadius: 8, padding: 4 }}>
-                  {suggest.map((n) => <Sym key={n.id} n={n} onClick={() => { setTarget(n.kind === "file" ? `file:${n.path}` : `symbol:${n.path}:${n.name}`); setSuggest([]); }} />)}
-                </div>
-              )}
+            <div className="stack-tight">
+              <CodeField value={target} onChange={setTarget} placeholder="repo · file:path · symbol:name · commit:sha" label="Note target" />
+              <HereHint onUse={setTarget} />
             </div>
           )}
-          <textarea className="textarea" style={{ minHeight: 200 }} placeholder={"Write in markdown-ish text.\n`code`, **bold**, [[symbol]] links.\n\nNotes are versioned in git and visible to AI agents via MCP."} value={body} onChange={(e) => setBody(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && body.trim()) save(); }} />
+          <LinkArea minHeight={200} placeholder={"Write in markdown-ish text.\n`code`, **bold**, [[ links a symbol – it autofills.\n\nNotes are versioned in git and visible to AI agents via MCP."} value={body} onChange={setBody}
+            onSubmit={() => { if (body.trim()) save(); }} label="Note text" />
           <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn primary" disabled={!body.trim()} onClick={save}>{editing ? "Update" : "Save note"}</button></div>
         </div>
       </div>
