@@ -311,61 +311,112 @@ export function CompareReport({ c, openSymbol }: { c: Compare; openSymbol: (id: 
 }
 
 // ============================================================ Console
+// A terminal, as in an IDE: tabs you can add and close, a prompt that reads
+// `kula`, and everything run by the kula binary itself – its own commands, and
+// any git command passed straight through.
+type Entry = { cmd: string; out: string; err: string; code: number };
+type Term = { id: number; hist: Entry[]; busy?: boolean };
+const COMMANDS = ["init", "index", "deps", "pack", "before", "verify", "check", "hooks", "status", "lg", "query", "context", "impact", "trace", "flows",
+  "clusters", "compare", "graph-diff", "issue", "pr", "note", "sync", "doctor", "git", "help",
+  "add", "commit", "log", "diff", "show", "branch", "switch", "checkout", "merge", "rebase", "stash", "tag", "fetch", "pull", "push", "remote", "reset", "restore", "blame", "shortlog"];
+// Terminals outlive a visit to another view.
+let saved: { terms: Term[]; on: number; seq: number } = { terms: [{ id: 1, hist: [] }], on: 1, seq: 1 };
+
 export function Console({ onChanged }: Nav) {
-  const [hist, setHist] = useState<{ cmd: string; out: string; err: string; code: number }[]>([]);
+  const [terms, setTerms] = useState<Term[]>(saved.terms);
+  const [on, setOn] = useState(saved.on);
   const [line, setLine] = useState("");
   const [cursor, setCursor] = useState(-1);
   const end = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   useEffect(() => { api.graph("symbol").then(setGraph).catch(() => {}); api.repo().then(setRepo).catch(() => {}); }, []);
-  useEffect(() => { if (hist.length) end.current?.scrollIntoView({ behavior: "smooth" }); }, [hist]);
-  const run = (e: React.FormEvent) => { e.preventDefault(); exec(line); };
-  const exec = async (input: string) => {
-    const cmd = input.trim().replace(/^(git|kula)\s+/, "");
-    if (!cmd) return;
+  useEffect(() => { saved = { ...saved, terms, on }; }, [terms, on]);
+  const term = terms.find((t) => t.id === on) ?? terms[0];
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [term?.hist.length, on]);
+
+  const patch = (id: number, f: (t: Term) => Term) => setTerms((ts) => ts.map((t) => (t.id === id ? f(t) : t)));
+  const add = () => { const id = ++saved.seq; setTerms((ts) => [...ts, { id, hist: [] }]); setOn(id); setLine(""); input.current?.focus(); };
+  const close = (id: number) => {
+    const rest = terms.filter((t) => t.id !== id);
+    if (!rest.length) { const nid = ++saved.seq; setTerms([{ id: nid, hist: [] }]); setOn(nid); return; }
+    setTerms(rest);
+    if (id === on) setOn(rest[Math.max(0, terms.findIndex((t) => t.id === id) - 1)].id);
+  };
+  const exec = async (typed: string) => {
+    const cmd = typed.trim().replace(/^kula(\s+|$)/, "");
     setLine(""); setCursor(-1);
-    const args = cmd.match(/"[^"]*"|'[^']*'|\S+/g)?.map((a) => a.replace(/^["']|["']$/g, "")) ?? [];
-    try {
-      const r = await api.exec(args);
-      setHist((h) => [...h, { cmd, out: r.stdout, err: r.stderr, code: r.code }]);
-    } catch (err: any) { setHist((h) => [...h, { cmd, out: "", err: err.message, code: 1 }]); }
+    const id = term.id;
+    if (!cmd) { patch(id, (t) => ({ ...t, hist: [...t.hist, { cmd: "", out: "", err: "", code: 0 }] })); return; }
+    if (cmd === "clear" || cmd === "cls") { patch(id, (t) => ({ ...t, hist: [] })); return; }
+    const args = cmd === "help" ? ["--help"] : cmd.match(/"[^"]*"|'[^']*'|\S+/g)?.map((a) => a.replace(/^["']|["']$/g, "")) ?? [];
+    patch(id, (t) => ({ ...t, busy: true }));
+    let e: Entry;
+    try { const r = await api.kula(args); e = { cmd, out: r.stdout, err: r.stderr, code: r.code }; }
+    catch (err: any) { e = { cmd, out: "", err: err.message, code: 1 }; }
+    patch(id, (t) => ({ ...t, busy: false, hist: [...t.hist, e] }));
     onChanged();
   };
+  const complete = () => {
+    const m = line.match(/^(\s*(?:kula\s+)?)(\S*)$/);
+    if (!m) return;
+    const hits = COMMANDS.filter((c) => c.startsWith(m[2]));
+    if (hits.length === 1) setLine(`${m[1]}${hits[0]} `);
+    else if (hits.length > 1) {
+      let p = m[2];
+      while (hits.every((h) => h.startsWith(hits[0].slice(0, p.length + 1))) && p.length < hits[0].length) p = hits[0].slice(0, p.length + 1);
+      if (p !== m[2]) setLine(m[1] + p);
+      else patch(term.id, (t) => ({ ...t, hist: [...t.hist, { cmd: line.trim().replace(/^kula\s*/, ""), out: hits.join("  "), err: "", code: 0 }] }));
+    }
+  };
+  const ps = <span className="ps">{repo?.name ?? "repo"} <span className="ps-br">{repo?.branch ?? ""}</span></span>;
+
   return (
     <div className="console">
-      <div className="out">
+      <div className="term-bar" role="tablist" aria-label="Terminals">
+        {terms.map((t, i) => (
+          <div key={t.id} className={`term-tab ${t.id === on ? "on" : ""}`} role="tab" aria-selected={t.id === on} onClick={() => { setOn(t.id); input.current?.focus(); }}>
+            <Icon.console /><span>kula {i + 1}</span>{t.busy && <span className="dot warn" />}
+            <button className="term-x" aria-label={`Close terminal ${i + 1}`} title="Kill terminal" onClick={(e) => { e.stopPropagation(); close(t.id); }}><Icon.close /></button>
+          </div>
+        ))}
+        <button className="term-btn" onClick={add} aria-label="New terminal" title="New terminal"><Icon.plus /></button>
+        <span className="spacer" />
+        <button className="term-btn" onClick={() => patch(term.id, (t) => ({ ...t, hist: [] }))} title="Clear (ctrl+L)">clear</button>
+      </div>
+      <div className="out" onClick={() => { if (!window.getSelection()?.toString()) input.current?.focus(); }}>
         <section className="console-hero">
           <Dither data={graph} pixel={3} speed={0.6} className="ch-dither" />
           <div className="ch-text">
             <div className="ch-eyebrow">{repo ? `${repo.name} · ${repo.branch} @ ${repo.head?.slice(0, 7) ?? ""}` : "…"}</div>
             <h1 className="ch-title">Console</h1>
-            <p>Every git command, in the browser. Whatever you type runs as <b>git &lt;args&gt;</b> in this repository; non-interactive commands only.</p>
-            <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
-              {["status -sb", "log --oneline --graph -15", "branch -avv", "stash list", "remote -v", "shortlog -sn"].map((c) => (
-                <button key={c} className="btn sm mono" onClick={() => exec(c)}>{c}</button>
-              ))}
-            </div>
+            <button className="btn sm mono" onClick={() => exec("help")}>kula help</button>
           </div>
         </section>
-        {hist.map((h, i) => (
+        {term.hist.map((h, i) => (
           <div key={i} className="entry">
-            <div className="cmd">git {h.cmd} {h.code !== 0 && <span style={{ color: "var(--red)" }}>· exit {h.code}</span>}</div>
+            <div className="cmd">{ps} <span className="ps-sym">$</span> {h.cmd && <>kula {h.cmd}</>} {h.code !== 0 && <span className="exit">exit {h.code}</span>}</div>
             {h.out && <pre>{h.out}</pre>}
             {h.err && <pre className={h.code ? "err" : ""}>{h.err}</pre>}
           </div>
         ))}
+        <form className="prompt" onSubmit={(e) => { e.preventDefault(); if (!term.busy) exec(line); }}>
+          {ps} <span className="ps-sym">$</span> <span className="ps-kula">kula</span>
+          <input ref={input} autoFocus value={line} onChange={(e) => setLine(e.target.value)} aria-label="kula command" spellCheck={false} autoCapitalize="off" autoComplete="off"
+            placeholder={term.hist.length ? "" : "help"} readOnly={term.busy}
+            onKeyDown={(e) => {
+              const cmds = term.hist.map((h) => h.cmd).filter(Boolean);
+              if (e.key === "Enter") { e.preventDefault(); if (!term.busy) exec(line); }
+              if (e.key === "Tab") { e.preventDefault(); complete(); }
+              if (e.ctrlKey && e.key === "l") { e.preventDefault(); patch(term.id, (t) => ({ ...t, hist: [] })); }
+              if (e.ctrlKey && e.key === "c" && !window.getSelection()?.toString()) { e.preventDefault(); patch(term.id, (t) => ({ ...t, hist: [...t.hist, { cmd: `${line}^C`, out: "", err: "", code: 0 }] })); setLine(""); }
+              if (e.key === "ArrowUp" && cmds.length) { const c = cursor < 0 ? cmds.length - 1 : Math.max(0, cursor - 1); setCursor(c); setLine(cmds[c]); e.preventDefault(); }
+              if (e.key === "ArrowDown" && cursor >= 0) { const c = cursor + 1; if (c >= cmds.length) { setCursor(-1); setLine(""); } else { setCursor(c); setLine(cmds[c]); } e.preventDefault(); }
+            }} />
+        </form>
         <div ref={end} />
       </div>
-      <form onSubmit={run}>
-        <span>❯ git</span>
-        <input autoFocus value={line} onChange={(e) => setLine(e.target.value)} placeholder="status" aria-label="git command"
-          onKeyDown={(e) => {
-            const cmds = hist.map((h) => h.cmd);
-            if (e.key === "ArrowUp" && cmds.length) { const c = cursor < 0 ? cmds.length - 1 : Math.max(0, cursor - 1); setCursor(c); setLine(cmds[c]); e.preventDefault(); }
-            if (e.key === "ArrowDown" && cursor >= 0) { const c = cursor + 1; if (c >= cmds.length) { setCursor(-1); setLine(""); } else { setCursor(c); setLine(cmds[c]); } e.preventDefault(); }
-          }} />
-      </form>
     </div>
   );
 }

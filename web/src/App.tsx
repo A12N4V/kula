@@ -29,7 +29,7 @@ const GROUPS: Rail[][] = [
     { id: "issues", label: "Issues", icon: Icon.issues, key: "8" },
     { id: "notes", label: "Notes", icon: Icon.notes, key: "9" },
   ],
-  [{ id: "console", label: "Git console", icon: Icon.console, key: "0" }],
+  [{ id: "console", label: "Console", icon: Icon.console, key: "0" }],
 ];
 const VIEWS = GROUPS.flat();
 
@@ -99,6 +99,8 @@ export default function App() {
     history.replaceState(null, "", `#${h}`);
   }, [view, focus, contrast, target]);
 
+  // Phones: the sidebar is a drawer, summoned from the top bar.
+  const [rail, setRail] = useState(false);
   const go: Go = useCallback((v, t = {}) => {
     setView(v);
     setTarget(t);
@@ -119,7 +121,7 @@ export default function App() {
       if (e.key === "/") { e.preventDefault(); setPalette(true); }
       if (e.key === "?") setHelp((h) => !h);
       if (e.key === ",") setPrefs((p) => !p);
-      if (e.key === "Escape") { setHelp(false); setFocus(null); }
+      if (e.key === "Escape") { setHelp(false); setFocus(null); setRail(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -140,9 +142,10 @@ export default function App() {
 
   return (
     <CodeProvider onLocate={(id) => go("graph", { symbol: id })}>
-    <div className="shell">
+    <div className={`shell ${rail ? "rail-open" : ""}`}>
       <header className="topbar">
         <button className="brand" onClick={() => go("overview")} aria-label="Overview"><Logo /><span>kula</span></button>
+        <button className="rail-toggle" onClick={() => setRail((r) => !r)} aria-label={rail ? "Hide sidebar" : "Show sidebar"} aria-expanded={rail} aria-controls="rail"><Icon.sidebar /></button>
         <span className="crumb">/</span>
         <span className="crumb-repo">{repo?.name ?? "…"}</span>
         <span className="crumb">/</span>
@@ -154,18 +157,20 @@ export default function App() {
         <button className="btn sm ghost" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.gear /></button>
       </header>
 
-      <nav className="rail" aria-label="Views">
+      <nav className="rail" id="rail" aria-label="Views">
         {GROUPS.map((g, gi) => (
           <div key={gi} className="rail-group">
             {g.map((v) => (
-              <button key={v.id} className={view === v.id ? "on" : ""} onClick={() => go(v.id)} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
+              <button key={v.id} className={view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
                 <v.icon />
+                <span className="rail-label">{v.label}</span>
                 {!!badge[v.id] && <span className="badge">{badge[v.id]}</span>}
               </button>
             ))}
           </div>
         ))}
       </nav>
+      {rail && <div className="rail-scrim" onClick={() => setRail(false)} aria-hidden="true" />}
 
       <main className="main">
         {/* Keyed so each view change plays a short enter transition. */}

@@ -65,6 +65,33 @@ impl Repo {
         })
     }
 
+    /// Run kula itself (this binary) in the repository, as the web console does:
+    /// kula's own commands, and anything else passed through to git. Commands
+    /// that hold the terminal or serve forever are refused; editors and
+    /// credential prompts are switched off, so nothing waits on input.
+    pub fn exec_kula(&self, args: &[String]) -> Result<ExecResult> {
+        let first = args.iter().find(|a| !a.starts_with('-')).map(String::as_str).unwrap_or("");
+        if matches!(first, "view" | "mcp") || args.iter().any(|a| a == "-i" || a == "--interactive") {
+            bail!("`kula {}` needs a real terminal; run it in one", args.join(" "));
+        }
+        let exe = std::env::current_exe()?;
+        let out = Command::new(exe)
+            .arg("-C")
+            .arg(&self.root)
+            .args(args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_EDITOR", "true")
+            .env("GIT_PAGER", "cat")
+            .env("NO_COLOR", "1")
+            .stdin(Stdio::null())
+            .output()?;
+        Ok(ExecResult {
+            code: out.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&out.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+        })
+    }
+
     /// Run git with stdin content.
     pub fn run_stdin(&self, args: &[&str], input: &[u8]) -> Result<String> {
         use std::io::Write;

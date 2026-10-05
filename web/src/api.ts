@@ -109,6 +109,7 @@ export const api = {
   show: (sha: string) => get<{ show: string }>(`/api/git/show/${sha}`),
   git: (action: string, body: Record<string, unknown> = {}) => post<{ ok: boolean; output: string }>(`/api/git/${action}`, body),
   exec: (args: string[]) => post<{ code: number; stdout: string; stderr: string }>("/api/git/exec", { args }),
+  kula: (args: string[]) => post<{ code: number; stdout: string; stderr: string }>("/api/git/kula", { args }),
   meta: () => get<Meta>("/api/meta"),
   graphDiff: (base: string, head?: string, focus?: "changed" | "all") => get<GraphDiff>(`/api/graphdiff?${q({ base, head, focus })}`),
   history: (id: number) => get<SymbolHistory>(`/api/history/${id}`),

@@ -447,6 +447,13 @@ async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(
                 }
                 return Ok(json!(r.exec(&args)?));
             }
+            "kula" => {
+                let args = a.args.clone().unwrap_or_default();
+                if args.is_empty() {
+                    return Err(anyhow!("args required"));
+                }
+                return Ok(json!(r.exec_kula(&args)?));
+            }
             other => return Err(anyhow!("unknown action {other}")),
         };
         Ok(json!({ "ok": true, "output": out }))

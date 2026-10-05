@@ -217,15 +217,30 @@ pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-
 
 /* ---------- console ---------- */
 .console { height: 100%; display: flex; flex-direction: column; background: var(--bg); font-family: var(--mono); font-size: 12.5px; }
-.console .out { flex: 1; overflow: auto; padding: 16px 20px; }
-.console .entry { margin-bottom: 14px; animation: rise 0.2s ease-out; }
-.console .cmd { color: var(--text); }
-.console .cmd::before { content: "❯ "; color: var(--accent); }
-.console pre { margin: 4px 0 0; white-space: pre-wrap; color: var(--text-2); }
+.console .out { flex: 1; overflow: auto; padding: 14px 18px 18px; cursor: text; }
+.console .entry { margin-bottom: 10px; }
+.console .cmd, .console .prompt { color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.console .ps { color: var(--text-3); }
+.console .ps-br { color: var(--accent); }
+.console .ps-sym { color: var(--text-3); }
+.console .ps-kula { color: var(--text); margin-right: .6ch; }
+.console .exit { margin-left: 1ch; color: var(--red); }
+.console pre { margin: 2px 0 0; white-space: pre-wrap; word-break: break-word; color: var(--text-2); font: inherit; }
 .console pre.err { color: var(--red); }
-.console form { display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--bg-2); }
-.console form span { color: var(--accent); }
-.console form input { flex: 1; border: 0; background: transparent; outline: none; font-family: var(--mono); font-size: 13px; }
+.console form.prompt { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 .6ch; padding: 0; border: 0; background: none; }
+.console form.prompt input { flex: 1; min-width: 12ch; padding: 0; border: 0; background: transparent; outline: none; color: var(--text); font: inherit; caret-color: var(--accent); }
+.console form.prompt input::placeholder { color: var(--text-3); opacity: .6; }
+.term-bar { display: flex; align-items: stretch; height: 32px; flex-shrink: 0; border-bottom: 1px solid var(--line); background: var(--bg-2); overflow-x: auto; scrollbar-width: none; }
+.term-tab { display: flex; align-items: center; gap: 6px; padding: 0 6px 0 12px; border-right: 1px solid var(--line); color: var(--text-3); font-size: 11.5px; cursor: pointer; white-space: nowrap; }
+.term-tab svg { width: 13px; height: 13px; }
+.term-tab.on { color: var(--text); background: var(--bg); box-shadow: inset 0 1px 0 var(--accent); }
+.term-x { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; background: none; color: inherit; opacity: 0; cursor: pointer; }
+.term-x svg { width: 12px; height: 12px; }
+.term-tab:hover .term-x, .term-tab.on .term-x { opacity: .7; }
+.term-x:hover { opacity: 1; color: var(--text); }
+.term-btn { display: grid; place-items: center; min-width: 32px; padding: 0 10px; border: 0; background: none; color: var(--text-3); font: 500 11px var(--mono); cursor: pointer; }
+.term-btn:hover { color: var(--text); }
+@media (hover: none) { .term-x { opacity: .7; } }
 
 /* ---------- history lanes ---------- */
 .lane-svg { flex: none; }
@@ -598,7 +613,7 @@ code, pre, .mono { font-size: 11.5px; }
 @media (max-width: 760px) { .op-foot { flex-direction: column; align-items: flex-start; } .op-facts { min-width: 0; width: 100%; } .op-dither { inset: 8% 4% 44% 4%; } }
 
 /* console hero */
-.console-hero { display: grid; grid-template-columns: minmax(220px, 380px) 1fr; gap: 28px; align-items: center; margin: 4px 0 28px; padding-bottom: 24px; border-bottom: 1px dashed var(--line-2); font-family: var(--font); }
+.console-hero { display: grid; grid-template-columns: minmax(220px, 380px) 1fr; gap: 28px; align-items: center; margin: 4px 0 18px; padding-bottom: 18px; cursor: default; border-bottom: 1px dashed var(--line-2); font-family: var(--font); }
 .ch-dither { height: 260px; }
 .ch-eyebrow { font: 500 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
 .ch-title { margin: 6px 0 18px; font: 800 clamp(40px, 6vw, 80px)/.95 var(--display); letter-spacing: -.04em; color: var(--text); }
@@ -811,3 +826,30 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .verify-body { max-height: 38vh; overflow: auto; padding: 0 12px 10px; }
 .verify-body .section-title:first-child { margin-top: 2px; }
 .inspector .tabs button { white-space: nowrap; flex: none; }
+
+/* ================================================================ phones: logo and the sidebar toggle on the left, search and settings on the right;
+   the sidebar is a drawer with labels, summoned and dismissed from the top bar */
+.rail-toggle, .rail-label, .rail-scrim { display: none; }
+@media (max-width: 760px) {
+  html, body { overflow-x: hidden; }
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .main { min-width: 0; grid-column: 1; }
+  .statusbar { grid-column: 1; min-width: 0; overflow: hidden; }
+  .topbar { gap: 4px; padding: 0 6px 0 8px; }
+  .topbar .crumb, .topbar .crumb-repo, .topbar .crumb-view, .topbar .chip { display: none; }
+  .topbar .search-trigger + .spacer { display: none; }
+  .brand span { display: none; }
+  .rail-toggle { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; }
+  .rail-toggle:hover, .rail-open .rail-toggle { color: var(--text); background: var(--panel-2); }
+  .topbar .search-trigger, .topbar .btn.sm.ghost { width: 34px; height: 34px; min-width: 0; padding: 0; display: grid; place-items: center; border: 0; background: none; }
+  .rail { position: fixed; z-index: 60; top: 48px; bottom: 26px; left: 0; width: min(240px, 78vw); align-items: stretch; padding: 6px 0; overflow-y: auto;
+    border-right: 1px solid var(--line-2); transform: translateX(-100%); visibility: hidden; transition: transform .22s var(--ease), visibility 0s .22s; }
+  .rail-open .rail { transform: none; visibility: visible; transition: transform .22s var(--ease); }
+  .rail-group { align-items: stretch; }
+  .rail button { width: auto; height: 40px; display: flex; justify-content: flex-start; gap: 12px; padding: 0 16px; }
+  .rail button.on::before { left: 0; }
+  .rail [data-tip]:hover::after { display: none; }
+  .rail .badge { position: static; margin-left: auto; }
+  .rail-label { display: inline; font: 500 12.5px var(--mono); }
+  .rail-scrim { display: block; position: fixed; z-index: 59; inset: 48px 0 26px; background: rgba(0, 0, 0, .55); }
+}

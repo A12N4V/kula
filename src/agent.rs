@@ -26,9 +26,17 @@ fn tokens(s: &str) -> usize {
 
 pub fn is_test_path(p: &str) -> bool {
     let l = p.to_ascii_lowercase();
-    l.starts_with("test/") || l.starts_with("tests/") || l.contains("/test/") || l.contains("/tests/") || l.contains("__tests__")
-        || l.contains(".test.") || l.contains(".spec.") || l.contains("_test.") || l.rsplit('/').next().is_some_and(|f| f.starts_with("test_"))
-        || l.starts_with("e2e/") || l.contains("/e2e/")
+    l.starts_with("test/")
+        || l.starts_with("tests/")
+        || l.contains("/test/")
+        || l.contains("/tests/")
+        || l.contains("__tests__")
+        || l.contains(".test.")
+        || l.contains(".spec.")
+        || l.contains("_test.")
+        || l.rsplit('/').next().is_some_and(|f| f.starts_with("test_"))
+        || l.starts_with("e2e/")
+        || l.contains("/e2e/")
 }
 
 /// A structured row: the same thing the strings say, without parsing.
@@ -201,12 +209,20 @@ pub fn co_changes(repo: &Repo, path: &str, limit: usize) -> Vec<(String, usize)>
 pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
     let n = graph::resolve_one(store, symbol)?;
     let up = graph::impact(store, n.id, true, 6)?;
-    let direct: Vec<String> = up.hits.iter().filter(|h| h.depth == 1).map(|h| format!("{} ({}:{})", h.node.name, h.node.path, h.node.start_line)).collect();
-    let mut tests: Vec<String> = up.hits.iter().filter(|h| is_test_path(&h.node.path)).map(|h| format!("{} ({})", h.node.name, h.node.path)).collect();
+    let direct: Vec<String> =
+        up.hits.iter().filter(|h| h.depth == 1).map(|h| format!("{} ({}:{})", h.node.name, h.node.path, h.node.start_line)).collect();
+    let mut tests: Vec<String> =
+        up.hits.iter().filter(|h| is_test_path(&h.node.path)).map(|h| format!("{} ({})", h.node.name, h.node.path)).collect();
     tests.dedup();
     let co = co_changes(repo, &n.path, 6);
     let notes: Vec<String> = crate::meta::load(repo)
-        .map(|m| m.notes.into_iter().filter(|x| x.target.ends_with(&format!(":{}", n.name)) || x.target == format!("file:{}", n.path)).map(|x| x.body).collect())
+        .map(|m| {
+            m.notes
+                .into_iter()
+                .filter(|x| x.target.ends_with(&format!(":{}", n.name)) || x.target == format!("file:{}", n.path))
+                .map(|x| x.body)
+                .collect()
+        })
         .unwrap_or_default();
     let mut advice = Vec::new();
     if !direct.is_empty() {
@@ -227,7 +243,19 @@ pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
     let direct_caller_refs: Vec<Ref> = up.hits.iter().filter(|h| h.depth == 1).map(|h| r(&h.node)).collect();
     let mut test_refs: Vec<Ref> = up.hits.iter().filter(|h| is_test_path(&h.node.path)).map(|h| r(&h.node)).collect();
     test_refs.dedup_by(|a, b| a.name == b.name && a.path == b.path);
-    Ok(PreEdit { risk: up.risk.clone(), dependents: up.hits.len(), files: up.files, direct_callers: direct, tests, co_changes: co, notes, advice, direct_caller_refs, test_refs, symbol: n })
+    Ok(PreEdit {
+        risk: up.risk.clone(),
+        dependents: up.hits.len(),
+        files: up.files,
+        direct_callers: direct,
+        tests,
+        co_changes: co,
+        notes,
+        advice,
+        direct_caller_refs,
+        test_refs,
+        symbol: n,
+    })
 }
 
 // ------------------------------------------------------------------ verify
@@ -253,7 +281,8 @@ pub fn verify_edit(repo: &Repo) -> Result<Verify> {
     let d = graph::graph_diff(&base, &head, "HEAD", "WORKTREE", Some(false));
     let by: HashMap<i64, &graph::DiffNode> = d.nodes.iter().map(|n| (n.id, n)).collect();
     let label = |n: &graph::DiffNode| format!("{} {} ({}:{})", n.status, n.name, n.path, n.start_line);
-    let dref = |n: &graph::DiffNode, detail: String| Ref { name: n.name.clone(), path: n.path.clone(), line: n.start_line, detail: Some(detail) };
+    let dref =
+        |n: &graph::DiffNode, detail: String| Ref { name: n.name.clone(), path: n.path.clone(), line: n.start_line, detail: Some(detail) };
     let moved: Vec<&graph::DiffNode> = d.nodes.iter().filter(|n| n.status != "same" && n.kind != "file" && n.kind != "package").collect();
     let changed: Vec<String> = moved.iter().map(|n| label(n)).collect();
     let changed_refs: Vec<Ref> = moved.iter().map(|n| dref(n, n.status.to_string())).collect();
@@ -270,10 +299,12 @@ pub fn verify_edit(repo: &Repo) -> Result<Verify> {
             dangling.push(format!("{} ({}:{}) called {} which is gone", a.name, a.path, a.start_line, b.name));
             dangling_refs.push(dref(a, b.name.clone()));
         }
-        if b.status == "modified" && a.status == "same" && a.path != b.path {
-            if recheck.insert(format!("{} ({}:{}) calls modified {}", a.name, a.path, a.start_line, b.name)) {
-                recheck_refs.push(dref(a, b.name.clone()));
-            }
+        if b.status == "modified"
+            && a.status == "same"
+            && a.path != b.path
+            && recheck.insert(format!("{} ({}:{}) calls modified {}", a.name, a.path, a.start_line, b.name))
+        {
+            recheck_refs.push(dref(a, b.name.clone()));
         }
     }
     let mut recheck: Vec<String> = recheck.into_iter().collect();

@@ -47,7 +47,11 @@ fn ask_str(yes: bool, q: &str, default: &str) -> String {
     let mut line = String::new();
     std::io::stdin().lock().read_line(&mut line).ok();
     let t = line.trim();
-    if t.is_empty() { default.to_string() } else { t.to_string() }
+    if t.is_empty() {
+        default.to_string()
+    } else {
+        t.to_string()
+    }
 }
 
 fn done(what: &str, detail: &str) {
@@ -102,8 +106,18 @@ pub fn init(dir: &Path, o: InitOpts) -> Result<()> {
 
     // 6. CI: a gate that comments the blast radius of every change.
     let ci = o.ci.clone().unwrap_or_else(|| {
-        let guess = if root.join(".gitlab-ci.yml").exists() { "gitlab" } else if root.join(".github").exists() { "github" } else { "none" };
-        if ask(o.yes, &format!("add a CI check ({guess})?"), guess != "none") { guess.to_string() } else { "none".into() }
+        let guess = if root.join(".gitlab-ci.yml").exists() {
+            "gitlab"
+        } else if root.join(".github").exists() {
+            "github"
+        } else {
+            "none"
+        };
+        if ask(o.yes, &format!("add a CI check ({guess})?"), guess != "none") {
+            guess.to_string()
+        } else {
+            "none".into()
+        }
     });
     match ci.as_str() {
         "github" => {
@@ -123,9 +137,21 @@ pub fn init(dir: &Path, o: InitOpts) -> Result<()> {
     if o.index {
         eprint!("  {} indexing …", accent("◯"));
         let s = crate::index::run(&repo, true)?;
-        eprintln!("\r  {} graph built {}", green("✓"), dim(&format!("{} files · {} symbols · {} edges · {}ms", s.files, s.symbols, s.edges, s.millis)));
+        eprintln!(
+            "\r  {} graph built {}",
+            green("✓"),
+            dim(&format!("{} files · {} symbols · {} edges · {}ms", s.files, s.symbols, s.edges, s.millis))
+        );
     }
-    eprintln!("\n  {}  {}   {}  {}   {}  {}\n", bold("kula view"), dim("open the map"), bold("kula deps"), dim("dependencies"), bold("kula check"), dim("before you push"));
+    eprintln!(
+        "\n  {}  {}   {}  {}   {}  {}\n",
+        bold("kula view"),
+        dim("open the map"),
+        bold("kula deps"),
+        dim("dependencies"),
+        bold("kula check"),
+        dim("before you push")
+    );
     Ok(())
 }
 
@@ -148,7 +174,10 @@ fn write_mcp(root: &Path) -> Result<()> {
         Err(_) => serde_json::json!({}),
     };
     let servers = v.as_object_mut().context(".mcp.json must be an object")?.entry("mcpServers").or_insert_with(|| serde_json::json!({}));
-    servers.as_object_mut().context("mcpServers must be an object")?.insert("kula".into(), serde_json::json!({ "command": "kula", "args": ["mcp"] }));
+    servers
+        .as_object_mut()
+        .context("mcpServers must be an object")?
+        .insert("kula".into(), serde_json::json!({ "command": "kula", "args": ["mcp"] }));
     std::fs::write(&p, serde_json::to_string_pretty(&v)? + "\n")?;
     Ok(())
 }
@@ -228,7 +257,13 @@ pub fn hooks_install(repo: &Repo) -> Result<usize> {
             n += 1;
             continue;
         }
-        let base = if cur.is_empty() { "#!/bin/sh\n".to_string() } else if cur.ends_with('\n') { cur } else { cur + "\n" };
+        let base = if cur.is_empty() {
+            "#!/bin/sh\n".to_string()
+        } else if cur.ends_with('\n') {
+            cur
+        } else {
+            cur + "\n"
+        };
         std::fs::write(&p, format!("{base}{MARK} – keeps the knowledge graph current\n{HOOK_BODY}\n{MARK_END}\n"))?;
         #[cfg(unix)]
         {
@@ -247,7 +282,7 @@ pub fn hooks_uninstall(repo: &Repo) -> Result<usize> {
         let p = dir.join(h);
         let Ok(cur) = std::fs::read_to_string(&p) else { continue };
         let (Some(a), Some(b)) = (cur.find(MARK), cur.find(MARK_END)) else { continue };
-        let rest = format!("{}{}", &cur[..a], &cur[b + MARK_END.len()..].trim_start_matches('\n'));
+        let rest = format!("{}{}", &cur[..a], cur[b + MARK_END.len()..].trim_start_matches('\n'));
         if rest.trim() == "#!/bin/sh" || rest.trim().is_empty() {
             std::fs::remove_file(&p)?;
         } else {
@@ -276,8 +311,107 @@ pub struct Dep {
     pub builtin: bool,
 }
 
-const NODE_BUILTINS: &[&str] = &["assert", "buffer", "child_process", "cluster", "crypto", "dgram", "dns", "events", "fs", "http", "http2", "https", "module", "net", "os", "path", "perf_hooks", "process", "querystring", "readline", "stream", "string_decoder", "timers", "tls", "tty", "url", "util", "v8", "vm", "worker_threads", "zlib"];
-const PY_STDLIB: &[&str] = &["abc", "argparse", "array", "ast", "asyncio", "base64", "bisect", "collections", "contextlib", "copy", "csv", "dataclasses", "datetime", "decimal", "enum", "functools", "glob", "hashlib", "heapq", "hmac", "html", "http", "importlib", "inspect", "io", "itertools", "json", "logging", "math", "multiprocessing", "operator", "os", "pathlib", "pickle", "platform", "pprint", "queue", "random", "re", "secrets", "shutil", "signal", "socket", "sqlite3", "statistics", "string", "struct", "subprocess", "sys", "tempfile", "textwrap", "threading", "time", "timeit", "traceback", "types", "typing", "unittest", "urllib", "uuid", "warnings", "weakref", "xml", "zipfile", "zoneinfo", "__future__"];
+const NODE_BUILTINS: &[&str] = &[
+    "assert",
+    "buffer",
+    "child_process",
+    "cluster",
+    "crypto",
+    "dgram",
+    "dns",
+    "events",
+    "fs",
+    "http",
+    "http2",
+    "https",
+    "module",
+    "net",
+    "os",
+    "path",
+    "perf_hooks",
+    "process",
+    "querystring",
+    "readline",
+    "stream",
+    "string_decoder",
+    "timers",
+    "tls",
+    "tty",
+    "url",
+    "util",
+    "v8",
+    "vm",
+    "worker_threads",
+    "zlib",
+];
+const PY_STDLIB: &[&str] = &[
+    "abc",
+    "argparse",
+    "array",
+    "ast",
+    "asyncio",
+    "base64",
+    "bisect",
+    "collections",
+    "contextlib",
+    "copy",
+    "csv",
+    "dataclasses",
+    "datetime",
+    "decimal",
+    "enum",
+    "functools",
+    "glob",
+    "hashlib",
+    "heapq",
+    "hmac",
+    "html",
+    "http",
+    "importlib",
+    "inspect",
+    "io",
+    "itertools",
+    "json",
+    "logging",
+    "math",
+    "multiprocessing",
+    "operator",
+    "os",
+    "pathlib",
+    "pickle",
+    "platform",
+    "pprint",
+    "queue",
+    "random",
+    "re",
+    "secrets",
+    "shutil",
+    "signal",
+    "socket",
+    "sqlite3",
+    "statistics",
+    "string",
+    "struct",
+    "subprocess",
+    "sys",
+    "tempfile",
+    "textwrap",
+    "threading",
+    "time",
+    "timeit",
+    "traceback",
+    "types",
+    "typing",
+    "unittest",
+    "urllib",
+    "uuid",
+    "warnings",
+    "weakref",
+    "xml",
+    "zipfile",
+    "zoneinfo",
+    "__future__",
+];
 
 fn ecosystem(lang: &str) -> &'static str {
     match lang {
@@ -312,7 +446,11 @@ fn norm(eco: &str, name: &str) -> String {
 /// Cargo.toml, pyproject.toml, requirements*.txt, go.mod), by ecosystem.
 fn declared(root: &Path) -> BTreeMap<&'static str, BTreeSet<String>> {
     let mut out: BTreeMap<&'static str, BTreeSet<String>> = BTreeMap::new();
-    let walker = ignore::WalkBuilder::new(root).hidden(true).git_ignore(true).filter_entry(|e| e.file_name() != "node_modules" && e.file_name() != "target").build();
+    let walker = ignore::WalkBuilder::new(root)
+        .hidden(true)
+        .git_ignore(true)
+        .filter_entry(|e| e.file_name() != "node_modules" && e.file_name() != "target")
+        .build();
     for e in walker.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
         let Ok(body) = std::fs::read_to_string(e.path()) else { continue };
@@ -346,7 +484,9 @@ fn declared(root: &Path) -> BTreeMap<&'static str, BTreeSet<String>> {
                     if let Some(a) = v.get("project").and_then(|p| p.get("dependencies")).and_then(|d| d.as_array()) {
                         a.iter().filter_map(|x| x.as_str()).for_each(&mut add);
                     }
-                    if let Some(t) = v.get("tool").and_then(|t| t.get("poetry")).and_then(|p| p.get("dependencies")).and_then(|d| d.as_table()) {
+                    if let Some(t) =
+                        v.get("tool").and_then(|t| t.get("poetry")).and_then(|p| p.get("dependencies")).and_then(|d| d.as_table())
+                    {
                         t.keys().for_each(|k| add(k));
                     }
                 }
@@ -360,8 +500,14 @@ fn declared(root: &Path) -> BTreeMap<&'static str, BTreeSet<String>> {
             "go.mod" => {
                 let mut in_block = false;
                 for l in body.lines().map(str::trim) {
-                    if l.starts_with("require (") { in_block = true; continue; }
-                    if in_block && l == ")" { in_block = false; continue; }
+                    if l.starts_with("require (") {
+                        in_block = true;
+                        continue;
+                    }
+                    if in_block && l == ")" {
+                        in_block = false;
+                        continue;
+                    }
                     let spec = if in_block { Some(l) } else { l.strip_prefix("require ") };
                     if let Some(m) = spec.and_then(|s| s.split_whitespace().next()) {
                         let short: Vec<&str> = m.split('/').take(3).collect();
@@ -429,7 +575,11 @@ pub fn check(repo: &Repo, store: Option<&Store>, base: &str, max_risk: &str) -> 
     let head_ref = if head == "WORKTREE" { "HEAD" } else { head };
     let c = crate::graph::compare(repo, store, base, head_ref)?;
     let undeclared = match store {
-        Some(st) => deps(repo, st)?.into_iter().filter(|d| !d.declared && !d.builtin && d.importers > 0).map(|d| format!("{} ({})", d.name, d.ecosystem)).collect(),
+        Some(st) => deps(repo, st)?
+            .into_iter()
+            .filter(|d| !d.declared && !d.builtin && d.importers > 0)
+            .map(|d| format!("{} ({})", d.name, d.ecosystem))
+            .collect(),
         None => vec![],
     };
     Ok(CheckReport {
@@ -449,9 +599,10 @@ pub fn check(repo: &Repo, store: Option<&Store>, base: &str, max_risk: &str) -> 
 
 pub fn check_markdown(r: &CheckReport) -> String {
     let mut s = format!(
-        "### kula check – {} {}\n\n| | |\n|---|---|\n| risk | **{}** (gate: {}) |\n| files changed | {} |\n| symbols touched | {} |\n| dependents affected | {} |\n| clusters | {} |\n",
+        "### kula check – {} `{}` → `{}`\n\n| | |\n|---|---|\n| risk | **{}** (gate: {}) |\n| files changed | {} |\n| symbols touched | {} |\n| dependents affected | {} |\n| clusters | {} |\n",
         if r.pass { "✅" } else { "❌" },
-        format!("`{}` → `{}`", r.base, r.head),
+        r.base,
+        r.head,
         r.risk,
         r.max_risk,
         r.files,

@@ -29,6 +29,7 @@ export const Icon = {
   minus: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M5 12h14" /></svg>),
   target: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /></svg>),
   gear: () => (<svg viewBox="0 0 24 24" {...P} width="15" height="15"><path d="M18.88 9.87L21.36 10.39L21.36 13.61L18.88 14.13L18.37 15.36L19.76 17.48L17.48 19.76L15.36 18.37L14.13 18.88L13.61 21.36L10.39 21.36L9.87 18.88L8.64 18.37L6.52 19.76L4.24 17.48L5.63 15.36L5.12 14.13L2.64 13.61L2.64 10.39L5.12 9.87L5.63 8.64L4.24 6.52L6.52 4.24L8.64 5.63L9.87 5.12L10.39 2.64L13.61 2.64L14.13 5.12L15.36 5.63L17.48 4.24L19.76 6.52L18.37 8.64Z" /><circle cx="12" cy="12" r="3" /></svg>),
+  sidebar: () => (<svg viewBox="0 0 24 24" {...P} width="17" height="17"><rect x="3.5" y="4.5" width="17" height="15" /><path d="M9.5 4.5v15" /><path d="M5.8 8.5h1.6M5.8 11h1.6M5.8 13.5h1.6" /></svg>),
   chevron: () => (<svg viewBox="0 0 24 24" {...P} width="13" height="13"><path d="m6 9 6 6 6-6" /></svg>),
   sun: () => (<svg viewBox="0 0 24 24" {...P} width="15" height="15"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>),
 };

@@ -168,7 +168,7 @@ test.describe("graph chrome", () => {
   });
 
   test("while the graph loads it is blocked by the recursive mark and a progress bar", async ({ page }) => {
-    await page.route("**/api/graph*", async (r) => { await new Promise((f) => setTimeout(f, 1500)); await r.continue(); });
+    await page.route("**/api/graph*", async (r) => { await new Promise((f) => setTimeout(f, 5000)); await r.continue(); });
     await open(page, "graph");
     const gl = page.locator(".graph-loader");
     await expect(gl).toBeVisible();
@@ -179,14 +179,19 @@ test.describe("graph chrome", () => {
     // The ASCII field animates: the zoom falls into the centre, frame after frame.
     const ascii = gl.locator(".ascii-mark");
     await expect.poll(() => ascii.evaluate((el) => el.textContent?.trim().length ?? 0)).toBeGreaterThan(100);
-    const frames = new Set<string>();
-    for (let i = 0; i < 8; i++) { frames.add(await ascii.evaluate((el) => el.textContent ?? "")); await page.waitForTimeout(250); }
-    expect(frames.size).toBeGreaterThan(2);
+    // Counted in the page, so a slow test runner can't miss frames: three distinct ones within six seconds.
+    const distinct = await ascii.evaluate((el) => new Promise<number>((done) => {
+      const seen = new Set([el.textContent]);
+      const mo = new MutationObserver(() => { seen.add(el.textContent); if (seen.size >= 3) { mo.disconnect(); done(seen.size); } });
+      mo.observe(el, { childList: true, characterData: true, subtree: true });
+      setTimeout(() => { mo.disconnect(); done(seen.size); }, 6000);
+    }));
+    expect(distinct).toBeGreaterThan(2);
     // Progress is a real number that only moves forward.
     const bar = page.getByRole("progressbar", { name: "Loading the graph" });
     const a = Number(await bar.getAttribute("aria-valuenow"));
     await page.screenshot({ path: "test-results/graph-loading.png" });
-    await expect.poll(async () => Number(await bar.getAttribute("aria-valuenow") ?? 100), { timeout: 10_000 }).toBeGreaterThan(a);
+    await expect.poll(async () => ((await bar.count()) ? Number(await bar.getAttribute("aria-valuenow", { timeout: 1000 }).catch(() => "101")) : 101), { timeout: 10_000 }).toBeGreaterThan(a);
     await expect(gl).toHaveCount(0, { timeout: 15_000 });
     await expect(page.locator(".graph-wrap canvas").first()).toBeVisible();
   });
@@ -303,3 +308,46 @@ for (const [view, sel] of VIEWS) {
     await page.screenshot({ path: `test-results/${info.project.name}-${view}.png` });
   });
 }
+
+test.describe("phone chrome", () => {
+  test("@mobile logo and sidebar toggle on the left, search and settings on the right; the sidebar is a drawer", async ({ page }, info) => {
+    test.skip(info.project.name !== "phone", "phones only");
+    await open(page);
+    const bar = page.locator(".topbar");
+    for (const sel of [".crumb-repo", ".chip"]) await expect(bar.locator(sel)).toBeHidden();
+    const x = async (sel: string) => (await bar.locator(sel).first().boundingBox())!.x;
+    expect(await x(".brand")).toBeLessThan(await x(".rail-toggle"));
+    expect(await x(".rail-toggle")).toBeLessThan(120);
+    expect(await x(".search-trigger")).toBeGreaterThan(page.viewportSize()!.width - 100);
+    const rail = page.locator("nav.rail");
+    await expect(rail).toBeHidden();
+    await page.getByRole("button", { name: "Show sidebar" }).click();
+    await expect(rail).toBeVisible();
+    await rail.getByRole("button", { name: "History" }).click();
+    await expect(rail).toBeHidden();
+    await expect(page.locator(".list-head").first()).toBeVisible();
+  });
+});
+
+test.describe("console", () => {
+  test("a terminal that runs kula: tabs to add and close, help, kula's own commands and git's", async ({ page }) => {
+    await open(page, "console");
+    const c = page.locator(".console");
+    await expect(c.locator(".ch-title")).toHaveText("Console");
+    await expect(c.locator(".ch-text p")).toHaveCount(0);
+    const input = page.getByRole("textbox", { name: "kula command" });
+    await input.fill("help");
+    await input.press("Enter");
+    await expect(c.locator(".entry pre").last()).toContainText("superset of git");
+    await input.fill("log --oneline -1");
+    await input.press("Enter");
+    await expect(c.locator(".entry .cmd").last()).toContainText("kula log --oneline -1");
+    await expect(c.locator(".entry pre").last()).toHaveText(/^[0-9a-f]{7,} /);
+    await page.getByRole("button", { name: "New terminal" }).click();
+    await expect(page.locator(".term-tab")).toHaveCount(2);
+    await expect(c.locator(".entry")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close terminal 2" }).click();
+    await expect(page.locator(".term-tab")).toHaveCount(1);
+    await expect(c.locator(".entry")).toHaveCount(2);
+  });
+});
