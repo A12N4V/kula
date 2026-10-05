@@ -17,16 +17,16 @@ import contrast from "../public/clips/contrast.json";
 import query from "../public/clips/query.json";
 import console_ from "../public/clips/console.json";
 import accept from "../public/clips/accept.json";
-import releaseFences from "../public/clips/release-fences.json";
-import agentMemory from "../public/clips/agent-memory.json";
+import research from "../public/clips/research.json";
+import teams from "../public/clips/teams.json";
 
 const EV: Record<string, Ev[]> = {
   graph: graph.events as Ev[], impact: impact.events as Ev[], contrast: contrast.events as Ev[], query: query.events as Ev[], console: console_.events as Ev[],
-  accept: accept.events as Ev[], "release-fences": releaseFences.events as Ev[], "agent-memory": agentMemory.events as Ev[],
+  accept: accept.events as Ev[], research: research.events as Ev[], teams: teams.events as Ev[],
 };
 
 type Scene = "problem" | "install" | "build" | "fences-iso" | "connected" | "claude" | "cursor" | "verify" | "outro";
-type Item = { scene: Scene; bars: number } | { clip: string; bars: number; from: number; span: number };
+type Item = { scene: Scene; bars: number } | { clip: string; bars: number; from: number; span: number; zoom?: number; at?: [number, number] };
 
 /** The edit. Bars must add up to the score's (promo/score.py --layout=launch). */
 export const EDL: Item[] = [
@@ -36,21 +36,22 @@ export const EDL: Item[] = [
   { scene: "install", bars: 2 },
   { scene: "build", bars: 1 },
   // drop A – the map
-  { clip: "graph", bars: 3, from: 3.3, span: 7.4 },
+  { clip: "graph", bars: 3, from: 3.3, span: 7.0 },
   { clip: "impact", bars: 2, from: 1.2, span: 5.4 },
-  { clip: "contrast", bars: 3, from: 0.3, span: 7.1 },
+  { clip: "contrast", bars: 2, from: 0.5, span: 5.6 },
   { clip: "query", bars: 2, from: 0.3, span: 4.0 },
-  { clip: "console", bars: 2, from: 0.1, span: 4.8 },
+  { clip: "console", bars: 1, from: 0.3, span: 4.2 },
   // break – the agents come in
   { scene: "fences-iso", bars: 2 },
   { scene: "connected", bars: 2 },
-  // drop B – the session: Claude Code proposes, a person accepts, Cursor ships, Claude Code checks
+  // drop B – the session: Claude Code tries the shortcut and proposes instead, a person accepts,
+  // Cursor tries three ways round the fences and ships, Claude Code checks; then a research loop and the team
   { scene: "claude", bars: 5 },
   { clip: "accept", bars: 2, from: 0.5, span: 5.3 },
   { scene: "cursor", bars: 7 },
   { scene: "verify", bars: 1 },
-  { clip: "release-fences", bars: 2, from: 1.0, span: 5.8 },
-  { clip: "agent-memory", bars: 1, from: 0.7, span: 3.0 },
+  { clip: "research", bars: 3, from: 0.4, span: 8.2, zoom: 1.45, at: [990, 420] },
+  { clip: "teams", bars: 2, from: 0.6, span: 6.0, zoom: 1.4, at: [990, 450] },
   // outro
   { scene: "outro", bars: 4 },
 ];
@@ -83,7 +84,7 @@ function Dissolve({ first, frames, children }: { first: boolean; frames: number;
 }
 
 function render(it: Item, frames: number, k: number) {
-  if ("clip" in it) return <Shot clip={it.clip} from={it.from} span={it.span} frames={frames} events={EV[it.clip]} lead={LEAD} tilt={k % 2 ? 1 : -1} />;
+  if ("clip" in it) return <Shot clip={it.clip} from={it.from} span={it.span} frames={frames} events={EV[it.clip]} lead={LEAD} tilt={k % 2 ? 1 : -1} zoom={it.zoom} at={it.at} />;
   switch (it.scene) {
     case "problem": return <Problem />;
     case "install": return <Install />;

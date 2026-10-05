@@ -17,16 +17,16 @@ cd promo/film && pnpm studio  # scrub it in Remotion Studio
 |---|---|---|---|
 | 0–4 | intro | an isometric city of code – the mark's cells as files, calls along the ground – loses its shape | narrator: the problem |
 | 4–7 | build | `brew install`, then `kula init` – its real output, wiring up Claude Code and Cursor; the city folds into the mark | narrator: "Install kula. Run init." |
-| 7–19 | drop A | the map, impact, contrast, SPARQL, the console – the camera finds each click | narrator |
-| 19–23 | break | fences rise around the city; Claude Code and Cursor wired to one map | narrator: "Now, let the agents in." |
-| 23–41 | drop B | the session: Claude Code proposes a `release` workflow, a person accepts it in the UI, Cursor ships 1.0.1 in it – turned back from `src/store.rs` by the hook, reading Claude Code's memory – and Claude Code verifies; then the workflow's fences on the map, and the memories | Claude Code, Cursor, narrator |
+| 7–17 | drop A | the map, impact, contrast, SPARQL, the console – the camera finds each click | narrator |
+| 17–21 | break | fences rise around the city; Claude Code and Cursor wired to one map | narrator: "Now, let the agents in." |
+| 21–41 | drop B | the session: Claude Code tries to loosen the fences in kula.toml – refused – and proposes a `release` workflow instead; a person accepts it; Cursor ships 1.0.1 in it, refused three times on the way (an edit, the same edit through `sed`, `kula task done`); Claude Code verifies; then an autoresearch loop and the team, on the code graph's renderer | Claude Code (dry), Cursor (quick), narrator |
 | 41–45 | outro | the mark, the name, the install line typed out | narrator: "Kula one point oh." |
 
 - **The session is real.** `session.py` signs in to `kula mcp` as Claude Code and as Cursor (MCP `clientInfo`, the way they sign in themselves) and runs the real pre-edit hook with each agent's payload. Claude Code's half runs inside the capture fixture, so its suggestion waits in the UI and the accept shot really accepts it; Cursor's half runs right after. Every tool result, hook verdict and memory in the film is what kula answered, saved to `session.json` and replayed by `src/Agents.tsx`. `init.sh` does the same for the install scene. The two agents' windows are drawn in Remotion, not screen-recorded.
 - **Camera.** `capture.mjs` (with `PROMO_FILM=1`) logs every click and typing burst with its position, and `src/Shot.tsx` eases toward each one. App shots float in as windows at an angle, settle flat, and fill the frame whenever the camera closes in. The drawn scenes have camera keys of their own.
 - **No hard cuts.** Every shot starts 14 frames early and dissolves in over the one before while pushing in (`Film.tsx`), still landing on the bar line.
 - **Isometric world.** `src/Iso.tsx` projects the mark's 17 cells as cubes on a grid; one parameter blends the isometric view into a straight-down one, which is how the city becomes the logo.
-- **Voices.** `voice.py` places each line on the score from `cues.json` and speaks it with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0, runs locally): `af_heart` narrates, `bf_emma` is Claude Code and `am_michael` is Cursor (`KULA_VOICE_NARRATOR`, `KULA_VOICE_CLAUDE`, `KULA_VOICE_CURSOR` change them). Install it with `uv venv --python 3.12 promo/.venv && VIRTUAL_ENV=promo/.venv uv pip install kokoro "transformers>=4.45" soundfile`; without it, macOS `say` stands in. Lines are mastered to -16 LUFS, and the score ducks about 8 dB under each.
+- **Voices.** `voice.py` places each line on the score from `cues.json` and speaks it with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0, runs locally): `af_heart` narrates, `bf_emma` is Claude Code (measured, dry) and `am_michael` is Cursor (a touch faster, impatient) (`KULA_VOICE_NARRATOR`, `KULA_VOICE_CLAUDE`, `KULA_VOICE_CURSOR` change them). Install it with `uv venv --python 3.12 promo/.venv && VIRTUAL_ENV=promo/.venv uv pip install kokoro "transformers>=4.45" soundfile`; without it, macOS `say` stands in. Lines are mastered to -16 LUFS, and the score ducks about 8 dB under each.
 
 ## The long cut
 

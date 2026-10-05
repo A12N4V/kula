@@ -38,7 +38,7 @@ LINES = [
     ("dropA", 8.2, "narrator", "Click a function, and see what breaks before you touch it."),
     ("dropA", 13.6, "narrator", "Compare a branch by what it does to your architecture."),
     ("dropA", 18.9, "narrator", "The whole graph is RDF. Ask it anything."),
-    ("dropA", 23.6, "narrator", "And underneath, it's still just git."),
+    ("dropA", 24.1, "narrator", "And underneath, it's still just git."),
     ("break", 0.3, "narrator", "Now, let the agents in. On your terms."),
     ("break", 5.5, "narrator", "Claude Code and Cursor, on one repository, through one map."),
     ("dropB", 0.9, "claude", "No release workflow. Shortcut: I'll loosen the fences in koola dot toml."),
@@ -52,7 +52,7 @@ LINES = [
     ("dropB", 34.4, "cursor", "Okay. Version bump only."),
     ("dropB", 37.5, "claude", "Verified. Three doors tried. All locked."),
     ("dropB", 41.8, "narrator", "Or point an agent at a number. Koola runs the metric itself, and keeps only what's better."),
-    ("dropB", 48.2, "narrator", "Every workflow brings its own fences. Enforced for every agent."),
+    ("dropB", 48.2, "narrator", "And teams: every agent in its own workflow, held to its own fences."),
     ("outro", 0.6, "narrator", "Koola one point oh. Git, with a map. For you, and your agents."),
 ]
 

@@ -230,15 +230,18 @@ const SHOTS = [
     for (const phase of ["cursor", "research"]) execFileSync("python3", [join(ROOT, "promo/session.py"), repo, phase, join(OUT, "../session.json")], { stdio: "inherit" });
   } },
   { name: "research", hash: "agents/research", dur: 9, cap: null, act: async (p) => {
-    await sleep(500);
-    const runs = p.locator(".run").first();
-    await runs.scrollIntoViewIfNeeded().catch(() => {});
-    await p.evaluate(() => document.querySelector(".run")?.scrollIntoView({ block: "center" }));
     await sleep(900);
-    await point(p, p.locator(".run-chart").first(), { click: false, dx: 0.7, dy: 0.5 });
+    await point(p, p.locator(".agent-map").first(), { click: false, dx: 0.62, dy: 0.45 });
+    await sleep(2400);
+    await point(p, p.locator(".map-inspector").first(), { click: false, dx: 0.5, dy: 0.55 });
+    await sleep(3200);
+  } },
+  { name: "teams", hash: "agents/teams", dur: 8, cap: null, act: async (p) => {
+    await sleep(900);
+    await point(p, p.locator(".agent-map").first(), { click: false, dx: 0.5, dy: 0.35 });
     await sleep(2600);
-    await point(p, p.locator(".run-exp").first(), { click: false, dx: 0.3 });
-    await sleep(3000);
+    await point(p, p.locator(".map-inspector textarea").first(), { click: false, dx: 0.3, dy: 0.5 });
+    await sleep(2600);
   } },
   { name: "release-fences", hash: "graph", dur: 7, prepare: settled, cap: null, act: async (p) => {
     await sleep(300);

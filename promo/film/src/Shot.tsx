@@ -22,22 +22,24 @@ function pull(e: Ev, ct: number) {
   return 1 - ease(clamp((ct - b) / 0.6));
 }
 
-export function Shot({ clip, from, span, frames, events, lead, tilt = 1 }: {
+export function Shot({ clip, from, span, frames, events, lead, tilt = 1, zoom = 1, at = [W / 2, H / 2] }: {
   clip: string; from: number; span: number; frames: number; events: Ev[]; lead: number; tilt?: -1 | 1;
+  /** a resting zoom, toward `at`, for UI that sits small in the frame */
+  zoom?: number; at?: [number, number];
 }) {
   const f = useF();
   const ct = from + (f / frames) * span; // where we are in the recording
   // Strongest pull wins the focus; zoom grows with it.
-  let w = 0, fx = W / 2, fy = H / 2, zoomTo = 1.55;
+  let w = 0, fx = at[0], fy = at[1], zoomTo = 1.55;
   for (const e of events) {
     const p = pull(e, ct);
     if (p > w) { w = p; fx = e.x; fy = e.y; zoomTo = e.kind === "type" ? 1.75 : 1.6; }
   }
   // A slow push-in under everything.
-  const s = interpolate(f, [0, frames], [1.0, 1.04]) * (1 + (zoomTo - 1) * w);
+  const s = interpolate(f, [0, frames], [1.0, 1.04]) * zoom * (1 + (Math.max(1, zoomTo / zoom) - 1) * w);
   const half = { x: W / 2 / s, y: H / 2 / s };
-  const cx = clamp(W / 2 + (fx - W / 2) * w, half.x, W - half.x);
-  const cy = clamp(H / 2 + (fy - H / 2) * w, half.y, H - half.y);
+  const cx = clamp(at[0] + (fx - at[0]) * w, half.x, W - half.x);
+  const cy = clamp(at[1] + (fy - at[1]) * w, half.y, H - half.y);
   // The window: in at an angle, flat while it plays, filling the frame as the camera closes in.
   const inn = ease(clamp((f + lead) / (lead + 30)));
   const out = easeInOut((f - (frames - 18)) / 18);

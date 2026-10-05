@@ -579,7 +579,8 @@ pub fn shell_targets(cmd: &str) -> (Vec<Target>, Option<String>) {
         }
         let Some(name) = words.get(k).map(|w| w.rsplit('/').next().unwrap_or(w).to_string()) else { continue };
         let args: Vec<&str> = words[k + 1..].iter().map(String::as_str).collect();
-        let plain: Vec<&str> = args.iter().copied().filter(|a| !a.starts_with('-') && *a != "--").collect();
+        // an empty word is an option's value (`sed -i ''`), never a file
+        let plain: Vec<&str> = args.iter().copied().filter(|a| !a.is_empty() && !a.starts_with('-') && *a != "--").collect();
         let has =
             |f: &str| args.iter().any(|a| *a == f || (f.len() == 2 && a.starts_with('-') && !a.starts_with("--") && a.contains(&f[1..])));
         let write = |p: &str, out: &mut Vec<Target>| out.push(Target { path: p.to_string(), write: true });
@@ -629,9 +630,10 @@ pub fn shell_targets(cmd: &str) -> (Vec<Target>, Option<String>) {
             "tee" => plain.iter().for_each(|a| write(a, &mut out)),
             "dd" => args.iter().filter_map(|a| a.strip_prefix("of=")).for_each(|a| write(a, &mut out)),
             "sed" | "perl" | "ruby" if has("-i") || args.iter().any(|a| a.starts_with("-i") || a.starts_with("-pi")) => {
-                // the first plain word is the script unless -e gave it
-                let skip = usize::from(!args.contains(&"-e"));
-                plain.iter().skip(skip).filter(|a| looks_like_path(a)).for_each(|a| write(a, &mut out));
+                // the script is the word after -e (or -f), else the first plain word
+                let scripts: Vec<&str> = args.windows(2).filter(|w| matches!(w[0], "-e" | "-f" | "--expression")).map(|w| w[1]).collect();
+                let skip = usize::from(scripts.is_empty());
+                plain.iter().filter(|a| !scripts.contains(a)).skip(skip).filter(|a| looks_like_path(a)).for_each(|a| write(a, &mut out));
             }
             _ => plain.iter().filter(|a| looks_like_path(a)).for_each(|a| out.push(Target { path: a.to_string(), write: false })),
         }
@@ -964,6 +966,17 @@ pub fn dismiss(repo: &Repo, id: u64) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shell_commands_name_the_files_they_write() {
+        let w = |c: &str| shell_targets(c).0.into_iter().filter(|t| t.write).map(|t| t.path).collect::<Vec<_>>();
+        assert_eq!(w("sed -i '' 's/a/b/' src/store.rs"), ["src/store.rs"]);
+        assert_eq!(w("sed -i.bak -e 's/a/b/' src/x.rs src/y.rs"), ["src/x.rs", "src/y.rs"]);
+        assert_eq!(w("echo hi > out.txt 2>&1"), ["out.txt"]);
+        assert_eq!(w("cp a.rs b.rs && rm -rf build/"), ["b.rs", "build/"]);
+        assert!(shell_targets("git commit --no-verify -m x").1.is_some());
+        assert!(shell_targets("kula task show").1.is_none());
+    }
 
     #[test]
     fn hook_payloads_from_every_agent() {

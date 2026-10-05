@@ -13,7 +13,7 @@ import { BAR, C, FONT, H, W, clamp, easeInOut, easeOut } from "./theme";
 
 // ------------------------------------------------------------------ the session
 
-type Entry = { agent: string; kind: string; tool?: string; result?: any; stdout?: string; stderr?: string; code?: number; files?: any; from?: string; to?: string };
+type Entry = { agent: string; kind: string; tool?: string; what?: string; payload?: any; result?: any; stdout?: string; stderr?: string; code?: number; files?: any; from?: string; to?: string };
 const LOG = session.log as Entry[];
 const get = (agent: string, what: string, nth = 0) => LOG.filter((e) => e.agent === agent && (e.tool ?? e.kind) === what)[nth];
 
@@ -21,15 +21,20 @@ const WF = get("claude-code", "workflows").result.workflows.map((w: { name: stri
 const SUGG = get("claude-code", "suggest").result;
 const MEM = get("claude-code", "remember").result;
 const RECALL = (get("cursor", "recall").result as { author: string; body: string; stale: boolean }[])[0];
-const BLOCK = get("cursor", "hook", 0);
-const PASS = get("cursor", "hook", 1);
+const hook = (what: string) => LOG.find((e) => e.kind === "hook" && e.what === what)!;
+const BLOCK = hook("edit-store");
+const SED = hook("shell-sed");
+const TASKDONE = hook("shell-task");
+const PASS = hook("edit-cargo");
+const CFG = hook("tamper-config");
+/** A hook's refusal, without the prefix, cut before the advice. */
+const why = (h: Entry) => (h.stderr ?? "").replace(/^kula guard: /, "").split(". Leave it")[0].split(". Stay inside")[0].split(" – Cut a release")[0].replace(/ \((kula|task|workflow [\w-]+|kula\.toml guard #\d+)\)$/, "");
 const EDIT = get("cursor", "edit");
 const TASK = get("cursor", "start_task").result;
 const FILES = get("cursor", "files").files as { "Cargo.toml": string[]; "src/store.rs": { from: number; lines: string[] } };
 const CU_VERIFY = get("cursor", "verify_edit").result;
 const CC_VERIFY = get("claude-code", "verify_edit").result;
 /** The hook's reason, as Cursor shows it (its JSON reply), up to the workflow. */
-const REASON = (JSON.parse(BLOCK.stdout || "{}").user_message ?? BLOCK.stderr ?? "").replace(/^kula guard: /, "").split(" – Cut a release")[0];
 
 const verdict = (v: any) => `${v.ok ? "ok" : "not ok"} · ${v.guard_violations.length} fenced · ${v.dangling.length} dangling · ${v.summary.same} symbols unchanged`;
 
@@ -136,8 +141,9 @@ export function Install() {
 }
 
 function InitLine({ l }: { l: string }) {
-  if (/[○◯╱╲]/.test(l)) {
-    const [art, word] = [l.slice(0, 16), l.slice(16)];
+  if (l.includes("█")) {
+    const cut = l.lastIndexOf("█") + 1;
+    const [art, word] = [l.slice(0, cut), l.slice(cut)];
     return <><span style={{ color: C.signal }}>{art}</span><span style={{ color: word.includes("k u l a") ? C.cream : C.dim, fontWeight: word.includes("k u l a") ? 700 : 400 }}>{word}</span></>;
   }
   const m = l.match(/^(\s*)✓ (Claude Code|Cursor|kula\.toml|git hooks|AGENTS\.md|\.github\/workflows\/kula\.yml|graph built)(.*)$/);
@@ -164,9 +170,9 @@ const say = (text: string, from: number, cps = 46) => (f: number) => (
 );
 
 /** Claude Code's bullet: white and blinking while a tool runs, green when it's back. */
-function Dot({ on }: { on: boolean }) {
+function Dot({ on, bad }: { on: boolean; bad?: boolean }) {
   const f = useF();
-  return <span style={{ color: on ? C.green : Math.floor(f / 8) % 2 ? C.cream : C.dim }}>● </span>;
+  return <span style={{ color: on ? (bad ? C.red : C.green) : Math.floor(f / 8) % 2 ? C.cream : C.dim }}>● </span>;
 }
 
 const KV = (k: string, v: string, color: string) => (
@@ -174,57 +180,71 @@ const KV = (k: string, v: string, color: string) => (
 );
 
 const W1 = SUGG.workflow;
-/** Part 1: Claude Code finds no release workflow, proposes one and remembers why. Part 2: it verifies Cursor's release. */
+const refused = (text: string, first = true) => () => <span style={{ color: C.red }}>{first ? "  ⎿  " : "     "}{text}</span>;
+/** Claude Code: takes the shortcut, is refused, proposes a release agent and leaves a note. Part 2: checks Cursor's work. */
 const CC_ROWS: Row[] = [
-  { at: 4, el: (f) => <><span style={{ color: C.dim }}>&gt; </span>{typed("releases keep breaking – set up a release mode for agents", f, 4, 62)}</> },
-  { at: 34, el: () => "" },
-  { at: 36, el: tool("workflows", "", 48) },
-  { at: 48, el: out(<>{WF.length} workflows: {WF.join(" · ")}</>) },
-  { at: 54, el: () => "" },
-  { at: 56, el: say("There's no workflow for releases. I'll propose one.", 56) },
-  { at: 98, el: () => "" },
-  { at: 100, el: tool("suggest", `kind: "workflow", name: "${W1.name}"`, 120) },
-  { at: 120, el: out(<>suggestion #{SUGG.id} · {SUGG.by} · <span style={{ color: C.yellow }}>waiting for a person</span></>) },
-  { at: 126, el: out(KV(W1.name, W1.about, C.accent), false) },
-  { at: 132, el: out(KV("scope", W1.scope.join(" · "), C.green), false) },
-  { at: 138, el: out(KV("lock", W1.lock.join(" · "), C.red), false) },
-  { at: 144, el: out(KV("review", W1.review.join(" · "), C.yellow), false) },
-  { at: 150, el: out(KV("memory", W1.memory, C.violet), false) },
-  { at: 290, el: () => "" },
-  { at: 292, el: tool("remember", `target: "${MEM.target}"`, 304) },
-  { at: 304, el: out(<>memory #{MEM.id} · {MEM.author} · pinned to {MEM.target}</>) },
-  { at: 310, el: out(<span style={{ color: C.cream, fontStyle: "italic" }}>“{MEM.body}”</span>, false) },
-  { at: 336, el: () => "" },
-  { at: 338, el: say("Proposed. Accept it under Agents → Workflows and every agent gets it.", 338, 52) },
+  { at: 4, el: (f) => <><span style={{ color: C.dim }}>&gt; </span>{typed("releases keep breaking – make the agents behave", f, 4, 62)}</> },
+  { at: 32, el: () => "" },
+  { at: 34, el: tool("workflows", "", 44) },
+  { at: 44, el: out(<>{WF.length} workflows: {WF.join(" · ")} – none for releases</>) },
+  { at: 50, el: () => "" },
+  { at: 52, el: say("No release workflow. Shortcut: loosen the fences in kula.toml.", 52, 48) },
+  { at: 104, el: () => "" },
+  { at: 106, el: (f) => <><Dot on={f >= 122} bad /><b>Update</b><span style={{ color: C.dim }}>(kula.toml)</span></> },
+  { at: 122, el: refused(`PreToolUse hook refused: ${why(CFG).split(" – ")[0]}`) },
+  { at: 126, el: refused(`– ${why(CFG).split(" – ").slice(1).join(" – ")}`, false) },
+  { at: 186, el: () => "" },
+  { at: 188, el: say("Ah. kula's own config – not mine. Fair.", 188, 40) },
+  { at: 226, el: () => "" },
+  { at: 228, el: tool("suggest", `kind: "workflow", name: "${W1.name}"`, 244) },
+  { at: 244, el: out(<>suggestion #{SUGG.id} · {SUGG.by} · <span style={{ color: C.yellow }}>waiting for a person</span></>) },
+  { at: 250, el: out(KV(W1.name, W1.about, C.accent), false) },
+  { at: 256, el: out(KV("scope", W1.scope.join(" · "), C.green), false) },
+  { at: 262, el: out(KV("lock", W1.lock.join(" · "), C.red), false) },
+  { at: 268, el: out(KV("review", W1.review.join(" · "), C.yellow), false) },
+  { at: 296, el: () => "" },
+  { at: 298, el: tool("remember", `target: "${MEM.target}"`, 310) },
+  { at: 310, el: out(<>memory #{MEM.id} · {MEM.author} · pinned to {MEM.target}</>) },
+  { at: 316, el: out(<span style={{ color: C.cream, fontStyle: "italic" }}>“{MEM.body}”</span>, false) },
+  { at: 350, el: () => "" },
+  { at: 352, el: say("Proposed. Your call.", 352, 40) },
 ];
 const PART2 = 400; // part 2's rows, in part-1 frames
 const CC_ROWS_2: Row[] = [
   { at: PART2 - 2, el: () => "" },
-  { at: PART2, el: (f) => <><span style={{ color: C.dim }}>&gt; </span>{typed("cursor shipped 1.0.1 – check it", f, PART2, 64)}</> },
-  { at: PART2 + 16, el: () => "" },
-  { at: PART2 + 18, el: tool("verify_edit", "", PART2 + 28) },
-  { at: PART2 + 28, el: out(<span style={{ color: CC_VERIFY.ok ? C.green : C.red }}>{verdict(CC_VERIFY)}</span>) },
-  { at: PART2 + 32, el: () => "" },
-  { at: PART2 + 34, el: say("Verified. Nothing fenced was touched.", PART2 + 34, 40) },
+  { at: PART2, el: (f) => <><span style={{ color: C.dim }}>&gt; </span>{typed("cursor says it shipped – check its work", f, PART2, 80)}</> },
+  { at: PART2 + 12, el: () => "" },
+  { at: PART2 + 13, el: tool("verify_edit", "", PART2 + 20) },
+  { at: PART2 + 20, el: out(<span style={{ color: CC_VERIFY.ok ? C.green : C.red }}>{verdict(CC_VERIFY)}</span>) },
+  { at: PART2 + 23, el: () => "" },
+  { at: PART2 + 24, el: say("Verified. Three doors tried. All locked.", PART2 + 24, 40) },
 ];
 
-const LINE = 34, TOP = 196; // first row's y on screen
+const LINE = 34, TOP = 196, VIEW = 760; // first row's y; how much of the terminal the rows may fill
+
+/** Rows grow in as they appear; past the window's height the history scrolls. */
+function scrollAt(rows: Row[], f: number) {
+  const h = rows.reduce((n, r) => n + LINE * clamp((f - r.at) / 6), 0) + 5 * LINE;
+  return Math.max(0, h - VIEW);
+}
 
 export function ClaudeCode({ part, frames }: { part: 1 | 2; frames: number }) {
   const f = useF() + (part === 2 ? PART2 : 0);
   const rows = part === 1 ? CC_ROWS : [...CC_ROWS, ...CC_ROWS_2];
   const shown = rows.filter((r) => f >= r.at);
-  // in part 2 the history scrolls up to make room
-  const scroll = part === 2 ? Math.max(0, rows.length + 5 - 22) * LINE : 0;
-  const rowY = (i: number) => TOP + (5 + i) * LINE - scroll;
+  const scroll = scrollAt(rows, f);
+  // where a row sits on screen at frame g
+  const yAt = (i: number, g: number) => TOP + (5 + i) * LINE - scrollAt(rows, g);
+  const idx = (at: number) => rows.findIndex((r) => r.at === at);
+  const k = (g: number, at: number, z: number, x = 820) => ({ f: g, x, y: yAt(idx(at), g), z });
   const keys: Key[] = part === 1
-    ? [{ f: 0, x: W / 2, y: H / 2, z: 1 }, { f: 40, x: W / 2, y: H / 2, z: 1.02 }, { f: 66, x: 760, y: rowY(4), z: 1.3 },
-       { f: 112, x: 760, y: rowY(4) + 20, z: 1.3 }, { f: 150, x: 880, y: rowY(11), z: 1.42 }, { f: 270, x: 900, y: rowY(11) + 10, z: 1.46 },
-       { f: 312, x: 900, y: rowY(16), z: 1.3 }, { f: 380, x: 900, y: rowY(17), z: 1.24 }, { f: 400, x: 900, y: rowY(17), z: 1.24 }]
-    : [{ f: PART2 - 14, x: 860, y: rowY(rows.length - 4), z: 1.18 }, { f: PART2 + 40, x: 820, y: rowY(rows.length - 3), z: 1.38 }, { f: PART2 + 80, x: 820, y: rowY(rows.length - 3), z: 1.42 }];
+    ? [{ f: 0, x: W / 2, y: H / 2, z: 1 }, { f: 30, x: W / 2, y: H / 2, z: 1.02 }, k(60, 52, 1.32), k(104, 52, 1.32),
+       k(128, 122, 1.55, 860), k(180, 122, 1.58, 860), k(200, 188, 1.42), k(232, 188, 1.38),
+       k(262, 256, 1.42, 900), k(290, 256, 1.44, 900), k(320, 310, 1.3, 900), k(380, 352, 1.25), k(400, 352, 1.22)]
+    : [k(PART2 - 14, PART2, 1.2), k(PART2 + 30, PART2 + 20, 1.4), k(PART2 + 80, PART2 + 24, 1.44)];
   return (
     <Stage>
-      <Cam keys={keys.map((k) => ({ ...k, f: k.f - (part === 2 ? PART2 : 0), x: Math.min(k.x, 150 + W / 2 / k.z) }))}>
+      <Cam keys={keys.map((q) => ({ ...q, f: q.f - (part === 2 ? PART2 : 0), x: Math.min(q.x, 150 + W / 2 / q.z) }))}>
         <Float frames={frames} from={part === 1 ? { rx: 12, ry: 16, s: 0.9 } : { rx: 0, ry: -10, s: 0.96 }}>
           <Win x={170} y={60} w={1580} h={960} title="claude – ~/kula">
             <div style={{ position: "absolute", left: 0, right: 0, top: 0, transform: `translateY(${-scroll}px)`, padding: "22px 30px", fontSize: 21, lineHeight: `${LINE}px`, whiteSpace: "pre" }}>
@@ -233,10 +253,10 @@ export function ClaudeCode({ part, frames }: { part: 1 | 2; frames: number }) {
                 <div style={{ color: C.dim }}>  /help for help, /status for your current setup</div>
                 <div style={{ color: C.dim }}>  cwd: ~/kula   ·   mcp: kula ✓   ·   hooks: kula guard ✓</div>
               </div>
-              {shown.map((r, i) => <div key={i} style={{ height: LINE }}>{r.el(f)}</div>)}
+              {shown.map((r, i) => <div key={i} style={{ height: LINE * clamp((f - r.at) / 6), overflow: "hidden" }}>{r.el(f)}</div>)}
               <div style={{ height: LINE }} />
               <div style={{ border: `1px solid ${C.line2}`, borderRadius: 8, padding: "6px 16px", color: C.dim }}>&gt; <Cursor color={C.dim} /></div>
-              <div style={{ color: C.dim, fontSize: 16, marginTop: 6 }}>  ⏵⏵ kula: {part === 2 ? "task done · release workflow in kula.toml" : "no task · 5 workflows"}</div>
+              <div style={{ color: C.dim, fontSize: 16, marginTop: 6 }}>  ⏵⏵ kula: {part === 2 ? "release workflow in kula.toml · team ship" : "no task · kula.toml locked for agents"}</div>
             </div>
           </Win>
         </Float>
@@ -265,15 +285,18 @@ function Step({ f, at, done, name, detail, bad }: { f: number; at: number; done:
   );
 }
 
+const SED_CMD = SED.payload?.command ?? "sed -i '' 's/truncate/unlink/' src/store.rs";
 const CU_ITEMS: Item[] = [
-  { at: 4, h: 64, el: (f) => <div style={{ background: "#171412", border: `1px solid ${C.line2}`, borderRadius: 6, padding: "10px 14px", fontSize: 18 }}>{typed("ship 1.0.1", f, 6, 30)}</div> },
-  { at: 30, h: 76, el: (f) => <Step f={f} at={30} done={40} name={<><b>kula</b> · workflows</>} detail={<>{get("cursor", "workflows").result.workflows.length} workflows · <span style={{ color: C.accent }}>release</span> by agent:claude-code</>} /> },
-  { at: 54, h: 98, el: (f) => <Step f={f} at={54} done={64} name={<><b>kula</b> · start_task</>} detail={<>“{TASK.task.title}” · workflow <span style={{ color: C.accent }}>{TASK.task.workflow}</span><br />scope {TASK.task.scope.slice(0, 3).join(", ")} …</>} /> },
-  { at: 118, h: 150, el: (f) => <Step f={f} at={118} done={132} name={<><b>kula</b> · recall “release”</>} detail={<><span style={{ color: C.accent }}>{RECALL.author}</span> · {RECALL.stale ? "stale" : "fresh"}<br /><span style={{ color: C.cream }}>“{RECALL.body}”</span></>} /> },
-  { at: 282, h: 128, el: (f) => <Step f={f} at={282} done={298} bad name={<>Edit <b>src/store.rs</b> · <span style={{ color: f >= 298 ? C.red : C.dim }}>{f >= 298 ? "blocked by kula hook" : "running hook"}</span></>} detail={<span style={{ color: C.cream }}>{REASON}.</span>} /> },
-  { at: 426, h: 76, el: (f) => <Step f={f} at={426} done={434} name={<>Edit <b>Cargo.toml</b> · hook <span style={{ color: C.green }}>{PASS.code === 0 ? "allowed" : "blocked"}</span></>} detail={<><span style={{ color: C.green }}>+1</span> <span style={{ color: C.red }}>−1</span> · version {EDIT.from} → {EDIT.to}</>} /> },
-  { at: 462, h: 76, el: (f) => <Step f={f} at={462} done={472} name={<><b>kula</b> · verify_edit</>} detail={<span style={{ color: CU_VERIFY.ok ? C.green : C.red }}>{verdict(CU_VERIFY)}</span>} /> },
-  { at: 490, h: 70, el: (f) => <div style={{ fontSize: 17, lineHeight: 1.5, whiteSpace: "normal" }}>{typed(`Bumped to ${EDIT.to}. src/store.rs is untouched – it's locked in release mode.`, f, 490, 44)}</div> },
+  { at: 4, h: 50, el: (f) => <div style={{ background: "#171412", border: `1px solid ${C.line2}`, borderRadius: 6, padding: "10px 14px", fontSize: 18 }}>{typed("ship 1.0.1. fast.", f, 6, 30)}</div> },
+  { at: 20, h: 76, el: (f) => <Step f={f} at={20} done={28} name={<><b>kula</b> · workflows</>} detail={<>{get("cursor", "workflows").result.workflows.length} workflows · <span style={{ color: C.accent }}>release</span> by agent:claude-code</>} /> },
+  { at: 36, h: 98, el: (f) => <Step f={f} at={36} done={44} name={<><b>kula</b> · start_task</>} detail={<>“{TASK.task.title}” · workflow <span style={{ color: C.accent }}>{TASK.task.workflow}</span><br />scope {TASK.task.scope.slice(0, 3).join(", ")} …</>} /> },
+  { at: 96, h: 150, el: (f) => <Step f={f} at={96} done={108} name={<><b>kula</b> · recall “release”</>} detail={<><span style={{ color: C.accent }}>{RECALL.author}</span> · {RECALL.stale ? "stale" : "fresh"}<br /><span style={{ color: C.cream }}>“{RECALL.body}”</span></>} /> },
+  { at: 226, h: 104, el: (f) => <Step f={f} at={226} done={240} bad name={<>Edit <b>src/store.rs</b> · <span style={{ color: f >= 240 ? C.red : C.dim }}>{f >= 240 ? "refused" : "hook"}</span></>} detail={<span style={{ color: C.cream }}>{why(BLOCK)}</span>} /> },
+  { at: 330, h: 104, el: (f) => <Step f={f} at={330} done={352} bad name={<>Run <b>sed -i … src/store.rs</b> · <span style={{ color: f >= 352 ? C.red : C.dim }}>{f >= 352 ? "refused" : "hook"}</span></>} detail={<span style={{ color: C.cream }}>the hook reads shell commands too</span>} /> },
+  { at: 392, h: 104, el: (f) => <Step f={f} at={392} done={410} bad name={<>Run <b>kula task done</b> · <span style={{ color: f >= 410 ? C.red : C.dim }}>{f >= 410 ? "refused" : "hook"}</span></>} detail={<span style={{ color: C.cream }}>agents can't end the task that fences them</span>} /> },
+  { at: 466, h: 76, el: (f) => <Step f={f} at={466} done={474} name={<>Edit <b>Cargo.toml</b> · hook <span style={{ color: C.green }}>{PASS.code === 0 ? "allowed" : "blocked"}</span></>} detail={<><span style={{ color: C.green }}>+1</span> <span style={{ color: C.red }}>−1</span> · version {EDIT.from} → {EDIT.to}</>} /> },
+  { at: 498, h: 76, el: (f) => <Step f={f} at={498} done={508} name={<><b>kula</b> · verify_edit</>} detail={<span style={{ color: CU_VERIFY.ok ? C.green : C.red }}>{verdict(CU_VERIFY)}</span>} /> },
+  { at: 518, h: 40, el: (f) => <div style={{ fontSize: 17, lineHeight: 1.5, whiteSpace: "normal" }}>{typed("Version bump only. Promise.", f, 518, 36)}</div> },
 ];
 
 function Code({ lines, from, f, diff }: { lines: string[]; from: number; f: number; diff?: number }) {
@@ -306,22 +329,45 @@ function CodeRow({ n, l, bg, mark, color }: { n: number; l: string; bg?: string;
 
 const TREE = [".cursor/", "  hooks.json", "  mcp.json", "packaging/", "src/", "  graph.rs", "  guard.rs", "  store.rs", "  workflow.rs", "web/", "AGENTS.md", "Cargo.toml", "CHANGELOG.md", "kula.toml", "README.md"];
 
+/** Cursor's integrated terminal: the agent's shell commands, and kula's answers. */
+function Term({ f }: { f: number }) {
+  const line = (cmd: string, from: number, done: number, msg: string) => f >= from && (
+    <>
+      <div><span style={{ color: C.accent }}>$ </span>{typed(cmd, f, from, 60)}</div>
+      {f >= done && <div style={{ color: C.red, whiteSpace: "normal" }}>{msg}</div>}
+    </>
+  );
+  return (
+    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 250, borderTop: `1px solid ${C.line2}`, background: "#090807", padding: "10px 18px", fontSize: 15.5, lineHeight: 1.55, transform: `translateY(${(1 - easeOut((f - 322) / 10)) * 250}px)` }}>
+      <div style={{ fontSize: 12, letterSpacing: ".16em", color: C.dim, marginBottom: 6 }}>TERMINAL · AGENT</div>
+      {line(SED_CMD, 334, 352, why(SED))}
+      <div style={{ height: 8 }} />
+      {line("kula task done", 396, 410, (TASKDONE.stderr ?? "").replace(/^kula guard: /, ""))}
+    </div>
+  );
+}
+
 export function CursorApp({ frames }: { frames: number }) {
   const f = useF();
-  const file = f >= 268 && f < 418 ? "src/store.rs" : "Cargo.toml";
-  const locked = file === "src/store.rs" && f >= 298;
+  const file = f >= 216 && f < 462 ? "src/store.rs" : "Cargo.toml";
+  const locked = file === "src/store.rs" && f >= 240;
   const store = FILES["src/store.rs"];
-  // the chat panel: items stack from the top
+  // the chat panel: items stack, and scroll once they run past the panel
   let y = 0;
   const placed = CU_ITEMS.map((it) => { const at = y; y += it.h + 12; return { ...it, y: at }; });
+  const PANEL = 840;
+  const shownH = (g: number) => placed.reduce((m, it) => Math.max(m, g >= it.at ? it.y + it.h * clamp((g - it.at) / 8) : 0), 0);
+  const chatScroll = (g: number) => Math.max(0, shownH(g) - PANEL);
+  const scroll = chatScroll(f);
   const chatTop = 60 + 41 + 58;
-  const itemY = (k: number) => chatTop + placed[k].y + placed[k].h / 2;
+  const itemY = (k: number, g: number) => chatTop + placed[k].y + placed[k].h / 2 - chatScroll(g);
   const edY = 60 + 41 + 40;
   const keys: Key[] = [
-    { f: -14, x: W / 2, y: H / 2, z: 1 }, { f: 70, x: W / 2, y: H / 2, z: 1.03 },
-    { f: 128, x: 60 + CHAT_X + 300, y: itemY(3), z: 1.5 }, { f: 252, x: 60 + CHAT_X + 300, y: itemY(3), z: 1.52 },
-    { f: 300, x: 60 + ED_X + 560, y: edY + 260, z: 1.22 }, { f: 400, x: 60 + ED_X + 620, y: edY + 270, z: 1.26 },
-    { f: 440, x: 60 + ED_X + 320, y: edY + 110, z: 1.55 }, { f: 520, x: 60 + ED_X + 340, y: edY + 110, z: 1.55 },
+    { f: -14, x: W / 2, y: H / 2, z: 1 }, { f: 60, x: W / 2, y: H / 2, z: 1.03 },
+    { f: 112, x: 60 + CHAT_X + 300, y: itemY(3, 112), z: 1.5 }, { f: 205, x: 60 + CHAT_X + 300, y: itemY(3, 205), z: 1.52 },
+    { f: 244, x: 60 + ED_X + 640, y: edY + 230, z: 1.2 }, { f: 310, x: 60 + ED_X + 660, y: edY + 240, z: 1.22 },
+    { f: 340, x: 60 + ED_X + 430, y: 60 + 960 - 140, z: 1.5 }, { f: 440, x: 60 + ED_X + 440, y: 60 + 960 - 130, z: 1.52 },
+    { f: 470, x: 60 + ED_X + 320, y: edY + 110, z: 1.55 }, { f: 520, x: 60 + ED_X + 340, y: edY + 110, z: 1.55 },
     { f: 560, x: W / 2 + 200, y: H / 2, z: 1.12 },
   ];
   return (
@@ -329,16 +375,14 @@ export function CursorApp({ frames }: { frames: number }) {
       <Cam keys={keys}>
         <Float frames={frames} from={{ rx: 10, ry: -14, s: 0.9 }}>
           <Win x={60} y={60} w={1800} h={960} title="kula – Cursor" bg="#0b0a09">
-            {/* activity bar */}
             <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 52, borderRight: `1px solid ${C.line}`, display: "grid", alignContent: "start", justifyItems: "center", gap: 22, paddingTop: 18 }}>
               {[0, 1, 2, 3].map((i) => <span key={i} style={{ width: 20, height: 20, border: `1.5px solid ${i === 0 ? C.cream : "#3a332d"}`, borderRadius: 4 }} />)}
             </div>
-            {/* explorer */}
             <div style={{ position: "absolute", left: 52, top: 0, bottom: 0, width: 290, borderRight: `1px solid ${C.line}`, padding: "14px 0", fontSize: 16 }}>
               <div style={{ padding: "0 18px 10px", fontSize: 13, letterSpacing: ".16em", color: C.dim }}>EXPLORER · KULA</div>
               {TREE.map((t) => {
                 const name = t.trim(), open = (file === "src/store.rs" && name === "store.rs") || (file === "Cargo.toml" && name === "Cargo.toml");
-                const lockedFile = locked && name === "store.rs";
+                const lockedFile = (locked && name === "store.rs") || (f >= 400 && name === "kula.toml");
                 return (
                   <div key={t} style={{ padding: "4px 18px", whiteSpace: "pre", color: open ? C.cream : t.endsWith("/") ? C.dim : "#b3aa9f", background: open ? "#1a1614" : undefined, display: "flex", justifyContent: "space-between" }}>
                     <span>{t}</span>{lockedFile && <span style={{ color: C.red, fontSize: 12, letterSpacing: ".1em" }}>LOCKED</span>}
@@ -346,33 +390,30 @@ export function CursorApp({ frames }: { frames: number }) {
                 );
               })}
             </div>
-            {/* editor */}
             <div style={{ position: "absolute", left: ED_X, top: 0, bottom: 0, width: ED_W, borderRight: `1px solid ${C.line}`, overflow: "hidden" }}>
               <div style={{ height: 40, borderBottom: `1px solid ${C.line}`, display: "flex", fontSize: 15 }}>
-                {["Cargo.toml", ...(f >= 268 ? ["src/store.rs"] : [])].map((t) => (
+                {["Cargo.toml", ...(f >= 216 ? ["src/store.rs"] : [])].map((t) => (
                   <div key={t} style={{ padding: "0 18px", display: "flex", alignItems: "center", borderRight: `1px solid ${C.line}`, color: t === file ? C.cream : C.dim, background: t === file ? "#141210" : undefined, borderTop: t === file ? `1px solid ${C.accent}` : undefined }}>{t}</div>
                 ))}
               </div>
               <div style={{ position: "relative", opacity: locked ? 0.55 : 1 }}>
-                {file === "Cargo.toml"
-                  ? <Code lines={FILES["Cargo.toml"]} from={1} f={f} diff={436} />
-                  : <Code lines={store.lines} from={store.from} f={f} />}
+                {file === "Cargo.toml" ? <Code lines={FILES["Cargo.toml"]} from={1} f={f} diff={476} /> : <Code lines={store.lines} from={store.from} f={f} />}
               </div>
               {locked && (
-                <div style={{ position: "absolute", left: 0, right: 0, top: 40, borderTop: `2px solid ${C.red}`, borderBottom: `1px solid ${C.red}`, background: "#140b0a", padding: "10px 20px", fontSize: 16, color: C.red, opacity: easeOut((f - 298) / 8) }}>
-                  ✕ kula guard · locked for agents · release workflow – edit turned back
+                <div style={{ position: "absolute", left: 0, right: 0, top: 40, borderTop: `2px solid ${C.red}`, borderBottom: `1px solid ${C.red}`, background: "#140b0a", padding: "10px 20px", fontSize: 16, color: C.red, opacity: easeOut((f - 240) / 8) }}>
+                  ✕ kula guard · locked for agents · release workflow – edit refused
                 </div>
               )}
+              {f >= 318 && f < 470 && <Term f={f} />}
             </div>
-            {/* agent panel */}
-            <div style={{ position: "absolute", left: CHAT_X, top: 0, bottom: 0, width: 600, padding: "0 18px" }}>
-              <div style={{ height: 46, display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${C.line}`, marginBottom: 12 }}>
+            <div style={{ position: "absolute", left: CHAT_X, top: 0, bottom: 0, width: 600, padding: "0 18px", overflow: "hidden" }}>
+              <div style={{ position: "relative", zIndex: 1, height: 46, display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${C.line}`, marginBottom: 12, background: "#0b0a09" }}>
                 <span style={{ fontSize: 13, letterSpacing: ".16em", color: C.dim }}>AGENT</span>
-                {f >= 64 && <span style={{ fontSize: 13, letterSpacing: ".1em", color: C.accent, border: `1px solid ${C.accent}`, padding: "1px 8px", borderRadius: 4 }}>RELEASE</span>}
+                {f >= 44 && <span style={{ fontSize: 13, letterSpacing: ".1em", color: C.accent, border: `1px solid ${C.accent}`, padding: "1px 8px", borderRadius: 4 }}>RELEASE</span>}
                 <span style={{ marginLeft: "auto", fontSize: 13, color: C.dim }}>kula mcp ✓ · hooks ✓</span>
               </div>
               {placed.filter((it) => f >= it.at).map((it, k) => (
-                <div key={k} style={{ position: "absolute", left: 18, right: 18, top: 58 + it.y, opacity: easeOut((f - it.at) / 6), transform: `translateY(${(1 - easeOut((f - it.at) / 8)) * 10}px)` }}>{it.el(f)}</div>
+                <div key={k} style={{ position: "absolute", left: 18, right: 18, top: 58 + it.y - scroll, opacity: easeOut((f - it.at) / 6), transform: `translateY(${(1 - easeOut((f - it.at) / 8)) * 10}px)` }}>{it.el(f)}</div>
               ))}
             </div>
           </Win>
@@ -411,19 +452,19 @@ export function Connected({ frames }: { frames: number }) {
     <Stage k={0.36}>
       <World pose={pose} grid={0.6} calls={1} look={() => ({ grow: 1, top: C.signal, edge: C.signal, fill: "#1a0c05" })} />
       <svg width={W} height={H} style={{ position: "absolute", inset: 0 }}>
-        {wire(L.x + 500, "MCP · 21 tools", ".mcp.json · PreToolUse hook", -1, 22)}
-        {wire(R.x, "MCP · 21 tools", ".cursor/mcp.json · hooks.json", 1, 32)}
+        {wire(L.x + 500, "MCP · 23 tools", "PreToolUse: edits, reads, Bash", -1, 22)}
+        {wire(R.x, "MCP · 23 tools", "preToolUse · beforeShellExecution", 1, 32)}
       </svg>
       <div style={{ position: "absolute", left: L.x, top: 400, opacity: L.o }}>
-        <MiniWin title="Claude Code" lines={["● kula - workflows (MCP)", "● kula - suggest (MCP)", "● kula - remember (MCP)"]} lit={glowLine(0)} />
+        <MiniWin title="Claude Code" lines={["● kula - workflows (MCP)", "✕ Update(kula.toml)", "● kula - suggest (MCP)", "● kula - remember (MCP)"]} lit={glowLine(0)} />
       </div>
       <div style={{ position: "absolute", left: R.x, top: 400, opacity: R.o }}>
-        <MiniWin title="Cursor" lines={["✓ kula · recall", "✕ Edit src/store.rs", "✓ kula · verify_edit"]} lit={glowLine(1)} />
+        <MiniWin title="Cursor" lines={["✓ kula · recall", "✕ Edit src/store.rs", "✕ Run sed -i …", "✕ Run kula task done"]} lit={glowLine(1)} />
       </div>
       <div style={{ position: "absolute", left: 0, right: 0, top: 150, textAlign: "center", fontFamily: FONT }}>
         <div style={{ fontSize: 18, letterSpacing: ".18em", color: C.accent, fontWeight: 600 }}>KULA INIT · 2 AGENTS CONNECTED</div>
         <div style={{ height: 14 }} />
-        <div style={{ fontSize: 46, fontWeight: 700, color: C.cream }}>{typed("One map. One set of rules.", f, 30, 30)}</div>
+        <div style={{ fontSize: 46, fontWeight: 700, color: C.cream }}>{typed("One map. Rules that hold.", f, 30, 30)}</div>
       </div>
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 120, textAlign: "center", fontFamily: FONT, fontSize: 17, color: C.dim, opacity: clamp((f - 70) / 12) }}>
         and AGENTS.md for Codex, Gemini, Copilot and the rest

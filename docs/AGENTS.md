@@ -222,22 +222,27 @@ Agents may propose, never decide. The `suggest` MCP tool records a fence or a wo
 
 ## Teams
 
-A team (`[[team]]` in kula.toml) names a workflow per agent. While it is at work (`kula team start <name>`, or Agents › Teams), every verdict is worked out for the agent asking – by `--agent` in the hook, `clientInfo` over MCP, `--agent` for `kula run` – so Claude Code can run an autoresearch loop while Cursor writes tests and Codex reads, each held to its own fences. A member's `scope` narrows its workflow's.
+A team (`[[team]]` in kula.toml) names a workflow per agent – and who leads, who answers to whom, who hands work to whom, and a system prompt for the team and for each member. While it is at work (`kula team start <name>`, or Agents › Teams), every verdict is worked out for the agent asking – by `--agent` in the hook, `clientInfo` over MCP, `--agent` for `kula run` – so Claude Code can run an autoresearch loop while Cursor writes tests and Codex reads, each held to its own fences. A member's `scope` narrows its workflow's.
 
 ```toml
 [[team]]
 name = "ship"
 about = "research, tests and review at once"
+prompt = "Small, reviewable commits. Say what you changed and why."
 members = [
-  { agent = "claude", workflow = "autoresearch", role = "speed up the indexer" },
-  { agent = "cursor", workflow = "tests" },
-  { agent = "codex", workflow = "explore", role = "review" },
+  { agent = "claude", workflow = "autoresearch", role = "speed up the indexer", hands_off = ["codex"] },
+  { agent = "cursor", workflow = "tests", reports_to = "claude", hands_off = ["codex"] },
+  { agent = "codex", workflow = "explore", role = "review", reports_to = "claude", prompt = "Read everything; change nothing; list risks." },
 ]
 ```
 
+Each member's instructions are put together in order – the team's prompt, its role and its own prompt, its place (whom it answers to, who answers to it, whom it hands off to, who hands off to it), then its workflow – and handed to it by the `workflows` MCP tool. `kula team prompt <team> <agent>` prints them. Agents › Teams draws the team on the code graph's renderer: the hierarchy as lines, hand-offs as moving dots, and the ground under each agent tinted by its workflow, the way the code graph tints directories; selecting an agent opens it for editing.
+
+A workflow can carry a `prompt` of its own too: every agent working in it gets it, ahead of the fences and steps.
+
 ## Autoresearch
 
-A workflow with a `[workflow.research]` table is an experiment loop. `kula research start` measures a baseline (on a `research/<workflow>-<time>` branch unless `--here`) and opens a task in the workflow. Each `experiment` – the MCP tool, or `kula research try "<hypothesis>"` – takes the working tree's change as the experiment: if it touches anything fenced or out of scope it is reverted unrun; otherwise kula runs the metric, commits the change (`research #n: <hypothesis>`) if the number improved and restores the files if not. A metric that fails or prints no number counts as a failed experiment. The run's state is in `.kula/research/<workflow>.json`; the UI draws it under Agents › Research.
+A workflow with a `[workflow.research]` table is an experiment loop. `kula research start` measures a baseline (on a `research/<workflow>-<time>` branch unless `--here`) and opens a task in the workflow. Each `experiment` – the MCP tool, or `kula research try "<hypothesis>"` – takes the working tree's change as the experiment: if it touches anything fenced or out of scope it is reverted unrun; otherwise kula runs the metric, commits the change (`research #n: <hypothesis>`) if the number improved and restores the files if not. A metric that fails or prints no number counts as a failed experiment. The run's state is in `.kula/research/<workflow>.json`. Agents › Research draws each loop as a graph – the agents that ran it, the loop and its prompt, the files it may edit (the rest fenced), the benchmark kula runs, and the kept, reverted and failed experiments – with the run's chart beside it.
 
 ```toml
 [[workflow]]

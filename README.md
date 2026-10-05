@@ -198,9 +198,12 @@ flowchart LR
 A team gives every agent its own workflow, and the hook holds each one to its own: Claude Code on an autoresearch loop, Cursor writing tests, Codex reviewing read-only – at the same time, in one checkout.
 
 ```sh
-kula team save ship -m claude=autoresearch:"speed up the indexer" -m cursor=tests -m codex=explore:review
+kula team save ship --lead claude -m claude=autoresearch:"speed up the indexer" -m cursor=tests -m codex=explore:review
+kula team prompt ship codex     # the team's prompt, its own, its place, its workflow
 kula team start ship
 ```
+
+Teams carry a hierarchy (who leads, who answers to whom), hand-offs, and system prompts for the team and each agent; Agents › Teams draws them on the same renderer as the code graph, tinted by workflow.
 
 ### Fences
 

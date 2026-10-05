@@ -169,6 +169,16 @@ def phase_research(repo):
         LOG.append({"agent": "claude-code", "kind": "experiment", "hypothesis": hyp, "result": json.loads(r.stdout) if r.stdout.strip() else None, "stderr": r.stderr.strip()})
     r = subprocess.run([KULA, "--json", "research", "status"], cwd=repo, capture_output=True, text=True)
     LOG.append({"agent": "person", "kind": "research", "result": json.loads(r.stdout)})
+    # and a team: each agent in its own workflow, who answers to whom, who hands off to whom
+    sh(repo, "team", "save", "ship", "--about", "research, tests, review and docs at once", "--lead", "claude",
+       "--prompt", "Small, reviewable commits. Say what you changed and why.",
+       "-m", "claude=autoresearch:lead – shrink the RDF layer", "-m", "cursor=release:ships", "-m", "codex=explore:review, read-only", "-m", "gemini=docs:keep the docs true")
+    toml = Path(repo, "kula.toml")
+    t = toml.read_text()
+    for agent, to in (("claude", "codex"), ("cursor", "codex"), ("codex", "gemini")):
+        t = re.sub(rf'(agent = "{agent}"\n)', rf'\1hands_off = ["{to}"]\n', t, count=1)
+    toml.write_text(t)
+    sh(repo, "team", "start", "ship")
 
 
 LOG = []
