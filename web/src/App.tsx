@@ -7,12 +7,14 @@ import GraphView from "./views/GraphView";
 import Overview from "./views/Overview";
 import { Branches, Changes, Console, History } from "./views/GitViews";
 import { Flows, Issues, Notes, Proposals } from "./views/MetaViews";
+import Agents from "./views/Agents";
+import Query from "./views/Query";
 import SettingsPanel from "./SettingsPanel";
 import { settings } from "./settings";
 import Opening from "./Opening";
 
 type Rail = { id: View; label: string; icon: () => React.ReactElement; key: string };
-// Grouped by intent: understand · change · collaborate · escape hatch.
+// Grouped by intent: understand · change · collaborate · agents and the graph as data · escape hatch.
 const GROUPS: Rail[][] = [
   [
     { id: "overview", label: "Overview", icon: Icon.home, key: "1" },
@@ -28,6 +30,10 @@ const GROUPS: Rail[][] = [
     { id: "proposals", label: "Proposals", icon: Icon.pr, key: "7" },
     { id: "issues", label: "Issues", icon: Icon.issues, key: "8" },
     { id: "notes", label: "Notes", icon: Icon.notes, key: "9" },
+  ],
+  [
+    { id: "agents", label: "Agents", icon: Icon.agents, key: "a" },
+    { id: "query", label: "Query (SPARQL)", icon: Icon.query, key: "q" },
   ],
   [{ id: "console", label: "Console", icon: Icon.console, key: "0" }],
 ];
@@ -184,6 +190,8 @@ export default function App() {
           {view === "issues" && <Issues {...nav} />}
           {view === "notes" && <Notes {...nav} />}
           {view === "flows" && <Flows {...nav} />}
+          {view === "agents" && <Agents {...nav} />}
+          {view === "query" && <Query {...nav} />}
           {view === "console" && <Console {...nav} />}
         </div>
       </main>
@@ -284,11 +292,15 @@ function Help({ onClose }: { onClose: () => void }) {
   const rows: [string, string][] = [
     ["⌘K  /", "Search everything"],
     ["1 – 9, 0", "Switch view"],
+    ["a  q", "Agents · Query (SPARQL)"],
     ["?", "This sheet"],
     [",", "Settings: theme, colours, graph encodings"],
     ["[  ]", "Back / forward through inspected symbols"],
+    ["⇧ click", "Graph: trace the path from the selected symbol"],
+    ["right-click", "Graph: actions for a symbol"],
+    ["f", "Graph: show fences (what agents may not touch)"],
     ["esc", "Close panel or dialog"],
-    ["⌘↵", "Commit (Changes) · save (Notes)"],
+    ["⌘↵", "Commit (Changes) · save (Notes) · run (Query)"],
     ["↑ ↓", "Command history (Console)"],
   ];
   return (

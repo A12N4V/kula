@@ -130,6 +130,7 @@ pub fn recall(repo: &Repo, store: &Store, target: Option<&str>, query: Option<&s
         let (rank, via) = match (target, want.get(&n.target)) {
             (Some(_), Some(&(r, v))) => (r, v),
             (Some(_), None) if q.is_empty() => continue,
+            _ if q.is_empty() => (4, ""),
             _ => (4, "match"),
         };
         let hay = format!("{} {}", n.target, n.body).to_lowercase();

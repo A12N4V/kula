@@ -40,10 +40,24 @@ export interface RepoInfo {
   index: "current" | "stale" | "missing"; user: string; remotes: string[]; version: string;
   stats: { files: number; parsed: number; symbols: number; edges: number; communities: number; millis: number } | null;
 }
-export interface Note { id: number; target: string; body: string; author: string; created: number; updated: number }
+export interface Note { id: number; target: string; body: string; author: string; created: number; updated: number; kind?: "memory"; anchor?: string }
+/** How far agents may go with a file or symbol (src/guard.rs). */
+export type GuardLevel = "open" | "review" | "scope" | "locked" | "hidden";
+export interface Verdict { level: GuardLevel; reason: string; rule: string }
+/** An agent memory as recalled (src/memory.rs): stale when its code changed since. */
+export interface Memory { id: number; target: string; body: string; author: string; created: number; stale: boolean; via: string }
+export interface Task { title: string; scope: string[]; started: number; by: string }
+export interface GuardRule { level: GuardLevel; paths: string[]; symbols: string[]; reason: string }
+export interface AgentsInfo {
+  rules: GuardRule[]; task: Task | null; files: { path: string; verdict: Verdict }[]; levels: Record<string, GuardLevel>;
+  memories: Memory[]; secrets_hidden: boolean; memory_enabled: boolean; mcp_registered: boolean; hook_installed: boolean; kula_toml: boolean;
+}
+export type SparqlValue = string | number | boolean;
+export interface SparqlResult { vars?: string[]; rows?: Record<string, SparqlValue>[]; truncated?: boolean; boolean?: boolean; triples?: [SparqlValue, SparqlValue, SparqlValue][]; millis?: number }
 export interface Context {
   node: Node; community: string | null; callers: Node[]; callees: Node[]; children: Node[];
   imports: Node[]; imported_by: Node[]; container: Node | null; snippet: string; notes: Note[];
+  guard?: Verdict; memories?: Memory[];
 }
 export interface ImpactHit { node: Node; depth: number; via: number | null }
 export interface Impact { root: Node; direction: string; hits: ImpactHit[]; files: number; communities: string[]; risk: string }
@@ -81,12 +95,13 @@ export interface IndexProgress { active: boolean; phase: "idle" | "walk" | "pars
 /** A located symbol in an agent answer (src/agent.rs Ref). */
 export interface AgentRef { name: string; path: string; line: number; detail?: string }
 /** Before editing a symbol (src/agent.rs pre_edit). */
-export interface PreEdit { symbol: Node; risk: string; dependents: number; files: number; direct_callers: string[]; tests: string[]; co_changes: [string, number][]; notes: string[]; advice: string[]; direct_caller_refs: AgentRef[]; test_refs: AgentRef[] }
+export interface PreEdit { symbol: Node; risk: string; dependents: number; files: number; direct_callers: string[]; tests: string[]; co_changes: [string, number][]; notes: string[]; advice: string[]; direct_caller_refs: AgentRef[]; test_refs: AgentRef[]; guard: Verdict; memories: Memory[] }
 /** The working tree's graph against HEAD (src/agent.rs verify_edit). */
 export interface Verify {
   summary: { added: number; removed: number; modified: number; same: number; edges_added: number; edges_removed: number; files_touched: number };
   changed: string[]; dangling: string[]; recheck: string[]; ok: boolean;
   changed_refs: AgentRef[]; dangling_refs: AgentRef[]; recheck_refs: AgentRef[];
+  guard_violations: [string, Verdict][];
 }
 
 export const api = {
@@ -114,6 +129,12 @@ export const api = {
   graphDiff: (base: string, head?: string, focus?: "changed" | "all") => get<GraphDiff>(`/api/graphdiff?${q({ base, head, focus })}`),
   history: (id: number) => get<SymbolHistory>(`/api/history/${id}`),
   overview: () => get<Overview>("/api/overview"),
+  agents: () => get<AgentsInfo>("/api/agents"),
+  agentAction: <T = unknown>(action: "task_start" | "task_done" | "remember" | "confirm" | "forget", body: Record<string, unknown> = {}) =>
+    post<T>(`/api/agents/${action}`, body),
+  sparql: (query: string, limit = 500) => post<SparqlResult>("/api/kg/sparql", { query, limit }),
+  kgExport: (format: "ttl" | "nt" | "jsonld" | "rdfxml") => get<{ format: string; text: string }>(`/api/kg/export?${q({ format })}`),
+  kgExamples: () => get<{ examples: { title: string; query: string }[]; vocabulary: { term: string; kind: string; doc: string }[]; prefixes: { prefix: string; iri: string }[] }>("/api/kg/examples"),
   metaAction: <T = unknown>(kind: "issues" | "proposals" | "notes", action: string | number, body: Record<string, unknown>) =>
     post<T>(`/api/meta/${kind}/${action}`, body),
 };

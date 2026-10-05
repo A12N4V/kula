@@ -44,12 +44,16 @@ Developer tooling around git splits into camps, and each leaves a gap:
 | Forges | GitHub, GitLab, Gitea | Issues, PRs, review | Need a server and an account; no offline issues; review is line-by-line, not architectural |
 | Behavioural analysis | CodeScene | Hotspots and risk | Commercial and separate from your daily git workflow |
 | Git-native tracking | git-bug | Offline issues in git | No graph, no git UI |
+| Agent memory | TencentDB Agent Memory, mem0 | Long-term memory for assistants | Built around conversations and users; vector stores that never learn the code changed |
+| Agent guardrails | Claude Code permissions, Cursor rules, leash | Allow and deny lists for tools and paths | Paths only: a fence can't name a function, follow it when it moves, or scope one task |
 
 Kula collapses these into **one MIT-licensed binary**. The same graph powers your git client, your reviews and your AI agent. Three things are unusual:
 
 1. **Architectural review.** `graph-diff` and the Contrast view show what a branch does to the *structure* (symbols gained, lost and rewritten, call edges added and cut), not just which lines moved.
 2. **Review that works offline.** Proposals, issues and notes are git objects on `refs/kula/meta`, so they work on a plane and sync through any remote.
 3. **Triage built in.** The Overview ranks open proposals by risk and surfaces hotspots (files with high churn *and* high centrality) without a separate SaaS product.
+4. **Fences and memory that know the code.** Guards can lock a *symbol*, not just a path; a task limits an agent to part of the graph; and what an agent remembers is pinned to the code it describes and marked stale when that code changes. One verdict serves MCP, the pre-edit hook and the CI gate.
+5. **A graph you can take with you.** The whole knowledge graph is RDF under a small published vocabulary: export Turtle or JSON-LD, or ask it anything in SPARQL.
 
 ## Install
 
@@ -131,6 +135,14 @@ kula commit -am "ship it"  # …and it's still just git
 <td><img src="docs/assets/ui-changes.png" alt="Changes"><p align="center"><b>Changes.</b> Stage per file, review diffs, commit or amend (<kbd>⌘</kbd><kbd>↵</kbd>).</p></td>
 </tr>
 <tr>
+<td><img src="docs/assets/ui-agents.png" alt="Agents"><p align="center"><b>Agents.</b> What agents are told and allowed: the fences from <code>kula.toml</code>, the task's scope, and every memory, stale ones first.</p></td>
+<td><img src="docs/assets/ui-query.png" alt="Query"><p align="center"><b>Query.</b> SPARQL over the graph as RDF, with examples and the vocabulary beside it. Symbols in the results open in the map.</p></td>
+</tr>
+<tr>
+<td><img src="docs/assets/ui-fences.png" alt="Fences on the graph"><p align="center"><b>Fences.</b> <kbd>f</kbd> on the graph: locked and hidden code in colour, the task's scope lit, everything an agent may not change receding.</p></td>
+<td><img src="docs/assets/ui-console.png" alt="Console"><p align="center"><b>Console.</b> A terminal that runs kula itself, so its commands and every git command work, in tabs.</p></td>
+</tr>
+<tr>
 <td><img src="docs/assets/ui-history.png" alt="History"><p align="center"><b>History.</b> A lane graph of every branch. Contrast any commit's graph with its parent's, cherry-pick, revert, tag or branch from it.</p></td>
 <td><img src="docs/assets/ui-issues.png" alt="Issues"><p align="center"><b>Issues.</b> Labels, discussion, and anchors to the symbols they're about.</p></td>
 </tr>
@@ -140,9 +152,9 @@ Also included:
 - **Notes** on the repo, a file, a symbol or a commit, with `[[symbol]]` links.
 - **Flows:** execution paths traced from entry points.
 - **Symbol history:** the owners and commits behind any function (`git log -L`), in the inspector.
-- **Git console:** any non-interactive git command, in the browser, under a slowly turning dithered portrait of the repo.
+- **Graph gestures:** right-click a symbol for its actions (source, impact, pre-edit check, notes and memory, copy its location or RDF IRI); <kbd>⇧</kbd>-click a second symbol to light the shortest path between them.
 - **One palette** (<kbd>⌘K</kbd>) for everything. Prefix `#` for issues and proposals, `@` for branches, `>` for commands.
-- **Navigation:** number keys <kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd> switch views; <kbd>[</kbd> <kbd>]</kbd> go back and forward through inspected symbols; <kbd>?</kbd> shows every shortcut.
+- **Navigation:** number keys <kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd>, and <kbd>a</kbd> <kbd>q</kbd> for Agents and Query, switch views; <kbd>[</kbd> <kbd>]</kbd> go back and forward through inspected symbols; <kbd>?</kbd> shows every shortcut.
 - **Shareable deep links** such as `#graph/<id>/impact`, `#graph/contrast/main/feat%2Fx` and `#issues/3`.
 - **Always-fresh graph:** `kula view` reindexes in the background whenever `HEAD` moves.
 - **Settings** (<kbd>,</kbd>): colour the graph by directory, cluster, kind or 90-day churn; pick any directory's colour; set directory depth, hub share, label density, import edges and curved edges; light, dark or system theme; compact or comfortable density.
@@ -180,14 +192,21 @@ Kula is a **superset of git**. Any command it doesn't recognise goes straight to
 | `kula pr new\|list\|show\|comment\|merge\|close` | Proposals (local pull requests) |
 | `kula note add\|list\|edit\|rm` | Notes on `repo`, `file:<path>`, `symbol:<name>`, `commit:<sha>` |
 | `kula sync [remote]` | Share issues, proposals and notes through a normal git remote |
+| `kula pack <targets…> [-b N]` | The code a task needs, ranked by graph distance and fitted to a token budget |
+| `kula before <symbol>` · `kula verify` | Bracket an edit: callers, tests, risk, guards and memories before; what moved, broke or was fenced after |
+| `kula guard list\|check\|hook` | Fences for agents from `kula.toml`; `hook` is a pre-edit hook that blocks fenced edits |
+| `kula task start <title> --scope …\|show\|done` | The task an agent is on, and the only code it may change |
+| `kula memory add\|recall\|confirm\|rm` | Facts about the code, pinned to symbols, marked stale when they change |
+| `kula kg export [-f ttl\|nt\|jsonld\|rdfxml]` · `kula kg sparql <query>` | The knowledge graph as RDF, and SPARQL over it |
+| `kula check [--base B] [--md]` | CI gate: blast radius against a base, and guarded code |
 | `kula mcp` | MCP server over stdio |
 | `kula doctor` | Environment check |
 
 Every graph command accepts `--json`, and `-C <path>` works like git's.
 
-## For AI agents (MCP)
+## For AI agents
 
-`kula mcp` gives agents the graph as tools: `query`, `context`, `impact`, `trace`, `compare`, `graph_diff`, `flows`, `notes`, `issues`. Agents can check the blast radius before editing and read the notes your team left.
+`kula init` registers the MCP server in `.mcp.json` and a pre-edit hook in `.claude/settings.json`. After that, agents get the repository as a graph, a fence around what they may change, and a memory that knows when it is out of date.
 
 ```jsonc
 // Claude Code:  claude mcp add kula -- kula mcp
@@ -195,19 +214,63 @@ Every graph command accepts `--json`, and `-C <path>` works like git's.
 { "mcpServers": { "kula": { "command": "kula", "args": ["mcp"] } } }
 ```
 
+| Tool | |
+|---|---|
+| `context_pack` | The code a task needs, not whole files: definitions, what they use, who uses them, tests – ranked by graph distance and fitted to a token budget |
+| `pre_edit` · `verify_edit` | Before a change: callers, the tests that reach it, co-changing files, risk, guards, memories. After: symbols moved, callers left dangling, fenced files touched |
+| `guards` | What the agent may change: the rules, the active task, a verdict per path |
+| `remember` · `recall` | Facts about the code, pinned to a symbol, file or the repo; recall ranks by graph neighbourhood and flags stale ones |
+| `sparql` | Any structural question over the whole graph |
+| `query` `context` `impact` `trace` `compare` `graph_diff` `flows` `notes` `issues` | The graph itself |
+
+**Guards.** Fence code off in `kula.toml`. A rule names path globs or symbols (`name` or `path:name`, so it follows the function, not the line):
+
+```toml
+[[guard]]
+paths = ["migrations/**"]
+level = "locked"        # agents read it, never edit it
+reason = "schema changes go through the DBA"
+
+[[guard]]
+symbols = ["src/billing.rs:charge_card"]
+level = "review"        # editable; kula check lists it for a person
+
+[[guard]]
+paths = ["data/customers/**"]
+level = "hidden"        # never shown to an agent, in any answer
+```
+
+Likely secrets (`.env`, keys, certificates) are hidden by default. `kula task start "speed up login" --scope src/auth/** login` narrows an agent to part of the graph until `kula task done`; a symbol in the scope opens the file that defines it. Every surface reads the same verdict: MCP answers leave hidden code out, `kula guard hook` stops an edit before it happens (exit 2, with the reason, back to the agent), `verify_edit` reports what slipped through, and `kula check` fails a branch that changes locked code.
+
+**Memory.** `remember` stores one fact against a symbol, file or the repo, with a hash of that code. When the code changes the memory is marked **stale** instead of being trusted silently, and `kula memory confirm` re-anchors it once someone checks it still holds. Memories are notes on `refs/kula/meta` – in git, auditable, shared with `kula sync` – not a separate database.
+
+## The knowledge graph as RDF
+
+The graph is also stated as RDF under a small vocabulary (`kula:` = `https://kula.dev/ns#`, documented in the graph itself), with stable `urn:kula:` IRIs built from paths and names. Symbols, files, packages, clusters, calls and imports are there, plus the notes, memories, issues and guards attached to them. [Oxigraph](https://github.com/oxigraph/oxigraph) holds it in memory and answers SPARQL 1.1, read only.
+
+```sh
+kula kg export -f jsonld -o graph.jsonld        # or ttl, nt, rdfxml
+kula kg sparql 'SELECT ?name (COUNT(?c) AS ?callers) WHERE {
+  ?s a kula:Function ; kula:name ?name . ?c kula:calls ?s
+} GROUP BY ?name ORDER BY DESC(?callers) LIMIT 10'
+kula kg examples                                # more, and the vocabulary
+```
+
+The UI's **Query** view is a SPARQL editor over the same endpoint; results link back into the map.
+
 ## How it works
 
 <p align="center"><img src="docs/assets/architecture.svg" alt="Architecture diagram" width="100%"></p>
 
-- **Indexing.** Files are walked in parallel (respecting `.gitignore`) and parsed with tree-sitter. Kula extracts definitions (functions, methods, classes, interfaces), call sites and imports. Imports are resolved per language (relative JS/TS paths, Python packages, Rust `mod`/`use`, Go packages). Calls are resolved by preferring the same file, then imported files, then an unambiguous global match. A stoplist keeps generic names like `.get()` and `.map()` from creating false edges.
+- **Indexing.** Files are walked in parallel (respecting `.gitignore`) and parsed with tree-sitter. Kula extracts definitions (functions, methods, classes, interfaces), call sites and imports. Imports are resolved per language (relative JS/TS paths, Python packages, Rust `mod`/`use`, Go packages). Calls are resolved by preferring the same file, then imported files, then an unambiguous match in the same language family (a TypeScript call never lands on a Rust function). A stoplist keeps generic names like `.get()`, `.map()` and `.as_str()` from creating false edges.
 - **Contrast.** Any revision's graph is built straight from git objects (`git ls-tree` plus a single `git cat-file --batch`), with no checkout, and cached per commit. Symbols are matched across revisions by kind, path, container and name, and compared by a hash of their source.
 - **Clusters.** Weighted label propagation over calls, containment and imports. Each cluster is named after its dominant directory and its central class or file.
-- **Storage.** `.kula/graph.db` is SQLite with FTS5. It is git-ignored automatically and rebuilt by `kula index`. A small codebase indexes in well under a second.
+- **Storage.** `.kula/graph.db` is SQLite with FTS5. It is git-ignored automatically and rebuilt by `kula index` beside the live file, then swapped in with one rename, so a running `kula view` never reads a half-built graph. A small codebase indexes in well under a second. The RDF view is built from it on demand.
 - **Issues, proposals and notes** live in one JSON document committed onto **`refs/kula/meta`**. Every change is a commit, so there is full history and nothing touches your branches. `kula sync` fetches, merges and pushes that ref through any git remote.
 - **Git itself** is never reimplemented. Kula shells out to your `git`, so hooks, signing, credential helpers, LFS and your config all keep working.
 - **Security.** The UI server listens on `127.0.0.1`, rejects foreign `Host` headers (which blocks DNS rebinding), requires a random per-session token on every API call, and validates revisions so they can't be read as git options.
 
-**Language support today:** TypeScript/TSX, JavaScript/JSX, Python, Rust, Go. Adding a language takes a grammar crate plus a few tree-sitter patterns in [`src/index/langs.rs`](src/index/langs.rs).
+**Language support today:** TypeScript/TSX, JavaScript/JSX, Python, Rust, Go, Java, C, C++, C#, Ruby and PHP. Files in other languages are walked but not parsed, so kula runs on any git repository, including one with no commits yet. Adding a language takes a grammar crate plus a few tree-sitter patterns in [`src/index/langs.rs`](src/index/langs.rs); a test checks every pattern compiles against its grammar.
 
 ## Development
 
@@ -247,7 +310,7 @@ scripts/         test.sh · install.sh
 ## Roadmap
 
 - Incremental re-indexing on file change (`kula view --watch`)
-- More languages: Java, C#, Kotlin, Swift, C/C++, Ruby, PHP
+- More languages: Kotlin, Swift, Scala, Elixir
 - Semantic search with optional local embeddings
 - Two-way sync with GitHub and GitLab issues and PRs
 - Time-travel graph: scrub through history and watch the architecture change

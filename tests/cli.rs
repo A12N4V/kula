@@ -575,3 +575,13 @@ fn the_knowledge_graph_is_rdf_and_answers_sparql() {
     // Read-only: updates are rejected.
     kula_code(d, &["kg", "sparql", "DELETE WHERE { ?s ?p ?o }"], None, 1);
 }
+
+#[test]
+fn history_leaves_out_kulas_own_bookkeeping() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+    kula(d, &["note", "add", "repo", "a note commits onto refs/kula/meta"]);
+    let lg = kula(d, &["lg"]);
+    assert!(!lg.contains("note #"), "{lg}");
+}

@@ -50,6 +50,16 @@ reindex = true
 
 [check]
 max_risk = "medium"   # none | low | medium | high
+
+[agents]
+hide_secrets = true   # .env, keys, certificates never reach an agent
+memory = true         # agents may `remember` facts about the code
+
+[[guard]]             # as many as you need
+paths = ["migrations/**"]
+symbols = ["charge_card", "src/billing.rs:refund"]
+level = "locked"      # locked: read, never edit · hidden: never shown · review: flagged in check
+reason = "money moves here; a person changes it"
 ```
 
 Every key is optional, and a repository without the file behaves exactly as before.
@@ -62,7 +72,8 @@ The scheme is `kula <verb>`. Graph verbs answer questions, project verbs keep th
 |---|---|
 | project | `init` · `index [--if-stale] [--quiet]` · `hooks install\|uninstall\|status` · `doctor` |
 | graph | `query` · `context` · `impact [--down]` · `trace` · `flows` · `clusters` · `deps` |
-| agents | `pack` · `before` · `verify` (also MCP tools `context_pack`, `pre_edit`, `verify_edit`) |
+| agents | `pack` · `before` · `verify` · `guard list\|check\|hook` · `task start\|show\|done` · `memory add\|recall\|confirm\|rm` (and the MCP tools of the same purpose) |
+| knowledge graph | `kg export [-f ttl\|nt\|jsonld\|rdfxml]` · `kg sparql <query\|@file\|->` · `kg examples` |
 | review | `compare` · `graph-diff` · `check` · `pr` · `issue` · `note` · `sync` |
 | surfaces | `view` (web UI) · `mcp` (agents over stdio) · `status` · `lg` |
 | git | anything else: `kula commit -am …`, `kula rebase -i`, or `kula git <args>` |
@@ -93,9 +104,38 @@ kula verify
 - **`before`**: run before changing a symbol. It lists direct callers, the total dependents and risk, the tests that reach the symbol through the call graph, files that historically change in the same commits, human notes, and concrete advice.
 - **`verify`**: run after editing. It compares the working tree with HEAD through the graph: symbols added, removed or modified, callers still pointing at removed code (exit **2**), and callers of modified symbols in other files to re-read.
 
+### Guards, tasks and memory
+
+```
+kula guard list                          # rules, the task, every fenced file
+kula guard check src/billing.rs          # exit 1 if an agent may not edit it
+kula guard check --staged                # the same for what's staged
+echo '{"tool_name":"Edit","tool_input":{"file_path":"migrations/001.sql"}}' | kula guard hook   # exit 2 + reason
+
+kula task start "speed up login" --scope "src/auth/**" login
+kula task done
+
+kula memory add charge_card "amounts are integer cents; never floats"
+kula memory recall charge_card           # its own, its file's, its callers' and callees'
+kula memory recall --query cents
+kula memory confirm 12                   # still true after the code changed: re-anchor it
+```
+
+Verdicts, strongest first: **hidden** (never read or edited, left out of every agent answer), **locked** (read, never edited), **scope** (outside the active task), **review** (editable, flagged by `check`). `kula init --agents` registers `kula guard hook` as a Claude Code `PreToolUse` hook for `Edit`, `MultiEdit`, `Write`, `NotebookEdit` and `Read`; any agent that can run a command before a tool call can use the same protocol (JSON on stdin, exit 2 to block, the reason on stderr). Shell commands an agent runs are not parsed – the hook fences file tools, MCP fences answers, and `check` is the backstop.
+
+### `kula kg`, the graph as RDF
+
+```
+kula kg export -f ttl -o graph.ttl
+kula kg sparql 'ASK { ?n a kula:Memory ; kula:stale true }'
+kula kg sparql @queries/hubs.rq --json
+```
+
+Prefixes `kula:`, `code:` (`urn:kula:`), `rdf:`, `rdfs:` and `xsd:` are predeclared. `SELECT ?t ?doc { ?t rdfs:comment ?doc }` lists the vocabulary. Queries are read only; hidden code is not in the graph.
+
 ### `kula check`, the CI gate
 
-Compares `HEAD` with a base through the graph. It reports files changed, symbols touched, the dependents they ripple into, the clusters crossed, and undeclared imports. It exits with status **2** when the risk is above `max_risk`:
+Compares `HEAD` with a base through the graph. It reports files changed, symbols touched, the dependents they ripple into, the clusters crossed, and undeclared imports. It exits with status **2** when the risk is above `max_risk`, or when the change touches code a `[[guard]]` marks locked or hidden:
 
 ```
 kula check                          # base and gate from kula.toml

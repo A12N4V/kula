@@ -195,7 +195,8 @@ impl Repo {
         if let Some(r) = rev {
             args.push(r);
         } else {
-            args.push("--all");
+            // Every branch and tag – but not kula's own bookkeeping on refs/kula/*.
+            args.extend(["--exclude=refs/kula/*", "--all"]);
         }
         let raw = match self.run(&args) {
             Ok(r) => r,

@@ -92,6 +92,9 @@ if want e2e; then
     curl -s "${H[@]}" "$U/api/graphdiff?base=main&head=feat/e2e" | grep -q '"name":"c","path":"src/x.ts","start_line":3,"status":"added"' && ok "GET /api/graphdiff (branch contrast)" || bad "GET /api/graphdiff"
     curl -s "${H[@]}" "$U/api/overview" | grep -q '"default_branch":"main"' && ok "GET /api/overview (review queue)" || bad "GET /api/overview"
     curl -s "${H[@]}" "$U/api/history/$ID" | grep -q '"owners":\[\["e2e"' && ok "GET /api/history (symbol ownership)" || bad "GET /api/history"
+    curl -s "${H[@]}" "$U/api/agents" | grep -q '"secrets_hidden":true' && ok "GET /api/agents (guards, task, memory)" || bad "GET /api/agents"
+    curl -s "${H[@]}" -H 'content-type: application/json' -d '{"target":"b","text":"b returns one"}' "$U/api/agents/remember" | grep -q '"kind":"memory"' && ok "POST remember" || bad "POST remember"
+    curl -s "${H[@]}" -H 'content-type: application/json' -d '{"query":"SELECT ?n WHERE { ?s a kula:Function ; kula:name ?n } ORDER BY ?n"}' "$U/api/kg/sparql" | grep -q '"n":"a"' && ok "POST /api/kg/sparql" || bad "POST /api/kg/sparql"
   fi
   kill $SRV 2>/dev/null; wait $SRV 2>/dev/null
 fi

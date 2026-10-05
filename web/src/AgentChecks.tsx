@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { api, type AgentRef, type PreEdit, type Verify } from "./api";
 import { useCode } from "./CodePanel";
+import { GuardTag } from "./views/Agents";
 
 /** One located symbol; the location opens in the code panel. */
 function Row({ r, note, tone }: { r: { name: string; path: string; line?: number }; note?: string; tone?: "bad" | "warn" }) {
@@ -45,6 +46,9 @@ export function PreEditPanel({ id }: { id: number }) {
         <div className="stat"><b>{p.dependents}</b><span>dependents</span></div>
         <div className="stat"><b>{p.test_refs.length}</b><span>tests reach it</span></div>
       </div>
+      {p.guard.level !== "open" && (
+        <div className={`insp-guard ${p.guard.level}`}><GuardTag level={p.guard.level} /><span>{p.guard.reason}</span><span className="muted mono">{p.guard.rule}</span></div>
+      )}
       <ol className="ac-advice">{p.advice.map((a) => a.replace(/call verify_edit to see/, "the Graph check in Changes shows")).map((a) => <li key={a}>{a}</li>)}</ol>
       <List title="Direct callers" refs={p.direct_caller_refs} />
       <List title="Tests that reach it" refs={p.test_refs} empty="None through the call graph." tone={p.test_refs.length ? undefined : "warn"} />
@@ -52,6 +56,17 @@ export function PreEditPanel({ id }: { id: number }) {
         <>
           <div className="section-title">Changes together with <span className="count">{p.co_changes.length}</span></div>
           {p.co_changes.map(([f, n]) => <Row key={f} r={{ name: f.split("/").pop() ?? f, path: f }} note={`${n} shared commit${n === 1 ? "" : "s"}`} />)}
+        </>
+      )}
+      {p.memories.length > 0 && (
+        <>
+          <div className="section-title">Memories <span className="count">{p.memories.length}</span></div>
+          {p.memories.map((m) => (
+            <div key={m.id} className={`note mem ${m.stale ? "stale" : ""}`}>
+              <span className={`tag ${m.stale ? "yellow" : "green"}`}>{m.stale ? "stale" : "fresh"}</span> {m.body}
+              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{m.via} · {m.author}</div>
+            </div>
+          ))}
         </>
       )}
       {p.notes.length > 0 && (<><div className="section-title">Notes</div>{p.notes.map((n) => <div key={n} className="note">{n}</div>)}</>)}
@@ -73,7 +88,8 @@ export function VerifyPanel({ version }: { version: string }) {
   if (!v) return <div className="verify muted">{busy ? "Checking the graph against HEAD…" : ""}</div>;
   const s = v.summary;
   const moved = s.added + s.removed + s.modified;
-  const state = v.dangling_refs.length ? "bad" : v.recheck_refs.length ? "warn" : "ok";
+  const fenced = v.guard_violations ?? [];
+  const state = v.dangling_refs.length || fenced.length ? "bad" : v.recheck_refs.length ? "warn" : "ok";
   return (
     <div className={`verify ${state}`}>
       <button className="verify-head" onClick={() => setOpen(!open)} aria-expanded={open}>
@@ -83,12 +99,19 @@ export function VerifyPanel({ version }: { version: string }) {
           {moved === 0 ? "no symbol moved" : <><span className="add">+{s.added}</span> <span className="del">−{s.removed}</span> <span className="mod">~{s.modified}</span></>}
           {v.dangling_refs.length > 0 && <> · <span className="del">{v.dangling_refs.length} broken caller{v.dangling_refs.length > 1 ? "s" : ""}</span></>}
           {v.recheck_refs.length > 0 && <> · {v.recheck_refs.length} to re-read</>}
+          {fenced.length > 0 && <> · <span className="del">{fenced.length} fenced file{fenced.length > 1 ? "s" : ""} changed</span></>}
         </span>
         <span className="spacer" />
         {busy && <span className="muted">…</span>}
       </button>
       {open && (
         <div className="verify-body">
+          {fenced.length > 0 && (
+            <>
+              <div className="section-title">Fenced code changed <span className="count">{fenced.length}</span></div>
+              {fenced.map(([path, v]) => <Row key={path} r={{ name: path.split("/").pop() ?? path, path }} note={`${v.level} · ${v.reason}`} tone="bad" />)}
+            </>
+          )}
           <List title="Callers left dangling" refs={v.dangling_refs} note={(r) => `called ${r.detail}, which is gone`} tone="bad" empty="None: every call still resolves." max={8} />
           <List title="Callers of changed code, in other files" refs={v.recheck_refs} note={(r) => `calls ${r.detail}`} tone="warn" max={8} />
           <List title="Symbols changed" refs={v.changed_refs} note={(r) => r.detail} max={8} />

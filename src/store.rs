@@ -249,6 +249,16 @@ impl Store {
         if !exact.is_empty() {
             return Ok(exact);
         }
+        // Owner.name, Owner::name, Owner#name: a member by its container.
+        if let Some((owner, name)) = r.rsplit_once("::").or_else(|| r.rsplit_once('.')).or_else(|| r.rsplit_once('#')) {
+            let hits = self.nodes_where(
+                "name = ?1 AND kind != 'file' AND parent IN (SELECT id FROM nodes WHERE name = ?2 AND kind != 'file') ORDER BY id",
+                params![name, owner],
+            )?;
+            if !hits.is_empty() {
+                return Ok(hits);
+            }
+        }
         self.nodes_where("kind = 'file' AND (path = ?1 OR path LIKE ?2) ORDER BY length(path)", params![r, format!("%/{r}")])
     }
 }

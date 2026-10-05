@@ -5,6 +5,8 @@ import { defineConfig, devices } from "@playwright/test";
 // PW_CHROMIUM points at any local Chromium when Playwright's own isn't installed.
 // KULA_PW_PORT lets a second checkout (or session) run the suite beside a dev server on 7431.
 const PORT = Number(process.env.KULA_PW_PORT ?? 7431);
+/** The agents fixture (e2e/fixture.sh) listens one port up. */
+export const FIXTURE = `http://localhost:${PORT + 1}`;
 export default defineConfig({
   testDir: "e2e",
   timeout: 30_000,
@@ -22,10 +24,14 @@ export default defineConfig({
     { name: "tablet", use: { ...devices["iPad Mini"], browserName: "chromium", colorScheme: "dark" }, grep: /@responsive/ },
     { name: "phone", use: { ...devices["Pixel 7"], colorScheme: "dark" }, grep: /@mobile|@responsive/ },
   ],
-  webServer: {
-    command: `KULA_TOKEN=test ../target/debug/kula -C .. view --no-open --port ${PORT}`,
-    url: `http://localhost:${PORT}`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-  },
+  webServer: [
+    {
+      command: `KULA_TOKEN=test ../target/debug/kula -C .. view --no-open --port ${PORT}`,
+      url: `http://localhost:${PORT}`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+    },
+    // A disposable clone with guards, a task and memories (e2e/fixture.sh): the agents tests write to it.
+    { command: `sh e2e/fixture.sh ${PORT + 1}`, url: `http://localhost:${PORT + 1}`, reuseExistingServer: false, timeout: 90_000 },
+  ],
 });

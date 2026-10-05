@@ -205,8 +205,13 @@ async fn symbol(State(s): State<AppState>, Path(id): Path<i64>) -> ApiResult {
                     || n.target == format!("file:{}", c.node.path)
             })
             .collect();
+        let guard = crate::guard::Guards::load(&s.repo)?.node(&c.node);
+        let memories = crate::memory::recall(&s.repo, &st, Some(&id.to_string()), None, 12).unwrap_or_default();
+        let notes: Vec<_> = notes.into_iter().filter(|n| n.kind.is_empty()).collect();
         let mut v = json!(c);
         v["notes"] = json!(notes);
+        v["guard"] = json!(guard);
+        v["memories"] = json!(memories);
         Ok(v)
     })
     .await
@@ -457,6 +462,125 @@ async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(
     .await
 }
 
+// ---------------------------------------------------------------- agents
+
+/// Everything agents are told and allowed: guard rules and the files they fence,
+/// the task, memories (stale first), and whether MCP and the hook are wired up.
+async fn agents_info(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        let cfg = crate::config::Config::load(&r.root)?;
+        let g = crate::guard::Guards::load(r)?;
+        let st = Store::open(r).ok();
+        let rules: Vec<Value> = g
+            .rules()
+            .into_iter()
+            .map(|(rule, level)| json!({ "level": level, "paths": rule.paths, "symbols": rule.symbols, "reason": rule.reason }))
+            .collect();
+        let (files, levels) = match &st {
+            Some(st) => {
+                let files = crate::guard::guarded_files(r, st)?;
+                let mut levels = serde_json::Map::new();
+                for n in st.nodes_where("kind != 'package'", [])? {
+                    let v = g.node(&n);
+                    if v.level != crate::guard::Level::Open {
+                        levels.insert(n.id.to_string(), json!(v.level));
+                    }
+                }
+                (files, levels)
+            }
+            None => (vec![], Default::default()),
+        };
+        let memories = match &st {
+            Some(st) => crate::memory::recall(r, st, None, None, 500)?,
+            None => vec![],
+        };
+        let read = |p: &str| std::fs::read_to_string(r.root.join(p)).unwrap_or_default();
+        Ok(json!({
+            "rules": rules,
+            "task": g.task(),
+            "files": files.iter().map(|(p, v)| json!({ "path": p, "verdict": v })).collect::<Vec<_>>(),
+            "levels": levels,
+            "memories": memories,
+            "secrets_hidden": cfg.agents.hide_secrets,
+            "memory_enabled": cfg.agents.memory,
+            "mcp_registered": read(".mcp.json").contains("\"kula\""),
+            "hook_installed": read(".claude/settings.json").contains("kula guard hook"),
+            "kula_toml": crate::config::Config::exists(&r.root),
+        }))
+    })
+    .await
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct AgentReq {
+    title: String,
+    scope: Vec<String>,
+    target: String,
+    text: String,
+    id: u64,
+}
+
+async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Json(a): Json<AgentReq>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        Ok(match action.as_str() {
+            "task_start" => json!(crate::guard::task_start(
+                r,
+                &a.title,
+                a.scope.into_iter().map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()
+            )?),
+            "task_done" => json!(crate::guard::task_done(r)?),
+            "remember" => json!(crate::memory::remember(r, &Store::open(r)?, &a.target, &a.text, &r.user())?),
+            "confirm" => json!(crate::memory::confirm(r, &Store::open(r)?, a.id)?),
+            "forget" => {
+                meta::note_rm(r, a.id)?;
+                json!({ "ok": true })
+            }
+            other => return Err(anyhow!("unknown action {other}")),
+        })
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct SparqlReq {
+    query: String,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+async fn kg_sparql(State(s): State<AppState>, Json(q): Json<SparqlReq>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        let t0 = std::time::Instant::now();
+        let mut v = crate::kg::sparql(&s.repo, &st, &q.query, q.limit.unwrap_or(500).min(5000))?;
+        v["millis"] = json!(t0.elapsed().as_millis());
+        Ok(v)
+    })
+    .await
+}
+
+async fn kg_export(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let f = q.get("format").cloned().unwrap_or_else(|| "ttl".into());
+        let st = Store::open(&s.repo)?;
+        let bytes = crate::kg::export(&s.repo, &st, &f)?;
+        Ok(json!({ "format": f, "text": String::from_utf8_lossy(&bytes) }))
+    })
+    .await
+}
+
+/// Example queries and the vocabulary, for the Query view.
+async fn kg_examples() -> ApiResult {
+    let examples: Vec<Value> = crate::kg::EXAMPLES.iter().map(|(t, q)| json!({ "title": t, "query": q })).collect();
+    let vocab: Vec<Value> =
+        crate::kg::SCHEMA.iter().map(|(t, what, doc)| json!({ "term": format!("kula:{t}"), "kind": what, "doc": doc })).collect();
+    let prefixes: Vec<Value> = crate::kg::PREFIXES.iter().map(|(p, iri)| json!({ "prefix": p, "iri": iri })).collect();
+    Ok(Json(json!({ "examples": examples, "vocabulary": vocab, "prefixes": prefixes })))
+}
+
 // ---------------------------------------------------------------- meta
 
 async fn meta_all(State(s): State<AppState>) -> ApiResult {
@@ -536,6 +660,11 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/git/show/{sha}", get(git_show))
         .route("/api/git/{action}", post(git_action))
         .route("/api/meta", get(meta_all))
+        .route("/api/agents", get(agents_info))
+        .route("/api/agents/{action}", post(agents_action))
+        .route("/api/kg/sparql", post(kg_sparql))
+        .route("/api/kg/export", get(kg_export))
+        .route("/api/kg/examples", get(kg_examples))
         .route("/api/meta/{kind}/{action}", post(meta_action))
         .fallback(static_file)
         .layer(middleware::from_fn_with_state(state.clone(), guard))

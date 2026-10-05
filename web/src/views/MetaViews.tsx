@@ -221,9 +221,10 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
                 <button className="btn sm ghost mono" onClick={() => t !== "repo" && openByName(t, openSymbol)}>{t.startsWith("file:") ? "▤" : t.startsWith("symbol:") ? "ƒ" : t.startsWith("commit:") ? "●" : "◯"} {t}</button>
               </div>
               {list.map((n) => (
-                <div key={n.id} className="note">
+                <div key={n.id} className={`note ${n.kind === "memory" ? "mem" : ""}`}>
                   <Md text={n.body} onSymbol={(s) => openByName(s, openSymbol)} />
                   <div className="row" style={{ marginTop: 8, fontSize: 11.5 }}>
+                    {n.kind === "memory" && <span className="tag accent" title="An agent memory – see Agents">memory</span>}
                     <span className="muted">#{n.id} · {n.author} · {relTime(n.updated)}</span><span className="spacer" />
                     <button className="btn sm ghost" onClick={() => { setEditing(n.id); setBody(n.body); }}>Edit</button>
                     <button className="btn sm ghost danger" onClick={async () => { if (confirm("Delete this note?")) { await api.metaAction("notes", n.id, { status: "deleted" }); load(); } }}>Delete</button>

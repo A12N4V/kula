@@ -676,6 +676,7 @@ fn run(cli: Cli) -> Result<()> {
                 &[
                     "log".into(),
                     "--graph".into(),
+                    "--exclude=refs/kula/*".into(),
                     "--all".into(),
                     n,
                     "--format=%C(auto)%h%d %s %C(dim)· %an, %ar%C(reset)".into(),

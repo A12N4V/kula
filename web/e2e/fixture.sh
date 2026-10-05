@@ -1,0 +1,58 @@
+#!/bin/sh
+# A disposable clone of this repository with guards, a task and agent memories,
+# served for the agents tests – they write memories and tasks, so they never
+# touch the real repository's refs/kula/meta.
+#   usage: sh e2e/fixture.sh <port>
+set -e
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+K="$ROOT/target/debug/kula"
+D=$(mktemp -d)/kula
+git clone -q "$ROOT" "$D"
+cd "$D"
+git config user.name e2e
+git config user.email e2e@example.com
+git config commit.gpgsign false
+git switch -q -C main
+cat > kula.toml <<'TOML'
+[[guard]]
+paths = ["packaging/apt/**"]
+level = "locked"
+reason = "release pipeline: signed packages"
+
+[[guard]]
+symbols = ["src/store.rs:publish"]
+level = "locked"
+reason = "atomic index swap"
+
+[[guard]]
+paths = ["web/src/colors.ts"]
+level = "review"
+reason = "palette is shared with the README"
+TOML
+git add kula.toml
+git commit -qm "e2e guards"
+# A branch with a structural change, proposed for review; an issue and a note.
+git switch -q -c feat/agent-scope
+cat >> src/guard.rs <<'RS'
+
+/// The narrowest scope that still holds every path an agent touched.
+pub fn suggest_scope(paths: &[String]) -> Vec<String> {
+    let mut dirs: Vec<String> = paths.iter().map(|p| p.rsplit_once('/').map(|(d, _)| format!("{d}/**")).unwrap_or_else(|| p.clone())).collect();
+    dirs.sort();
+    dirs.dedup();
+    dirs
+}
+RS
+perl -pi -e 's/w\.len\(\) > 2/w.len() > 1/' src/memory.rs   # modify a symbol that recall depends on
+git commit -qam "Suggest a task scope from the paths an agent touched"
+git switch -q main
+"$K" index -q
+"$K" pr new "Suggest a task scope from what an agent touched" --base main --head feat/agent-scope -b "Agents start broad. This proposes the narrowest scope that covers the files they actually changed." >/dev/null
+"$K" issue new "Recall should prefer recent memories inside a tier" -b "Two fresh memories on the same symbol come back in creation order." -a src/memory.rs:recall -l memory >/dev/null
+"$K" note add symbol:Guards "One verdict per path: MCP, the hook and kula check all read this." >/dev/null
+"$K" memory add publish "Unlink, never truncate, the WAL files under open readers." --by agent:e2e >/dev/null
+"$K" memory add file:src/kg.rs "SPARQL is read-only: updates are rejected by the parser." --by agent:e2e >/dev/null
+"$K" task start "harden the MCP server" --scope src/mcp.rs src/agent.rs >/dev/null
+# An uncommitted edit, so Changes has something to show.
+printf '\n// TODO: cache the RDF store per indexed head\n' >> src/kg.rs
+exec env KULA_TOKEN=test "$K" view --no-open --port "$1"
