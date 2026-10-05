@@ -17,7 +17,7 @@ The arrangement is the film's structure, bar for bar (90 BPM, 8/3 s a bar):
   drop B   8 bars  beat back, pizzicato canon line     workflows, fences, memory
   outro    4 bars  one last hit, the final D major     kula 1.0
 
-usage: python3 promo/score.py [out.wav] [--layout=long|film]  → also writes cues.json beside it
+usage: python3 promo/score.py [out.wav] [--layout=long|film|launch]  → also writes cues.json beside it
 """
 
 import json
@@ -39,6 +39,8 @@ LAYOUTS = {
     "long": [("intro", 4), ("build", 2), ("dropA", 8), ("break", 4), ("dropB", 8), ("outro", 4)],
     # the film (promo/film, Remotion): 21 bars, 56 s
     "film": [("intro", 3), ("build", 1), ("dropA", 6), ("break", 2), ("dropB", 6), ("outro", 3)],
+    # the launch film with the agent session: 45 bars, 2 minutes
+    "launch": [("intro", 4), ("build", 3), ("dropA", 12), ("break", 4), ("dropB", 18), ("outro", 4)],
 }
 LAYOUT = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--layout=")), "long")
 SECTIONS = LAYOUTS[LAYOUT]

@@ -1,53 +1,66 @@
-// The film, bar by bar (90 BPM: a bar is 80 frames). Every shot starts on a bar
-// line of the score; the voiceover sits on top and the score ducks under it.
-import { AbsoluteFill, Audio, Sequence, interpolate, staticFile, useCurrentFrame } from "remotion";
+// The film, bar by bar (90 BPM: a bar is 80 frames). Every shot is cut on a bar
+// line of the score, but none of them cuts hard: each one starts LEAD frames
+// early and dissolves in over the last moments of the one before, pushing in
+// as it comes. The voices sit on top and the score ducks under them.
+import { AbsoluteFill, Audio, Sequence, interpolate, staticFile } from "remotion";
 import cues from "../public/cues.json";
 import vo from "../public/vo.json";
+import { ClaudeCode, Connected, CursorApp, Install } from "./Agents";
+import { Lead, useF } from "./Kit";
 import { Build, Fences, Outro, Problem } from "./Scenes";
 import { Shot, type Ev } from "./Shot";
-import { BAR, FPS } from "./theme";
+import { BAR, FPS, clamp, easeInOut } from "./theme";
 
 import graph from "../public/clips/graph.json";
 import impact from "../public/clips/impact.json";
 import contrast from "../public/clips/contrast.json";
 import query from "../public/clips/query.json";
 import console_ from "../public/clips/console.json";
-import agents from "../public/clips/agents.json";
-import workflows from "../public/clips/workflows.json";
-import fences from "../public/clips/fences.json";
-import hook from "../public/clips/hook.json";
-import memory from "../public/clips/memory.json";
-import connect from "../public/clips/connect.json";
+import accept from "../public/clips/accept.json";
+import releaseFences from "../public/clips/release-fences.json";
+import agentMemory from "../public/clips/agent-memory.json";
 
-const EV: Record<string, Ev[]> = { graph: graph.events as Ev[], impact: impact.events as Ev[], contrast: contrast.events as Ev[], query: query.events as Ev[], console: console_.events as Ev[],
-  agents: agents.events as Ev[], workflows: workflows.events as Ev[], fences: fences.events as Ev[], hook: hook.events as Ev[], memory: memory.events as Ev[], connect: connect.events as Ev[] };
+const EV: Record<string, Ev[]> = {
+  graph: graph.events as Ev[], impact: impact.events as Ev[], contrast: contrast.events as Ev[], query: query.events as Ev[], console: console_.events as Ev[],
+  accept: accept.events as Ev[], "release-fences": releaseFences.events as Ev[], "agent-memory": agentMemory.events as Ev[],
+};
 
-type Item =
-  | { scene: "problem" | "build" | "fences-iso" | "outro"; bars: number }
-  | { clip: string; bars: number; from: number; span: number; cap: { k: string; t: string } };
+type Scene = "problem" | "install" | "build" | "fences-iso" | "connected" | "claude" | "cursor" | "verify" | "outro";
+type Item = { scene: Scene; bars: number } | { clip: string; bars: number; from: number; span: number };
 
-/** The edit. Bars must add up to the score's. */
+/** The edit. Bars must add up to the score's (promo/score.py --layout=launch). */
 export const EDL: Item[] = [
-  { scene: "problem", bars: 3 },
+  // intro – the problem
+  { scene: "problem", bars: 4 },
+  // build – install, init, the mark
+  { scene: "install", bars: 2 },
   { scene: "build", bars: 1 },
-  { clip: "graph", bars: 2, from: 3.3, span: 4.6, cap: { k: "01 · the map", t: "Every symbol. Every call." } },
-  { clip: "impact", bars: 1, from: 1.4, span: 3.6, cap: { k: "02 · impact", t: "What breaks if this changes." } },
-  { clip: "contrast", bars: 1, from: 3.0, span: 3.2, cap: { k: "03 · contrast", t: "What a branch does to the architecture." } },
-  { clip: "query", bars: 1, from: 0.6, span: 2.9, cap: { k: "04 · rdf + sparql", t: "Ask the graph anything." } },
-  { clip: "console", bars: 1, from: 0.1, span: 3.1, cap: { k: "05 · still git", t: "kula commit · kula rebase · kula impact" } },
+  // drop A – the map
+  { clip: "graph", bars: 3, from: 3.3, span: 7.4 },
+  { clip: "impact", bars: 2, from: 1.2, span: 5.4 },
+  { clip: "contrast", bars: 3, from: 0.3, span: 7.1 },
+  { clip: "query", bars: 2, from: 0.3, span: 4.0 },
+  { clip: "console", bars: 2, from: 0.1, span: 4.8 },
+  // break – the agents come in
   { scene: "fences-iso", bars: 2 },
-  { clip: "agents", bars: 1, from: 0.8, span: 3.0, cap: { k: "06 · workflows", t: "How work gets done here." } },
-  { clip: "workflows", bars: 1, from: 0.4, span: 2.9, cap: { k: "07 · your own", t: "explore · fix · refactor · tests · docs" } },
-  { clip: "fences", bars: 1, from: 1.8, span: 3.4, cap: { k: "08 · fences", t: "Lock a function, not just a path." } },
-  { clip: "hook", bars: 1, from: 0.15, span: 3.5, cap: { k: "09 · the hook", t: "Turned back – with the reason." } },
-  { clip: "memory", bars: 1, from: 0.6, span: 2.9, cap: { k: "10 · memory", t: "It knows when it's stale." } },
-  { clip: "connect", bars: 1, from: 0.4, span: 2.9, cap: { k: "11 · any agent", t: "Claude Code · Cursor · Codex · Gemini" } },
-  { scene: "outro", bars: 3 },
+  { scene: "connected", bars: 2 },
+  // drop B – the session: Claude Code proposes, a person accepts, Cursor ships, Claude Code checks
+  { scene: "claude", bars: 5 },
+  { clip: "accept", bars: 2, from: 0.5, span: 5.3 },
+  { scene: "cursor", bars: 7 },
+  { scene: "verify", bars: 1 },
+  { clip: "release-fences", bars: 2, from: 1.0, span: 5.8 },
+  { clip: "agent-memory", bars: 1, from: 0.7, span: 3.0 },
+  // outro
+  { scene: "outro", bars: 4 },
 ];
 
 export const BARS = EDL.reduce((n, i) => n + i.bars, 0);
 if (BARS !== cues.bars) throw new Error(`the edit is ${BARS} bars; the score is ${cues.bars}`);
 export const TOTAL = Math.round(cues.duration * FPS) - 60; // the last chord, then out
+
+/** How early each shot starts, to dissolve over the one before. */
+const LEAD = 14;
 
 /** The score dips while someone is speaking. */
 function duck(f: number) {
@@ -56,31 +69,52 @@ function duck(f: number) {
   for (const l of vo.lines) {
     const a = l.start - 0.15, b = l.start + l.duration + 0.1;
     const w = t < a - 0.25 || t > b + 0.4 ? 0 : t < a ? (t - (a - 0.25)) / 0.25 : t > b ? 1 - (t - b) / 0.4 : 1;
-    v = Math.min(v, 1 - 0.55 * Math.max(0, Math.min(1, w)));
+    v = Math.min(v, 1 - 0.6 * Math.max(0, Math.min(1, w)));
   }
   return v;
 }
 
+/** In over the shot before: fade up while pushing in from a little too close; out by easing back. */
+function Dissolve({ first, frames, children }: { first: boolean; frames: number; children: React.ReactNode }) {
+  const f = useF();
+  const a = first ? 1 : easeInOut(clamp((f + LEAD) / LEAD));
+  const out = easeInOut(clamp((f - (frames - LEAD)) / LEAD));
+  return <AbsoluteFill style={{ opacity: a, transform: `scale(${(1 + 0.05 * (1 - a)) * (1 - 0.035 * out)})` }}>{children}</AbsoluteFill>;
+}
+
+function render(it: Item, frames: number, k: number) {
+  if ("clip" in it) return <Shot clip={it.clip} from={it.from} span={it.span} frames={frames} events={EV[it.clip]} lead={LEAD} tilt={k % 2 ? 1 : -1} />;
+  switch (it.scene) {
+    case "problem": return <Problem />;
+    case "install": return <Install />;
+    case "build": return <Build />;
+    case "fences-iso": return <Fences />;
+    case "connected": return <Connected frames={frames} />;
+    case "claude": return <ClaudeCode part={1} frames={frames} />;
+    case "cursor": return <CursorApp frames={frames} />;
+    case "verify": return <ClaudeCode part={2} frames={frames} />;
+    case "outro": return <Outro frames={frames} />;
+  }
+}
+
 export function Film() {
-  const f = useCurrentFrame();
   let at = 0;
-  const end = interpolate(f, [TOTAL - 45, TOTAL], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   return (
     <AbsoluteFill style={{ background: "#000" }}>
       {EDL.map((it, k) => {
-        const from = at, frames = it.bars * BAR + (k === EDL.length - 1 ? TOTAL - (at + it.bars * BAR) : 0);
+        const from = at, last = k === EDL.length - 1;
+        const frames = it.bars * BAR + (last ? TOTAL - (at + it.bars * BAR) : 0);
         at += it.bars * BAR;
+        const lead = k === 0 ? 0 : LEAD;
         return (
-          <Sequence key={k} from={from} durationInFrames={frames}>
-            {"scene" in it ? (
-              it.scene === "problem" ? <Problem /> : it.scene === "build" ? <Build /> : it.scene === "fences-iso" ? <Fences /> : <Outro frames={frames} />
-            ) : (
-              <Shot clip={it.clip} from={it.from} span={it.span} frames={frames} events={EV[it.clip]} cap={it.cap} />
-            )}
+          <Sequence key={k} from={from - lead} durationInFrames={frames + lead}>
+            <Lead.Provider value={lead}>
+              <Dissolve first={k === 0} frames={last ? 9999 : frames}>{render(it, frames, k)}</Dissolve>
+            </Lead.Provider>
           </Sequence>
         );
       })}
-      <Audio src={staticFile("score.wav")} volume={(fr) => duck(fr) * 0.45 * end} />
+      <Audio src={staticFile("score.wav")} volume={(fr) => duck(fr) * 0.42 * interpolate(fr, [TOTAL - 45, TOTAL], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })} />
       {vo.lines.map((l, k) => (
         <Sequence key={`vo${k}`} from={Math.round(l.start * FPS)}>
           <Audio src={staticFile(l.file)} volume={1} />

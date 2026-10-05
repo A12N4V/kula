@@ -2,30 +2,31 @@
 
 Two cuts, both made by the scripts in this folder from the real app – no screen recorder, no stock footage, no licensed music.
 
-- **The film** (`promo/film`, Remotion, 58 s): voiceover, an isometric world built from the mark, and a camera that zooms in on every click and burst of typing. This is `docs/assets/promo.mp4`.
+- **The film** (`promo/film`, Remotion, 2 min): three voices, a real `kula init` and a real two-agent session, an isometric world built from the mark, and a camera that zooms in on every click and burst of typing. This is `docs/assets/promo.mp4`.
 - **The long cut** (`cut.py`, ffmpeg, 84 s): the same score at full length, hard cuts on the bar, captions baked into the shots.
 
 ## The film
 
 ```sh
-sh promo/film.sh              # score → voiceover → app shots → Remotion render → web copies
+sh promo/film.sh              # score → voices → init + agent session → app shots → Remotion → web copies
 sh promo/film.sh render       # just re-render after editing promo/film/src
 cd promo/film && pnpm studio  # scrub it in Remotion Studio
 ```
 
 | bars | section | picture | voice |
 |---|---|---|---|
-| 0–3 | intro | an isometric city of code – the mark's cells as files, calls along the ground – loses its shape | "Your AI writes more of your code every day. But it can't see the shape of it…" |
-| 3–4 | build | the city folds flat into the mark; KULA 1.0 | "This is kula." |
-| 4–10 | drop A | the map, impact, contrast, SPARQL, the console – the camera finds each click | "Your repository, as a map…" |
-| 10–12 | break | fences rise around the city; an agent is turned back at one | "Now, let your agents in. On your terms." |
-| 12–18 | drop B | workflows, fences, the hook, memory, any agent | "Workflows… Fences… Memory…" |
-| 18–21 | outro | the mark, the name, the install line typed out | "Kula, one point oh. Git, with a map." |
+| 0–4 | intro | an isometric city of code – the mark's cells as files, calls along the ground – loses its shape | narrator: the problem |
+| 4–7 | build | `brew install`, then `kula init` – its real output, wiring up Claude Code and Cursor; the city folds into the mark | narrator: "Install kula. Run init." |
+| 7–19 | drop A | the map, impact, contrast, SPARQL, the console – the camera finds each click | narrator |
+| 19–23 | break | fences rise around the city; Claude Code and Cursor wired to one map | narrator: "Now, let the agents in." |
+| 23–41 | drop B | the session: Claude Code proposes a `release` workflow, a person accepts it in the UI, Cursor ships 1.0.1 in it – turned back from `src/store.rs` by the hook, reading Claude Code's memory – and Claude Code verifies; then the workflow's fences on the map, and the memories | Claude Code, Cursor, narrator |
+| 41–45 | outro | the mark, the name, the install line typed out | narrator: "Kula one point oh." |
 
-- **Camera.** `capture.mjs` (with `PROMO_FILM=1`) logs every click and typing burst with its position. `src/Shot.tsx` eases the camera toward each one, holds while it happens and lets go, keeps the frame inside the picture, and adds a slow push-in and a punch on every cut.
-- **Type.** Captions and headlines are typed in Remotion, with a block cursor that blinks on the eighth notes.
+- **The session is real.** `session.py` signs in to `kula mcp` as Claude Code and as Cursor (MCP `clientInfo`, the way they sign in themselves) and runs the real pre-edit hook with each agent's payload. Claude Code's half runs inside the capture fixture, so its suggestion waits in the UI and the accept shot really accepts it; Cursor's half runs right after. Every tool result, hook verdict and memory in the film is what kula answered, saved to `session.json` and replayed by `src/Agents.tsx`. `init.sh` does the same for the install scene. The two agents' windows are drawn in Remotion, not screen-recorded.
+- **Camera.** `capture.mjs` (with `PROMO_FILM=1`) logs every click and typing burst with its position, and `src/Shot.tsx` eases toward each one. App shots float in as windows at an angle, settle flat, and fill the frame whenever the camera closes in. The drawn scenes have camera keys of their own.
+- **No hard cuts.** Every shot starts 14 frames early and dissolves in over the one before while pushing in (`Film.tsx`), still landing on the bar line.
 - **Isometric world.** `src/Iso.tsx` projects the mark's 17 cells as cubes on a grid; one parameter blends the isometric view into a straight-down one, which is how the city becomes the logo.
-- **Voice.** `voice.py` places each line on the score from `cues.json`, speaks it with Kokoro when it is installed (`pip install kokoro soundfile`; voice `af_heart`) or macOS `say` otherwise (`KULA_VOICE=Samantha`), and masters it to -16 LUFS. The score ducks about 7 dB under every line.
+- **Voices.** `voice.py` places each line on the score from `cues.json` and speaks it with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0, runs locally): `af_heart` narrates, `bf_emma` is Claude Code and `am_michael` is Cursor (`KULA_VOICE_NARRATOR`, `KULA_VOICE_CLAUDE`, `KULA_VOICE_CURSOR` change them). Install it with `uv venv --python 3.12 promo/.venv && VIRTUAL_ENV=promo/.venv uv pip install kokoro "transformers>=4.45" soundfile`; without it, macOS `say` stands in. Lines are mastered to -16 LUFS, and the score ducks about 8 dB under each.
 
 ## The long cut
 

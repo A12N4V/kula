@@ -133,7 +133,7 @@ async function inspect(page, name) {
 
 // Each shot: where it starts, what happens, how long to record, its caption.
 const SHOTS = [
-  { name: "graph", hash: "graph", dur: 8, cap: ["01 · THE MAP", "Every symbol. Every call. Every directory."], act: async (p) => {
+  { name: "graph", hash: "graph", dur: FILM ? 11.5 : 8, cap: ["01 · THE MAP", "Every symbol. Every call. Every directory."], act: async (p) => {
     await sleep(3200);
     const box = await p.locator(".graph-canvas").boundingBox();
     await p.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.5);
@@ -215,6 +215,31 @@ const SHOTS = [
     await point(p, p.getByRole("button", { name: "Connect all" }));
     await sleep(2600);
   } },
+  // The agent session (promo/session.py): Claude Code's suggested workflow is accepted
+  // here, by a person; then Cursor works in it, and the map shows what happened.
+  { name: "accept", hash: "agents/workflows", dur: 6, cap: null, act: async (p) => {
+    await sleep(900);
+    await point(p, p.locator(".need.sugg").getByRole("button", { name: "Accept" }).first());
+    await sleep(1400);
+    const tile = p.locator(".wf-tile").filter({ hasText: "release" });
+    await tile.waitFor({ timeout: 4000 }).catch(() => {});
+    await point(p, tile);
+    await sleep(2000);
+  }, after: () => execFileSync("python3", [join(ROOT, "promo/session.py"), readFileSync(join(OUT, "../repo"), "utf8").trim(), "cursor", join(OUT, "../session.json")], { stdio: "inherit" }) },
+  { name: "release-fences", hash: "graph", dur: 7, prepare: settled, cap: null, act: async (p) => {
+    await sleep(300);
+    await p.keyboard.press("f");
+    await sleep(1600);
+    await point(p, p.locator(".fence-key select"), { click: false });
+    await p.locator(".fence-key select").selectOption("release");
+    await sleep(4200);
+  } },
+  { name: "agent-memory", hash: "agents/memory", dur: 5, cap: null, act: async (p) => {
+    await sleep(800);
+    const m = p.locator(".ag-mem").filter({ hasText: "claude-code" }).first();
+    if (await m.count()) await point(p, m, { click: false, dx: 0.3 });
+    await sleep(2600);
+  } },
   { name: "finale", hash: "graph", dur: 9, cap: null, act: async (p) => {
     await sleep(5200);
     await p.keyboard.press("f");
@@ -280,10 +305,10 @@ for (const s of TYPE) if (!only.size || only.has(s.name)) await renderType(brows
 const appShots = SHOTS.filter((s) => !only.size || only.has(s.name));
 if (appShots.length) {
   if (!existsSync(join(ROOT, "target/debug/kula"))) execFileSync("cargo", ["build"], { cwd: ROOT, stdio: "inherit" });
-  const server = spawn("sh", [join(ROOT, "web/e2e/fixture.sh"), String(PORT)], { cwd: join(ROOT, "web"), stdio: ["ignore", "ignore", "inherit"], detached: true });
+  const server = spawn("sh", [join(ROOT, "web/e2e/fixture.sh"), String(PORT)], { cwd: join(ROOT, "web"), stdio: ["ignore", "ignore", "inherit"], detached: true, env: FILM ? { ...process.env, KULA_PROMO: join(OUT, "..") } : process.env });
   try {
     for (let i = 0; i < 120; i++) { try { if ((await fetch(BASE)).ok) break; } catch { /* starting */ } await sleep(500); }
-    for (const s of appShots) await recordApp(browser, s);
+    for (const s of appShots) { await recordApp(browser, s); s.after?.(); }
   } finally {
     try { process.kill(-server.pid); } catch { /* gone */ }
   }

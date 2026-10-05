@@ -1,9 +1,9 @@
 import type React from "react";
 // The film's own scenes, drawn in Remotion: the problem, the build into the
 // mark, the break where fences rise, and the outro.
-import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
+import { AbsoluteFill, interpolate } from "remotion";
 import { CELLS, World, project, type Pose } from "./Iso";
-import { Dither, Eyebrow, Typed, typed, Cursor } from "./Kit";
+import { Dither, Eyebrow, Typed, typed, Cursor, useF } from "./Kit";
 import { BAR, C, FONT, H, W, bayer, clamp, easeInOut, easeOut } from "./theme";
 
 const GLYPH: Record<string, string[]> = {
@@ -30,8 +30,8 @@ const glow = (cx: number, cy: number, rx: number, ry: number, k: number) => (x: 
 // ------------------------------------------------------------------ intro: code without a map
 
 export function Problem() {
-  const f = useCurrentFrame();
-  const pose: Pose = { flat: 0, spin: interpolate(f, [0, 3 * BAR], [-0.55, 0.12]), unit: 84, cx: 1420, cy: 570 };
+  const f = useF();
+  const pose: Pose = { flat: 0, spin: interpolate(f, [0, 4 * BAR], [-0.55, 0.15]), unit: 84, cx: 1420, cy: 570 };
   const fog = clamp((f - 125) / 30);         // "it can't see the shape of it"
   const strike = f >= 165 && f < 200;        // "it touches what it shouldn't"
   const forget = clamp((f - 190) / 35);      // "and it forgets"
@@ -68,7 +68,7 @@ export function Problem() {
 // ------------------------------------------------------------------ build: the city folds into the mark
 
 export function Build() {
-  const f = useCurrentFrame();
+  const f = useF();
   const t = easeInOut(f / 46);
   const move = easeInOut((f - 44) / 22);
   const pose: Pose = {
@@ -97,7 +97,7 @@ export function Build() {
 const LOCKED = [2, 9, 13], HIDDEN = [4, 15], REVIEW = [11];
 
 export function Fences() {
-  const f = useCurrentFrame();
+  const f = useF();
   const pose: Pose = { flat: 0, spin: interpolate(f, [0, 2 * BAR], [0.35, -0.15]), unit: 80, cx: 1420, cy: 600 };
   const rise = (k: number) => easeOut((f - 34 - k * 7) / 18);
   const fences = [
@@ -142,7 +142,7 @@ export function Fences() {
 const CMD = "brew install A12N4V/tap/kula";
 
 export function Outro({ frames }: { frames: number }) {
-  const f = useCurrentFrame();
+  const f = useF();
   const pose: Pose = { flat: 1, spin: 0, unit: 52, cx: 470, cy: 520 };
   const show = clamp(f / 26);
   const out = clamp((f - (frames - 36)) / 32);

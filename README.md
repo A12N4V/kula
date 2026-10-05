@@ -40,8 +40,8 @@ cd your-repo && kula init        # kula.toml, git hooks, agents connected, first
 kula view                        # the map, at http://localhost:7420
 ```
 
-<p align="center"><img src="docs/assets/promo.gif" alt="kula in 20 seconds: the graph, contrast, fences and the agent loop" width="100%"></p>
-<p align="center"><sub>The drop of the <a href="docs/assets/promo.mp4">58-second launch film</a> – watch it with sound. Made in <a href="promo/">promo/</a> from the real app: Remotion, an original score, a voiceover.</sub></p>
+<p align="center"><img src="docs/assets/promo.gif" alt="Cursor ships a release through kula: Claude Code's memory recalled, a locked file turned back by the hook, the version bumped" width="100%"></p>
+<p align="center"><sub>Cursor, inside the <a href="docs/assets/promo.mp4">two-minute launch film</a> – watch it with sound. Made in <a href="promo/">promo/</a> from the real app and a real Claude Code + Cursor session: Remotion, an original score, three voices.</sub></p>
 
 ## Why kula
 

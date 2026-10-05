@@ -1,6 +1,14 @@
 // Small pieces every scene uses: typed text, the beat cursor, a dither layer.
-import { useLayoutEffect, useRef } from "react";
+import { createContext, useContext, useLayoutEffect, useRef } from "react";
 import { useCurrentFrame } from "remotion";
+
+/**
+ * Shots overlap their neighbours so one can dissolve into the next: a shot's
+ * Sequence starts a little early, and this offset puts its frame 0 back on
+ * its own cut. Every scene reads its time through useF.
+ */
+export const Lead = createContext(0);
+export const useF = () => useCurrentFrame() - useContext(Lead);
 import { BEAT, C, FONT, H, W, bayer } from "./theme";
 
 /** `text` typed out from frame `from` at `cps` characters a second. */
@@ -10,7 +18,7 @@ export function typed(text: string, frame: number, from: number, cps = 34) {
 
 /** A block cursor that blinks on the eighth notes. */
 export function Cursor({ on = true, h = 0.9, color = C.accent }: { on?: boolean; h?: number; color?: string }) {
-  const f = useCurrentFrame();
+  const f = useF();
   const blink = Math.floor(f / (BEAT / 2)) % 2 === 0;
   return <span style={{ display: "inline-block", width: "0.55em", height: `${h}em`, marginLeft: "0.12em", verticalAlign: "-0.12em", background: on && blink ? color : "transparent" }} />;
 }
@@ -19,7 +27,7 @@ export function Cursor({ on = true, h = 0.9, color = C.accent }: { on?: boolean;
 export function Typed({ lines, size = 64, weight = 700, color = C.cream, gap = 1.25, cps = 34, cursor = true }: {
   lines: { text: string; from: number; color?: string; size?: number; weight?: number }[]; size?: number; weight?: number; color?: string; gap?: number; cps?: number; cursor?: boolean;
 }) {
-  const f = useCurrentFrame();
+  const f = useF();
   const shown = lines.filter((l) => f >= l.from);
   return (
     <div style={{ fontFamily: FONT, letterSpacing: "-0.01em" }}>
@@ -42,7 +50,7 @@ export function Typed({ lines, size = 64, weight = 700, color = C.cream, gap = 1
  */
 export function Dither({ value, cell = 10, dot = 0.45, color = "#1d1a17" }: { value: (x: number, y: number) => number; cell?: number; dot?: number; color?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const f = useCurrentFrame();
+  const f = useF();
   useLayoutEffect(() => {
     const ctx = ref.current!.getContext("2d")!;
     ctx.clearRect(0, 0, W, H);
