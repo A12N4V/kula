@@ -1356,3 +1356,16 @@ input.mi-title { font: 600 14px var(--mono); }
 .mi-exp.kept .mono { color: var(--accent); }
 .mi-exp small { grid-column: 2; font-size: 10.5px; }
 @media (max-width: 1100px) { .team-stage { grid-template-columns: 1fr; } .map-inspector { border-left: 0; border-top: 1px solid var(--line); max-height: none; } }
+
+/* sweep fixes: hover rows stay inside their rail; ids never hide behind an ellipsis; headers and segments wrap on phones */
+.flow-step { border-left: 1px dashed var(--line-2); padding-left: 14px; margin-bottom: 6px; }
+.flow-step .sym { margin: 0; }
+.ov-title { gap: 6px; min-width: 0; flex-wrap: nowrap; }
+.ov-title .title { min-width: 0; }
+.ov-title .muted { flex: none; }
+.card-head { flex-wrap: wrap; row-gap: 6px; }
+.card-head .seg { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .ag-memory .card-head .seg { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .ag-memory .card-head .seg button { padding-inline: 4px; white-space: nowrap; }
+}

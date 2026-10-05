@@ -73,7 +73,7 @@ export default function Overview({ repo, version, go }: Props) {
               <div key={p.id} className="ov-row" onClick={() => go("proposals", { proposal: p.id })}>
                 <span style={{ color: "var(--green)" }}><Icon.pr /></span>
                 <div className="grow">
-                  <div className="title">{p.title} <span className="muted">#{p.id}</span></div>
+                  <div className="row ov-title"><span className="title">{p.title}</span><span className="muted">#{p.id}</span></div>
                   <div className="sub mono">{p.head} → {p.base} · {relTime(p.created)} · {p.author}</div>
                 </div>
                 <div className="ov-metrics">

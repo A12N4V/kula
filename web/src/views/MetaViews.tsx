@@ -256,7 +256,7 @@ export function Flows({ openSymbol, version }: Nav) {
             {[1, 2, 3, 4].map((d) => {
               const steps = f.steps.filter((s) => s.depth === d);
               return steps.length ? (
-                <div key={d} style={{ marginLeft: (d - 1) * 22, borderLeft: "1px dashed var(--line-2)", paddingLeft: 14, marginBottom: 6 }}>
+                <div key={d} className="flow-step" style={{ marginLeft: (d - 1) * 22 }}>
                   <div className="section-title">Step {d}</div>
                   {steps.map((s) => <Sym key={s.node.id} n={s.node} onClick={(n) => openSymbol(n.id)} />)}
                 </div>
