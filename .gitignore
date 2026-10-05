@@ -10,3 +10,4 @@ packaging/npm/*/bin/kula*
 target-wheels/
 web/test-results/
 web/playwright-report/
+promo/out/

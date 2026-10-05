@@ -3,8 +3,8 @@
 // again, two levels deep (49×49). The centre node is a fixed point: it holds a
 // complete copy of the mark, which is where the app's loader zooms forever
 // (web/src/AsciiMark.tsx reads the same BASE from web/src/mark.ts).
-// usage: node scripts/logo.mjs   → rewrites favicon, logo.svg and the hero's mark
-import { readFileSync, writeFileSync } from "node:fs";
+// usage: node scripts/logo.mjs   → rewrites favicon and logo.svg
+import { writeFileSync } from "node:fs";
 
 const BASE = [
   "..###..",
@@ -42,12 +42,6 @@ writeFileSync("web/public/favicon.svg",
 writeFileSync("docs/assets/logo.svg",
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" shape-rendering="crispEdges" role="img" aria-label="kula"><path fill="${ACCENT}" d="${two}"/></svg>\n`);
 
-// The README hero carries the mark inline between its marker comment and </g>.
-const heroPath = "docs/assets/hero.svg";
-const hero = readFileSync(heroPath, "utf8").replace(
-  /(<!-- the mark:[^>]*-->\s*<g transform=")[^"]*("[^>]*>\s*<path fill="[^"]*" d=")[^"]*(")/,
-  `$1translate(60 60) scale(${(240 / S).toFixed(4)})$2${two}$3`,
-).replace(/<!-- the mark:[^>]*-->/, "<!-- the mark: the kula ring drawn with kula rings (scripts/logo.mjs) -->");
-writeFileSync(heroPath, hero);
+// The README hero and its other animated art come from scripts/readme-art.mjs.
 
-console.log(`wrote favicon.svg, logo.svg, hero.svg · ${S}×${S} · ${(two.match(/M/g) ?? []).length} cells`);
+console.log(`wrote favicon.svg, logo.svg · ${S}×${S} · ${(two.match(/M/g) ?? []).length} cells`);

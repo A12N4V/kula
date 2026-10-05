@@ -9,8 +9,10 @@ How kula is installed, set up per project, run day to day, and wired into CI.
 | curl (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh \| sh` |
 | Homebrew | `brew install A12N4V/tap/kula` |
 | apt | the signed repository in the README, then `apt install kula` |
-| npm (rolling out) | `npm i -g kula-cli`: a launcher plus the platform binary (`@kula-cli/<os>-<arch>`) |
-| cargo | `cargo install --path .` (needs `web/dist`, built by `pnpm --dir web build`) |
+| npm | `npm i -g kula-cli`: a launcher plus the platform binary (`@kula-cli/<os>-<arch>`) |
+| pip | `pip install kula` · `uv tool install kula` · `pipx install kula` |
+| cargo | `cargo install kula`, or `cargo install --path .` from a checkout (needs `web/dist`, built by `pnpm --dir web build`) |
+| nix | `nix run github:A12N4V/kula` |
 
 One binary. No server, no account. The UI is embedded.
 
@@ -30,7 +32,7 @@ It does, in order:
 2. Writes **`kula.toml`**, the project's shared settings. Commit it.
 3. Creates `.kula/`, which holds the graph database. It ignores itself (`.kula/.gitignore` is `*`), so your `.gitignore` is never touched.
 4. `--hooks`: adds a marked block to `post-commit`, `post-checkout` and `post-merge` that runs `kula index --if-stale --quiet` in the background. Existing hooks are kept, and `core.hooksPath` is respected.
-5. `--agents`: merges `{"kula": {"command": "kula", "args": ["mcp"]}}` into `.mcp.json`, so Claude Code and other MCP clients can query the graph.
+5. `--agents`: connects Claude Code (`.mcp.json` and a `PreToolUse` hook in `.claude/settings.json`), plus Cursor, Codex and Gemini CLI when their config directories exist, and writes the agent brief into `AGENTS.md`. See [AGENTS.md](AGENTS.md).
 6. `--ci github|gitlab|none`: writes `.github/workflows/kula.yml` or `.kula-ci.yml`.
 7. Builds the first graph (skip it with `--no-index`).
 
@@ -54,12 +56,22 @@ max_risk = "medium"   # none | low | medium | high
 [agents]
 hide_secrets = true   # .env, keys, certificates never reach an agent
 memory = true         # agents may `remember` facts about the code
+docs = ["docs/ARCHITECTURE.md"]   # every agent reads these first
 
 [[guard]]             # as many as you need
 paths = ["migrations/**"]
 symbols = ["charge_card", "src/billing.rs:refund"]
 level = "locked"      # locked: read, never edit · hidden: never shown · review: flagged in check
 reason = "money moves here; a person changes it"
+
+[[workflow]]          # a work mode; reuse a built-in's name to replace it
+name = "db-migrate"
+about = "Schema changes, nothing else"
+scope = ["migrations/**"]     # the default task scope
+lock = ["src/db/pool.rs"]     # also: hide, review
+memory = "read"               # write · read · off
+steps = ["Write the migration and its rollback", "verify_edit; run the migration tests"]
+docs = ["docs/MIGRATIONS.md"]
 ```
 
 Every key is optional, and a repository without the file behaves exactly as before.
@@ -72,7 +84,7 @@ The scheme is `kula <verb>`. Graph verbs answer questions, project verbs keep th
 |---|---|
 | project | `init` · `index [--if-stale] [--quiet]` · `hooks install\|uninstall\|status` · `doctor` |
 | graph | `query` · `context` · `impact [--down]` · `trace` · `flows` · `clusters` · `deps` |
-| agents | `pack` · `before` · `verify` · `guard list\|check\|hook` · `task start\|show\|done` · `memory add\|recall\|confirm\|rm` (and the MCP tools of the same purpose) |
+| agents | `agents status\|connect\|sync\|brief\|suggestions\|accept\|dismiss` · `workflow list\|show` · `task start [-w workflow]\|show\|done` · `guard list\|check\|hook` · `memory add\|recall\|edit\|stale\|confirm\|rm` · `pack` · `before` · `verify` (and the MCP tools of the same purpose) |
 | knowledge graph | `kg export [-f ttl\|nt\|jsonld\|rdfxml]` · `kg sparql <query\|@file\|->` · `kg examples` |
 | review | `compare` · `graph-diff` · `check` · `pr` · `issue` · `note` · `sync` |
 | surfaces | `view` (web UI) · `mcp` (agents over stdio) · `status` · `lg` |
@@ -104,9 +116,15 @@ kula verify
 - **`before`**: run before changing a symbol. It lists direct callers, the total dependents and risk, the tests that reach the symbol through the call graph, files that historically change in the same commits, human notes, and concrete advice.
 - **`verify`**: run after editing. It compares the working tree with HEAD through the graph: symbols added, removed or modified, callers still pointing at removed code (exit **2**), and callers of modified symbols in other files to re-read.
 
-### Guards, tasks and memory
+### Workflows, guards, tasks and memory
 
 ```
+kula agents connect all                  # Claude Code, Cursor, Codex, Gemini CLI: MCP + the hook
+kula agents sync                         # the brief (tools, fences, workflows) into AGENTS.md
+kula workflow list                       # explore · fix · refactor · tests · docs · yours
+kula workflow show refactor              # its fences, scope, steps, docs, memory policy
+kula task start "split auth" --workflow refactor
+
 kula guard list                          # rules, the task, every fenced file
 kula guard check src/billing.rs          # exit 1 if an agent may not edit it
 kula guard check --staged                # the same for what's staged
@@ -119,9 +137,13 @@ kula memory add charge_card "amounts are integer cents; never floats"
 kula memory recall charge_card           # its own, its file's, its callers' and callees'
 kula memory recall --query cents
 kula memory confirm 12                   # still true after the code changed: re-anchor it
+kula memory edit 12 "amounts are integer cents" --target src/pay.rs:charge
+kula memory stale 12                     # flag it without forgetting it
+kula agents suggestions                  # fences and workflows agents proposed
+kula agents accept 3                     # into kula.toml
 ```
 
-Verdicts, strongest first: **hidden** (never read or edited, left out of every agent answer), **locked** (read, never edited), **scope** (outside the active task), **review** (editable, flagged by `check`). `kula init --agents` registers `kula guard hook` as a Claude Code `PreToolUse` hook for `Edit`, `MultiEdit`, `Write`, `NotebookEdit` and `Read`; any agent that can run a command before a tool call can use the same protocol (JSON on stdin, exit 2 to block, the reason on stderr). Shell commands an agent runs are not parsed – the hook fences file tools, MCP fences answers, and `check` is the backstop.
+Verdicts, strongest first: **hidden** (never read or edited, left out of every agent answer), **locked** (read, never edited), **scope** (outside the active task), **review** (editable, flagged by `check`). A workflow's fences sit on top of these while a task runs in it. `kula guard hook` reads the tool call of Claude Code, Cursor, Codex (`apply_patch`) or Gemini CLI as JSON on stdin and exits 2 with the reason on stderr to block it; `kula agents connect` registers it in each agent's own format. Shell commands an agent runs are not parsed – the hook fences file tools, MCP fences answers, and `check` is the backstop. The full model is in [AGENTS.md](AGENTS.md).
 
 ### `kula kg`, the graph as RDF
 

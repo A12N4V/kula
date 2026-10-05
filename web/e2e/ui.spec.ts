@@ -493,7 +493,8 @@ test.describe("agents", () => {
     await expect(page.locator(".loop-step")).toHaveCount(6);
     await expect(page.locator(".loop-step.gate")).toContainText("fix");
     await expect(page.locator(".ag-steps li").first()).toContainText("recall memories");
-    await expect(page.locator(".need.sugg")).toContainText("web/dist/**");
+    // Desktop's fences test accepts this suggestion; the other projects may run after it.
+    if (info.project.name === "desktop") await expect(page.locator(".need.sugg")).toContainText("web/dist/**");
     await expect(page.locator(".wf-tile")).toHaveCount(5);
     await expect(page.locator(".wf-tile.active")).toContainText("fix");
     await page.getByRole("tab", { name: /Fences/ }).click();
@@ -582,13 +583,15 @@ test.describe("agents", () => {
     await expect(page.getByLabel("Memory target")).toHaveValue("symbol:src/agent.rs:context_pack");
     await page.getByLabel("Memory text").fill(fact);
     await page.getByRole("button", { name: "Remember" }).click();
-    const row = page.locator(".ag-mem").filter({ hasText: fact });
-    await expect(row.locator(".tag")).toHaveText("fresh");
-    await row.getByRole("button", { name: "Edit" }).click();
-    await row.getByLabel("Memory text").fill(`${fact} – rewritten`);
-    await row.getByRole("button", { name: "Save" }).click();
-    const edited = page.locator(".ag-mem").filter({ hasText: "rewritten" });
-    await expect(edited).toHaveCount(1);
+    const first = page.locator(".ag-mem").filter({ hasText: fact });
+    await expect(first.locator(".tag")).toHaveText("fresh");
+    // Pin the row by its id: in edit mode its text lives in a textarea, not the row's text.
+    const id = (await first.locator(".ag-meta").innerText()).match(/#(\d+)/)![1];
+    const edited = page.locator(".ag-mem").filter({ has: page.locator(".ag-meta", { hasText: new RegExp(`^#${id} ·`) }) });
+    await edited.getByRole("button", { name: "Edit" }).click();
+    await edited.getByLabel("Memory text").fill(`${fact} – rewritten`);
+    await edited.getByRole("button", { name: "Save" }).click();
+    await expect(edited.locator(".ag-mem-body")).toHaveText(`${fact} – rewritten`);
     await edited.getByRole("button", { name: "Mark stale" }).click();
     await expect(edited.locator(".tag").first()).toHaveText("stale");
     await edited.getByRole("button", { name: "Still true" }).click();
