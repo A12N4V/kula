@@ -4,8 +4,11 @@ mod agent;
 mod config;
 mod git;
 mod graph;
+mod guard;
 mod index;
+mod kg;
 mod mcp;
+mod memory;
 mod meta;
 mod project;
 mod server;
@@ -18,13 +21,62 @@ use git::Repo;
 use store::Store;
 use term::*;
 
+/// `kula --help`: the commands grouped by what you're doing, not alphabetically.
+const HELP: &str = "\
+{before-help}kula {version} – git, with a map
+
+{usage-heading} {usage}
+
+Start
+  init         set kula up here: kula.toml, git hooks, MCP + agent hook, CI, first graph
+  index        build or rebuild the knowledge graph
+  view         open the web UI (graph, changes, history, agents)
+  status       branch, changes and whether the graph is current
+  hooks        git hooks that keep the graph current: install | uninstall | status
+  doctor       check the environment
+
+Explore the code
+  query        search symbols and files
+  context      everything about one symbol: callers, callees, container, source
+  impact       what breaks if a symbol changes (--down: what it depends on)
+  trace        shortest call path between two symbols
+  flows        execution flows from entry points
+  clusters     functional clusters
+  deps         external packages: imported, declared, unused
+  kg           the graph as RDF: export it, or ask it in SPARQL
+
+Review changes
+  lg           commit graph
+  compare      graph-aware branch comparison
+  graph-diff   contrast the graphs of two revisions (WORKTREE for uncommitted)
+  check        CI gate: blast radius against a base, and guarded code
+
+Work with AI agents
+  pack         the code a task needs, fitted to a token budget
+  before       before editing a symbol: callers, tests, risk, guards, memories
+  verify       after editing: what moved, what broke, what was fenced
+  guard        fences agents may not cross: list, check, and the pre-edit hook
+  task         the task an agent is on, and the code it may change
+  memory       facts about the code that agents keep, marked stale when it changes
+  mcp          serve all of this to agents over MCP (stdio)
+
+Collaborate, stored in git
+  issue  pr  note  sync
+
+Everything else is git: `kula commit -am fix`, `kula rebase -i main` and any other
+git command pass straight through (`kula git <args>` to be explicit).
+
+Options:
+{options}
+";
+
 #[derive(Parser)]
 #[command(
     name = "kula",
     version,
     about = "git, with a map – a local-first git client with a knowledge-graph view",
-    long_about = "Kula is a superset of git. Any git command works (`kula commit`, `kula rebase -i`…),\nplus a knowledge graph of your code, local issues & proposals, notes, and a web UI.",
-    after_help = "Any command not listed here is passed straight to git.\nExamples:\n  kula init             set kula up here: kula.toml, hooks, MCP, CI\n  kula index            build the knowledge graph\n  kula view             open the graph + git UI at localhost\n  kula impact parseArgs what breaks if I change parseArgs?\n  kula compare main feat/x   graph-aware branch diff\n  kula commit -am \"fix\"  plain git passthrough"
+    long_about = None,
+    help_template = HELP,
 )]
 struct Cli {
     /// Run as if started in this directory.
@@ -169,6 +221,18 @@ enum Cmd {
     /// Notes & annotations on the repo, files, symbols or commits.
     #[command(subcommand)]
     Note(NoteCmd),
+    /// Fences for AI agents (kula.toml [[guard]]): list them, check paths, or run as an agent's pre-edit hook.
+    #[command(subcommand)]
+    Guard(GuardCmd),
+    /// The task an agent is on, and the part of the code it may change.
+    #[command(subcommand)]
+    Task(TaskCmd),
+    /// Agent memories pinned to symbols and files; marked stale when that code changes.
+    #[command(subcommand, alias = "mem")]
+    Memory(MemoryCmd),
+    /// The knowledge graph as RDF: export Turtle / JSON-LD / N-Triples, or query it in SPARQL.
+    #[command(subcommand)]
+    Kg(KgCmd),
     /// Push/pull issues, proposals and notes with a remote.
     Sync {
         #[arg(default_value = "origin")]
@@ -246,6 +310,79 @@ enum PrCmd {
         id: u64,
         body: String,
     },
+}
+
+#[derive(Subcommand)]
+enum GuardCmd {
+    /// Every guard rule, the active task, and the files they fence.
+    List,
+    /// Exit 1 if an agent may not edit these paths (or the staged files).
+    Check {
+        paths: Vec<String>,
+        /// Check the files staged for commit.
+        #[arg(long)]
+        staged: bool,
+    },
+    /// Agent pre-tool hook: reads the tool call as JSON on stdin, exits 2 to block a fenced edit or read.
+    Hook,
+}
+
+#[derive(Subcommand)]
+enum TaskCmd {
+    /// Start a task; --scope limits what agents may change (globs or symbol names).
+    Start {
+        title: String,
+        #[arg(short, long, num_args = 1..)]
+        scope: Vec<String>,
+    },
+    /// The active task.
+    Show,
+    /// Finish the task and lift its scope.
+    Done,
+}
+
+#[derive(Subcommand)]
+enum MemoryCmd {
+    /// Remember something about a target: repo | file:<path> | a symbol name.
+    Add {
+        target: String,
+        text: String,
+        /// Who is remembering (agent:<name> for agents).
+        #[arg(long)]
+        by: Option<String>,
+    },
+    /// Memories for a target and its neighbours, or matching --query; all when neither.
+    Recall {
+        target: Option<String>,
+        #[arg(short, long)]
+        query: Option<String>,
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// The memory still holds: re-anchor it to the code as it is now.
+    Confirm { id: u64 },
+    /// Forget a memory.
+    Rm { id: u64 },
+}
+
+#[derive(Subcommand)]
+enum KgCmd {
+    /// Write the graph as RDF: ttl | nt | jsonld | rdfxml.
+    Export {
+        #[arg(short, long, default_value = "ttl")]
+        format: String,
+        /// File to write (stdout when omitted).
+        #[arg(short, long)]
+        out: Option<std::path::PathBuf>,
+    },
+    /// Run a read-only SPARQL query (`-` reads it from stdin). kula:, code:, rdf:, rdfs:, xsd: are predeclared.
+    Sparql {
+        query: String,
+        #[arg(short, long, default_value_t = 200)]
+        limit: usize,
+    },
+    /// Example queries and the vocabulary.
+    Examples,
 }
 
 #[derive(Subcommand)]
@@ -327,11 +464,8 @@ fn run(cli: Cli) -> Result<()> {
 
     match cmd {
         Cmd::Index { if_stale, quiet } => {
-            if if_stale {
-                let fresh = Store::open(&repo).ok().and_then(|st| st.meta("indexed_head")).map(|h| Some(h) == repo.head()).unwrap_or(false);
-                if fresh {
-                    return Ok(());
-                }
+            if if_stale && Store::freshness(&repo) == "current" {
+                return Ok(());
             }
             if !quiet {
                 eprint!("{} indexing {} …", accent("◯"), bold(&repo.name()));
@@ -414,6 +548,9 @@ fn run(cli: Cli) -> Result<()> {
             } else {
                 header(&format!("before editing {}", r.symbol.name));
                 println!("  risk {}  ·  {} dependents in {} files", risk(&r.risk), r.dependents, r.files);
+                if r.guard.level != guard::Level::Open {
+                    println!("  {} {}  {}", level_tag(r.guard.level), dim(&r.guard.rule), r.guard.reason);
+                }
                 let list = |t: &str, v: &[String]| {
                     if !v.is_empty() {
                         println!("\n  {}", dim(t));
@@ -424,6 +561,20 @@ fn run(cli: Cli) -> Result<()> {
                 list("tests that reach it", &r.tests);
                 list("changes with", &r.co_changes.iter().map(|(f, c)| format!("{f}  {}", dim(&format!("{c}×")))).collect::<Vec<_>>());
                 list("notes", &r.notes);
+                list(
+                    "memories",
+                    &r.memories
+                        .iter()
+                        .map(|m| {
+                            format!(
+                                "{} {}  {}",
+                                if m.stale { yellow("stale") } else { green("fresh") },
+                                m.body.lines().next().unwrap_or(""),
+                                dim(&m.via)
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
                 println!();
                 r.advice.iter().for_each(|a| println!("  {} {a}", accent("›")));
             }
@@ -440,7 +591,19 @@ fn run(cli: Cli) -> Result<()> {
                     println!("\n  {}", dim("re-read these callers"));
                     r.recheck.iter().for_each(|c| println!("    {c}"));
                 }
-                println!("\n  {}", if r.ok { green("✓ no dangling calls") } else { red("✗ callers point at removed code") });
+                for (p, v) in &r.guard_violations {
+                    println!("  {} {}  {}  {}", red("⊘"), level_tag(v.level), bold(p), dim(&v.reason));
+                }
+                println!(
+                    "\n  {}",
+                    if r.ok {
+                        green("✓ no dangling calls, nothing fenced touched")
+                    } else if !r.dangling.is_empty() {
+                        red("✗ callers point at removed code")
+                    } else {
+                        red("✗ guarded code changed")
+                    }
+                );
             }
             if !r.ok {
                 std::process::exit(2);
@@ -472,7 +635,21 @@ fn run(cli: Cli) -> Result<()> {
                 if !r.undeclared.is_empty() {
                     println!("  {} undeclared: {}", yellow("!"), r.undeclared.join(", "));
                 }
-                println!("\n  {}", if r.pass { green("✓ within the gate") } else { red("✗ above the gate") });
+                for (p, level, reason) in &r.guarded {
+                    let tag = if level == "review" { yellow(level) } else { red(level) };
+                    println!("  {} {}  {}  {}", red("⊘"), tag, bold(p), dim(reason));
+                }
+                let fenced = r.guarded.iter().any(|g| g.1 == "locked" || g.1 == "hidden");
+                println!(
+                    "\n  {}",
+                    if r.pass {
+                        green("✓ within the gate")
+                    } else if fenced {
+                        red("✗ changes guarded code – a person must approve it")
+                    } else {
+                        red("✗ above the gate")
+                    }
+                );
             }
             if !r.pass {
                 std::process::exit(2);
@@ -668,6 +845,10 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Issue(ic) => issue_cmd(&repo, ic, json)?,
         Cmd::Pr(pc) => pr_cmd(&repo, pc, json)?,
         Cmd::Note(nc) => note_cmd(&repo, nc, json)?,
+        Cmd::Guard(gc) => guard_cmd(&repo, gc, json)?,
+        Cmd::Task(tc) => task_cmd(&repo, tc, json)?,
+        Cmd::Memory(mc) => memory_cmd(&repo, mc, json)?,
+        Cmd::Kg(kc) => kg_cmd(&repo, kc, json)?,
         Cmd::Sync { remote } => print!("{}", meta::sync(&repo, &remote)?),
         Cmd::Mcp => mcp::run(repo)?,
         Cmd::Doctor | Cmd::Init { .. } | Cmd::Git { .. } | Cmd::External(_) => unreachable!(),
@@ -768,14 +949,8 @@ fn print_graph_diff(d: &graph::GraphDiff) {
 
 fn status(repo: &Repo, json: bool) -> Result<()> {
     let files = repo.status()?;
-    let st = Store::open(repo).ok();
-    let indexed = st.as_ref().and_then(|s| s.meta("indexed_head"));
     let head = repo.head();
-    let fresh = match (&indexed, &head) {
-        (None, _) => "missing",
-        (Some(i), Some(h)) if i == h => "current",
-        _ => "stale",
-    };
+    let fresh = Store::freshness(repo);
     if json {
         println!("{}", serde_json::json!({ "branch": repo.branch(), "head": head, "index": fresh, "files": files }));
         return Ok(());
@@ -1005,6 +1180,292 @@ fn doctor(cwd: &std::path::Path) -> Result<()> {
 }
 
 /// Object-safe JSON printing for heterogeneous command results.
+fn level_tag(l: guard::Level) -> String {
+    match l {
+        guard::Level::Hidden => red("hidden"),
+        guard::Level::Locked => red("locked"),
+        guard::Level::Scope => yellow("scope"),
+        guard::Level::Review => yellow("review"),
+        guard::Level::Open => green("open"),
+    }
+}
+
+/// A path as the repository sees it: relative, forward slashes.
+fn repo_rel(repo: &Repo, p: &str) -> String {
+    let pb = std::path::Path::new(p);
+    let rel = if pb.is_absolute() {
+        let root = repo.root.canonicalize().unwrap_or(repo.root.clone());
+        let full = pb.canonicalize().unwrap_or(pb.to_path_buf());
+        full.strip_prefix(&root).map(|r| r.to_path_buf()).unwrap_or(full)
+    } else {
+        pb.to_path_buf()
+    };
+    rel.to_string_lossy().replace('\\', "/").trim_start_matches("./").to_string()
+}
+
+fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
+    let st = Store::open(repo).ok();
+    match c {
+        GuardCmd::List => {
+            let g = guard::Guards::load(repo)?;
+            let files = match &st {
+                Some(st) => guard::guarded_files(repo, st)?,
+                None => vec![],
+            };
+            if json {
+                let rules: Vec<_> = g
+                    .rules()
+                    .into_iter()
+                    .map(|(r, l)| serde_json::json!({ "level": l, "paths": r.paths, "symbols": r.symbols, "reason": r.reason }))
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::json!({ "rules": rules, "task": g.task(), "files": files.iter().map(|(p, v)| serde_json::json!({ "path": p, "verdict": v })).collect::<Vec<_>>() })
+                );
+                return Ok(());
+            }
+            header("guards");
+            if g.rules().is_empty() {
+                println!("  {}", dim("no [[guard]] rules in kula.toml – secrets are still hidden from agents"));
+            }
+            for (i, (r, l)) in g.rules().iter().enumerate() {
+                let what = [r.paths.clone(), r.symbols.clone()].concat().join(", ");
+                println!("  {} {}  {}  {}", dim(&format!("#{}", i + 1)), level_tag(*l), bold(&what), dim(&r.reason));
+            }
+            if let Some(t) = g.task() {
+                println!(
+                    "\n  {} {}  {}",
+                    accent("task"),
+                    bold(&t.title),
+                    dim(&if t.scope.is_empty() { "whole repository".into() } else { t.scope.join(", ") })
+                );
+            }
+            let fenced: Vec<_> = files.iter().filter(|(_, v)| v.level != guard::Level::Scope).collect();
+            if !fenced.is_empty() {
+                println!("\n  {} fenced files", fenced.len());
+                for (p, v) in fenced.iter().take(40) {
+                    println!("    {}  {}", level_tag(v.level), p);
+                }
+            }
+        }
+        GuardCmd::Check { paths, staged } => {
+            let mut paths: Vec<String> = paths.iter().map(|p| repo_rel(repo, p)).collect();
+            if staged {
+                paths.extend(repo.run(&["diff", "--cached", "--name-only"])?.lines().map(String::from));
+            }
+            let bad = guard::violations(repo, st.as_ref(), &paths)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({ "ok": bad.is_empty(), "violations": bad.iter().map(|(p, v)| serde_json::json!({ "path": p, "verdict": v })).collect::<Vec<_>>() })
+                );
+            } else if bad.is_empty() {
+                println!("  {} agents may edit {} path(s)", green("✓"), paths.len());
+            } else {
+                for (p, v) in &bad {
+                    println!("  {} {}  {}  {}", red("⊘"), level_tag(v.level), bold(p), dim(&v.reason));
+                }
+            }
+            if !bad.is_empty() {
+                std::process::exit(1);
+            }
+        }
+        GuardCmd::Hook => {
+            // Claude Code's PreToolUse protocol (and any agent that sends a tool call as JSON):
+            // exit 0 lets it run; exit 2 blocks it and the message on stderr goes back to the agent.
+            let mut input = String::new();
+            std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)?;
+            let v: serde_json::Value = serde_json::from_str(&input).unwrap_or_default();
+            let tool = v["tool_name"].as_str().unwrap_or("");
+            let ti = &v["tool_input"];
+            let path = ["file_path", "notebook_path", "path"].iter().find_map(|k| ti[*k].as_str().or_else(|| v[*k].as_str()));
+            let Some(path) = path else { return Ok(()) };
+            let rel = repo_rel(repo, path);
+            if rel.starts_with('/') || rel.starts_with("..") {
+                return Ok(()); // outside this repository: not ours to fence
+            }
+            let g = guard::Guards::load(repo)?;
+            let reads = matches!(tool, "Read" | "Grep" | "Glob" | "NotebookRead" | "LS" | "View" | "read_file");
+            let verdict = if reads { g.path(&rel) } else { g.edit(st.as_ref(), &rel) };
+            let blocked = if reads { !verdict.level.readable() } else { !verdict.level.editable() };
+            if blocked {
+                let what = match verdict.level {
+                    guard::Level::Scope => "outside the active task".to_string(),
+                    l => format!("{} for agents", l.as_str()),
+                };
+                eprintln!(
+                    "kula guard: {} is {} – {} ({}). {}",
+                    rel,
+                    what,
+                    verdict.reason,
+                    verdict.rule,
+                    if verdict.level == guard::Level::Scope {
+                        "Stay inside the task's scope, or ask the user to widen it with `kula task start --scope`."
+                    } else {
+                        "Leave it to a person, or ask the user to change kula.toml."
+                    }
+                );
+                std::process::exit(2);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn task_cmd(repo: &Repo, c: TaskCmd, json: bool) -> Result<()> {
+    let show = |t: &guard::Task| {
+        if json {
+            println!("{}", serde_json::to_string(t).unwrap_or_default());
+        } else {
+            println!("  {} {}", accent("task"), bold(&t.title));
+            println!("  {} {}", dim("scope"), if t.scope.is_empty() { "whole repository".into() } else { t.scope.join(", ") });
+        }
+    };
+    match c {
+        TaskCmd::Start { title, scope } => {
+            let t = guard::task_start(repo, &title, scope)?;
+            show(&t);
+            if !json {
+                println!("  {}", dim("agents may change only what is in scope until `kula task done`"));
+            }
+        }
+        TaskCmd::Show => match guard::task(repo) {
+            Some(t) => show(&t),
+            None if json => println!("null"),
+            None => println!("  {}", dim("no active task – agents follow kula.toml's guards only")),
+        },
+        TaskCmd::Done => match guard::task_done(repo)? {
+            Some(t) if !json => println!("  {} {}", green("✓ done"), t.title),
+            _ if json => println!("null"),
+            _ => println!("  {}", dim("no active task")),
+        },
+    }
+    Ok(())
+}
+
+fn memory_cmd(repo: &Repo, c: MemoryCmd, json: bool) -> Result<()> {
+    let st = Store::open(repo)?;
+    match c {
+        MemoryCmd::Add { target, text, by } => {
+            let n = memory::remember(repo, &st, &target, &text, &by.unwrap_or_else(|| repo.user()))?;
+            if json {
+                println!("{}", serde_json::to_string(&n)?);
+            } else {
+                println!("  {} memory #{} on {}", green("✓"), n.id, bold(&n.target));
+            }
+        }
+        MemoryCmd::Recall { target, query, limit } => {
+            let hits = memory::recall(repo, &st, target.as_deref(), query.as_deref(), limit)?;
+            if json {
+                println!("{}", serde_json::to_string(&hits)?);
+                return Ok(());
+            }
+            if hits.is_empty() {
+                println!("  {}", dim("no memories"));
+            }
+            for h in hits {
+                let tag = if h.stale { yellow("stale") } else { green("fresh") };
+                println!("  {} {} {}  {}", dim(&format!("#{}", h.id)), tag, bold(&h.target), dim(&format!("{} · {}", h.via, h.author)));
+                for l in h.body.lines() {
+                    println!("      {l}");
+                }
+            }
+        }
+        MemoryCmd::Confirm { id } => {
+            let n = memory::confirm(repo, &st, id)?;
+            println!("  {} memory #{} re-anchored to {}", green("✓"), n.id, n.target);
+        }
+        MemoryCmd::Rm { id } => {
+            meta::note_rm(repo, id)?;
+            println!("  {} forgot #{id}", green("✓"));
+        }
+    }
+    Ok(())
+}
+
+fn kg_cmd(repo: &Repo, c: KgCmd, json: bool) -> Result<()> {
+    let st = Store::open(repo)?;
+    match c {
+        KgCmd::Export { format, out } => {
+            let bytes = kg::export(repo, &st, &format)?;
+            match out {
+                Some(p) => {
+                    std::fs::write(&p, &bytes)?;
+                    eprintln!("  {} {} ({} KB)", green("✓"), p.display(), bytes.len() / 1024);
+                }
+                None => std::io::Write::write_all(&mut std::io::stdout(), &bytes)?,
+            }
+        }
+        KgCmd::Sparql { query, limit } => {
+            let q = if query == "-" {
+                let mut s = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut s)?;
+                s
+            } else if let Some(f) = query.strip_prefix('@') {
+                std::fs::read_to_string(f)?
+            } else {
+                query
+            };
+            let r = kg::sparql(repo, &st, &q, limit)?;
+            if json {
+                println!("{r}");
+                return Ok(());
+            }
+            print_sparql(&r);
+        }
+        KgCmd::Examples => {
+            for (title, q) in kg::EXAMPLES {
+                println!("{}\n{}\n", accent(&format!("# {title}")), q);
+            }
+            println!("{}", dim("run one: kula kg sparql 'SELECT …'   ·   prefixes kula: code: rdf: rdfs: xsd: are predeclared"));
+        }
+    }
+    Ok(())
+}
+
+/// A SPARQL result as an aligned table.
+fn print_sparql(r: &serde_json::Value) {
+    let cell = |v: &serde_json::Value| match v {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    if let Some(b) = r.get("boolean") {
+        println!("  {}", if b.as_bool() == Some(true) { green("true") } else { red("false") });
+        return;
+    }
+    if let Some(ts) = r.get("triples").and_then(|t| t.as_array()) {
+        for t in ts {
+            let t = t.as_array().cloned().unwrap_or_default();
+            println!(
+                "  {} {} {}",
+                t.first().map(cell).unwrap_or_default(),
+                dim(&t.get(1).map(cell).unwrap_or_default()),
+                t.get(2).map(cell).unwrap_or_default()
+            );
+        }
+        return;
+    }
+    let vars: Vec<String> =
+        r["vars"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default();
+    let rows = r["rows"].as_array().cloned().unwrap_or_default();
+    let width: Vec<usize> = vars
+        .iter()
+        .map(|v| rows.iter().map(|row| row.get(v).map(cell).unwrap_or_default().chars().count().min(60)).max().unwrap_or(0).max(v.len()))
+        .collect();
+    let line = |vals: Vec<String>| {
+        vals.iter()
+            .zip(&width)
+            .map(|(v, w)| format!("{:w$}", v.chars().take(60).collect::<String>(), w = *w))
+            .collect::<Vec<_>>()
+            .join("  ")
+    };
+    println!("  {}", dim(&line(vars.iter().map(|v| format!("?{v}")).collect())));
+    for row in &rows {
+        println!("  {}", line(vars.iter().map(|v| row.get(v).map(cell).unwrap_or_default()).collect()));
+    }
+    println!("  {}", dim(&format!("{} row(s){}", rows.len(), if r["truncated"] == true { ", truncated" } else { "" })));
+}
+
 mod erased {
     pub trait Json {
         fn to_json(&self) -> String;

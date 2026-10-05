@@ -121,6 +121,16 @@ impl Store {
         Ok(())
     }
 
+    /// How the graph stands against HEAD: "missing", "current" or "stale". A repo
+    /// with no commits yet is current once indexed (its HEAD is recorded as "").
+    pub fn freshness(repo: &Repo) -> &'static str {
+        match Store::open(repo).ok().and_then(|s| s.meta("indexed_head")) {
+            None => "missing",
+            Some(i) if i == repo.head().unwrap_or_default() => "current",
+            _ => "stale",
+        }
+    }
+
     pub fn open(repo: &Repo) -> Result<Store> {
         let p = Self::path(repo);
         if !p.exists() {

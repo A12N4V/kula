@@ -17,6 +17,47 @@ pub struct Config {
     pub index: Index,
     pub hooks: Hooks,
     pub check: Check,
+    pub agents: Agents,
+    /// `[[guard]]` rules: code agents may not touch, or may not even see.
+    #[serde(rename = "guard")]
+    pub guards: Vec<GuardRule>,
+}
+
+/// What kula tells and allows AI agents (MCP, hooks).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct Agents {
+    /// Keep likely secrets (.env, keys, certificates) out of every agent answer.
+    pub hide_secrets: bool,
+    /// Let agents keep memories anchored to symbols (`remember` / `recall`).
+    pub memory: bool,
+}
+
+impl Default for Agents {
+    fn default() -> Self {
+        Agents { hide_secrets: true, memory: true }
+    }
+}
+
+/// One fence around part of the codebase.
+///
+/// ```toml
+/// [[guard]]
+/// paths = ["migrations/**"]
+/// symbols = ["charge_card"]
+/// level = "locked"          # locked | hidden | review
+/// reason = "schema changes go through the DBA"
+/// ```
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct GuardRule {
+    /// gitignore-style globs, relative to the repository root.
+    pub paths: Vec<String>,
+    /// Symbol names, or `path:name` to pin one.
+    pub symbols: Vec<String>,
+    /// locked: read, never edit. hidden: never read or edit. review: edit, flagged for a human.
+    pub level: String,
+    pub reason: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -99,13 +140,24 @@ impl Config {
              [hooks]\n\
              reindex = {}   # keep the graph current after commit / checkout / merge\n\n\
              [check]\n\
-             max_risk = {}   # CI gate: none | low | medium | high\n",
+             max_risk = {}   # CI gate: none | low | medium | high\n\n\
+             [agents]\n\
+             hide_secrets = {}   # keep .env, keys and certificates out of every agent answer\n\
+             memory = {}         # let agents remember facts about the code (`kula memory`)\n\n\
+             # Fence code off from AI agents. locked: read, never edit · hidden: never shown ·\n\
+             # review: editable, flagged in `kula check`. Paths are globs; symbols are names.\n\
+             # [[guard]]\n\
+             # paths = [\"migrations/**\"]\n\
+             # level = \"locked\"\n\
+             # reason = \"schema changes go through the DBA\"\n",
             q(&self.project.name),
             q(&self.project.default_branch),
             excl,
             self.index.max_file_kb,
             self.hooks.reindex,
             q(&self.check.max_risk),
+            self.agents.hide_secrets,
+            self.agents.memory,
         )
     }
 }

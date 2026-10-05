@@ -102,6 +102,8 @@ pub fn init(dir: &Path, o: InitOpts) -> Result<()> {
     if o.agents.unwrap_or_else(|| ask(o.yes, "register kula's MCP server for AI agents (.mcp.json)?", true)) {
         write_mcp(&root)?;
         done(".mcp.json", "kula mcp registered – agents can query the graph");
+        write_agent_hook(&root)?;
+        done(".claude/settings.json", "kula guard hook – agents can't edit locked or out-of-scope code");
     }
 
     // 6. CI: a gate that comments the blast radius of every change.
@@ -178,6 +180,38 @@ fn write_mcp(root: &Path) -> Result<()> {
         .as_object_mut()
         .context("mcpServers must be an object")?
         .insert("kula".into(), serde_json::json!({ "command": "kula", "args": ["mcp"] }));
+    std::fs::write(&p, serde_json::to_string_pretty(&v)? + "\n")?;
+    Ok(())
+}
+
+/// Merge kula's guard into .claude/settings.json as a PreToolUse hook, leaving
+/// every other setting and hook alone. Claude Code runs it before each file
+/// tool; exit 2 blocks the call and tells the agent why.
+fn write_agent_hook(root: &Path) -> Result<()> {
+    let dir = root.join(".claude");
+    std::fs::create_dir_all(&dir)?;
+    let p = dir.join("settings.json");
+    let mut v: serde_json::Value = match std::fs::read_to_string(&p) {
+        Ok(s) => serde_json::from_str(&s).with_context(|| format!("{} is not valid JSON", p.display()))?,
+        Err(_) => serde_json::json!({}),
+    };
+    let pre = v
+        .as_object_mut()
+        .context("settings.json must be an object")?
+        .entry("hooks")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .context("hooks must be an object")?
+        .entry("PreToolUse")
+        .or_insert_with(|| serde_json::json!([]));
+    let list = pre.as_array_mut().context("PreToolUse must be a list")?;
+    let ours = |e: &serde_json::Value| e.to_string().contains("kula guard hook");
+    if !list.iter().any(ours) {
+        list.push(serde_json::json!({
+            "matcher": "Edit|MultiEdit|Write|NotebookEdit|Read",
+            "hooks": [{ "type": "command", "command": "kula guard hook" }]
+        }));
+    }
     std::fs::write(&p, serde_json::to_string_pretty(&v)? + "\n")?;
     Ok(())
 }
@@ -566,6 +600,8 @@ pub struct CheckReport {
     pub clusters: Vec<String>,
     pub top: Vec<(String, String, usize)>,
     pub undeclared: Vec<String>,
+    /// Changed files under a `[[guard]]`: (path, level, reason). Locked or hidden fails the gate.
+    pub guarded: Vec<(String, String, String)>,
 }
 
 /// The CI gate: compare HEAD (or the worktree) with the base through the graph
@@ -582,8 +618,19 @@ pub fn check(repo: &Repo, store: Option<&Store>, base: &str, max_risk: &str) -> 
             .collect(),
         None => vec![],
     };
+    // The team's fences, without this checkout's task scope (CI has none).
+    let guards = crate::guard::Guards::new(&config::Config::load(&repo.root)?, None)?;
+    let guarded: Vec<(String, String, String)> = c
+        .files
+        .iter()
+        .map(|f| (f, guards.path(&f.path)))
+        .filter(|(_, v)| v.level != crate::guard::Level::Open)
+        .map(|(f, v)| (f.path.clone(), v.level.as_str().to_string(), v.reason))
+        .collect();
+    let fenced = guarded.iter().any(|g| g.1 == "locked" || g.1 == "hidden");
     Ok(CheckReport {
-        pass: config::risk_rank(&c.risk) <= config::risk_rank(max_risk),
+        pass: config::risk_rank(&c.risk) <= config::risk_rank(max_risk) && !fenced,
+        guarded,
         base: c.base,
         head: head.into(),
         max_risk: max_risk.into(),
@@ -610,6 +657,12 @@ pub fn check_markdown(r: &CheckReport) -> String {
         r.affected,
         if r.clusters.is_empty() { "–".into() } else { r.clusters.join(", ") },
     );
+    if !r.guarded.is_empty() {
+        s += "\n**Guarded code changed** (kula.toml)\n\n";
+        for (p, level, reason) in &r.guarded {
+            s += &format!("- `{p}` · **{level}** · {reason}\n");
+        }
+    }
     if !r.top.is_empty() {
         s += "\n**Ripples** (nearest first)\n\n";
         for (n, p, d) in &r.top {

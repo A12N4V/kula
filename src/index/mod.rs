@@ -138,6 +138,61 @@ const COMMON: &[&str] = &[
     "reject",
     "render",
     "use",
+    // Standard-library methods that a local definition of the same name would otherwise capture.
+    "as_str",
+    "as_ref",
+    "as_mut",
+    "as_bytes",
+    "as_deref",
+    "as_slice",
+    "to_owned",
+    "to_vec",
+    "trim",
+    "ok",
+    "err",
+    "expect",
+    "unwrap_or",
+    "unwrap_or_default",
+    "unwrap_or_else",
+    "map_err",
+    "and_then",
+    "or_else",
+    "is_some",
+    "is_none",
+    "lock",
+    "borrow",
+    "path",
+    "name",
+    "value",
+    "text",
+    "json",
+    "kind",
+    "id",
+    "display",
+    "replace",
+    "starts_with",
+    "ends_with",
+    "lines",
+    "chars",
+    "bytes",
+    "extend",
+    "sort",
+    "dedup",
+    "first",
+    "last",
+    "entry",
+    "count",
+    "sum",
+    "max",
+    "min",
+    "abs",
+    "includes",
+    "indexOf",
+    "push_str",
+    "toLowerCase",
+    "toUpperCase",
+    "trim_start_matches",
+    "trim_end_matches",
     "handle",
     "main",
     "test",
@@ -655,6 +710,13 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
     }
 
     // Calls.
+    fn family(lang: &str) -> &str {
+        match lang {
+            "javascript" | "typescript" | "tsx" => "js",
+            "c" | "cpp" => "c",
+            other => other,
+        }
+    }
     let mut call_set: HashSet<(usize, usize)> = HashSet::new();
     for (pi, pf) in parsed.iter().enumerate() {
         let fid = file_id[&pf.path];
@@ -671,6 +733,13 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                 .map(|(i, _)| ids[i])
                 .unwrap_or(fid);
             let Some(cands) = by_name.get(name) else { continue };
+            // A name only links within one language family: a TypeScript call to
+            // `confirm` is never the Rust function of the same name.
+            let fam = family(pf.lang);
+            let cands: Vec<usize> = cands.iter().copied().filter(|c| family(&nodes[*c].lang) == fam).collect();
+            if cands.is_empty() {
+                continue;
+            }
             let common = COMMON.contains(&name.as_str());
             let local: Vec<usize> = cands.iter().copied().filter(|c| nodes[*c].path == pf.path).collect();
             let targets: Vec<usize> = if !local.is_empty() {

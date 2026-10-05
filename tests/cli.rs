@@ -430,3 +430,148 @@ fn mcp_lists_and_runs_the_agent_tools() {
     let pre = lines[2]["result"]["content"][0]["text"].as_str().unwrap();
     assert!(pre.contains("handleLogin"), "{pre}");
 }
+
+/// Run kula expecting a given exit code; returns (stdout, stderr).
+fn kula_code(dir: &Path, args: &[&str], stdin: Option<&str>, code: i32) -> (String, String) {
+    let mut c = Command::new(KULA)
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    if let Some(s) = stdin {
+        c.stdin.as_mut().unwrap().write_all(s.as_bytes()).unwrap();
+    }
+    drop(c.stdin.take());
+    let out = c.wait_with_output().unwrap();
+    let (so, se) = (String::from_utf8_lossy(&out.stdout).to_string(), String::from_utf8_lossy(&out.stderr).to_string());
+    assert_eq!(out.status.code(), Some(code), "kula {args:?}\n{so}{se}");
+    (so, se)
+}
+
+#[test]
+fn every_language_parses_and_links_within_its_family() {
+    let t = tempfile::tempdir().unwrap();
+    let d = t.path();
+    git(d, &["init", "-q", "-b", "main"]);
+    write(d, "j/App.java", "public class App { void run() { helper(); } static void helper() {} }\n");
+    write(d, "c/m.c", "static int add(int a) { return a; }\nint main(void) { return add(1); }\n");
+    write(d, "c/v.cpp", "class Box { public: int size() { return count(); } int count() { return 1; } };\n");
+    write(d, "s/P.cs", "class P { void Main() { Run(); } void Run() {} }\n");
+    write(d, "r/a.rb", "class Cart\n  def total; sum(1); end\n  def sum(x); x; end\nend\n");
+    write(d, "p/a.php", "<?php\nfunction helper2($x) { return $x; }\nfunction find($id) { return helper2($id); }\n");
+    // Same name, two languages: a TypeScript call must never land on the Rust definition.
+    write(d, "web/a.ts", "export function confirmIt() { return 1; }\nexport function ui() { return confirmIt(); }\n");
+    write(d, "core/a.rs", "pub fn confirmIt() -> u8 { 1 }\n");
+    kula(d, &["index"]);
+    for (callee, caller) in [("helper", "run"), ("add", "main"), ("count", "size"), ("Run", "Main"), ("sum", "total"), ("helper2", "find")]
+    {
+        let i = kula_json(d, &["impact", callee]);
+        let names: Vec<&str> = i["hits"].as_array().unwrap().iter().map(|h| h["node"]["name"].as_str().unwrap()).collect();
+        assert!(names.contains(&caller), "{caller} should call {callee}: {names:?}");
+    }
+    let rs = kula_json(d, &["impact", "core/a.rs:confirmIt"]);
+    assert_eq!(rs["hits"].as_array().unwrap().len(), 0, "no cross-language callers: {rs}");
+}
+
+#[test]
+fn a_repo_with_no_commits_is_current_once_indexed() {
+    let t = tempfile::tempdir().unwrap();
+    let d = t.path();
+    git(d, &["init", "-q", "-b", "trunk"]);
+    write(d, "a.py", "def f():\n    return 1\n");
+    kula(d, &["index", "-q"]);
+    let s = kula_json(d, &["status"]);
+    assert_eq!(s["index"], "current", "{s}");
+    assert_eq!(s["branch"], "trunk");
+}
+
+#[test]
+fn guards_tasks_and_the_agent_hook() {
+    let t = fixture();
+    let d = t.path();
+    write(d, "migrations/001.sql", "create table t();\n");
+    write(d, ".env", "KEY=1\n");
+    write(d, "kula.toml", "[[guard]]\npaths = [\"migrations\"]\nlevel = \"locked\"\nreason = \"the DBA owns the schema\"\n\n[[guard]]\nsymbols = [\"hashToken\"]\nlevel = \"review\"\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "guards"]);
+    kula(d, &["index"]);
+
+    let (_, err) = kula_code(d, &["guard", "check", "migrations/001.sql", "src/api/routes.ts"], None, 1);
+    assert!(err.is_empty());
+    let v = kula_json(d, &["guard", "list"]);
+    assert_eq!(v["rules"].as_array().unwrap().len(), 2);
+
+    let hook = |tool: &str, path: &str| format!(r#"{{"tool_name":"{tool}","tool_input":{{"file_path":"{path}"}}}}"#);
+    let (_, why) = kula_code(d, &["guard", "hook"], Some(&hook("Edit", &d.join("migrations/001.sql").display().to_string())), 2);
+    assert!(why.contains("the DBA owns the schema"), "{why}");
+    kula_code(d, &["guard", "hook"], Some(&hook("Read", "migrations/001.sql")), 0);
+    kula_code(d, &["guard", "hook"], Some(&hook("Read", ".env")), 2);
+    kula_code(d, &["guard", "hook"], Some(&hook("Write", "src/api/routes.ts")), 0);
+    kula_code(d, &["guard", "hook"], Some(r#"{"tool_name":"Bash","tool_input":{"command":"ls"}}"#), 0);
+
+    // A task scoped to one symbol opens its file and nothing else.
+    kula(d, &["task", "start", "speed up login", "--scope", "login"]);
+    kula_code(d, &["guard", "hook"], Some(&hook("Edit", "src/auth/session.ts")), 0);
+    let (_, why) = kula_code(d, &["guard", "hook"], Some(&hook("Edit", "src/api/routes.ts")), 2);
+    assert!(why.contains("speed up login"), "{why}");
+    kula(d, &["task", "done"]);
+    kula_code(d, &["guard", "hook"], Some(&hook("Edit", "src/api/routes.ts")), 0);
+
+    // pre_edit says so; the CI gate fails when locked code changes.
+    let pe = kula_json(d, &["before", "hashToken"]);
+    assert_eq!(pe["guard"]["level"], "review");
+    write(d, "migrations/001.sql", "create table t(id int);\n");
+    git(d, &["commit", "-qam", "schema"]);
+    let (out, _) = kula_code(d, &["--json", "check", "--base", "HEAD~1"], None, 2);
+    let r: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(r["guarded"][0][1], "locked", "{r}");
+}
+
+#[test]
+fn memories_are_anchored_and_go_stale() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+    kula(d, &["memory", "add", "salt", "salt must stay two characters: stored hashes depend on it", "--by", "agent:test"]);
+    let near = kula_json(d, &["memory", "recall", "hashToken"]);
+    assert_eq!(near[0]["via"], "callee", "{near}");
+    assert_eq!(near[0]["stale"], false);
+    write(
+        d,
+        "src/util/crypto.ts",
+        "export function hashToken(t: string) { return salt(t) + t; }\nfunction salt(t: string) { return t.slice(0, 3); }\n",
+    );
+    let now = kula_json(d, &["memory", "recall", "salt"]);
+    assert_eq!(now[0]["stale"], true, "{now}");
+    let id = now[0]["id"].as_u64().unwrap().to_string();
+    kula(d, &["memory", "confirm", &id]);
+    assert_eq!(kula_json(d, &["memory", "recall", "salt"])[0]["stale"], false);
+    let q = kula_json(d, &["memory", "recall", "--query", "stored hashes"]);
+    assert_eq!(q.as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn the_knowledge_graph_is_rdf_and_answers_sparql() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+    kula(d, &["note", "add", "symbol:salt", "keep it short"]);
+    let ttl = kula(d, &["kg", "export", "-f", "ttl"]);
+    assert!(ttl.contains("@prefix kula: <https://kula.dev/ns#>"));
+    assert!(ttl.contains("<urn:kula:sym:src/util/crypto.ts#salt>"), "{}", &ttl[..ttl.len().min(2000)]);
+    let jsonld = kula(d, &["kg", "export", "-f", "jsonld"]);
+    assert!(serde_json::from_str::<Value>(&jsonld).is_ok());
+    let r = kula_json(d, &["kg", "sparql", "SELECT ?caller WHERE { ?c kula:calls ?s . ?s kula:name \"salt\" . ?c kula:name ?caller }"]);
+    assert_eq!(r["rows"][0]["caller"], "hashToken", "{r}");
+    let r = kula_json(d, &["kg", "sparql", "ASK { ?n a kula:Note ; kula:about ?s . ?s kula:name \"salt\" }"]);
+    assert_eq!(r["boolean"], true);
+    let r = kula_json(d, &["kg", "sparql", "SELECT (COUNT(?s) AS ?n) WHERE { ?s a kula:Symbol }"]);
+    assert!(r["rows"][0]["n"].as_i64().unwrap() >= 10, "{r}");
+    // Read-only: updates are rejected.
+    kula_code(d, &["kg", "sparql", "DELETE WHERE { ?s ?p ?o }"], None, 1);
+}

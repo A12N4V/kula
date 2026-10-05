@@ -68,6 +68,13 @@ pub struct Proposal {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Note {
     pub id: u64,
+    /// "" for a person's note, "memory" for an agent's memory (see `memory.rs`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
+    /// For memories: a hash of the target's source when it was written, so a
+    /// later change to that code marks the memory stale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<String>,
     /// `repo`, `file:<path>`, `symbol:<path>:<name>`, `commit:<sha>`, `community:<label>`.
     pub target: String,
     pub body: String,
@@ -211,9 +218,37 @@ pub fn proposal_merge(repo: &Repo, id: u64) -> Result<Proposal> {
 pub fn note_add(repo: &Repo, target: &str, body: &str) -> Result<Note> {
     let mut m = load(repo)?;
     let t = now();
-    let n = Note { id: next(&mut m), target: target.into(), body: body.into(), author: repo.user(), created: t, updated: t };
+    let n = Note {
+        id: next(&mut m),
+        kind: String::new(),
+        anchor: None,
+        target: target.into(),
+        body: body.into(),
+        author: repo.user(),
+        created: t,
+        updated: t,
+    };
     m.notes.push(n.clone());
     save(repo, &m, &format!("note #{} on {target}", n.id))?;
+    Ok(n)
+}
+
+/// Save an agent memory: a note of kind "memory", authored by `by`, anchored to the target's current source.
+pub fn memory_add(repo: &Repo, target: &str, body: &str, by: &str, anchor: Option<String>) -> Result<Note> {
+    let mut m = load(repo)?;
+    let t = now();
+    let n = Note {
+        id: next(&mut m),
+        kind: "memory".into(),
+        anchor,
+        target: target.into(),
+        body: body.into(),
+        author: by.into(),
+        created: t,
+        updated: t,
+    };
+    m.notes.push(n.clone());
+    save(repo, &m, &format!("memory #{} on {}", n.id, target))?;
     Ok(n)
 }
 

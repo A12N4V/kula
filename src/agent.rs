@@ -177,6 +177,10 @@ pub struct PreEdit {
     /// Structured twins of direct_callers and tests.
     pub direct_caller_refs: Vec<Ref>,
     pub test_refs: Vec<Ref>,
+    /// Whether agents may change it (kula.toml guards, the active task).
+    pub guard: crate::guard::Verdict,
+    /// Agent memories about it and its neighbours, freshest first.
+    pub memories: Vec<crate::memory::Recalled>,
 }
 
 /// Files that historically change in the same commits as `path` (its last 150 commits).
@@ -224,7 +228,25 @@ pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
                 .collect()
         })
         .unwrap_or_default();
+    let guards = crate::guard::Guards::load(repo)?;
+    let guard = guards.node(&n);
+    let memories = crate::memory::recall(repo, store, Some(&n.id.to_string()), None, 8).unwrap_or_default();
     let mut advice = Vec::new();
+    if !guard.level.editable() {
+        advice.push(format!("Do not edit: {} is {} for agents – {} ({}).", n.name, guard.level.as_str(), guard.reason, guard.rule));
+    } else if guard.level == crate::guard::Level::Review {
+        advice.push(format!("A person reviews changes here: {}.", guard.reason));
+    }
+    let locked_callees: Vec<String> =
+        store.neighbours(n.id, "CALLS", true)?.into_iter().filter(|(c, _)| !guards.node(c).level.editable()).map(|(c, _)| c.name).collect();
+    if !locked_callees.is_empty() {
+        advice.push(format!("It calls guarded code ({}): keep those call sites as they are.", locked_callees.join(", ")));
+    }
+    if memories.iter().any(|m| m.stale) {
+        advice.push(
+            "Some memories about this code are stale: the code changed after they were written. Re-check before trusting them.".into(),
+        );
+    }
     if !direct.is_empty() {
         advice.push(format!("Keep the signature stable or update the {} direct caller(s) in the same change.", direct.len()));
     }
@@ -254,6 +276,8 @@ pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
         advice,
         direct_caller_refs,
         test_refs,
+        guard,
+        memories,
         symbol: n,
     })
 }
@@ -273,6 +297,8 @@ pub struct Verify {
     pub changed_refs: Vec<Ref>,
     pub dangling_refs: Vec<Ref>,
     pub recheck_refs: Vec<Ref>,
+    /// Changed files agents may not edit: path, verdict.
+    pub guard_violations: Vec<(String, crate::guard::Verdict)>,
 }
 
 pub fn verify_edit(repo: &Repo) -> Result<Verify> {
@@ -310,5 +336,20 @@ pub fn verify_edit(repo: &Repo) -> Result<Verify> {
     let mut recheck: Vec<String> = recheck.into_iter().collect();
     recheck.sort();
     recheck_refs.sort_by(|x, y| (&x.name, &x.path, x.line).cmp(&(&y.name, &y.path, y.line)));
-    Ok(Verify { ok: dangling.is_empty(), summary: d.summary, changed, dangling, recheck, changed_refs, dangling_refs, recheck_refs })
+    let mut paths: Vec<String> = repo.status().map(|fs| fs.into_iter().map(|f| f.path).collect()).unwrap_or_default();
+    paths.sort();
+    paths.dedup();
+    let store = Store::open(repo).ok();
+    let guard_violations = crate::guard::violations(repo, store.as_ref(), &paths).unwrap_or_default();
+    Ok(Verify {
+        ok: dangling.is_empty() && guard_violations.is_empty(),
+        summary: d.summary,
+        changed,
+        dangling,
+        recheck,
+        changed_refs,
+        dangling_refs,
+        recheck_refs,
+        guard_violations,
+    })
 }

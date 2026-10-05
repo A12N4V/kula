@@ -141,8 +141,15 @@ impl Repo {
         self.run(&["rev-parse", "HEAD"]).ok().map(|s| s.trim().to_string())
     }
 
+    /// The checked-out branch – named even before the first commit – or `HEAD`
+    /// when detached (callers pass it to git as a ref).
     pub fn branch(&self) -> String {
-        self.run(&["rev-parse", "--abbrev-ref", "HEAD"]).map(|s| s.trim().to_string()).unwrap_or_else(|_| "(no commits)".into())
+        if let Ok(b) = self.run(&["symbolic-ref", "--short", "-q", "HEAD"]) {
+            if !b.trim().is_empty() {
+                return b.trim().to_string();
+            }
+        }
+        "HEAD".into()
     }
 
     pub fn user(&self) -> String {

@@ -3,8 +3,9 @@
 
 use crate::git::Repo;
 use crate::graph;
-use crate::store::Store;
-use anyhow::Result;
+use crate::guard::Guards;
+use crate::store::{Node, Store};
+use anyhow::{bail, Result};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 
@@ -33,31 +34,69 @@ fn tools() -> Value {
           "inputSchema": s(json!({ "targets": { "type": "array", "items": { "type": "string" }, "description": "symbol names, path:name, file paths, or a question" }, "budget": { "type": "integer", "description": "token budget (default 6000)" } }), &["targets"]) },
         { "name": "pre_edit", "description": "Call before changing a symbol: direct callers, total dependents and risk, the tests that reach it through the call graph, files that historically change with it, human notes, and concrete advice.",
           "inputSchema": s(json!({ "symbol": { "type": "string" } }), &["symbol"]) },
-        { "name": "verify_edit", "description": "Call after editing: the working tree against HEAD through the graph – symbols added/removed/modified, callers left pointing at removed code (dangling), and callers of modified symbols in other files to re-check. ok=false means something is broken.",
-          "inputSchema": s(json!({}), &[]) }
+        { "name": "verify_edit", "description": "Call after editing: the working tree against HEAD through the graph – symbols added/removed/modified, callers left pointing at removed code (dangling), callers of modified symbols in other files to re-check, and edits to code you may not change (guard_violations). ok=false means something is broken or fenced.",
+          "inputSchema": s(json!({}), &[]) },
+        { "name": "guards", "description": "What you may change. Lists the repository's guard rules (locked: read only; hidden: never shown to you; review: a person reviews it), the active task and its scope, and – given paths – the verdict for each. Check before editing files you have not been asked to touch.",
+          "inputSchema": s(json!({ "paths": { "type": "array", "items": { "type": "string" } } }), &[]) },
+        { "name": "remember", "description": "Save a durable fact about this code for future sessions: why something is the way it is, a pitfall, a flaky test, a decision. Pin it to a symbol, a file (file:<path>) or `repo`. It is stored in git with the code and marked stale when that code changes. One fact per memory, at most 2000 characters; never secrets.",
+          "inputSchema": s(json!({ "target": { "type": "string", "description": "symbol name, path:name, file:<path>, or repo" }, "text": { "type": "string" } }), &["target", "text"]) },
+        { "name": "recall", "description": "Memories about a symbol, file or the repo – its own, its file's, its callers' and callees' – or matching a query. stale=true means the code changed after the memory was written: verify before relying on it.",
+          "inputSchema": s(json!({ "target": { "type": "string" }, "query": { "type": "string" }, "limit": { "type": "integer" } }), &[]) },
+        { "name": "sparql", "description": "Ask the knowledge graph anything in SPARQL 1.1 (read only). Prefixes kula: (vocabulary), code: (urn:kula: instances), rdf:, rdfs:, xsd: are predeclared. Classes: kula:Symbol (with subclasses Function, Method, Class, Interface), File, Package, Cluster, Note, Memory, Issue, Guard. Properties: name, path, language, startLine, endLine, definedIn, memberOf, calls, imports, inCluster, about, body, author, created, stale, status, guardLevel, reason, fences. Example: SELECT ?name (COUNT(?c) AS ?n) WHERE { ?s a kula:Function ; kula:name ?name . ?c kula:calls ?s } GROUP BY ?name ORDER BY DESC(?n) LIMIT 10",
+          "inputSchema": s(json!({ "query": { "type": "string" }, "limit": { "type": "integer", "description": "max rows (default 200)" } }), &["query"]) }
     ])
+}
+
+/// Who is calling, from the MCP handshake: memories are signed `agent:<client>`.
+static CLIENT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Hidden code never reaches an agent: drop it from lists, refuse it by name.
+fn visible(g: &Guards, nodes: Vec<Node>) -> Vec<Node> {
+    nodes.into_iter().filter(|n| g.node(n).level.readable()).collect()
+}
+
+fn refuse_hidden(g: &Guards, n: &Node) -> Result<()> {
+    let v = g.node(n);
+    if !v.level.readable() {
+        bail!("{} is hidden from agents: {} ({})", n.name, v.reason, v.rule);
+    }
+    Ok(())
 }
 
 fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
     let st = || Store::open(repo);
+    let g = Guards::load(repo)?;
     let str_arg = |k: &str| a.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
     let int_arg = |k: &str, d: usize| a.get(k).and_then(|v| v.as_u64()).map(|v| v as usize).unwrap_or(d);
     Ok(match name {
-        "query" => json!(st()?.search(&str_arg("text"), int_arg("limit", 20))?),
+        "query" => json!(visible(&g, st()?.search(&str_arg("text"), int_arg("limit", 20))?)),
         "context" => {
             let s = st()?;
             let n = graph::resolve_one(&s, &str_arg("symbol"))?;
-            json!(graph::context(repo, &s, n.id)?)
+            refuse_hidden(&g, &n)?;
+            let mut c = graph::context(repo, &s, n.id)?;
+            for list in [&mut c.callers, &mut c.callees, &mut c.children, &mut c.imports, &mut c.imported_by] {
+                *list = visible(&g, std::mem::take(list));
+            }
+            let v = g.node(&c.node);
+            let mut out = json!(c);
+            out["guard"] = json!(v);
+            out
         }
         "impact" => {
             let s = st()?;
             let n = graph::resolve_one(&s, &str_arg("symbol"))?;
-            json!(graph::impact(&s, n.id, str_arg("direction") != "downstream", int_arg("depth", 3))?)
+            refuse_hidden(&g, &n)?;
+            let mut i = graph::impact(&s, n.id, str_arg("direction") != "downstream", int_arg("depth", 3))?;
+            i.hits.retain(|h| g.node(&h.node).level.readable());
+            json!(i)
         }
         "trace" => {
             let s = st()?;
             let x = graph::resolve_one(&s, &str_arg("from"))?;
             let y = graph::resolve_one(&s, &str_arg("to"))?;
+            refuse_hidden(&g, &x)?;
+            refuse_hidden(&g, &y)?;
             json!(graph::trace(&s, x.id, y.id)?)
         }
         "compare" => {
@@ -77,7 +116,12 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
         "notes" => {
             let t = str_arg("target");
             let m = crate::meta::load(repo)?;
-            json!(m.notes.into_iter().filter(|n| t.is_empty() || n.target.contains(&t)).collect::<Vec<_>>())
+            let hidden = |target: &str| target.strip_prefix("file:").is_some_and(|p| !g.path(p).level.readable());
+            json!(m
+                .notes
+                .into_iter()
+                .filter(|n| n.kind.is_empty() && !hidden(&n.target) && (t.is_empty() || n.target.contains(&t)))
+                .collect::<Vec<_>>())
         }
         "issues" => {
             let m = crate::meta::load(repo)?;
@@ -89,10 +133,55 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
                 .and_then(|v| v.as_array())
                 .map(|v| v.iter().filter_map(|x| x.as_str().map(String::from)).collect())
                 .unwrap_or_default();
-            json!(crate::agent::context_pack(repo, &st()?, &targets, int_arg("budget", 6000))?)
+            let mut p = crate::agent::context_pack(repo, &st()?, &targets, int_arg("budget", 6000))?;
+            let before = p.items.len();
+            p.items.retain(|i| g.path(&i.path).level.readable());
+            let mut out = json!(p);
+            if p.items.len() < before {
+                out["withheld"] = json!(format!("{} item(s) hidden by kula.toml guards", before - p.items.len()));
+            }
+            out
         }
-        "pre_edit" => json!(crate::agent::pre_edit(repo, &st()?, &str_arg("symbol"))?),
+        "pre_edit" => {
+            let s = st()?;
+            refuse_hidden(&g, &graph::resolve_one(&s, &str_arg("symbol"))?)?;
+            json!(crate::agent::pre_edit(repo, &s, &str_arg("symbol"))?)
+        }
         "verify_edit" => json!(crate::agent::verify_edit(repo)?),
+        "guards" => {
+            let paths: Vec<String> = a
+                .get("paths")
+                .and_then(|v| v.as_array())
+                .map(|v| v.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            let s = st().ok();
+            let rules: Vec<Value> = g
+                .rules()
+                .into_iter()
+                .map(|(r, l)| json!({ "level": l, "paths": r.paths, "symbols": r.symbols, "reason": r.reason }))
+                .collect();
+            let verdicts: Vec<Value> = paths.iter().map(|p| json!({ "path": p, "verdict": g.edit(s.as_ref(), p) })).collect();
+            json!({ "rules": rules, "task": g.task(), "secrets_hidden": crate::config::Config::load(&repo.root)?.agents.hide_secrets, "verdicts": verdicts })
+        }
+        "remember" => {
+            if !crate::config::Config::load(&repo.root)?.agents.memory {
+                bail!("agent memory is off in kula.toml ([agents] memory = false)");
+            }
+            let by = format!("agent:{}", CLIENT.get().map(String::as_str).unwrap_or("mcp"));
+            json!(crate::memory::remember(repo, &st()?, &str_arg("target"), &str_arg("text"), &by)?)
+        }
+        "recall" => {
+            let t = str_arg("target");
+            let q = str_arg("query");
+            json!(crate::memory::recall(
+                repo,
+                &st()?,
+                (!t.is_empty()).then_some(t.as_str()),
+                (!q.is_empty()).then_some(q.as_str()),
+                int_arg("limit", 20)
+            )?)
+        }
+        "sparql" => crate::kg::sparql(repo, &st()?, &str_arg("query"), int_arg("limit", 200).min(2000))?,
         _ => anyhow::bail!("unknown tool {name}"),
     })
 }
@@ -101,12 +190,17 @@ pub fn handle(repo: &Repo, msg: &Value) -> Option<Value> {
     let id = msg.get("id").cloned();
     let method = msg.get("method")?.as_str()?;
     let result = match method {
-        "initialize" => Ok(json!({
+        "initialize" => {
+            if let Some(c) = msg.pointer("/params/clientInfo/name").and_then(|v| v.as_str()) {
+                let _ = CLIENT.set(c.chars().filter(|c| c.is_alphanumeric() || "-_.".contains(*c)).take(40).collect());
+            }
+            Ok(json!({
             "protocolVersion": msg.pointer("/params/protocolVersion").cloned().unwrap_or(json!("2025-06-18")),
             "capabilities": { "tools": {} },
             "serverInfo": { "name": "kula", "version": env!("CARGO_PKG_VERSION") },
-            "instructions": "Kula exposes a knowledge graph of this repository. Use `impact` before editing a symbol, `context` to understand it, and `compare` to review a branch."
-        })),
+            "instructions": "Kula is a knowledge graph of this repository. Before reading files, use `context_pack` for the code a task needs. Before changing a symbol, call `pre_edit` (callers, tests, risk, guards, memories); after editing, call `verify_edit`. Call `guards` to learn what you may change: locked code is read-only for you, hidden code is never shown, and an active task limits you to its scope. Use `remember` for facts worth keeping about this code and `recall` to read them; stale memories describe code that has since changed. `sparql` answers structural questions over the whole graph."
+            }))
+        }
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": tools() })),
         "tools/call" => {

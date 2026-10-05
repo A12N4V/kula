@@ -140,11 +140,7 @@ async fn repo_info(State(s): State<AppState>) -> ApiResult {
         let st = Store::open(r).ok();
         let indexed = st.as_ref().and_then(|x| x.meta("indexed_head"));
         let head = r.head();
-        let fresh = match (&indexed, &head) {
-            (None, _) => "missing",
-            (Some(i), Some(h)) if i == h => "current",
-            _ => "stale",
-        };
+        let fresh = Store::freshness(r);
         let stats: Value = st.as_ref().and_then(|x| x.meta("stats")).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null);
         let remotes: Vec<String> = r.run(&["remote"]).unwrap_or_default().lines().map(String::from).collect();
         Ok(json!({ "name": r.name(), "root": r.root, "branch": r.branch(), "head": head, "indexed_head": indexed,
@@ -558,9 +554,7 @@ fn spawn_auto_reindex(repo: Repo) {
             first = false;
             let r = repo.clone();
             let _ = tokio::task::spawn_blocking(move || {
-                let indexed = Store::open(&r).ok().and_then(|s| s.meta("indexed_head"));
-                let head = r.head();
-                if head.is_some() && indexed.as_deref() != head.as_deref() {
+                if Store::freshness(&r) != "current" {
                     let _ = index::run(&r, true);
                 }
             })
