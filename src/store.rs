@@ -91,7 +91,8 @@ impl Store {
         // Builds that died before publishing leave their temp file; clear any older than ten minutes.
         if let Ok(rd) = std::fs::read_dir(&dir) {
             for e in rd.flatten() {
-                let stale = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 600);
+                let stale =
+                    e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 600);
                 if stale && e.file_name().to_string_lossy().starts_with("graph.db.building-") {
                     let _ = std::fs::remove_file(e.path());
                 }

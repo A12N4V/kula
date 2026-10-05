@@ -7,7 +7,7 @@ use crate::store::{Edge, Node, Store};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Parser, QueryCursor};
@@ -343,13 +343,22 @@ pub(crate) fn package_name(raw: &str, lang: &str) -> Option<String> {
     }
     let name = match lang {
         "javascript" | "typescript" | "tsx" => {
-            if s.starts_with('.') || s.starts_with('/') || s.starts_with('@') && !s.contains('/') || s.starts_with("~/") || s.starts_with("@/") {
+            if s.starts_with('.')
+                || s.starts_with('/')
+                || s.starts_with('@') && !s.contains('/')
+                || s.starts_with("~/")
+                || s.starts_with("@/")
+            {
                 return None;
             }
             let s = s.strip_prefix("node:").map(|b| format!("node:{}", b.split('/').next().unwrap_or(b))).unwrap_or_else(|| s.to_string());
             let mut it = s.split('/');
             let first = it.next()?;
-            if first.starts_with('@') { format!("{first}/{}", it.next()?) } else { first.to_string() }
+            if first.starts_with('@') {
+                format!("{first}/{}", it.next()?)
+            } else {
+                first.to_string()
+            }
         }
         "python" => {
             if s.starts_with('.') {
@@ -366,7 +375,11 @@ pub(crate) fn package_name(raw: &str, lang: &str) -> Option<String> {
         }
         "go" => {
             let segs: Vec<&str> = s.split('/').collect();
-            if segs[0].contains('.') { segs.iter().take(3).copied().collect::<Vec<_>>().join("/") } else { segs[0].to_string() }
+            if segs[0].contains('.') {
+                segs.iter().take(3).copied().collect::<Vec<_>>().join("/")
+            } else {
+                segs[0].to_string()
+            }
         }
         _ => return None,
     };
@@ -698,10 +711,9 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
 pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     let t0 = Instant::now();
     PROGRESS.active.store(true, Relaxed);
-    PROGRESS.started_ms.store(
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
-        Relaxed,
-    );
+    PROGRESS
+        .started_ms
+        .store(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0), Relaxed);
     PROGRESS.phase(1, 0);
     let _done = ProgressGuard;
     let root = repo.root.clone();

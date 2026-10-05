@@ -84,7 +84,11 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             json!({ "issues": m.issues, "proposals": m.proposals })
         }
         "context_pack" => {
-            let targets: Vec<String> = a.get("targets").and_then(|v| v.as_array()).map(|v| v.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+            let targets: Vec<String> = a
+                .get("targets")
+                .and_then(|v| v.as_array())
+                .map(|v| v.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .unwrap_or_default();
             json!(crate::agent::context_pack(repo, &st()?, &targets, int_arg("budget", 6000))?)
         }
         "pre_edit" => json!(crate::agent::pre_edit(repo, &st()?, &str_arg("symbol"))?),

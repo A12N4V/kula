@@ -6,8 +6,8 @@ mod git;
 mod graph;
 mod index;
 mod mcp;
-mod project;
 mod meta;
+mod project;
 mod server;
 mod store;
 mod term;
@@ -308,8 +308,19 @@ fn run(cli: Cli) -> Result<()> {
         return doctor(&cwd);
     }
     if let Cmd::Init { yes, hooks, no_hooks, agents, no_agents, ci, no_index } = cmd {
-        let pick = |on: bool, off: bool| if on { Some(true) } else if off { Some(false) } else { None };
-        return project::init(&cwd, project::InitOpts { yes, hooks: pick(hooks, no_hooks), agents: pick(agents, no_agents), ci, index: !no_index });
+        let pick = |on: bool, off: bool| {
+            if on {
+                Some(true)
+            } else if off {
+                Some(false)
+            } else {
+                None
+            }
+        };
+        return project::init(
+            &cwd,
+            project::InitOpts { yes, hooks: pick(hooks, no_hooks), agents: pick(agents, no_agents), ci, index: !no_index },
+        );
     }
     let repo = Repo::discover(&cwd)?;
     let out = |v: &dyn erased::Json| println!("{}", v.to_json());
@@ -347,14 +358,24 @@ fn run(cli: Cli) -> Result<()> {
             let all = project::deps(&repo, &st)?;
             let list: Vec<&project::Dep> = all
                 .iter()
-                .filter(|d| (!undeclared || (!d.declared && !d.builtin && d.importers > 0)) && (!unused || (d.declared && d.importers == 0)))
+                .filter(|d| {
+                    (!undeclared || (!d.declared && !d.builtin && d.importers > 0)) && (!unused || (d.declared && d.importers == 0))
+                })
                 .collect();
             if json {
                 out(&list.iter().map(|d| serde_json::to_value(d).unwrap()).collect::<Vec<_>>());
             } else {
                 header(&format!("{} packages", list.len()));
                 for d in &list {
-                    let state = if d.builtin { dim("builtin") } else if d.declared && d.importers > 0 { green("declared") } else if d.declared { yellow("unused") } else { red("undeclared") };
+                    let state = if d.builtin {
+                        dim("builtin")
+                    } else if d.declared && d.importers > 0 {
+                        green("declared")
+                    } else if d.declared {
+                        yellow("unused")
+                    } else {
+                        red("undeclared")
+                    };
                     println!("  {:<34} {:<6} {:>4} {}  {}", bold(&d.name), dim(d.ecosystem), d.importers, dim("files"), state);
                 }
                 let bad = all.iter().filter(|d| !d.declared && !d.builtin && d.importers > 0).count();
@@ -371,7 +392,13 @@ fn run(cli: Cli) -> Result<()> {
             } else {
                 header(&format!("context pack · {} of {} tokens · {} items", p.used, p.budget, p.items.len()));
                 for it in &p.items {
-                    println!("\n{} {}  {}  {}", accent("■"), bold(&it.name), dim(&format!("{}:{}–{}", it.path, it.lines[0], it.lines[1])), dim(&format!("[{}{}]", it.why, if it.signature_only { " · signature" } else { "" })));
+                    println!(
+                        "\n{} {}  {}  {}",
+                        accent("■"),
+                        bold(&it.name),
+                        dim(&format!("{}:{}–{}", it.path, it.lines[0], it.lines[1])),
+                        dim(&format!("[{}{}]", it.why, if it.signature_only { " · signature" } else { "" }))
+                    );
                     println!("{}", it.code);
                 }
                 if !p.omitted.is_empty() {
@@ -431,7 +458,14 @@ fn run(cli: Cli) -> Result<()> {
                 print!("{}", project::check_markdown(&r));
             } else {
                 header(&format!("check {} {} {}", r.base, dim("…"), r.head));
-                println!("  risk {} {}  ·  {} files · {} symbols touched · {} dependents", risk(&r.risk), dim(&format!("(gate {})", r.max_risk)), r.files, r.touched, r.affected);
+                println!(
+                    "  risk {} {}  ·  {} files · {} symbols touched · {} dependents",
+                    risk(&r.risk),
+                    dim(&format!("(gate {})", r.max_risk)),
+                    r.files,
+                    r.touched,
+                    r.affected
+                );
                 for (n, p, d) in &r.top {
                     println!("    {} {}  {}", dim(&"·".repeat(*d)), bold(n), dim(p));
                 }
@@ -444,17 +478,15 @@ fn run(cli: Cli) -> Result<()> {
                 std::process::exit(2);
             }
         }
-        Cmd::Hooks { action } => {
-            match action.as_str() {
-                "install" => println!("{} {} hooks installed", green("✓"), project::hooks_install(&repo)?),
-                "uninstall" | "remove" => println!("{} {} hooks removed", green("✓"), project::hooks_uninstall(&repo)?),
-                _ => {
-                    for (h, on) in project::hooks_status(&repo)? {
-                        println!("  {} {}", if on { green("●") } else { dim("○") }, h);
-                    }
+        Cmd::Hooks { action } => match action.as_str() {
+            "install" => println!("{} {} hooks installed", green("✓"), project::hooks_install(&repo)?),
+            "uninstall" | "remove" => println!("{} {} hooks removed", green("✓"), project::hooks_uninstall(&repo)?),
+            _ => {
+                for (h, on) in project::hooks_status(&repo)? {
+                    println!("  {} {}", if on { green("●") } else { dim("○") }, h);
                 }
             }
-        }
+        },
         Cmd::View { port, no_open } => {
             // A missing graph is built by the server itself, behind the UI's progress loader.
             server::serve(repo, port, !no_open)?;

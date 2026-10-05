@@ -292,7 +292,11 @@ fn check_gates_on_risk_and_speaks_markdown() {
     let d = t.path();
     kula(d, &["index"]);
     git(d, &["checkout", "-qb", "feat"]);
-    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return salt(t) + t + \"!\"; }\nfunction salt(t: string) { return t.slice(0, 3); }\n");
+    write(
+        d,
+        "src/util/crypto.ts",
+        "export function hashToken(t: string) { return salt(t) + t + \"!\"; }\nfunction salt(t: string) { return t.slice(0, 3); }\n",
+    );
     git(d, &["commit", "-qam", "tweak"]);
     let r = kula_json(d, &["check", "--base", "main", "--max-risk", "high"]);
     assert_eq!(r["pass"], true);
@@ -300,7 +304,8 @@ fn check_gates_on_risk_and_speaks_markdown() {
     let md = kula(d, &["check", "--base", "main", "--max-risk", "high", "--md"]);
     assert!(md.starts_with("### kula check"), "{md}");
     // A gate of "none" fails any change, with exit code 2.
-    let out = Command::new(KULA).arg("-C").arg(d).args(["check", "--base", "main", "--max-risk", "none"]).env("NO_COLOR", "1").output().unwrap();
+    let out =
+        Command::new(KULA).arg("-C").arg(d).args(["check", "--base", "main", "--max-risk", "none"]).env("NO_COLOR", "1").output().unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
 
@@ -352,12 +357,28 @@ fn agent_context_pack_fits_the_budget_and_ranks_by_graph() {
 fn agent_before_and_verify_bracket_an_edit() {
     let t = fixture();
     let d = t.path();
-    write(d, "src/util/crypto.test.ts", "import { hashToken } from \"./crypto\";\nexport function testHash() { return hashToken(\"ab\"); }\n");
-    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return salt(t) + t; }\nfunction salt(t: string) { return t.slice(0, 2); }\n// v2\n");
+    write(
+        d,
+        "src/util/crypto.test.ts",
+        "import { hashToken } from \"./crypto\";\nexport function testHash() { return hashToken(\"ab\"); }\n",
+    );
+    write(
+        d,
+        "src/util/crypto.ts",
+        "export function hashToken(t: string) { return salt(t) + t; }\nfunction salt(t: string) { return t.slice(0, 2); }\n// v2\n",
+    );
     git(d, &["add", "-A"]);
     git(d, &["commit", "-qm", "test + crypto"]);
-    write(d, "src/util/crypto.test.ts", "import { hashToken } from \"./crypto\";\nexport function testHash() { return hashToken(\"abc\"); }\n");
-    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return salt(t) + t; }\nfunction salt(t: string) { return t.slice(0, 3); }\n// v3\n");
+    write(
+        d,
+        "src/util/crypto.test.ts",
+        "import { hashToken } from \"./crypto\";\nexport function testHash() { return hashToken(\"abc\"); }\n",
+    );
+    write(
+        d,
+        "src/util/crypto.ts",
+        "export function hashToken(t: string) { return salt(t) + t; }\nfunction salt(t: string) { return t.slice(0, 3); }\n// v3\n",
+    );
     git(d, &["commit", "-qam", "tweak both"]);
     kula(d, &["index"]);
 
@@ -391,7 +412,11 @@ fn mcp_lists_and_runs_the_agent_tools() {
         let stdin = child.stdin.as_mut().unwrap();
         writeln!(stdin, r#"{{"jsonrpc":"2.0","id":1,"method":"tools/list"}}"#).unwrap();
         writeln!(stdin, r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"context_pack","arguments":{{"targets":["login"],"budget":2000}}}}}}"#).unwrap();
-        writeln!(stdin, r#"{{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{{"name":"pre_edit","arguments":{{"symbol":"login"}}}}}}"#).unwrap();
+        writeln!(
+            stdin,
+            r#"{{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{{"name":"pre_edit","arguments":{{"symbol":"login"}}}}}}"#
+        )
+        .unwrap();
     }
     drop(child.stdin.take());
     let out = child.wait_with_output().unwrap();
