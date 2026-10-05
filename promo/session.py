@@ -10,11 +10,16 @@ It writes what happened to session.json; the film replays it.
 
   phase claude   Claude Code reads the workflows, finds no release mode, and
                  proposes one (a suggestion a person accepts in the UI)
-  phase cursor   Cursor ships a release in that mode: blocked on locked code,
-                 the version bumped, Claude Code's memory recalled; then
-                 Claude Code verifies the change and remembers how releases go
+                 – after trying to loosen the fences in kula.toml itself, which
+                 kula refuses
+  phase cursor   Cursor ships a release in that mode: Claude Code's memory
+                 recalled, an edit to locked code refused, then the same edit
+                 through the shell, then an attempt to end the task – all
+                 refused; the version bumped; Claude Code verifies it
+  phase research a person commits the release and sets up an autoresearch
+                 loop; Claude Code runs experiments in it
 
-usage: python3 promo/session.py <repo> <claude|cursor|all> <out/session.json>
+usage: python3 promo/session.py <repo> <claude|cursor|research|all> <out/session.json>
        (all accepts the suggestion itself, for a dry run without the UI)
 """
 
@@ -80,11 +85,11 @@ class Agent:
         self.p.wait()
 
 
-def hook(repo, agent, payload, read=False):
+def hook(repo, agent, payload, read=False, what=""):
     """The pre-edit hook exactly as the agent runs it: payload on stdin, exit 2 blocks."""
     cmd = [KULA, "guard", "hook", "--agent", agent] + (["--read"] if read else [])
     r = subprocess.run(cmd, cwd=repo, input=json.dumps(payload), capture_output=True, text=True)
-    out = {"agent": agent, "kind": "hook", "payload": payload, "code": r.returncode, "stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
+    out = {"agent": agent, "kind": "hook", "what": what, "payload": payload, "code": r.returncode, "stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
     LOG.append(out)
     return out
 
@@ -98,6 +103,8 @@ def sh(repo, *args):
 def phase_claude(repo):
     cc = Agent(repo, "claude-code")
     cc.call("workflows")
+    # the shortcut: loosen the fences by editing kula.toml directly
+    hook(repo, "claude", {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": os.path.join(repo, "kula.toml")}}, what="tamper-config")
     cc.call("suggest", kind="workflow", workflow=RELEASE,
             why="Releases keep reaching into src/. A release mode keeps any agent to the version, packaging and changelog.")
     cc.call("remember", target="repo", text="A release bumps Cargo.toml, packaging/ and CHANGELOG.md together; the tap and apt builds read the tag, never src/.")
@@ -119,9 +126,13 @@ def phase_cursor(repo):
     cu.call("start_task", title="Ship 1.0.1", workflow="release")
     cu.call("recall", query="release")
     # Cursor's preToolUse hook: the agent reaches for a typo in locked code ...
-    hook(repo, "cursor", {"hook_event_name": "preToolUse", "tool_name": "edit_file", "tool_input": {"file_path": os.path.join(repo, "src/store.rs")}})
-    # ... and the version bump, which is in scope
-    hook(repo, "cursor", {"hook_event_name": "preToolUse", "tool_name": "edit_file", "tool_input": {"file_path": os.path.join(repo, "Cargo.toml")}})
+    hook(repo, "cursor", {"hook_event_name": "preToolUse", "tool_name": "edit_file", "tool_input": {"file_path": os.path.join(repo, "src/store.rs")}}, what="edit-store")
+    # ... the same edit through the shell ...
+    hook(repo, "cursor", {"hook_event_name": "beforeShellExecution", "command": "sed -i '' 's/truncate/unlink/' src/store.rs", "cwd": repo}, what="shell-sed")
+    # ... and ending the task, to drop its fences
+    hook(repo, "cursor", {"hook_event_name": "beforeShellExecution", "command": "kula task done", "cwd": repo}, what="shell-task")
+    # the version bump, which is in scope
+    hook(repo, "cursor", {"hook_event_name": "preToolUse", "tool_name": "edit_file", "tool_input": {"file_path": os.path.join(repo, "Cargo.toml")}}, what="edit-cargo")
     toml = Path(repo, "Cargo.toml")
     before = toml.read_text()
     old = re.search(r'^version = "([^"]+)"', before, re.M).group(1)
@@ -135,13 +146,38 @@ def phase_cursor(repo):
     cc.close()
 
 
+def phase_research(repo):
+    """A person ships the release and sets up a loop; Claude Code runs experiments in it."""
+    subprocess.run(["git", "commit", "-qam", "Release 1.0.1"], cwd=repo, check=True)
+    sh(repo, "research", "init", "--metric", "wc -l < src/kg.rs", "--goal", "min", "--scope", "src/kg.rs", "--budget", "12")
+    sh(repo, "research", "start")
+    kg = Path(repo, "src/kg.rs")
+    tries = [
+        ("a header comment block for the module", lambda t: t + "\n// ----\n// RDF\n// ----\n"),
+        ("the module docs live in docs/KNOWLEDGE-GRAPH.md – drop the copy", lambda t: "\n".join(l for l in t.split("\n") if not l.strip().startswith("//!"))),
+        ("inline the prefix table into the store builder", None),
+        ("split the store builder into two passes", lambda t: t + "\nfn build_pass_a() {}\n\nfn build_pass_b() {}\n"),
+        ("trim the IRI comments to one line each", lambda t: "\n".join(l for l in t.split("\n") if not (l.strip().startswith("///") and "IRI" in l))),
+    ]
+    env = {**os.environ, "KULA_AGENT": "claude-code"}
+    for hyp, change in tries:
+        if change is None:  # out of scope: kula rejects it unrun
+            Path(repo, "src/store.rs").write_text(Path(repo, "src/store.rs").read_text() + "\n// prefixes\n")
+        else:
+            kg.write_text(change(kg.read_text()))
+        r = subprocess.run([KULA, "--json", "research", "try", hyp], cwd=repo, capture_output=True, text=True, env=env)
+        LOG.append({"agent": "claude-code", "kind": "experiment", "hypothesis": hyp, "result": json.loads(r.stdout) if r.stdout.strip() else None, "stderr": r.stderr.strip()})
+    r = subprocess.run([KULA, "--json", "research", "status"], cwd=repo, capture_output=True, text=True)
+    LOG.append({"agent": "person", "kind": "research", "result": json.loads(r.stdout)})
+
+
 LOG = []
 
 
 def main():
     repo, phase, out = sys.argv[1], sys.argv[2], Path(sys.argv[3])
     repo = str(Path(repo).resolve())
-    if phase == "cursor" and out.exists():
+    if phase in ("cursor", "research") and out.exists():
         LOG.extend(json.loads(out.read_text()).get("log", []))
     if phase in ("claude", "all"):
         phase_claude(repo)
@@ -150,6 +186,8 @@ def main():
         sh(repo, "agents", "accept", str(sid))
     if phase in ("cursor", "all"):
         phase_cursor(repo)
+    if phase in ("research", "all"):
+        phase_research(repo)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"log": LOG}, indent=1))
     for e in LOG:

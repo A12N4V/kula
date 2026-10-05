@@ -40,7 +40,7 @@ LAYOUTS = {
     # the film (promo/film, Remotion): 21 bars, 56 s
     "film": [("intro", 3), ("build", 1), ("dropA", 6), ("break", 2), ("dropB", 6), ("outro", 3)],
     # the launch film with the agent session: 45 bars, 2 minutes
-    "launch": [("intro", 4), ("build", 3), ("dropA", 12), ("break", 4), ("dropB", 18), ("outro", 4)],
+    "launch": [("intro", 4), ("build", 3), ("dropA", 10), ("break", 4), ("dropB", 20), ("outro", 4)],
 }
 LAYOUT = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--layout=")), "long")
 SECTIONS = LAYOUTS[LAYOUT]

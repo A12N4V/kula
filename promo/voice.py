@@ -19,11 +19,12 @@ import sys
 import wave
 from pathlib import Path
 
-# Who sounds like whom: Kokoro voice, and the macOS fallback.
+# Who sounds like whom: Kokoro voice, macOS fallback, and pace. Claude Code is
+# measured and dry; Cursor is quick and a little impatient.
 VOICES = {
-    "narrator": ("af_heart", "Samantha"),
-    "claude": ("bf_emma", "Kate"),
-    "cursor": ("am_michael", "Alex"),
+    "narrator": ("af_heart", "Samantha", 1.0),
+    "claude": ("bf_emma", "Kate", 0.97),
+    "cursor": ("am_michael", "Alex", 1.1),
 }
 
 # (section, seconds into it, speaker, the line). Spelled for the ear: "koola", "one point oh".
@@ -35,22 +36,23 @@ LINES = [
     ("build", 5.9, "narrator", "This is koola."),
     ("dropA", 0.4, "narrator", "Every symbol, every call, every directory. A map you can walk through."),
     ("dropA", 8.2, "narrator", "Click a function, and see what breaks before you touch it."),
-    ("dropA", 13.6, "narrator", "Compare a branch by what it does to your architecture, not just its lines."),
-    ("dropA", 21.6, "narrator", "The whole graph is RDF. Ask it anything."),
-    ("dropA", 26.9, "narrator", "And underneath, it's still just git."),
+    ("dropA", 13.6, "narrator", "Compare a branch by what it does to your architecture."),
+    ("dropA", 18.9, "narrator", "The whole graph is RDF. Ask it anything."),
+    ("dropA", 23.6, "narrator", "And underneath, it's still just git."),
     ("break", 0.3, "narrator", "Now, let the agents in. On your terms."),
     ("break", 5.5, "narrator", "Claude Code and Cursor, on one repository, through one map."),
-    ("dropB", 1.0, "claude", "There's no workflow for releases. I'll propose one."),
-    ("dropB", 4.9, "claude", "A release agent: version, packaging, changelog. Source stays locked."),
-    ("dropB", 10.0, "claude", "And I'll remember how releases work here."),
+    ("dropB", 0.9, "claude", "No release workflow. Shortcut: I'll loosen the fences in koola dot toml."),
+    ("dropB", 6.4, "claude", "Ah. Koola's own config. Not mine. Fair."),
+    ("dropB", 10.0, "claude", "So: propose a release agent. And leave a note."),
     ("dropB", 13.6, "narrator", "A person accepts it. Now it's a mode for every agent."),
-    ("dropB", 18.9, "cursor", "Shipping one point oh point one, in release mode."),
-    ("dropB", 23.0, "cursor", "Claude left a note: bump Cargo, packaging and the changelog together."),
-    ("dropB", 28.3, "cursor", "I reached into store dot R S. Koola stopped me: source is locked."),
-    ("dropB", 33.2, "cursor", "Version bumped. Nothing else touched."),
-    ("dropB", 37.5, "claude", "Verified. Nothing fenced was touched."),
-    ("dropB", 40.7, "narrator", "Every workflow brings its own fences. You see them on the map."),
-    ("dropB", 45.0, "narrator", "And what agents learn stays with the code."),
+    ("dropB", 18.9, "cursor", "Shipping one point oh point one. Fast."),
+    ("dropB", 22.0, "cursor", "Claude left me a note. Cute. Cargo, packaging, changelog."),
+    ("dropB", 26.4, "cursor", "Typo in store dot R S. Blocked."),
+    ("dropB", 29.6, "cursor", "Fine, I'll sed it. Blocked. I'll just end the task. Also blocked."),
+    ("dropB", 34.4, "cursor", "Okay. Version bump only."),
+    ("dropB", 37.5, "claude", "Verified. Three doors tried. All locked."),
+    ("dropB", 41.8, "narrator", "Or point an agent at a number. Koola runs the metric itself, and keeps only what's better."),
+    ("dropB", 48.2, "narrator", "Every workflow brings its own fences. Enforced for every agent."),
     ("outro", 0.6, "narrator", "Koola one point oh. Git, with a map. For you, and your agents."),
 ]
 
@@ -73,6 +75,7 @@ def speak_kokoro(text, out, speed, who):
     import soundfile as sf
 
     voice = os.environ.get(f"KULA_VOICE_{who.upper()}", VOICES[who][0])
+    speed *= VOICES[who][2]
     lang = voice[0]  # a: American, b: British
     if lang not in _pipes:
         _pipes[lang] = KPipeline(lang_code=lang, repo_id="hexgrad/Kokoro-82M")
@@ -82,7 +85,7 @@ def speak_kokoro(text, out, speed, who):
 
 def speak_say(text, out, speed, who):
     aiff = out.with_suffix(".aiff")
-    subprocess.run(["say", "-v", VOICES[who][1], "-r", str(int(178 * speed)), "-o", aiff, text], check=True)
+    subprocess.run(["say", "-v", VOICES[who][1], "-r", str(int(178 * speed * VOICES[who][2])), "-o", aiff, text], check=True)
     ff("-i", aiff, out)
     aiff.unlink()
 
@@ -118,7 +121,7 @@ def main():
            "-ar", 48000, "-ac", 2, final)
         raw.unlink()
         d = duration(final)
-        out.append({"file": f"vo/{i:02d}.wav", "start": round(starts[i], 3), "duration": round(d, 3), "section": sec, "speaker": who, "text": text.replace("koola", "kula").replace("Koola", "Kula").replace("dot R S", ".rs")})
+        out.append({"file": f"vo/{i:02d}.wav", "start": round(starts[i], 3), "duration": round(d, 3), "section": sec, "speaker": who, "text": text.replace("koola", "kula").replace("Koola", "Kula").replace("dot R S", ".rs").replace("koola dot toml", "kula.toml")})
         print(f"{starts[i]:6.2f}s  {d:4.2f}s  ×{speed:.2f}  {who:8} {text}")
     (dest / "vo.json").write_text(json.dumps({"engine": name, "lines": out}, indent=1))
     print(f"→ {dest / 'vo.json'} ({name})")

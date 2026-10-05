@@ -541,11 +541,29 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "teams": cfg.teams,
             "team": crate::guard::team(r),
             "research": crate::research::list(r),
+            "research_scope": research_scope(r, &cfg),
             "git_hooks": crate::project::hooks_status(r).unwrap_or_default(),
             "ci": ci,
         }))
     })
     .await
+}
+
+/// For each research loop: the files its agents may change (the rest is fenced).
+fn research_scope(r: &Repo, cfg: &crate::config::Config) -> Value {
+    let files: Vec<String> =
+        r.run(&["ls-files", "-z"]).unwrap_or_default().split('\0').filter(|p| !p.is_empty()).map(String::from).collect();
+    let mut out = serde_json::Map::new();
+    for w in crate::workflow::all(cfg).into_iter().filter(|w| w.research.is_some()) {
+        let t = crate::guard::Task { title: "research".into(), workflow: w.name.clone(), scope: w.scope.clone(), ..Default::default() };
+        let Ok(g) = crate::guard::Guards::new(cfg, Some(t)) else { continue };
+        let open: Vec<&String> = files.iter().filter(|p| g.path(p).level.editable()).collect();
+        out.insert(
+            w.name.clone(),
+            json!({ "files": open.iter().take(40).collect::<Vec<_>>(), "count": open.len(), "fenced": files.len() - open.len() }),
+        );
+    }
+    Value::Object(out)
 }
 
 #[derive(Deserialize, Default)]
@@ -639,6 +657,13 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
             }
             "team_start" => json!(crate::guard::team_start(r, &a.name, &format!("user:{}", r.user()))?),
             "team_stop" => json!(crate::guard::team_stop(r)?),
+            "team_prompt" => {
+                // previewed from the editor: the team as it is on screen, saved or not
+                let cfg = crate::config::Config::load(&r.root)?;
+                let t = a.teams.first().ok_or_else(|| anyhow!("send the team"))?;
+                let m = t.members.iter().find(|m| m.agent == a.agent).ok_or_else(|| anyhow!("{} is not in the team", a.agent))?;
+                json!({ "text": crate::agents::team_prompt(&cfg, t, m) })
+            }
             "research_start" => json!(crate::research::start(r, &a.workflow, &format!("user:{}", r.user()), true)?),
             "research_stop" => json!(crate::research::stop(r)?),
             "workflow_install" => {

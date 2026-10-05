@@ -248,6 +248,9 @@ pub fn workflow_prompt(w: &Workflow) -> String {
          (or have the user run `kula task start \"<title>\" -w {}`). From then on kula's hooks hold you to:\n\n",
         w.name, w.about, w.name, w.name
     );
+    if !w.prompt.trim().is_empty() {
+        s.push_str(&format!("{}\n\n", w.prompt.trim()));
+    }
     let row = |s: &mut String, k: &str, v: &[String]| {
         if !v.is_empty() {
             s.push_str(&format!("- **{k}**: {}\n", v.join(", ")));
@@ -289,6 +292,48 @@ pub fn workflow_prompt(w: &Workflow) -> String {
         "\nFences are enforced, not advice: an edit, a read or a shell command that touches fenced code is refused \
          with the reason. Don't work around it – `suggest` a change to the fence, or ask the user.\n",
     );
+    s
+}
+
+/// One member's full instructions in a team: the team's prompt, its own, where it
+/// sits (who it answers to, who answers to it, who it hands off to), then its workflow.
+pub fn team_prompt(cfg: &Config, team: &crate::config::Team, m: &crate::config::Member) -> String {
+    let mut s = format!("# {} in team {}\n\n", m.agent, team.name);
+    if !team.about.is_empty() {
+        s.push_str(&format!("{}\n\n", team.about));
+    }
+    if !team.prompt.trim().is_empty() {
+        s.push_str(&format!("{}\n\n", team.prompt.trim()));
+    }
+    if !m.role.is_empty() {
+        s.push_str(&format!("Your role: {}.\n\n", m.role));
+    }
+    if !m.prompt.trim().is_empty() {
+        s.push_str(&format!("{}\n\n", m.prompt.trim()));
+    }
+    let reports: Vec<&str> = team.members.iter().filter(|x| x.reports_to == m.agent).map(|x| x.agent.as_str()).collect();
+    let mut place = vec![];
+    if m.reports_to.is_empty() {
+        place.push("You lead this team.".to_string());
+    } else {
+        place.push(format!("You answer to {}.", m.reports_to));
+    }
+    if !reports.is_empty() {
+        place.push(format!("{} answer{} to you.", reports.join(" and "), if reports.len() == 1 { "s" } else { "" }));
+    }
+    if !m.hands_off.is_empty() {
+        place.push(format!("When your part is done, hand it to {} – say what changed and what to check.", m.hands_off.join(" and ")));
+    }
+    let from: Vec<&str> = team.members.iter().filter(|x| x.hands_off.contains(&m.agent)).map(|x| x.agent.as_str()).collect();
+    if !from.is_empty() {
+        place.push(format!("{} hand{} work to you.", from.join(" and "), if from.len() == 1 { "s" } else { "" }));
+    }
+    s.push_str(&place.join(" "));
+    s.push_str("\n\n");
+    match (!m.workflow.is_empty()).then(|| workflow::find(cfg, &m.workflow)).flatten() {
+        Some(w) => s.push_str(&workflow_prompt(&w)),
+        None => s.push_str("You have no workflow of your own: kula.toml's fences apply.\n"),
+    }
     s
 }
 

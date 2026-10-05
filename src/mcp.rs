@@ -44,7 +44,7 @@ fn tools() -> Value {
           "inputSchema": s(json!({ "target": { "type": "string" }, "query": { "type": "string" }, "limit": { "type": "integer" } }), &[]) },
         { "name": "sparql", "description": "Ask the knowledge graph anything in SPARQL 1.1 (read only). Prefixes kula: (vocabulary), code: (urn:kula: instances), rdf:, rdfs:, xsd: are predeclared. Classes: kula:Symbol (with subclasses Function, Method, Class, Interface), File, Package, Cluster, Note, Memory, Issue, Guard. Properties: name, path, language, startLine, endLine, definedIn, memberOf, calls, imports, inCluster, about, body, author, created, stale, status, guardLevel, reason, fences. Example: SELECT ?name (COUNT(?c) AS ?n) WHERE { ?s a kula:Function ; kula:name ?name . ?c kula:calls ?s } GROUP BY ?name ORDER BY DESC(?n) LIMIT 10",
           "inputSchema": s(json!({ "query": { "type": "string" }, "limit": { "type": "integer", "description": "max rows (default 200)" } }), &["query"]) },
-        { "name": "workflows", "description": "How work is done here. Lists the workflows (explore, fix, refactor, tests, docs and the repository's own): each has its own fences, default scope, memory policy, the steps to follow and the docs to read first. Returns the active task's workflow in full. Call it at the start of a task.",
+        { "name": "workflows", "description": "How work is done here. Lists the workflows (explore, fix, refactor, tests, docs, autoresearch and the repository's own); when a team is at work, your place in it – your workflow, who you answer to, who you hand off to – and your full instructions: each has its own fences, default scope, memory policy, the steps to follow and the docs to read first. Returns the active task's workflow in full. Call it at the start of a task.",
           "inputSchema": s(json!({}), &[]) },
         { "name": "start_task", "description": "Declare what you are doing, optionally in a workflow; its fences then apply to you. Only when no task is active – you cannot replace a task a person started.",
           "inputSchema": s(json!({ "title": { "type": "string" }, "workflow": { "type": "string" }, "scope": { "type": "array", "items": { "type": "string" }, "description": "globs or symbol names; defaults to the workflow's scope" } }), &["title"]) },
@@ -213,7 +213,10 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
                 .into_iter()
                 .map(|w| json!({ "name": w.name, "about": w.about, "builtin": w.builtin, "research": w.research.is_some() }))
                 .collect();
-            let team = CLIENT.get().and_then(|c| crate::guard::member(repo, &cfg, c)).map(|(t, m)| json!({ "team": t, "you": m }));
+            let team = CLIENT.get().and_then(|c| crate::guard::member(repo, &cfg, c)).map(|(t, m)| {
+                let team = cfg.teams.iter().find(|x| x.name == t);
+                json!({ "team": t, "you": m, "members": team.map(|x| &x.members), "instructions": team.map(|x| crate::agents::team_prompt(&cfg, x, &m)) })
+            });
             json!({ "workflows": list, "task": g.task(), "active": g.workflow(), "team": team, "docs": crate::agents::docs(repo)?.into_iter().filter(|d| d.exists).map(|d| d.path).collect::<Vec<_>>() })
         }
         "start_task" => {

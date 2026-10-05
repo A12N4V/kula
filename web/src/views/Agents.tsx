@@ -8,6 +8,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, relTime, type AgentDoc, type AgentsInfo, type GuardLevel, type Memory, type RawRule, type ResearchRun, type Suggestion, type Team, type Workflow } from "../api";
 import { BRANDS, Mark } from "../brands";
+import { teamLayout, workflowColor } from "./TeamFlow";
+import AgentMap from "./AgentMap";
 import { Chips, CodeField, HereHint, LinkArea } from "../Autofill";
 import { useCode } from "../CodePanel";
 import type { Go, Target } from "../nav";
@@ -121,9 +123,7 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
     <div className="page agents">
       <header className="page-head">
         <div>
-          <div className="eyebrow">for AI agents</div>
           <h1>Agents</h1>
-          <p className="muted">How agents work in this repository: the workflow they follow, the code they may not touch, what they remember. Edits here write kula.toml, AGENTS.md and git – the CLI, MCP, the pre-edit hook and CI all read the same thing.</p>
         </div>
       </header>
 
@@ -179,7 +179,7 @@ function Overview({ info, act, setTab, onGraph, open }: { info: AgentsInfo; act:
       </div>
 
       <div className="ag-grid">
-        <Card title={info.task ? "Now" : "Start a task"} sub={info.task ? `started ${relTime(info.task.started)} by ${info.task.by}` : "agents follow its workflow and stay in its scope"} className="ag-now">
+        <Card title={info.task ? "Now" : "Start a task"} sub={info.task ? `${info.task.by} · ${relTime(info.task.started)}` : undefined} className="ag-now">
           {info.task ? (
             <>
               <div className="ag-task-title">{info.task.title}</div>
@@ -201,9 +201,9 @@ function Overview({ info, act, setTab, onGraph, open }: { info: AgentsInfo; act:
           ) : <StartTask info={info} act={act} />}
         </Card>
 
-        <Card title="Needs you" sub="what agents left for a person" className="ag-needs">
+        <Card title="Needs you" className="ag-needs">
           {info.suggestions.length === 0 && stale.length === 0 && info.docs.every((d) => d.current || !d.synced) && info.connections.some((c) => c.mcp) ? (
-            <div className="muted ag-empty">Nothing waiting. Agents propose fences and workflows with the <code>suggest</code> tool; they land here.</div>
+            <div className="muted ag-empty">Nothing waiting.</div>
           ) : null}
           {info.suggestions.map((s) => <SuggestionRow key={s.id} s={s} act={act} />)}
           {stale.slice(0, 4).map((m) => (
@@ -226,26 +226,25 @@ function Overview({ info, act, setTab, onGraph, open }: { info: AgentsInfo; act:
           )}
         </Card>
 
-        <Card title="Autoresearch" sub="an agent improves a number; kula measures and keeps score" right={<button className="btn sm ghost" onClick={() => setTab("research")}>Open <Icon.arrow /></button>}>
+        <Card title="Autoresearch" right={<button className="btn sm ghost" onClick={() => setTab("research")}>Open <Icon.arrow /></button>}>
           {info.research[0] ? <RunSummary run={info.research[0]} /> : (
             <div className="stack">
-              <div className="muted ag-meta">Point an agent at a metric – test time, bundle size, loss, latency – and let it loop: change, measure, keep what's better. kula runs the metric itself, so every kept step is a real commit.</div>
               <div className="row"><button className="btn sm primary" onClick={() => setTab("research")}><Icon.flask /> Set up a loop</button></div>
             </div>
           )}
         </Card>
 
-        <Card title="Team" sub={info.team ? `at work since ${relTime(info.team.started)}` : "each agent in its own workflow"} right={<button className="btn sm ghost" onClick={() => setTab("teams")}>{info.teams.length ? "Edit" : "Set up"} <Icon.arrow /></button>}>
+        <Card title="Team" sub={info.team ? `${info.team.name} · since ${relTime(info.team.started)}` : undefined} right={<button className="btn sm ghost" onClick={() => setTab("teams")}>{info.teams.length ? "Edit" : "Set up"} <Icon.arrow /></button>}>
           {info.team ? (
             <div className="team-mini">
               {(info.teams.find((t) => t.name === info.team!.name)?.members ?? []).map((m, i) => (
                 <div key={i} className="row"><AgentMark id={m.agent} /><b>{AGENT_NAME[m.agent] ?? m.agent}</b><span className="tag accent">{m.workflow || "no workflow"}</span><span className="muted">{m.role}</span></div>
               ))}
             </div>
-          ) : <div className="muted ag-meta">{info.teams.length ? `${info.teams.length} team${info.teams.length > 1 ? "s" : ""} saved – none at work.` : "Save a team: Claude Code on autoresearch, Cursor on tests, Codex reviewing – each held to its own fences."}</div>}
+          ) : <div className="muted ag-meta">{info.teams.length ? `${info.teams.length} saved – none at work` : "No teams."}</div>}
         </Card>
 
-        <Card title="Workflows" sub="work modes, each with its own fences" right={<button className="btn sm ghost" onClick={() => setTab("workflows")}>Edit <Icon.arrow /></button>} className="ag-wide">
+        <Card title="Workflows" right={<button className="btn sm ghost" onClick={() => setTab("workflows")}>Edit <Icon.arrow /></button>} className="ag-wide">
           <div className="wf-grid">
             {info.workflows.map((w) => <WorkflowTile key={w.name} w={w} active={info.workflow?.name === w.name} onPreview={() => onGraph(w.name)} />)}
           </div>
@@ -381,6 +380,7 @@ function Workflows({ info, act, onGraph }: { info: AgentsInfo; act: Act; onGraph
           <div className="ag-body wf-form">
             <label><span>name</span><input className="input mono" value={draft.name} onChange={(e) => set("name", e.target.value.replace(/[^\w-]/g, ""))} placeholder="db-migrate" /></label>
             <label><span>about</span><input className="input" value={draft.about ?? ""} onChange={(e) => set("about", e.target.value)} placeholder="One line: what this kind of work is" /></label>
+            <label className="wf-prompt"><span>prompt</span><textarea className="input" rows={2} value={draft.prompt ?? ""} onChange={(e) => set("prompt", e.target.value)} placeholder="system prompt for every agent in this workflow" aria-label="System prompt" /></label>
             <div className="wf-fence-grid">
               <FenceField level="open" label="scope" hint="agents may change only this" values={draft.scope ?? []} onChange={(v) => set("scope", v)} />
               <FenceField level="locked" label="lock" hint="read, never edit" values={draft.lock ?? []} onChange={(v) => set("lock", v)} />
@@ -444,7 +444,7 @@ function Workflows({ info, act, onGraph }: { info: AgentsInfo; act: Act; onGraph
             </div>
           </div>
         </section>
-      ) : <Empty title="Pick a workflow">Or create one: a name, the fences it brings, the steps an agent follows.</Empty>}
+      ) : <Empty title="Pick a workflow" />}
     </div>
   );
 }
@@ -528,26 +528,154 @@ const RESEARCH_LOOP: { tool: string; what: string; gate?: boolean }[] = [
   { tool: "remember", what: "why it worked" },
 ];
 
+const GREEN = "#8fd694", RED = "#f0827a", ACCENT = "#f97f3a", DIM = "#867d73";
+
 function ResearchTab({ info, act }: { info: AgentsInfo; act: Act }) {
   const loops = info.workflows.filter((w) => w.research?.metric);
+  const [cur, setCur] = useState(loops[0]?.name ?? "");
+  const [adding, setAdding] = useState(loops.length === 0);
+  const w = loops.find((x) => x.name === cur) ?? loops[0];
+  return (
+    <Card title="Research" sub={w ? `${loops.length} loop${loops.length > 1 ? "s" : ""}` : undefined} className="ag-wide team-card"
+      right={<button className="btn sm ghost" onClick={() => setAdding(true)}><Icon.plus /> loop</button>}>
+      {loops.length > 1 && (
+        <div className="team-tabs" role="tablist" aria-label="Loops">
+          {loops.map((x) => <button key={x.name} role="tab" aria-selected={x.name === w?.name} className={x.name === w?.name ? "on" : ""} onClick={() => { setCur(x.name); setAdding(false); }}>{x.name}{info.research.some((r) => r.workflow === x.name && r.active) && <i className="dot ok" title="running" />}</button>)}
+        </div>
+      )}
+      {adding || !w ? <NewLoop info={info} act={act} done={(n) => { setCur(n); setAdding(false); }} cancel={loops.length ? () => setAdding(false) : undefined} />
+        : <LoopMap key={w.name} w={w} info={info} act={act} />}
+    </Card>
+  );
+}
+
+function LoopMap({ w, info, act }: { w: Workflow; info: AgentsInfo; act: Act }) {
+  const [sel, setSel] = useState<string | null>("metric");
+  const runs = info.research.filter((r) => r.workflow === w.name);
+  const run = runs.find((r) => r.active) ?? runs[0];
+  const exps = runs.flatMap((r) => r.experiments);
+  const scope = info.research_scope?.[w.name];
+  const files = scope?.files.slice(0, 9) ?? [];
+  const team = info.teams.find((t) => t.name === info.team?.name);
+  const agents = new Map<string, number>();
+  for (const e of exps) { const id = e.by.replace(/^agent:/, "").replace(/^user:/, "you:"); agents.set(id, (agents.get(id) ?? 0) + 1); }
+  for (const m of team?.members.filter((m) => m.workflow === w.name) ?? []) if (![...agents.keys()].some((k) => k.startsWith(m.agent))) agents.set(m.agent, 0);
+  const agentId = (s: string) => AGENT_IDS.find((a) => s.startsWith(a)) ?? s;
+  const color = workflowColor(info.workflows, w.name);
+  const kept = exps.filter((e) => e.kept), failed = exps.filter((e) => e.value === null), reverted = exps.filter((e) => !e.kept && e.value !== null);
+  const spread = (n: number, i: number, gap = 0.55) => (i - (n - 1) / 2) * -gap;
+  const ag = [...agents.keys()];
+  const nodes = [
+    ...ag.map((id, i) => ({ id: `a:${id}`, label: AGENT_NAME[agentId(id)] ?? id, x: -3, y: spread(ag.length, i, 0.8), size: 12, color, group: "agents", glyph: GLYPHS[agentId(id)] ?? id.slice(0, 1).toUpperCase(), hub: true })),
+    { id: "wf", label: w.name, x: -1.2, y: 0, size: 15, color, group: "agents", glyph: "↻", hub: true },
+    ...files.map((f, i) => ({ id: `f:${f}`, label: f.split("/").pop()!, x: 0.8, y: spread(files.length + 1, i), size: 7, color: GREEN, group: "may edit" })),
+    { id: "fenced", label: `${scope?.fenced ?? 0} fenced`, x: 0.8, y: spread(files.length + 1, files.length), size: 6, color: RED, group: null },
+    { id: "metric", label: "benchmark", x: 2.7, y: 0, size: 15, color: ACCENT, group: "kula runs it", glyph: "≈", hub: true },
+    { id: "kept", label: `${kept.length} kept`, x: 4.4, y: 0.7, size: 10, color: ACCENT, group: "results", glyph: "✓", hub: true },
+    { id: "reverted", label: `${reverted.length} reverted`, x: 4.4, y: 0, size: 8, color: DIM, group: "results" },
+    { id: "failed", label: `${failed.length} failed`, x: 4.4, y: -0.7, size: 8, color: RED, group: "results" },
+  ];
+  const touched = new Set(exps.flatMap((e) => e.files));
+  const edges = [
+    ...ag.map((id) => ({ a: `a:${id}`, b: "wf", kind: "hand" as const })),
+    ...files.map((f) => ({ a: "wf", b: `f:${f}`, kind: "link" as const })),
+    ...files.map((f) => ({ a: `f:${f}`, b: "metric", kind: touched.has(f) ? ("hand" as const) : ("link" as const) })),
+    { a: "metric", b: "kept", kind: "hand" as const }, { a: "metric", b: "reverted", kind: "link" as const }, { a: "metric", b: "failed", kind: "link" as const },
+    { a: "kept", b: "wf", kind: "hand" as const },
+  ];
+  const tint: Record<string, string> = { agents: color, "may edit": GREEN, "kula runs it": ACCENT, results: DIM };
+  const save = (x: Partial<Workflow>) => {
+    const own = info.workflows.filter((y) => !y.builtin && y.name !== w.name);
+    return act("workflows_save", { workflows: [...own, { ...w, ...x, builtin: undefined }] }, `${w.name} saved`).catch(() => {});
+  };
+  const list = (es: typeof exps) => (
+    <div className="mi-list">{es.length === 0 && <span className="muted">none</span>}{[...es].reverse().slice(0, 14).map((e) => (
+      <div key={`${e.n}-${e.at}`} className={`mi-exp ${e.kept ? "kept" : ""}`}><span className="mono">{e.value === null ? "–" : num(e.value)}</span><span>{e.hypothesis}</span>{e.note && <small className="muted">{e.note}</small>}</div>
+    ))}</div>
+  );
+  let panel: ReactNode;
+  if (sel === "wf") panel = <LoopSettings w={w} save={save} />;
+  else if (sel === "metric") panel = (
+    <>
+      <div className="mi-kind">benchmark · kula runs it</div>
+      <MetricEdit w={w} save={save} />
+      {run && <><RunChart run={run} w={560} h={150} />
+        <div className="run-kpis"><span><b>{num(run.baseline)}</b> base</span><span><b className="lv-open">{num(run.best)}</b> best</span><span><b>{pct(run).toFixed(1)}%</b></span>{run.budget > 0 && <span><b>{Math.max(0, run.budget - run.experiments.length)}</b> left</span>}</div></>}
+    </>
+  );
+  else if (sel?.startsWith("a:")) { const id = sel.slice(2); panel = <><div className="mi-kind"><AgentMark id={agentId(id)} size={13} /> agent</div><div className="mi-title">{AGENT_NAME[agentId(id)] ?? id}</div>{list(exps.filter((e) => e.by.replace(/^agent:/, "").replace(/^user:/, "you:") === id))}</>; }
+  else if (sel?.startsWith("f:")) { const f = sel.slice(2); panel = <><div className="mi-kind">may edit</div><div className="mi-title mono">{f}</div>{list(exps.filter((e) => e.files.includes(f)))}</>; }
+  else if (sel === "fenced") panel = <><div className="mi-kind">fenced</div><div className="mi-title">{scope?.fenced ?? 0} files</div><span className="muted">everything outside the scope: read only; an experiment that touches it is reverted unrun</span></>;
+  else if (sel === "kept" || sel === "reverted" || sel === "failed") panel = <><div className="mi-kind">{sel}</div>{list(sel === "kept" ? kept : sel === "reverted" ? reverted : failed)}</>;
+  else panel = <div className="muted mi-hint">select a node</div>;
+  return (
+    <div className="team-stage">
+      <div className="team-graph">
+        <AgentMap nodes={nodes} edges={edges} selected={sel} onSelect={setSel} height={380} label={`Research loop ${w.name}`}
+          groupColor={(g) => tint[g] ?? null} groupLabel={(g) => g} />
+        <div className="map-legend">
+          {run ? <span className="mono">{run.branch}</span> : <span className="muted">not started</span>}
+          {run && <span><b className="lv-open">{num(run.best)}</b>&nbsp;best · {pct(run).toFixed(1)}%</span>}
+          <span className="spacer" />
+          {run?.active
+            ? <button className="btn sm" onClick={() => act("research_stop", {}, `${w.name} stopped`)}>Stop</button>
+            : <button className="btn sm primary" onClick={() => act("research_start", { workflow: w.name }, `${w.name} running – baseline measured`).catch(() => {})}><Icon.play /> Start</button>}
+        </div>
+      </div>
+      <aside className="map-inspector">{panel}</aside>
+    </div>
+  );
+}
+
+function LoopSettings({ w, save }: { w: Workflow; save: (x: Partial<Workflow>) => Promise<unknown> }) {
+  const [prompt, setPrompt] = useState(w.prompt ?? "");
+  const [scope, setScope] = useState<string[]>(w.scope ?? []);
+  const dirty = prompt !== (w.prompt ?? "") || JSON.stringify(scope) !== JSON.stringify(w.scope ?? []);
+  return (
+    <>
+      <div className="mi-kind">loop</div>
+      <div className="mi-title mono">{w.name}</div>
+      <label className="mi-field"><span>system prompt</span><textarea className="input" rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label="System prompt" /></label>
+      <div className="mi-field"><span>may edit</span><Chips values={scope} onChange={setScope} placeholder="src/index/**, tokenize" label="Scope" /></div>
+      {w.steps?.length ? <ol className="ag-steps">{w.steps.map((x, i) => <li key={i}>{x}</li>)}</ol> : null}
+      <div className="row"><span className="spacer" /><button className="btn sm primary" disabled={!dirty} onClick={() => save({ prompt, scope })}>Save</button></div>
+    </>
+  );
+}
+
+function MetricEdit({ w, save }: { w: Workflow; save: (x: Partial<Workflow>) => Promise<unknown> }) {
+  const [r, setR] = useState(w.research!);
+  const dirty = JSON.stringify(r) !== JSON.stringify(w.research);
+  return (
+    <div className="stack">
+      <input className="input mono" value={r.metric} onChange={(e) => setR({ ...r, metric: e.target.value })} aria-label="Metric command" />
+      <div className="row">
+        <div className="seg">{(["min", "max"] as const).map((g) => <button key={g} type="button" className={(r.goal || "min") === g ? "on" : ""} onClick={() => setR({ ...r, goal: g })}>{g === "min" ? "lower" : "higher"}</button>)}</div>
+        <input className="input mono research-budget" type="number" min={0} value={r.budget ?? 0} onChange={(e) => setR({ ...r, budget: Math.max(0, Number(e.target.value) || 0) })} aria-label="Budget" title="budget: experiments, 0 for no limit" />
+        <span className="spacer" /><button className="btn sm primary" disabled={!dirty} onClick={() => save({ research: r })}>Save</button>
+      </div>
+    </div>
+  );
+}
+
+function NewLoop({ info, act, done, cancel }: { info: AgentsInfo; act: Act; done: (name: string) => void; cancel?: () => void }) {
   const own = info.workflows.filter((w) => !w.builtin);
-  const [name, setName] = useState(loops[0]?.name ?? "autoresearch");
-  const base = info.workflows.find((w) => w.name === name);
-  const [metric, setMetric] = useState(base?.research?.metric ?? "");
-  const [goal, setGoal] = useState<"min" | "max">((base?.research?.goal as "min" | "max") || "min");
-  const [budget, setBudget] = useState(base?.research?.budget ?? 20);
-  const [scope, setScope] = useState<string[]>(base?.scope ?? []);
+  const taken = info.workflows.filter((w) => w.research?.metric).map((w) => w.name);
+  const [name, setName] = useState(taken.includes("autoresearch") ? `research-${taken.length + 1}` : "autoresearch");
+  const [metric, setMetric] = useState("");
+  const [goal, setGoal] = useState<"min" | "max">("min");
+  const [budget, setBudget] = useState(20);
+  const [scope, setScope] = useState<string[]>([]);
+  const [prompt, setPrompt] = useState("");
   const auto = info.workflows.find((w) => w.name === "autoresearch");
   const save = () => {
-    const b = base ?? { ...blank(), name, about: auto?.about ?? "" };
-    const w: Workflow = { ...blank(), ...b, builtin: undefined, scope, steps: b.steps?.length ? b.steps : auto?.steps ?? [], research: { metric, goal, budget } };
-    return act("workflows_save", { workflows: [...own.filter((x) => x.name !== name), w] }, `${name} is a research loop – commit kula.toml, then start it`).catch(() => {});
+    const b = info.workflows.find((w) => w.name === name) ?? { ...blank(), name, about: auto?.about ?? "" };
+    const w: Workflow = { ...blank(), ...b, builtin: undefined, scope, prompt, steps: b.steps?.length ? b.steps : auto?.steps ?? [], research: { metric, goal, budget } };
+    act("workflows_save", { workflows: [...own.filter((x) => x.name !== name), w] }, `${name} saved`).then(() => done(name)).catch(() => {});
   };
-  const running = info.research.find((r) => r.active);
   return (
-    <div className="ag-grid">
-      <Card title="Autoresearch" sub="agents improve a metric; kula keeps score" className="ag-wide research-hero">
-        <p className="research-pitch">Give an agent a number to move – test time, bundle size, p95 latency, validation loss – and a part of the code it may change. It forms a hypothesis, edits, and calls <code>experiment</code>: kula checks the change against the fences, <b>runs the metric itself</b>, commits it if the number improved and reverts it if not. Agents can't report their own scores, every kept step is a commit you can read, and memories carry what worked into the next run.</p>
+    <div className="team-stage">
+      <div className="team-graph">
         <div className="loop">
           {RESEARCH_LOOP.map((st, i) => (
             <div key={st.tool} className={`loop-step ${st.gate ? "gate" : ""}`}>
@@ -556,130 +684,173 @@ function ResearchTab({ info, act }: { info: AgentsInfo; act: Act }) {
             </div>
           ))}
         </div>
-      </Card>
-
-      <Card title="Runs" sub={info.research.length ? `${info.research.length} in this checkout` : "none yet"} className="ag-wide"
-        right={running ? <button className="btn sm" onClick={() => act("research_stop", {}, `${running.workflow} stopped – its branch stays`)}>Stop</button> : loops.length ? (
-          <div className="row">{loops.map((w) => <button key={w.name} className="btn sm primary" onClick={() => act("research_start", { workflow: w.name }, `Baseline measured – ${w.name} is running`).catch(() => {})}><Icon.play /> Start {w.name}</button>)}</div>
-        ) : null}>
-        {info.research.length === 0 && <div className="muted ag-empty">{loops.length ? "Start a loop: kula measures the baseline on a research/ branch, then agents run experiments with the `experiment` tool." : "Set up a loop below, commit kula.toml, then start it."}</div>}
-        {info.research.map((r) => (
-          <div key={r.workflow + r.started} className="run">
-            <div className="row run-head">
-              <b className="mono">{r.workflow}</b>{r.active ? <span className="tag accent">running</span> : <span className="tag">finished</span>}
-              <span className="muted mono">{r.metric}</span><span className="spacer" />
-              <span className="muted">{r.goal === "max" ? "higher" : "lower"} is better · {r.branch} · {relTime(r.started)}</span>
-            </div>
-            <RunChart run={r} />
-            <div className="run-kpis">
-              <span><b>{num(r.baseline)}</b> baseline</span><span><b className="lv-open">{num(r.best)}</b> best</span><span><b>{pct(r).toFixed(1)}%</b> better</span>
-              <span><b>{r.experiments.filter((e) => e.kept).length}/{r.experiments.length}</b> kept</span>{r.budget > 0 && <span><b>{Math.max(0, r.budget - r.experiments.length)}</b> left</span>}
-            </div>
-            <div className="run-list">
-              {[...r.experiments].reverse().slice(0, 12).map((e) => (
-                <div key={e.n} className={`run-exp ${e.kept ? "kept" : ""}`}>
-                  <span className="loop-n">{String(e.n).padStart(2, "0")}</span>
-                  <span className={`tag ${e.kept ? "accent" : ""}`}>{e.kept ? "kept" : e.value === null ? "failed" : "reverted"}</span>
-                  <span className="mono run-v">{e.value === null ? "–" : num(e.value)}</span>
-                  <span className="run-h">{e.hypothesis}</span>
-                  <span className="muted run-by">{e.note || (e.commit ? e.commit.slice(0, 8) : "")} · {e.by}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </Card>
-
-      <Card title="Set up a loop" sub="writes [workflow.research] to kula.toml">
-        <form className="stack" onSubmit={(e) => { e.preventDefault(); save(); }}>
-          <label className="wf-inline"><span>workflow</span><input className="input mono" value={name} onChange={(e) => { const v = e.target.value.replace(/[^\w-]/g, ""); setName(v); const w = info.workflows.find((x) => x.name === v); if (w?.research) { setMetric(w.research.metric); setGoal((w.research.goal as "min" | "max") || "min"); setBudget(w.research.budget ?? 0); } if (w) setScope(w.scope ?? []); }} aria-label="Workflow name" /></label>
-          <label className="wf-inline"><span>metric</span><input className="input mono" value={metric} onChange={(e) => setMetric(e.target.value)} placeholder="pnpm test --silent 2>&1 | grep -o 'Time: [0-9.]*' | tail -1" aria-label="Metric command" /></label>
-          <div className="row"><span className="wf-lbl">better</span><div className="seg">{(["min", "max"] as const).map((g) => <button key={g} type="button" className={goal === g ? "on" : ""} onClick={() => setGoal(g)}>{g === "min" ? "lower" : "higher"}</button>)}</div>
-            <span className="wf-lbl">budget</span><input className="input mono research-budget" type="number" min={0} value={budget} onChange={(e) => setBudget(Math.max(0, Number(e.target.value) || 0))} aria-label="Budget" /></div>
-          <Chips values={scope} onChange={setScope} placeholder="what agents may change: src/index/**, tokenize" label="Scope" />
-          <div className="row"><span className="muted ag-meta">kula never lets the agent edit outside the scope or touch the metric's inputs you fence.</span><span className="spacer" /><button className="btn sm primary" disabled={!name || !metric.trim()}>Save loop</button></div>
-        </form>
-      </Card>
-
-      <Card title="How agents run it" sub="MCP, the shell, or any harness">
-        <Snippet text={`# a person, once
-kula research init --metric "<command>" --goal min --scope "src/index/**"
-git commit -am "an autoresearch loop"
-kula research start            # baseline, on a research/ branch
-
-# the agent, in a loop – MCP tools research + experiment, or:
-kula research status
-kula research try "cache the tokenizer per file"
-
-# any harness, fenced for the run
-kula run -w autoresearch -- aider --message "improve the metric"`} />
-      </Card>
+      </div>
+      <form className="map-inspector" onSubmit={(e) => { e.preventDefault(); save(); }}>
+        <div className="mi-kind">new loop{cancel && <><span className="spacer" /><button type="button" className="btn sm ghost icon-only" onClick={cancel} aria-label="Cancel"><Icon.close /></button></>}</div>
+        <input className="input mono mi-title" value={name} onChange={(e) => setName(e.target.value.replace(/[^\w-]/g, ""))} aria-label="Workflow name" />
+        <label className="mi-field"><span>benchmark</span><input className="input mono" value={metric} onChange={(e) => setMetric(e.target.value)} placeholder="cmd whose last number is the score" aria-label="Metric command" /></label>
+        <div className="row"><div className="seg">{(["min", "max"] as const).map((g) => <button key={g} type="button" className={goal === g ? "on" : ""} onClick={() => setGoal(g)}>{g === "min" ? "lower" : "higher"}</button>)}</div>
+          <input className="input mono research-budget" type="number" min={0} value={budget} onChange={(e) => setBudget(Math.max(0, Number(e.target.value) || 0))} aria-label="Budget" title="budget" /></div>
+        <div className="mi-field"><span>may edit</span><Chips values={scope} onChange={setScope} placeholder="src/index/**" label="Scope" /></div>
+        <label className="mi-field"><span>system prompt</span><textarea className="input" rows={4} value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label="System prompt" /></label>
+        <div className="row"><span className="spacer" /><button className="btn sm primary" disabled={!name || !metric.trim()}>Save loop</button></div>
+      </form>
     </div>
   );
 }
 
 // ------------------------------------------------------------------ teams
 
+const GLYPHS: Record<string, string> = { claude: "✻", cursor: "◆", codex: ">", gemini: "✦" };
+
 function Teams({ info, act }: { info: AgentsInfo; act: Act }) {
   const [teams, setTeams] = useState<Team[]>(info.teams);
+  const [cur, setCur] = useState(() => Math.max(0, info.teams.findIndex((t) => t.name === info.team?.name)));
   useEffect(() => setTeams(info.teams), [info]);
   const dirty = JSON.stringify(teams) !== JSON.stringify(info.teams);
-  const set = (i: number, t: Partial<Team>) => setTeams(teams.map((x, j) => (j === i ? { ...x, ...t } : x)));
-  const setM = (i: number, k: number, m: Partial<Team["members"][number]>) => set(i, { members: teams[i].members.map((x, j) => (j === k ? { ...x, ...m } : x)) });
+  const t = teams[cur];
+  const set = (x: Partial<Team>) => setTeams(teams.map((y, j) => (j === cur ? { ...y, ...x } : y)));
+  const add = () => {
+    setTeams([...teams, {
+      name: teams.length ? `team-${teams.length + 1}` : "ship", about: "", prompt: "",
+      members: [
+        { agent: "claude", workflow: "autoresearch", role: "lead", hands_off: ["codex"] },
+        { agent: "cursor", workflow: "tests", reports_to: "claude", hands_off: ["codex"] },
+        { agent: "codex", workflow: "explore", role: "review", reports_to: "claude" },
+      ],
+    }]);
+    setCur(teams.length);
+  };
   return (
-    <div className="ag-grid">
-      <Card title="Teams" sub="kula.toml · each agent in its own workflow, enforced per agent" className="ag-wide"
-        right={<>{dirty && <button className="btn sm ghost" onClick={() => setTeams(info.teams)}>Revert</button>}<button className="btn sm primary" disabled={!dirty} onClick={() => act("teams_save", { teams }, "Teams saved to kula.toml").catch(() => {})}>Save</button></>}>
-        <p className="muted ag-meta">A team gives every agent its own workflow. Claude Code can run an autoresearch loop while Cursor writes tests and Codex reviews – the same hook knows which agent is asking and holds each one to its own fences.</p>
-        {teams.length === 0 && <div className="muted ag-empty">No teams yet.</div>}
-        {teams.map((t, i) => {
-          const on = info.team?.name === t.name;
-          const saved = info.teams.some((x) => x.name === t.name);
-          return (
-            <div key={i} className={`team ${on ? "on" : ""}`}>
-              <div className="row team-head">
-                <input className="input mono team-name" value={t.name} onChange={(e) => set(i, { name: e.target.value.replace(/[^\w-]/g, "") })} placeholder="name" aria-label="Team name" />
-                <input className="input team-about" value={t.about ?? ""} onChange={(e) => set(i, { about: e.target.value })} placeholder="what this team is for" aria-label="Team about" />
-                {on && <span className="tag accent">at work</span>}
-                <span className="spacer" />
-                {on
-                  ? <button className="btn sm" onClick={() => act("team_stop", {}, `${t.name} stood down`)}>Stand down</button>
-                  : <button className="btn sm primary" disabled={dirty || !saved} title={dirty ? "Save first" : ""} onClick={() => act("team_start", { name: t.name }, `${t.name} at work`).catch(() => {})}><Icon.play /> Put to work</button>}
-                <button className="btn sm ghost icon-only danger" onClick={() => setTeams(teams.filter((_, j) => j !== i))} aria-label="Remove team"><Icon.close /></button>
-              </div>
-              {t.members.map((m, k) => {
-                const known = AGENT_IDS.includes(m.agent);
-                return (
-                  <div key={k} className="team-member">
-                    <AgentMark id={m.agent} />
-                    <select className="input" value={known ? m.agent : "other"} onChange={(e) => setM(i, k, { agent: e.target.value === "other" ? "aider" : e.target.value })} aria-label="Agent">
-                      {AGENT_IDS.map((a) => <option key={a} value={a}>{AGENT_NAME[a]}</option>)}<option value="other">other…</option>
-                    </select>
-                    {!known && <input className="input mono" value={m.agent} onChange={(e) => setM(i, k, { agent: e.target.value })} placeholder="agent name" aria-label="Agent name" />}
-                    <select className="input" value={m.workflow ?? ""} onChange={(e) => setM(i, k, { workflow: e.target.value })} aria-label="Workflow">
-                      <option value="">no workflow</option>{info.workflows.map((w) => <option key={w.name} value={w.name}>{w.name}</option>)}
-                    </select>
-                    <input className="input team-role" value={m.role ?? ""} onChange={(e) => setM(i, k, { role: e.target.value })} placeholder="role, e.g. speed up the indexer" aria-label="Role" />
-                    <button className="btn sm ghost icon-only danger" onClick={() => set(i, { members: t.members.filter((_, j) => j !== k) })} aria-label="Remove agent"><Icon.close /></button>
-                  </div>
-                );
-              })}
-              <button className="btn sm ghost" onClick={() => set(i, { members: [...t.members, { agent: AGENT_IDS.find((a) => !t.members.some((m) => m.agent === a)) ?? "aider", workflow: "", role: "" }] })}><Icon.plus /> Add an agent</button>
-            </div>
-          );
-        })}
-        <div className="row">
-          <button className="btn sm" onClick={() => setTeams([...teams, { name: teams.length ? `team-${teams.length + 1}` : "ship", about: "", members: [{ agent: "claude", workflow: "autoresearch", role: "" }, { agent: "cursor", workflow: "tests", role: "" }] }])}><Icon.plus /> New team</button>
+    <Card title="Teams" sub="kula.toml" className="ag-wide team-card"
+      right={<>{dirty && <button className="btn sm ghost" onClick={() => setTeams(info.teams)}>Revert</button>}<button className="btn sm primary" disabled={!dirty} onClick={() => act("teams_save", { teams }, "Teams saved").catch(() => {})}>Save</button></>}>
+      <div className="team-tabs" role="tablist" aria-label="Teams">
+        {teams.map((x, i) => (
+          <button key={i} role="tab" aria-selected={i === cur} className={i === cur ? "on" : ""} onClick={() => setCur(i)}>
+            {x.name || "unnamed"}{info.team?.name === x.name && <i className="dot ok" title="at work" />}
+          </button>
+        ))}
+        <button className="team-tab-add" onClick={add} aria-label="New team"><Icon.plus /></button>
+      </div>
+      {t ? <TeamEditor key={cur} team={t} info={info} on={info.team?.name === t.name} saved={info.teams.some((x) => x.name === t.name)} dirty={dirty}
+        set={set} remove={() => { setTeams(teams.filter((_, j) => j !== cur)); setCur(0); }} act={act} /> : <div className="muted ag-empty">No teams.</div>}
+    </Card>
+  );
+}
+
+function TeamEditor({ team: t, info, on, saved, dirty, set, remove, act }: {
+  team: Team; info: AgentsInfo; on: boolean; saved: boolean; dirty: boolean; set: (t: Partial<Team>) => void; remove: () => void; act: Act;
+}) {
+  const [sel, setSel] = useState<string | null>(null);
+  const at = teamLayout(t);
+  const nodes = t.members.filter((m) => at.has(m.agent)).map((m) => ({
+    id: m.agent, label: `${AGENT_NAME[m.agent] ?? m.agent}${m.reports_to ? "" : " · lead"}`, ...at.get(m.agent)!, size: 13,
+    color: workflowColor(info.workflows, m.workflow), group: m.workflow || "", glyph: GLYPHS[m.agent] ?? m.agent.slice(0, 1).toUpperCase(), hub: true,
+  }));
+  const edges = t.members.flatMap((m) => [
+    ...(m.reports_to ? [{ a: m.reports_to, b: m.agent, kind: "tree" as const }] : []),
+    ...(m.hands_off ?? []).map((h) => ({ a: m.agent, b: h, kind: "hand" as const })),
+  ]);
+  const k = t.members.findIndex((m) => m.agent === sel);
+  const setM = (i: number, m: Partial<Team["members"][number]>) => {
+    const before = t.members[i].agent;
+    let members = t.members.map((x, j) => (j === i ? { ...x, ...m } : x));
+    if (m.agent !== undefined && m.agent !== before) {
+      members = members.map((x) => ({ ...x, reports_to: x.reports_to === before ? m.agent : x.reports_to, hands_off: x.hands_off?.map((h) => (h === before ? m.agent! : h)) }));
+      setSel(m.agent);
+    }
+    set({ members });
+  };
+  const drop = (i: number) => {
+    const gone = t.members[i].agent;
+    set({ members: t.members.filter((_, j) => j !== i).map((x) => ({ ...x, reports_to: x.reports_to === gone ? "" : x.reports_to, hands_off: x.hands_off?.filter((h) => h !== gone) })) });
+    setSel(null);
+  };
+  const addAgent = () => {
+    const agent = AGENT_IDS.find((a) => !t.members.some((m) => m.agent === a)) ?? `agent-${t.members.length + 1}`;
+    set({ members: [...t.members, { agent, workflow: "", reports_to: t.members.find((m) => !m.reports_to)?.agent ?? "" }] });
+    setSel(agent);
+  };
+  const used = [...new Set(t.members.map((m) => m.workflow ?? ""))];
+  return (
+    <div className="team-stage">
+      <div className="team-graph">
+        <AgentMap nodes={nodes} edges={edges} selected={sel} onSelect={setSel} height={380} label={`Team ${t.name}`}
+          groupColor={(g) => workflowColor(info.workflows, g)} groupLabel={(g) => g || "no workflow"} />
+        <div className="map-legend">
+          {used.map((w) => <span key={w}><i style={{ background: workflowColor(info.workflows, w) }} />{w || "no workflow"}</span>)}
+          <span><i className="k-line" />answers to</span><span><i className="k-dash" />hands off</span>
+          <span className="spacer" />
+          <button className="btn sm ghost" onClick={addAgent}><Icon.plus /> agent</button>
+          {on
+            ? <button className="btn sm" onClick={() => act("team_stop", {}, `${t.name} stood down`)}>Stand down</button>
+            : <button className="btn sm primary" disabled={dirty || !saved} title={dirty ? "Save first" : "Each agent works in its own workflow"} onClick={() => act("team_start", { name: t.name }, `${t.name} at work`).catch(() => {})}><Icon.play /> Put to work</button>}
         </div>
-      </Card>
-      <Card title="From the shell" sub="the same teams, for scripts and CI">
-        <Snippet text={`kula team save ship \\
-  -m claude=autoresearch:"speed up the indexer" \\
-  -m cursor=tests -m codex=explore:review
-kula team start ship    # each agent now works in its own workflow
-kula team stop`} />
-      </Card>
+      </div>
+      <aside className="map-inspector">
+        {k >= 0 ? <MemberDetail team={t} k={k} info={info} setM={(m) => setM(k, m)} drop={() => drop(k)} close={() => setSel(null)} /> : (
+          <>
+            <div className="mi-kind">team{on && <span className="tag accent">at work</span>}</div>
+            <input className="input mono mi-title" value={t.name} onChange={(e) => set({ name: e.target.value.replace(/[^\w-]/g, "") })} aria-label="Team name" />
+            <input className="input" value={t.about ?? ""} onChange={(e) => set({ about: e.target.value })} placeholder="about" aria-label="Team about" />
+            <label className="mi-field"><span>team prompt</span>
+              <textarea className="input" rows={6} value={t.prompt ?? ""} onChange={(e) => set({ prompt: e.target.value })} placeholder="every member gets this first" aria-label="Team prompt" />
+            </label>
+            <div className="mi-hint muted">select an agent to edit it</div>
+            <div className="row"><span className="spacer" /><button className="btn sm ghost danger" onClick={remove}>Delete team</button></div>
+          </>
+        )}
+      </aside>
     </div>
+  );
+}
+
+/** An agent's place and prompt, with the instructions kula will hand it. */
+function MemberDetail({ team, k, info, setM, drop, close }: { team: Team; k: number; info: AgentsInfo; setM: (m: Partial<Team["members"][number]>) => void; drop: () => void; close: () => void }) {
+  const m = team.members[k];
+  const others = team.members.filter((_, j) => j !== k).map((x) => x.agent).filter(Boolean);
+  const known = AGENT_IDS.includes(m.agent);
+  const [preview, setPreview] = useState<string | null>(null);
+  const toast = useToast();
+  const show = () => api.agentAction<{ text: string }>("team_prompt", { teams: [team], agent: m.agent }).then((r) => setPreview(r.text)).catch((e) => toast(e.message, "err"));
+  useEffect(() => { if (preview !== null) show(); }, [JSON.stringify(team)]); // keep an open preview current
+  return (
+    <>
+      <div className="mi-kind"><AgentMark id={m.agent} size={13} /> agent<span className="spacer" /><button className="btn sm ghost icon-only" onClick={close} aria-label="Back to the team"><Icon.close /></button></div>
+      <div className="mi-row">
+        <select className="input" value={known ? m.agent : "other"} onChange={(e) => setM({ agent: e.target.value === "other" ? "aider" : e.target.value })} aria-label="Agent">
+          {AGENT_IDS.map((a) => <option key={a} value={a}>{AGENT_NAME[a]}</option>)}<option value="other">other…</option>
+        </select>
+        {!known && <input className="input mono" value={m.agent} onChange={(e) => setM({ agent: e.target.value })} aria-label="Agent name" />}
+      </div>
+      <label className="mi-field"><span>workflow</span>
+        <select className="input" value={m.workflow ?? ""} onChange={(e) => setM({ workflow: e.target.value })} aria-label="Workflow" style={{ borderLeft: `3px solid ${workflowColor(info.workflows, m.workflow)}` }}>
+          <option value="">none – kula.toml's fences</option>{info.workflows.map((w) => <option key={w.name} value={w.name}>{w.name}</option>)}
+        </select>
+      </label>
+      <label className="mi-field"><span>role</span><input className="input" value={m.role ?? ""} onChange={(e) => setM({ role: e.target.value })} aria-label="Role" /></label>
+      <label className="mi-field"><span>answers to</span>
+        <select className="input" value={m.reports_to ?? ""} onChange={(e) => setM({ reports_to: e.target.value })} aria-label="Answers to">
+          <option value="">nobody – leads</option>{others.map((o) => <option key={o} value={o}>{AGENT_NAME[o] ?? o}</option>)}
+        </select>
+      </label>
+      <div className="mi-field"><span>hands off to</span>
+        <div className="team-hands">
+          {others.map((o) => {
+            const on = (m.hands_off ?? []).includes(o);
+            return <button key={o} className={`chip-toggle ${on ? "on" : ""}`} aria-pressed={on} onClick={() => setM({ hands_off: on ? (m.hands_off ?? []).filter((h) => h !== o) : [...(m.hands_off ?? []), o] })}><AgentMark id={o} size={12} /> {AGENT_NAME[o] ?? o}</button>;
+          })}
+        </div>
+      </div>
+      <label className="mi-field"><span>system prompt</span>
+        <textarea className="input" rows={5} value={m.prompt ?? ""} onChange={(e) => setM({ prompt: e.target.value })} aria-label="System prompt" />
+      </label>
+      <div className="row">
+        <button className="btn sm ghost" onClick={() => (preview === null ? show() : setPreview(null))}>{preview === null ? "Full instructions" : "Hide"}</button>
+        <span className="spacer" /><button className="btn sm ghost danger" onClick={drop}>Remove</button>
+      </div>
+      {preview !== null && <pre className="code team-preview">{preview}</pre>}
+    </>
   );
 }
 
@@ -695,13 +866,13 @@ function Fences({ info, act, onGraph }: { info: AgentsInfo; act: Act; onGraph: (
   const sugg = info.suggestions.filter((s) => s.kind === "guard");
   return (
     <div className="ag-grid">
-      <Card title="Fences" sub="kula.toml · shared with the team" className="ag-wide"
+      <Card title="Fences" sub="kula.toml" className="ag-wide"
         right={<><button className="btn sm ghost" onClick={() => onGraph()}><Icon.graph /> On the graph</button>{dirty && <button className="btn sm ghost" onClick={() => setRules(info.raw_rules)}>Revert</button>}<button className="btn sm primary" disabled={!dirty} onClick={() => act("guards_save", { rules }, "Fences saved to kula.toml").catch(() => {})}>Save</button></>}>
         {sugg.map((s) => <SuggestionRow key={s.id} s={s} act={act} />)}
         <div className="fence-legend">
           {(["locked", "hidden", "review"] as GuardLevel[]).map((l) => <span key={l}><GuardTag level={l} /> {LEVEL_MEANS[l]}</span>)}
         </div>
-        {rules.length === 0 && <div className="muted ag-empty">No fences yet{info.secrets_hidden ? " – likely secrets are still hidden from agents" : ""}. Add one for generated code, migrations, vendored code or anything a person must sign off.</div>}
+        {rules.length === 0 && <div className="muted ag-empty">No fences.</div>}
         {rules.map((r, i) => (
           <div key={i} className={`fence-row fr-${r.level}`}>
             <span className="loop-n">{String(i + 1).padStart(2, "0")}</span>
@@ -723,7 +894,7 @@ function Fences({ info, act, onGraph }: { info: AgentsInfo; act: Act; onGraph: (
         </div>
       </Card>
       {info.workflow && info.workflow_rules.length > 0 && (
-        <Card title={`From the ${info.workflow.name} workflow`} sub="while the task is open">
+        <Card title={`From the ${info.workflow.name} workflow`}>
           {info.workflow_rules.map((r, i) => (
             <div key={i} className="ag-rule"><span className="mono muted">w{i + 1}</span><GuardTag level={r.level} /><span className="mono ag-what">{[...r.paths, ...r.symbols].join(", ")}</span></div>
           ))}
@@ -756,7 +927,7 @@ function MemoryTab({ info, act, open }: { info: AgentsInfo; act: Act; open: (t: 
   const n = (f: typeof filter) => info.memories.filter((m) => f === "all" || (f === "stale" ? m.stale : f === "agents" ? m.author.startsWith("agent:") : !m.author.startsWith("agent:"))).length;
   const remember = () => act("remember", { target, text }, "Remembered – anchored to this code").then(() => setText("")).catch(() => {});
   return (
-    <Card title="Memory" sub="pinned to code · stored in refs/kula/meta · stale when the code changes" className="ag-memory"
+    <Card title="Memory" sub="refs/kula/meta" className="ag-memory"
       right={<div className="seg">{(["all", "stale", "agents", "people"] as const).map((f) => <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>{f} {n(f)}</button>)}</div>}>
       <form className="ag-remember" onSubmit={(e) => { e.preventDefault(); remember(); }}>
         <div className="stack-tight">
@@ -767,7 +938,7 @@ function MemoryTab({ info, act, open }: { info: AgentsInfo; act: Act; open: (t: 
         <button className="btn sm primary" disabled={!text.trim() || !info.memory_enabled}>Remember</button>
       </form>
       {info.memories.length > 4 && <input className="input ag-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter memories…" aria-label="Filter memories" />}
-      {mems.length === 0 && <div className="muted ag-empty">{info.memories.length ? "Nothing matches." : "No memories yet. Agents add them with the `remember` tool; so can you."}</div>}
+      {mems.length === 0 && <div className="muted ag-empty">{info.memories.length ? "Nothing matches." : "No memories yet."}</div>}
       {mems.map((m) => <MemoryRow key={m.id} m={m} open={open} act={act} />)}
     </Card>
   );
@@ -838,7 +1009,6 @@ function Docs({ info, act }: { info: AgentsInfo; act: Act }) {
         <label className="toggle"><input type="checkbox" checked={info.memory_enabled} onChange={(e) => act("settings_save", { agents: { hide_secrets: info.secrets_hidden, memory: e.target.checked, docs: info.docs_list } }, e.target.checked ? "Agent memory on" : "Agent memory off")} /> agents may keep memories</label>
         <label className="toggle"><input type="checkbox" checked={info.secrets_hidden} onChange={(e) => act("settings_save", { agents: { hide_secrets: e.target.checked, memory: info.memory_enabled, docs: info.docs_list } }, "Saved")} /> hide likely secrets</label>
         <div className="section-title">Brief</div>
-        <p className="muted ag-meta">kula writes a block into AGENTS.md (and CLAUDE.md, GEMINI.md when present) naming its tools, your fences and workflows – so agents without MCP still know the rules.</p>
         <div className="row"><button className="btn sm primary" onClick={() => act("docs_sync", {}, "Brief synced into the instruction files")}>Sync brief</button><button className="btn sm ghost" onClick={() => api.agentAction<{ text: string }>("brief").then((r) => setBrief(r.text))}>Preview</button></div>
       </div>
       <section className="card docs-edit">
@@ -879,7 +1049,7 @@ function Connect({ info, act }: { info: AgentsInfo; act: Act }) {
   const brief = info.docs.find((d) => d.path === "AGENTS.md");
   return (
     <div className="ag-grid">
-      <Card title="Harnesses" sub="each in its own config format – or kula agents connect all" className="ag-wide"
+      <Card title="Harnesses" className="ag-wide"
         right={<button className="btn sm" onClick={async () => { for (const c of info.connections) if (!(c.mcp && c.hook)) await act("connect", { agent: c.id }, "").catch(() => {}); }}><Icon.plug /> Connect all</button>}>
         <div className="conn-grid">
           {info.connections.map((c) => (
@@ -903,7 +1073,7 @@ function Connect({ info, act }: { info: AgentsInfo; act: Act }) {
         </div>
       </Card>
 
-      <Card title="Enforced everywhere" sub="what holds any agent, connected or not" className="ag-wide">
+      <Card title="Enforced everywhere" className="ag-wide">
         <div className="mod-grid">
           <Module id="mcp" name="MCP server" on what={<><code>kula mcp</code> – the graph, fences, memory and research as 23 tools, for any MCP client</>} />
           <Module id="git" name="git hooks" on={!!pre} what={<>pre-commit refuses an agent's commit of fenced changes{reindex ? `; ${reindex} more keep the graph current` : ""}</>}
@@ -915,11 +1085,10 @@ function Connect({ info, act }: { info: AgentsInfo; act: Act }) {
         </div>
       </Card>
 
-      <Card title="Tools" sub="what a connected agent can call">
+      <Card title="Tools">
         {TOOLS.map(([t, d]) => <div key={t} className="ag-tool"><span className="mono">{t}</span><span className="muted">{d}</span></div>)}
       </Card>
       <Card title="Any other agent" sub="MCP, or the shell">
-        <p className="muted ag-meta">Windsurf, Zed, Copilot, Continue, Cline, Goose and Amp speak MCP: point them at <code>kula mcp</code>.</p>
         <Snippet text={MCP} />
         <Snippet text={`kula run -w refactor -- opencode   # fenced for the run
 kula workflow prompt refactor       # the workflow, for a system prompt

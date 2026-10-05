@@ -399,11 +399,19 @@ enum TeamCmd {
         about: String,
         #[arg(short, long, required = true)]
         member: Vec<String>,
+        /// The agent the others answer to.
+        #[arg(long)]
+        lead: Option<String>,
+        /// Instructions every member gets.
+        #[arg(long)]
+        prompt: Option<String>,
     },
     /// Put a team to work: each member agent now works in its own workflow.
     Start { name: String },
     /// Stand the team down.
     Stop,
+    /// One member's full instructions: the team's prompt, its own, its place, its workflow.
+    Prompt { name: String, agent: String },
 }
 
 #[derive(Subcommand)]
@@ -1615,7 +1623,7 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 }
             }
         }
-        TeamCmd::Save { name, about, member } => {
+        TeamCmd::Save { name, about, member, lead, prompt } => {
             let mut members = vec![];
             for m in member {
                 let Some((agent, rest)) = m.split_once('=') else { bail!("members are agent=workflow[:role], not {m}") };
@@ -1623,15 +1631,24 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 if !wf.is_empty() && workflow::find(&cfg, wf).is_none() {
                     bail!("no workflow called {wf}");
                 }
+                // re-saving keeps what the UI set: prompts, hand-offs
+                let old =
+                    cfg.teams.iter().find(|t| t.name == name).and_then(|t| t.members.iter().find(|x| x.agent == agent.trim())).cloned();
                 members.push(config::Member {
                     agent: agent.trim().into(),
                     workflow: wf.trim().into(),
                     role: role.trim().into(),
-                    scope: vec![],
+                    ..old.unwrap_or_default()
                 });
             }
+            if let Some(lead) = &lead {
+                for m in members.iter_mut() {
+                    m.reports_to = if &m.agent == lead { String::new() } else { lead.clone() };
+                }
+            }
             let mut teams = cfg.teams.clone();
-            let t = config::Team { name: name.clone(), about, members };
+            let prompt = prompt.unwrap_or_else(|| cfg.teams.iter().find(|t| t.name == name).map(|t| t.prompt.clone()).unwrap_or_default());
+            let t = config::Team { name: name.clone(), about, prompt, members };
             match teams.iter_mut().find(|x| x.name == name) {
                 Some(x) => *x = t,
                 None => teams.push(t),
@@ -1642,6 +1659,12 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
         TeamCmd::Start { name } => {
             guard::team_start(repo, &name, &format!("user:{}", repo.user()))?;
             println!("  {} team {} at work – each agent in its own workflow", green("✓"), accent(&name));
+        }
+        TeamCmd::Prompt { name, agent } => {
+            let Some(t) = cfg.teams.iter().find(|t| t.name == name) else { bail!("no team called {name}") };
+            let id = agents::agent_id(&agent);
+            let Some(m) = t.members.iter().find(|m| agents::agent_id(&m.agent) == id) else { bail!("{agent} is not in team {name}") };
+            print!("{}", agents::team_prompt(&cfg, t, m));
         }
         TeamCmd::Stop => match guard::team_stop(repo)? {
             Some(t) => println!("  {} team {} stood down", green("✓"), t.name),

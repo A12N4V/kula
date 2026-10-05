@@ -1040,7 +1040,12 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .wf-tile.on { border-color: var(--accent); background: var(--panel); }
 .wf-tile.active { box-shadow: inset 2px 0 0 var(--accent); }
 .wf-tile b { font-size: 13px; }
-.wf-src { font-size: 10.5px; }
+.wf-src { font-size: 10.5px; white-space: nowrap; }
+/* a tile's head wraps instead of spilling: name and tags, then where it comes from */
+.wf-tile > .row:first-child { flex-wrap: wrap; row-gap: 4px; min-width: 0; }
+.wf-tile > .row:first-child > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wf-tile .tag { white-space: nowrap; gap: 4px; }
+.wf-tile .wf-fences { flex-wrap: wrap; }
 .wf-about { font-size: 11.5px; color: var(--text-2); line-height: 1.45; min-height: 2.9em; }
 .wf-fences { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .wf-mem { font-size: 10.5px; margin-left: auto; }
@@ -1248,6 +1253,17 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .team-name { width: 150px; }
 .team-about { flex: 1; min-width: 120px; max-width: 420px; }
 .team-member { display: flex; gap: 8px; align-items: center; }
+.team-m.open { border: 1px solid var(--line-2); background: var(--panel); padding: 6px; margin: 0 -6px; }
+.team-swatch { width: 4px; align-self: stretch; flex: none; }
+.team-detail { display: grid; gap: 10px; padding: 10px 0 4px 32px; }
+.team-place { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 14px; align-items: start; }
+.team-place label, .team-place > div, .team-prompt { display: grid; gap: 5px; }
+.team-prompt textarea { width: 100%; resize: vertical; font: 12.5px/1.5 var(--mono); }
+.team-hands { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-toggle { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--line); background: none; color: var(--text-3); font: inherit; font-size: 11.5px; cursor: pointer; }
+.chip-toggle.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+.team-preview { max-height: 280px; overflow: auto; white-space: pre-wrap; font-size: 11.5px; }
+.btn.on { border-color: var(--line-2); color: var(--text); }
 .team-member > select { width: 150px; flex: none; }
 .team-member > input.mono { width: 120px; flex: none; }
 .team-member > .team-role { flex: 1; min-width: 0; }
@@ -1279,8 +1295,64 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
   .wf-research-grid { grid-template-columns: 1fr; }
   .wf-native { grid-template-columns: 1fr; }
   .team-member { flex-wrap: wrap; }
+  .team-place { grid-template-columns: 1fr; }
+  .team-detail { padding-left: 0; }
   .team-member > select { width: calc(50% - 22px); }
   .team-member > .team-role { flex-basis: 100%; }
   .run-exp { grid-template-columns: 26px 70px 64px minmax(0, 1fr); }
   .run-by { display: none; }
 }
+
+/* The research map: five stages on the workflow's own ground, looping back */
+.rmap { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 22px; padding: 12px 12px 34px; background: color-mix(in oklab, var(--wf) 6%, transparent); border: 1px solid color-mix(in oklab, var(--wf) 30%, var(--line)); }
+.rmap-stage { position: relative; display: grid; align-content: start; gap: 6px; min-width: 0; padding: 10px; background: var(--panel); border: 1px solid var(--line); font-size: 11.5px; }
+.rmap-stage + .rmap-stage::before { content: ""; position: absolute; left: -17px; top: 22px; width: 12px; border-top: 1px solid var(--accent); }
+.rmap-stage + .rmap-stage::after { content: ""; position: absolute; left: -9px; top: 19px; border: 3.5px solid transparent; border-left: 5px solid var(--accent); }
+.rmap-stage.open { background: color-mix(in oklab, var(--green) 6%, var(--panel)); border-color: color-mix(in oklab, var(--green) 35%, var(--line)); }
+.rmap-k { display: flex; justify-content: space-between; font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--wf); }
+.rmap-k .link { font-size: 10px; letter-spacing: .06em; }
+.rmap-agent { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 2px 6px; align-items: center; }
+.rmap-agent .muted { grid-column: 2; font-size: 10.5px; }
+.rmap-prompt { white-space: pre-wrap; font-size: 11px; line-height: 1.45; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.rmap-files { display: grid; gap: 2px; font-size: 11px; }
+.rmap-files span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rmap-fenced { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--text-3); }
+.rmap-metric { font-size: 11px; white-space: pre-wrap; word-break: break-all; padding: 4px 6px; border: 1px solid var(--line); background: var(--bg); }
+.rmap-score b { font: 600 14px var(--mono); }
+.rmap-out b { font: 600 14px var(--mono); margin-right: 6px; }
+.rmap-loop { position: absolute; left: 0; right: 0; bottom: 8px; width: 100%; height: 16px; }
+.rmap-loop path { fill: none; stroke: var(--accent); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.research-prompt, .wf-prompt textarea { width: 100%; resize: vertical; font: 12px/1.5 var(--mono); }
+@media (max-width: 1100px) { .rmap { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-bottom: 12px; } .rmap-stage + .rmap-stage::before, .rmap-stage + .rmap-stage::after, .rmap-loop { display: none; } }
+@media (max-width: 760px) { .rmap { grid-template-columns: 1fr; } }
+
+/* Agent maps: the code graph's renderer, with an inspector beside it */
+.team-card .ag-body { gap: 0; }
+.team-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 10px; overflow-x: auto; }
+.team-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.team-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.team-tabs .team-tab-add { margin-left: 4px; }
+.team-stage { display: grid; grid-template-columns: minmax(0, 1fr) 320px; border: 1px solid var(--line); min-height: 420px; }
+.team-graph { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; }
+.agent-map { position: relative; width: 100%; background: var(--bg); }
+.map-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 10px; border-top: 1px solid var(--line); font-size: 11px; color: var(--text-3); }
+.map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.map-legend i { display: inline-block; width: 10px; height: 10px; opacity: .85; }
+.map-legend i.k-line { width: 16px; height: 0; border-top: 1.5px solid var(--line-2); opacity: 1; }
+.map-legend i.k-dash { width: 16px; height: 0; border-top: 1.5px dashed var(--accent); opacity: 1; }
+.map-inspector { display: grid; align-content: start; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: var(--panel); min-width: 0; overflow-y: auto; max-height: 520px; }
+.mi-kind { display: flex; align-items: center; gap: 7px; font: 600 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.mi-title { font: 600 15px var(--mono); color: var(--text); word-break: break-all; }
+input.mi-title { font: 600 14px var(--mono); }
+.mi-field { display: grid; gap: 4px; }
+.mi-field > span { font: 600 10px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.mi-field textarea { width: 100%; resize: vertical; font: 12px/1.5 var(--mono); }
+.mi-row { display: flex; gap: 6px; }
+.mi-row > * { flex: 1; min-width: 0; }
+.mi-hint { font-size: 11.5px; }
+.mi-list { display: grid; gap: 2px; }
+.mi-exp { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 2px 8px; padding: 5px 0; border-bottom: 1px dashed var(--line); font-size: 11.5px; }
+.mi-exp .mono { text-align: right; color: var(--text-2); }
+.mi-exp.kept .mono { color: var(--accent); }
+.mi-exp small { grid-column: 2; font-size: 10.5px; }
+@media (max-width: 1100px) { .team-stage { grid-template-columns: 1fr; } .map-inspector { border-left: 0; border-top: 1px solid var(--line); max-height: none; } }

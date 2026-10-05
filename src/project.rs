@@ -228,7 +228,7 @@ kula:check:
 const HOOKS: &[&str] = &["pre-commit", "post-commit", "post-checkout", "post-merge"];
 const MARK: &str = "# >>> kula";
 const MARK_END: &str = "# <<< kula";
-const HOOK_BODY: &str = "command -v kula >/dev/null 2>&1 && (kula index --if-stale --quiet >/dev/null 2>&1 &)";
+const HOOK_BODY: &str = "if command -v kula >/dev/null 2>&1; then (kula index --if-stale --quiet >/dev/null 2>&1 &); fi";
 /// Refuses an agent's commit of fenced changes (a person's commits pass untouched).
 const PRE_COMMIT: &str = "if command -v kula >/dev/null 2>&1; then kula guard commit || exit 1; fi";
 
@@ -245,10 +245,10 @@ pub fn hooks_install(repo: &Repo) -> Result<usize> {
     let mut n = 0;
     for h in HOOKS {
         let p = dir.join(h);
-        let cur = std::fs::read_to_string(&p).unwrap_or_default();
-        if cur.contains(MARK) {
-            n += 1;
-            continue;
+        let mut cur = std::fs::read_to_string(&p).unwrap_or_default();
+        // An older kula block is replaced, so a reinstall picks up fixes.
+        if let (Some(a), Some(b)) = (cur.find(MARK), cur.find(MARK_END)) {
+            cur = format!("{}{}", &cur[..a], cur[b + MARK_END.len()..].trim_start_matches('\n'));
         }
         let base = if cur.is_empty() {
             "#!/bin/sh\n".to_string()

@@ -47,6 +47,9 @@ pub struct Team {
     pub name: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub about: String,
+    /// Instructions every member gets, before its own.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub prompt: String,
     pub members: Vec<Member>,
 }
 
@@ -64,6 +67,15 @@ pub struct Member {
     /// What this agent is for, in a few words.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub role: String,
+    /// Its own system prompt, after the team's and before its workflow's.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub prompt: String,
+    /// The member it answers to (an agent name); none for the lead.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub reports_to: String,
+    /// Who it hands its work to when it is done (agent names).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hands_off: Vec<String>,
 }
 
 /// What kula tells and allows AI agents (MCP, hooks).
@@ -286,6 +298,25 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
         }
         if t.members.iter().any(|m| m.agent.trim().is_empty()) {
             anyhow::bail!("team {}: every member names an agent", t.name);
+        }
+        let names: Vec<&str> = t.members.iter().map(|m| m.agent.as_str()).collect();
+        for m in &t.members {
+            for other in std::iter::once(&m.reports_to).filter(|r| !r.is_empty()).chain(m.hands_off.iter()) {
+                if !names.contains(&other.as_str()) || other == &m.agent {
+                    anyhow::bail!("team {}: {} points at {other:?}, which is not another member", t.name, m.agent);
+                }
+            }
+        }
+        // a hierarchy, not a loop
+        for m in &t.members {
+            let (mut cur, mut seen) = (m.reports_to.clone(), 0);
+            while !cur.is_empty() {
+                seen += 1;
+                if seen > t.members.len() {
+                    anyhow::bail!("team {}: who reports to whom goes round in a circle", t.name);
+                }
+                cur = t.members.iter().find(|x| x.agent == cur).map(|x| x.reports_to.clone()).unwrap_or_default();
+            }
         }
     }
     edit(root, |d| set_tables(d, "team", teams))

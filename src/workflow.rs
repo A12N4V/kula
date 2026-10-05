@@ -44,6 +44,9 @@ pub struct Workflow {
     /// What an agent should do, in order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<String>,
+    /// The workflow's own system prompt, given to every agent working in it.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub prompt: String,
     /// Files to read before starting.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub docs: Vec<String>,

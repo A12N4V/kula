@@ -55,6 +55,7 @@ export interface AgentsInfo {
   connections: Connection[]; docs: AgentDoc[]; suggestions: Suggestion[];
   teams: Team[]; team: { name: string; started: number; by: string } | null; research: ResearchRun[];
   git_hooks: [string, boolean][]; ci: string | null;
+  research_scope: Record<string, { files: string[]; count: number; fenced: number }>;
 }
 /** An autoresearch loop's settings ([workflow.research]). */
 export interface Research { metric: string; goal: "min" | "max" | ""; budget?: number; timeout?: number }
@@ -65,11 +66,14 @@ export interface ResearchRun {
   baseline: number; best: number; best_commit?: string; started: number; by: string; active: boolean; experiments: Experiment[];
 }
 /** A team (kula.toml [[team]]): each agent in its own workflow. */
-export interface Team { name: string; about?: string; members: { agent: string; workflow?: string; scope?: string[]; role?: string }[] }
+export interface Team {
+  name: string; about?: string; prompt?: string;
+  members: { agent: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
+}
 /** A work mode (src/workflow.rs): its own fences, scope, steps, docs and memory policy. */
 export interface Workflow {
   name: string; about?: string; scope?: string[]; lock?: string[]; hide?: string[]; review?: string[];
-  memory?: "write" | "read" | "off" | ""; steps?: string[]; docs?: string[]; builtin?: boolean; research?: Research | null;
+  memory?: "write" | "read" | "off" | ""; steps?: string[]; docs?: string[]; builtin?: boolean; research?: Research | null; prompt?: string;
 }
 /** A guard rule as written in kula.toml. */
 export interface RawRule { paths?: string[]; symbols?: string[]; level: "locked" | "hidden" | "review"; reason?: string }
@@ -78,7 +82,7 @@ export interface AgentDoc { path: string; readers: string; exists: boolean; byte
 export interface Suggestion { id: number; kind: "guard" | "workflow"; guard?: RawRule; workflow?: Workflow; why: string; by: string; created: number }
 export type AgentAction = "task_start" | "task_done" | "remember" | "confirm" | "forget" | "memory_edit" | "memory_stale" | "guards_save" | "workflows_save"
   | "settings_save" | "doc_read" | "doc_save" | "docs_sync" | "brief" | "connect" | "suggestion_accept" | "suggestion_dismiss" | "preview"
-  | "teams_save" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install";
+  | "teams_save" | "team_prompt" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install";
 export type SparqlValue = string | number | boolean;
 export interface SparqlResult { vars?: string[]; rows?: Record<string, SparqlValue>[]; truncated?: boolean; boolean?: boolean; triples?: [SparqlValue, SparqlValue, SparqlValue][]; millis?: number }
 export interface Context {

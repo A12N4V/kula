@@ -139,7 +139,7 @@ export default function Query({ openSymbol }: Nav) {
         </div>
         <div className="kq-out">
           {err && <pre className="kq-err">{err}</pre>}
-          {!err && !res && <Empty title="Ask the graph">Pick an example or write a query. Classes and properties are under Vocabulary; symbols and files in results open in the map.</Empty>}
+          {!err && !res && <Empty title="Ask the graph" />}
           {!err && res?.boolean !== undefined && <div className="kq-bool">{cell(res.boolean)}</div>}
           {!err && res?.rows && (res.rows.length === 0 ? <Empty title="No rows">The query matched nothing.</Empty> : (
             <table className="kq-table">

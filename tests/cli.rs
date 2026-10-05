@@ -733,7 +733,25 @@ fn fences_hold_for_shells_commits_teams_research_and_any_harness() {
     git(d, &["reset", "-q", "--hard"]);
 
     // A team: each agent in its own workflow.
-    kula(d, &["team", "save", "duo", "-m", "claude=tests:write the tests", "-m", "cursor=refactor"]);
+    kula(
+        d,
+        &[
+            "team",
+            "save",
+            "duo",
+            "-m",
+            "claude=tests:write the tests",
+            "-m",
+            "cursor=refactor",
+            "--lead",
+            "claude",
+            "--prompt",
+            "Small commits.",
+        ],
+    );
+    let p = kula(d, &["team", "prompt", "duo", "cursor"]);
+    assert!(p.contains("Small commits.") && p.contains("You answer to claude.") && p.contains("refactor"), "{p}");
+    assert!(kula(d, &["team", "prompt", "duo", "claude"]).contains("You lead this team. cursor answers to you."));
     kula(d, &["team", "start", "duo"]);
     let edit = |p: &str| format!(r#"{{"tool_name":"Edit","tool_input":{{"file_path":"{p}"}}}}"#);
     kula_code(d, &["guard", "hook"], Some(&edit("src/api/routes.ts")), 2);

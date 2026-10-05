@@ -225,7 +225,21 @@ const SHOTS = [
     await tile.waitFor({ timeout: 4000 }).catch(() => {});
     await point(p, tile);
     await sleep(2000);
-  }, after: () => execFileSync("python3", [join(ROOT, "promo/session.py"), readFileSync(join(OUT, "../repo"), "utf8").trim(), "cursor", join(OUT, "../session.json")], { stdio: "inherit" }) },
+  }, after: () => {
+    const repo = readFileSync(join(OUT, "../repo"), "utf8").trim();
+    for (const phase of ["cursor", "research"]) execFileSync("python3", [join(ROOT, "promo/session.py"), repo, phase, join(OUT, "../session.json")], { stdio: "inherit" });
+  } },
+  { name: "research", hash: "agents/research", dur: 9, cap: null, act: async (p) => {
+    await sleep(500);
+    const runs = p.locator(".run").first();
+    await runs.scrollIntoViewIfNeeded().catch(() => {});
+    await p.evaluate(() => document.querySelector(".run")?.scrollIntoView({ block: "center" }));
+    await sleep(900);
+    await point(p, p.locator(".run-chart").first(), { click: false, dx: 0.7, dy: 0.5 });
+    await sleep(2600);
+    await point(p, p.locator(".run-exp").first(), { click: false, dx: 0.3 });
+    await sleep(3000);
+  } },
   { name: "release-fences", hash: "graph", dur: 7, prepare: settled, cap: null, act: async (p) => {
     await sleep(300);
     await p.keyboard.press("f");

@@ -156,7 +156,7 @@ export function Proposals({ version, onChanged, openSymbol, target }: Nav) {
             {cmp && <CompareReport c={cmp} openSymbol={openSymbol} />}
             <Thread comments={p.comments} onSend={(b) => act({ body: b })} />
           </div>
-        ) : <Empty title="Select a proposal">Proposals are pull requests that live in your repo: diff, graph impact, review thread and merge.</Empty>}
+        ) : <Empty title="Select a proposal" />}
       </div>
     </div>
   );
