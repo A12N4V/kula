@@ -598,7 +598,7 @@ fn workflows_connect_any_agent_and_take_suggestions() {
     // Built-ins are there; a refactor locks tests, the tests workflow scopes to them.
     let wf = kula_json(d, &["workflow", "list"]);
     let names: Vec<&str> = wf["workflows"].as_array().unwrap().iter().map(|w| w["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["explore", "fix", "refactor", "tests", "docs"]);
+    assert_eq!(names, ["explore", "fix", "refactor", "tests", "docs", "autoresearch"]);
     let hook = |tool: &str, path: &str| format!(r#"{{"tool_name":"{tool}","tool_input":{{"file_path":"{path}"}}}}"#);
     kula(d, &["task", "start", "split auth", "--workflow", "refactor"]);
     let (_, why) = kula_code(d, &["guard", "hook"], Some(&hook("Edit", "tests/login.test.ts")), 2);
@@ -624,7 +624,10 @@ fn workflows_connect_any_agent_and_take_suggestions() {
     assert!(std::fs::read_to_string(d.join(".codex/config.toml")).unwrap().contains("[mcp_servers.kula]"));
     kula(d, &["agents", "connect", "cursor"]);
     let cursor = std::fs::read_to_string(d.join(".cursor/hooks.json")).unwrap();
-    assert_eq!(cursor.matches("kula guard hook --agent cursor\"").count(), 1, "idempotent: {cursor}");
+    let hooks: Value = serde_json::from_str(&cursor).unwrap();
+    for ev in ["preToolUse", "beforeReadFile", "beforeShellExecution"] {
+        assert_eq!(hooks["hooks"][ev].as_array().unwrap().len(), 1, "idempotent: {cursor}");
+    }
 
     // AGENTS.md gets a brief that follows kula.toml, and keeps what was there.
     write(d, "AGENTS.md", "# House rules\n\nUse tabs.\n");
@@ -673,4 +676,112 @@ fn workflows_connect_any_agent_and_take_suggestions() {
     assert_eq!(m[0]["stale"], false);
     kula(d, &["memory", "stale", &id]);
     assert_eq!(kula_json(d, &["memory", "recall", "salt"])[0]["stale"], true);
+}
+
+/// kula with extra environment (an agent's), and the exit code checked.
+fn kula_env(dir: &Path, args: &[&str], env: &[(&str, &str)], code: i32) -> (String, String) {
+    let mut c = Command::new(KULA);
+    c.arg("-C").arg(dir).args(args).env("NO_COLOR", "1");
+    for k in ["CLAUDECODE", "CURSOR_AGENT", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "GEMINI_CLI", "KULA_AGENT"] {
+        c.env_remove(k);
+    }
+    for (k, v) in env {
+        c.env(k, v);
+    }
+    let out = c.output().unwrap();
+    let (so, se) = (String::from_utf8_lossy(&out.stdout).to_string(), String::from_utf8_lossy(&out.stderr).to_string());
+    assert_eq!(out.status.code(), Some(code), "kula {args:?}\n{so}{se}");
+    (so, se)
+}
+
+#[test]
+fn fences_hold_for_shells_commits_teams_research_and_any_harness() {
+    let t = fixture();
+    let d = t.path();
+    write(d, "kula.toml", "[[guard]]\npaths = [\"src/util/**\"]\nlevel = \"locked\"\nreason = \"crypto is audited\"\n");
+    write(d, "tests/login.test.ts", "test('x', () => {});\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "fences"]);
+    kula(d, &["index"]);
+    let bash = |cmd: &str| serde_json::json!({ "tool_name": "Bash", "tool_input": { "command": cmd } }).to_string();
+
+    // Shell commands are read for what they touch; kula's own config is never an agent's to change.
+    let (_, why) = kula_code(d, &["guard", "hook"], Some(&bash("rm -rf src/util && echo ok")), 2);
+    assert!(why.contains("src/util") && why.contains("crypto is audited"), "{why}");
+    kula_code(d, &["guard", "hook"], Some(&bash("sed -i 's/a/b/' src/util/crypto.ts")), 2);
+    kula_code(d, &["guard", "hook"], Some(&bash("cat src/util/crypto.ts | grep -n salt")), 0);
+    kula_code(d, &["guard", "hook"], Some(&bash("ls src && grep -r login src/api 2>&1 > /dev/null")), 0);
+    let (_, why) = kula_code(d, &["guard", "hook"], Some(&bash("echo 'level = \"review\"' >> kula.toml")), 2);
+    assert!(why.contains("kula's own config"), "{why}");
+    let (_, why) = kula_code(d, &["guard", "hook"], Some(&bash("cd src && kula task done")), 2);
+    assert!(why.contains("refused"), "{why}");
+    kula_code(d, &["guard", "hook"], Some(&bash("git commit --no-verify -am wip")), 2);
+    kula_code(d, &["guard", "hook"], Some(r#"{"tool_name":"Edit","tool_input":{"file_path":".claude/settings.json"}}"#), 2);
+    kula_code(
+        d,
+        &["guard", "hook", "--agent", "codex"],
+        Some(r#"{"tool_name":"shell","tool_input":{"command":["bash","-lc","mv src/util/crypto.ts /tmp/x"]}}"#),
+        2,
+    );
+
+    // The pre-commit check holds agents' commits, and leaves a person's alone.
+    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return t; }\n");
+    git(d, &["add", "-A"]);
+    let (_, why) = kula_env(d, &["guard", "commit"], &[("KULA_AGENT", "aider")], 1);
+    assert!(why.contains("src/util/crypto.ts"), "{why}");
+    kula_env(d, &["guard", "commit"], &[], 0);
+    git(d, &["reset", "-q", "--hard"]);
+
+    // A team: each agent in its own workflow.
+    kula(d, &["team", "save", "duo", "-m", "claude=tests:write the tests", "-m", "cursor=refactor"]);
+    kula(d, &["team", "start", "duo"]);
+    let edit = |p: &str| format!(r#"{{"tool_name":"Edit","tool_input":{{"file_path":"{p}"}}}}"#);
+    kula_code(d, &["guard", "hook"], Some(&edit("src/api/routes.ts")), 2);
+    kula_code(d, &["guard", "hook"], Some(&edit("tests/login.test.ts")), 0);
+    kula_code(d, &["guard", "hook", "--agent", "cursor"], Some(&edit("src/api/routes.ts")), 0);
+    kula_code(d, &["guard", "hook", "--agent", "cursor"], Some(&edit("tests/login.test.ts")), 2);
+    let teams = kula_json(d, &["team", "list"]);
+    assert_eq!(teams["active"]["name"], "duo");
+    kula(d, &["team", "stop"]);
+
+    // Autoresearch: kula measures, keeps what's better, reverts what isn't.
+    write(d, "score.txt", "42\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "score"]);
+    kula(d, &["research", "init", "--metric", "cat score.txt", "--goal", "min", "--scope", "score.txt", "--budget", "5"]);
+    // kula.toml may stay uncommitted: it is never part of an experiment
+    kula(d, &["research", "start", "--here"]);
+    write(d, "score.txt", "40\n");
+    let e = kula_json(d, &["research", "try", "lower is better"]);
+    assert_eq!(e["kept"], true, "{e}");
+    write(d, "score.txt", "45\n");
+    let e = kula_json(d, &["research", "try", "this one is worse"]);
+    assert_eq!(e["kept"], false);
+    assert_eq!(std::fs::read_to_string(d.join("score.txt")).unwrap(), "40\n");
+    write(d, "src/api/routes.ts", "export const x = 1;\n");
+    let e = kula_json(d, &["research", "try", "out of scope"]);
+    assert!(e["note"].as_str().unwrap().contains("fenced"), "{e}");
+    assert!(std::fs::read_to_string(d.join("src/api/routes.ts")).unwrap().contains("handleLogin"));
+    let st = kula_json(d, &["research", "status"]);
+    assert_eq!(st["best"], 40.0);
+    assert_eq!(st["experiments"].as_array().unwrap().len(), 3);
+    kula(d, &["research", "stop"]);
+
+    // Any harness: `kula run` puts back what it changed behind a fence.
+    let (_, err) = kula_env(
+        d,
+        &["run", "-w", "tests", "--agent", "aider", "--", "sh", "-c", "rm -f src/api/routes.ts; echo t > tests/new.test.ts"],
+        &[],
+        3,
+    );
+    assert!(err.contains("put back") && err.contains("src/api/routes.ts"), "{err}");
+    assert!(d.join("src/api/routes.ts").exists());
+    assert!(d.join("tests/new.test.ts").exists());
+    assert!(kula_json(d, &["task", "show"]).is_null());
+
+    // A workflow as each agent's own file.
+    let out = kula(d, &["workflow", "install", "tests"]);
+    assert!(out.contains(".claude/agents/kula-tests.md") && out.contains(".cursor/rules/kula-tests.mdc"), "{out}");
+    let prompt = std::fs::read_to_string(d.join(".claude/agents/kula-tests.md")).unwrap();
+    assert!(prompt.starts_with("---\nname: kula-tests") && prompt.contains("enforced"), "{prompt}");
 }

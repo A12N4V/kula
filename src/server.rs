@@ -164,7 +164,7 @@ async fn agent_pre_edit(State(s): State<AppState>, Path(id): Path<String>) -> Ap
 
 /// After editing: the working tree's graph against HEAD – callers left dangling, callers to re-read.
 async fn agent_verify(State(s): State<AppState>) -> ApiResult {
-    blocking(move || Ok(json!(crate::agent::verify_edit(&s.repo)?))).await
+    blocking(move || Ok(json!(crate::agent::verify_edit(&s.repo, None)?))).await
 }
 
 /// Where the stored index build is, for the loader's progress bar. Cheap: no store access.
@@ -518,6 +518,7 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             None => vec![],
         };
         let read = |p: &str| std::fs::read_to_string(r.root.join(p)).unwrap_or_default();
+        let ci = [".github/workflows/kula.yml", ".kula-ci.yml"].into_iter().find(|p| r.root.join(p).exists());
         Ok(json!({
             "rules": rules,
             "task": g.task(),
@@ -537,6 +538,11 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "connections": crate::agents::connections(&r.root),
             "docs": crate::agents::docs(r)?,
             "suggestions": crate::agents::suggestions(r),
+            "teams": cfg.teams,
+            "team": crate::guard::team(r),
+            "research": crate::research::list(r),
+            "git_hooks": crate::project::hooks_status(r).unwrap_or_default(),
+            "ci": ci,
         }))
     })
     .await
@@ -556,6 +562,10 @@ struct AgentReq {
     rules: Vec<crate::config::GuardRule>,
     workflows: Vec<crate::workflow::Workflow>,
     agents: Option<crate::config::Agents>,
+    name: String,
+    teams: Vec<crate::config::Team>,
+    /// Which agents to install a workflow for.
+    targets: Vec<String>,
 }
 
 async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Json(a): Json<AgentReq>) -> ApiResult {
@@ -623,6 +633,20 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
                 }
                 json!({ "levels": levels })
             }
+            "teams_save" => {
+                crate::config::set_teams(&r.root, &a.teams)?;
+                json!({ "ok": true })
+            }
+            "team_start" => json!(crate::guard::team_start(r, &a.name, &format!("user:{}", r.user()))?),
+            "team_stop" => json!(crate::guard::team_stop(r)?),
+            "research_start" => json!(crate::research::start(r, &a.workflow, &format!("user:{}", r.user()), true)?),
+            "research_stop" => json!(crate::research::stop(r)?),
+            "workflow_install" => {
+                let cfg = crate::config::Config::load(&r.root)?;
+                let ids: Vec<&str> = a.targets.iter().map(String::as_str).collect();
+                json!({ "files": crate::agents::install_workflow(&r.root, &cfg, &a.workflow, &ids)? })
+            }
+            "hooks_install" => json!({ "installed": crate::project::hooks_install(r)? }),
             "task_done" => json!(crate::guard::task_done(r)?),
             "remember" => json!(crate::memory::remember(r, &Store::open(r)?, &a.target, &a.text, &r.user())?),
             "confirm" => json!(crate::memory::confirm(r, &Store::open(r)?, a.id)?),

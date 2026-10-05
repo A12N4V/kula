@@ -6,7 +6,8 @@
 // config), so MCP, the pre-edit hook and `kula check` see it at once.
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, relTime, type AgentDoc, type AgentsInfo, type GuardLevel, type Memory, type RawRule, type Suggestion, type Workflow } from "../api";
+import { api, relTime, type AgentDoc, type AgentsInfo, type GuardLevel, type Memory, type RawRule, type ResearchRun, type Suggestion, type Team, type Workflow } from "../api";
+import { BRANDS, Mark } from "../brands";
 import { Chips, CodeField, HereHint, LinkArea } from "../Autofill";
 import { useCode } from "../CodePanel";
 import type { Go, Target } from "../nav";
@@ -34,10 +35,12 @@ export function GuardTag({ level }: { level: GuardLevel }) {
   return <span className={`guard-tag ${level}`}>{LEVEL_TEXT[level]}</span>;
 }
 
-const BUILTIN = ["explore", "fix", "refactor", "tests", "docs"];
+const BUILTIN = ["explore", "fix", "refactor", "tests", "docs", "autoresearch"];
 const TABS = [
   { id: "overview", label: "Overview", icon: Icon.agents },
   { id: "workflows", label: "Workflows", icon: Icon.workflow },
+  { id: "research", label: "Research", icon: Icon.flask },
+  { id: "teams", label: "Teams", icon: Icon.team },
   { id: "fences", label: "Fences", icon: Icon.fence },
   { id: "memory", label: "Memory", icon: Icon.memory },
   { id: "docs", label: "Docs", icon: Icon.doc },
@@ -45,8 +48,15 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
+/** The agents kula wires up itself; anything else speaks MCP or runs under `kula run`. */
+const AGENT_IDS = ["claude", "cursor", "codex", "gemini"];
+const AGENT_NAME: Record<string, string> = { claude: "Claude Code", cursor: "Cursor", codex: "Codex", gemini: "Gemini CLI" };
+/** Where a workflow becomes each agent's own: a subagent, a rule, a command. */
+const NATIVE: [string, string, string][] = [["claude", "Claude Code subagent", ".claude/agents/kula-"], ["cursor", "Cursor rule", ".cursor/rules/kula-"], ["gemini", "Gemini CLI command", ".gemini/commands/kula/"]];
+
 const TOOLS: [string, string][] = [
   ["workflows", "how this kind of work is done here: steps, docs, fences"],
+  ["research · experiment", "an autoresearch loop: kula runs the metric, keeps what's better"],
   ["start_task · finish_task", "declare the task; its workflow's fences apply"],
   ["context_pack", "the code a task needs, fitted to a budget"],
   ["pre_edit", "callers, tests, risk, guards and memories before a change"],
@@ -69,7 +79,7 @@ const LOOP: { tool: string; what: string; gate?: boolean }[] = [
   { tool: "workflows", what: "learn how" },
   { tool: "context_pack", what: "read" },
   { tool: "pre_edit", what: "before a change" },
-  { tool: "edit", what: "the hook checks fences", gate: true },
+  { tool: "edit", what: "the hook enforces fences", gate: true },
   { tool: "verify_edit", what: "after" },
   { tool: "remember", what: "keep what was learned" },
 ];
@@ -105,7 +115,6 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
   if (!info) return <div className="page"><div className="muted">Reading workflows, fences and memories…</div></div>;
   const stale = info.memories.filter((m) => m.stale).length;
   const outdated = info.docs.filter((d) => d.synced && !d.current).length;
-  const connected = info.connections.filter((c) => c.mcp && c.hook).length;
   const badge: Partial<Record<Tab, number>> = { memory: stale, docs: outdated, fences: info.suggestions.filter((s) => s.kind === "guard").length, workflows: info.suggestions.filter((s) => s.kind === "workflow").length };
 
   return (
@@ -115,11 +124,6 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
           <div className="eyebrow">for AI agents</div>
           <h1>Agents</h1>
           <p className="muted">How agents work in this repository: the workflow they follow, the code they may not touch, what they remember. Edits here write kula.toml, AGENTS.md and git – the CLI, MCP, the pre-edit hook and CI all read the same thing.</p>
-        </div>
-        <div className="ag-status">
-          <Status ok={connected > 0} label={`${connected}/${info.connections.length} agents connected`} onClick={() => setTab("connect")} />
-          <Status ok={info.secrets_hidden} label="secrets hidden" onClick={() => setTab("fences")} />
-          <Status ok={info.memory_enabled} label="memory on" onClick={() => setTab("docs")} />
         </div>
       </header>
 
@@ -134,6 +138,8 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
       <div className="ag-panel" key={tab}>
         {tab === "overview" && <Overview info={info} act={act} setTab={setTab} onGraph={onGraph} open={open} />}
         {tab === "workflows" && <Workflows info={info} act={act} onGraph={onGraph} />}
+        {tab === "research" && <ResearchTab info={info} act={act} />}
+        {tab === "teams" && <Teams info={info} act={act} />}
         {tab === "fences" && <Fences info={info} act={act} onGraph={onGraph} />}
         {tab === "memory" && <MemoryTab info={info} act={act} open={open} />}
         {tab === "docs" && <Docs info={info} act={act} />}
@@ -144,10 +150,6 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
 }
 
 type Act = (action: Parameters<typeof api.agentAction>[0], body: Record<string, unknown>, done: string) => Promise<unknown>;
-
-function Status({ ok, label, onClick }: { ok: boolean; label: string; onClick?: () => void }) {
-  return <button className={`ag-st ${ok ? "ok" : ""}`} onClick={onClick}><i className={`dot ${ok ? "ok" : ""}`} />{label}</button>;
-}
 
 function Card({ title, sub, right, children, className = "" }: { title: string; sub?: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -224,6 +226,25 @@ function Overview({ info, act, setTab, onGraph, open }: { info: AgentsInfo; act:
           )}
         </Card>
 
+        <Card title="Autoresearch" sub="an agent improves a number; kula measures and keeps score" right={<button className="btn sm ghost" onClick={() => setTab("research")}>Open <Icon.arrow /></button>}>
+          {info.research[0] ? <RunSummary run={info.research[0]} /> : (
+            <div className="stack">
+              <div className="muted ag-meta">Point an agent at a metric – test time, bundle size, loss, latency – and let it loop: change, measure, keep what's better. kula runs the metric itself, so every kept step is a real commit.</div>
+              <div className="row"><button className="btn sm primary" onClick={() => setTab("research")}><Icon.flask /> Set up a loop</button></div>
+            </div>
+          )}
+        </Card>
+
+        <Card title="Team" sub={info.team ? `at work since ${relTime(info.team.started)}` : "each agent in its own workflow"} right={<button className="btn sm ghost" onClick={() => setTab("teams")}>{info.teams.length ? "Edit" : "Set up"} <Icon.arrow /></button>}>
+          {info.team ? (
+            <div className="team-mini">
+              {(info.teams.find((t) => t.name === info.team!.name)?.members ?? []).map((m, i) => (
+                <div key={i} className="row"><AgentMark id={m.agent} /><b>{AGENT_NAME[m.agent] ?? m.agent}</b><span className="tag accent">{m.workflow || "no workflow"}</span><span className="muted">{m.role}</span></div>
+              ))}
+            </div>
+          ) : <div className="muted ag-meta">{info.teams.length ? `${info.teams.length} team${info.teams.length > 1 ? "s" : ""} saved – none at work.` : "Save a team: Claude Code on autoresearch, Cursor on tests, Codex reviewing – each held to its own fences."}</div>}
+        </Card>
+
         <Card title="Workflows" sub="work modes, each with its own fences" right={<button className="btn sm ghost" onClick={() => setTab("workflows")}>Edit <Icon.arrow /></button>} className="ag-wide">
           <div className="wf-grid">
             {info.workflows.map((w) => <WorkflowTile key={w.name} w={w} active={info.workflow?.name === w.name} onPreview={() => onGraph(w.name)} />)}
@@ -259,7 +280,7 @@ function WorkflowTile({ w, active, onPreview, onClick, on }: { w: Workflow; acti
   return (
     <div className={`wf-tile ${active ? "active" : ""} ${on ? "on" : ""}`} onClick={onClick} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined}
       onKeyDown={(e) => { if (onClick && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }}>
-      <div className="row"><b className="mono">{w.name}</b>{active && <span className="tag accent">active</span>}<span className="spacer" />{w.builtin ? <span className="muted wf-src">built in</span> : <span className="muted wf-src">kula.toml</span>}</div>
+      <div className="row"><b className="mono">{w.name}</b>{active && <span className="tag accent">active</span>}{w.research?.metric && <span className="tag"><Icon.flask /> loop</span>}<span className="spacer" />{w.builtin ? <span className="muted wf-src">built in</span> : <span className="muted wf-src">kula.toml</span>}</div>
       <div className="wf-about">{w.about || <span className="muted">no description</span>}</div>
       <div className="wf-fences">{f.length ? f.map((x) => <span key={x.t} className={`guard-tag ${x.l}`}>{x.t}</span>) : <span className="guard-tag open">no extra fences</span>}
         <span className="muted wf-mem">memory {w.memory || "write"}</span>
@@ -387,6 +408,34 @@ function Workflows({ info, act, onGraph }: { info: AgentsInfo; act: Act; onGraph
               <button className="btn sm ghost" onClick={() => set("steps", [...(draft.steps ?? []), ""])}><Icon.plus /> Add step</button>
             </div>
             <label><span>docs</span><Chips values={draft.docs ?? []} onChange={(v) => set("docs", v)} placeholder="files to read first, e.g. docs/ARCHITECTURE.md" label="Docs" /></label>
+            <div className={`wf-research ${draft.research ? "on" : ""}`}>
+              <label className="toggle"><input type="checkbox" checked={!!draft.research} onChange={(e) => set("research", e.target.checked ? { metric: "", goal: "min" } : null)} /> <Icon.flask /> autoresearch loop – kula runs a metric and keeps only what improves it</label>
+              {draft.research && (
+                <div className="wf-research-grid">
+                  <label><span>metric</span><input className="input mono" value={draft.research.metric} onChange={(e) => set("research", { ...draft.research!, metric: e.target.value })} placeholder="a command whose last number is the result, e.g. cargo bench 2>&1 | grep -o '[0-9.]* ms' | tail -1" aria-label="Metric" /></label>
+                  <label><span>better</span>
+                    <div className="seg">{(["min", "max"] as const).map((g) => <button key={g} type="button" className={(draft.research!.goal || "min") === g ? "on" : ""} onClick={() => set("research", { ...draft.research!, goal: g })}>{g === "min" ? "lower" : "higher"}</button>)}</div>
+                  </label>
+                  <label><span>budget</span><input className="input mono" type="number" min={0} value={draft.research.budget ?? 0} onChange={(e) => set("research", { ...draft.research!, budget: Math.max(0, Number(e.target.value) || 0) })} aria-label="Budget" title="experiments before it stops; 0 for no limit" /></label>
+                </div>
+              )}
+            </div>
+            {!isNew && !dirty && (
+              <div className="wf-native">
+                <span className="wf-lbl">use it in</span>
+                <div className="wf-native-row">
+                  {NATIVE.map(([id, label, dir]) => {
+                    const done = info.connections.find((c) => c.id === id)?.workflows.includes(orig!);
+                    return (
+                      <button key={id} className={`btn sm ${done ? "ghost" : ""}`} title={`${dir}${orig}`} onClick={() => act("workflow_install", { workflow: orig, targets: [id] }, `${orig} installed as a ${label}`).catch(() => {})}>
+                        <Mark id={id} size={14} /> {label}{done && " ✓"}
+                      </button>
+                    );
+                  })}
+                  <code className="wf-run" title="any other harness">kula run -w {orig} -- &lt;agent&gt;</code>
+                </div>
+              </div>
+            )}
             <div className="row wf-actions">
               {!isNew && (BUILTIN.includes(orig!) ? !cur?.builtin : true) && <button className="btn sm ghost danger" onClick={remove}>{BUILTIN.includes(orig!) ? "Reset to built-in" : "Delete"}</button>}
               <span className="spacer" />
@@ -416,6 +465,221 @@ function StartIn({ wf, act }: { wf: string; act: Act }) {
       <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={`Start a task in ${wf}…`} aria-label="Task title" />
       <button className="btn sm" disabled={!title.trim()}><Icon.play /> Start</button>
     </form>
+  );
+}
+
+// ------------------------------------------------------------------ research
+
+function AgentMark({ id, size = 16 }: { id: string; size?: number }) {
+  return BRANDS[id] ? <Mark id={id} size={size} /> : <span className="agent-glyph" style={{ width: size, height: size }}>{id.slice(0, 1).toUpperCase()}</span>;
+}
+
+const pct = (r: ResearchRun) => {
+  if (!r.baseline) return 0;
+  const d = (r.best - r.baseline) / Math.abs(r.baseline);
+  return (r.goal === "max" ? d : -d) * 100;
+};
+const num = (v: number) => (Number.isInteger(v) ? String(v) : String(Number(v.toFixed(4))));
+
+/** Every experiment as a dot, the best-so-far as a step line: kept ones in the accent. */
+function RunChart({ run, w = 1200, h = 120 }: { run: ResearchRun; w?: number; h?: number }) {
+  const W = w, pad = 10;
+  const vals = [run.baseline, ...run.experiments.map((e) => e.value).filter((v): v is number => v !== null)];
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = hi - lo || Math.abs(hi) || 1;
+  const n = Math.max(1, run.experiments.length);
+  const x = (i: number) => pad + (i / n) * (W - 2 * pad);
+  const y = (v: number) => pad + (1 - (v - lo) / span) * (h - 2 * pad);
+  let best = run.baseline;
+  const steps: string[] = [`M${x(0)},${y(best)}`];
+  run.experiments.forEach((e, i) => { if (e.kept && e.value !== null) { steps.push(`H${x(i + 1)}V${y(e.value)}`); best = e.value; } });
+  steps.push(`H${x(n)}`);
+  return (
+    <svg className="run-chart" viewBox={`0 0 ${W} ${h}`} role="img" aria-label={`${run.workflow}: baseline ${num(run.baseline)}, best ${num(run.best)}`}>
+      <line x1={pad} x2={W - pad} y1={y(run.baseline)} y2={y(run.baseline)} className="rc-base" />
+      <path d={steps.join("")} className="rc-best" />
+      {run.experiments.map((e, i) => e.value === null
+        ? <rect key={i} x={x(i + 1) - 3} y={h - pad - 3} width={6} height={6} className="rc-fail"><title>#{e.n} {e.hypothesis} – {e.note}</title></rect>
+        : <rect key={i} x={x(i + 1) - 4} y={y(e.value) - 4} width={8} height={8} className={e.kept ? "rc-kept" : "rc-dot"}><title>#{e.n} {e.hypothesis} – {num(e.value)}{e.kept ? " kept" : ""}</title></rect>)}
+    </svg>
+  );
+}
+
+function RunSummary({ run }: { run: ResearchRun }) {
+  const kept = run.experiments.filter((e) => e.kept).length;
+  return (
+    <div className="run-sum">
+      <div className="row"><b className="mono">{run.workflow}</b>{run.active ? <span className="tag accent">running</span> : <span className="tag">finished</span>}<span className="spacer" /><span className="muted mono">{run.branch}</span></div>
+      <RunChart run={run} w={560} h={110} />
+      <div className="run-kpis">
+        <span><b>{num(run.baseline)}</b> baseline</span><span><b className="lv-open">{num(run.best)}</b> best</span>
+        <span><b>{pct(run).toFixed(1)}%</b> better</span><span><b>{kept}/{run.experiments.length}</b> kept</span>
+      </div>
+    </div>
+  );
+}
+
+const RESEARCH_LOOP: { tool: string; what: string; gate?: boolean }[] = [
+  { tool: "research", what: "baseline, best, what failed" },
+  { tool: "hypothesis", what: "one idea" },
+  { tool: "edit", what: "only the scope", gate: true },
+  { tool: "experiment", what: "kula runs the metric" },
+  { tool: "keep · revert", what: "a commit, or nothing" },
+  { tool: "remember", what: "why it worked" },
+];
+
+function ResearchTab({ info, act }: { info: AgentsInfo; act: Act }) {
+  const loops = info.workflows.filter((w) => w.research?.metric);
+  const own = info.workflows.filter((w) => !w.builtin);
+  const [name, setName] = useState(loops[0]?.name ?? "autoresearch");
+  const base = info.workflows.find((w) => w.name === name);
+  const [metric, setMetric] = useState(base?.research?.metric ?? "");
+  const [goal, setGoal] = useState<"min" | "max">((base?.research?.goal as "min" | "max") || "min");
+  const [budget, setBudget] = useState(base?.research?.budget ?? 20);
+  const [scope, setScope] = useState<string[]>(base?.scope ?? []);
+  const auto = info.workflows.find((w) => w.name === "autoresearch");
+  const save = () => {
+    const b = base ?? { ...blank(), name, about: auto?.about ?? "" };
+    const w: Workflow = { ...blank(), ...b, builtin: undefined, scope, steps: b.steps?.length ? b.steps : auto?.steps ?? [], research: { metric, goal, budget } };
+    return act("workflows_save", { workflows: [...own.filter((x) => x.name !== name), w] }, `${name} is a research loop – commit kula.toml, then start it`).catch(() => {});
+  };
+  const running = info.research.find((r) => r.active);
+  return (
+    <div className="ag-grid">
+      <Card title="Autoresearch" sub="agents improve a metric; kula keeps score" className="ag-wide research-hero">
+        <p className="research-pitch">Give an agent a number to move – test time, bundle size, p95 latency, validation loss – and a part of the code it may change. It forms a hypothesis, edits, and calls <code>experiment</code>: kula checks the change against the fences, <b>runs the metric itself</b>, commits it if the number improved and reverts it if not. Agents can't report their own scores, every kept step is a commit you can read, and memories carry what worked into the next run.</p>
+        <div className="loop">
+          {RESEARCH_LOOP.map((st, i) => (
+            <div key={st.tool} className={`loop-step ${st.gate ? "gate" : ""}`}>
+              {i > 0 && <span className="loop-arrow" aria-hidden="true" />}
+              <span className="loop-n">{String(i + 1).padStart(2, "0")}</span><b className="mono">{st.tool}</b><span>{st.what}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card title="Runs" sub={info.research.length ? `${info.research.length} in this checkout` : "none yet"} className="ag-wide"
+        right={running ? <button className="btn sm" onClick={() => act("research_stop", {}, `${running.workflow} stopped – its branch stays`)}>Stop</button> : loops.length ? (
+          <div className="row">{loops.map((w) => <button key={w.name} className="btn sm primary" onClick={() => act("research_start", { workflow: w.name }, `Baseline measured – ${w.name} is running`).catch(() => {})}><Icon.play /> Start {w.name}</button>)}</div>
+        ) : null}>
+        {info.research.length === 0 && <div className="muted ag-empty">{loops.length ? "Start a loop: kula measures the baseline on a research/ branch, then agents run experiments with the `experiment` tool." : "Set up a loop below, commit kula.toml, then start it."}</div>}
+        {info.research.map((r) => (
+          <div key={r.workflow + r.started} className="run">
+            <div className="row run-head">
+              <b className="mono">{r.workflow}</b>{r.active ? <span className="tag accent">running</span> : <span className="tag">finished</span>}
+              <span className="muted mono">{r.metric}</span><span className="spacer" />
+              <span className="muted">{r.goal === "max" ? "higher" : "lower"} is better · {r.branch} · {relTime(r.started)}</span>
+            </div>
+            <RunChart run={r} />
+            <div className="run-kpis">
+              <span><b>{num(r.baseline)}</b> baseline</span><span><b className="lv-open">{num(r.best)}</b> best</span><span><b>{pct(r).toFixed(1)}%</b> better</span>
+              <span><b>{r.experiments.filter((e) => e.kept).length}/{r.experiments.length}</b> kept</span>{r.budget > 0 && <span><b>{Math.max(0, r.budget - r.experiments.length)}</b> left</span>}
+            </div>
+            <div className="run-list">
+              {[...r.experiments].reverse().slice(0, 12).map((e) => (
+                <div key={e.n} className={`run-exp ${e.kept ? "kept" : ""}`}>
+                  <span className="loop-n">{String(e.n).padStart(2, "0")}</span>
+                  <span className={`tag ${e.kept ? "accent" : ""}`}>{e.kept ? "kept" : e.value === null ? "failed" : "reverted"}</span>
+                  <span className="mono run-v">{e.value === null ? "–" : num(e.value)}</span>
+                  <span className="run-h">{e.hypothesis}</span>
+                  <span className="muted run-by">{e.note || (e.commit ? e.commit.slice(0, 8) : "")} · {e.by}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </Card>
+
+      <Card title="Set up a loop" sub="writes [workflow.research] to kula.toml">
+        <form className="stack" onSubmit={(e) => { e.preventDefault(); save(); }}>
+          <label className="wf-inline"><span>workflow</span><input className="input mono" value={name} onChange={(e) => { const v = e.target.value.replace(/[^\w-]/g, ""); setName(v); const w = info.workflows.find((x) => x.name === v); if (w?.research) { setMetric(w.research.metric); setGoal((w.research.goal as "min" | "max") || "min"); setBudget(w.research.budget ?? 0); } if (w) setScope(w.scope ?? []); }} aria-label="Workflow name" /></label>
+          <label className="wf-inline"><span>metric</span><input className="input mono" value={metric} onChange={(e) => setMetric(e.target.value)} placeholder="pnpm test --silent 2>&1 | grep -o 'Time: [0-9.]*' | tail -1" aria-label="Metric command" /></label>
+          <div className="row"><span className="wf-lbl">better</span><div className="seg">{(["min", "max"] as const).map((g) => <button key={g} type="button" className={goal === g ? "on" : ""} onClick={() => setGoal(g)}>{g === "min" ? "lower" : "higher"}</button>)}</div>
+            <span className="wf-lbl">budget</span><input className="input mono research-budget" type="number" min={0} value={budget} onChange={(e) => setBudget(Math.max(0, Number(e.target.value) || 0))} aria-label="Budget" /></div>
+          <Chips values={scope} onChange={setScope} placeholder="what agents may change: src/index/**, tokenize" label="Scope" />
+          <div className="row"><span className="muted ag-meta">kula never lets the agent edit outside the scope or touch the metric's inputs you fence.</span><span className="spacer" /><button className="btn sm primary" disabled={!name || !metric.trim()}>Save loop</button></div>
+        </form>
+      </Card>
+
+      <Card title="How agents run it" sub="MCP, the shell, or any harness">
+        <Snippet text={`# a person, once
+kula research init --metric "<command>" --goal min --scope "src/index/**"
+git commit -am "an autoresearch loop"
+kula research start            # baseline, on a research/ branch
+
+# the agent, in a loop – MCP tools research + experiment, or:
+kula research status
+kula research try "cache the tokenizer per file"
+
+# any harness, fenced for the run
+kula run -w autoresearch -- aider --message "improve the metric"`} />
+      </Card>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ teams
+
+function Teams({ info, act }: { info: AgentsInfo; act: Act }) {
+  const [teams, setTeams] = useState<Team[]>(info.teams);
+  useEffect(() => setTeams(info.teams), [info]);
+  const dirty = JSON.stringify(teams) !== JSON.stringify(info.teams);
+  const set = (i: number, t: Partial<Team>) => setTeams(teams.map((x, j) => (j === i ? { ...x, ...t } : x)));
+  const setM = (i: number, k: number, m: Partial<Team["members"][number]>) => set(i, { members: teams[i].members.map((x, j) => (j === k ? { ...x, ...m } : x)) });
+  return (
+    <div className="ag-grid">
+      <Card title="Teams" sub="kula.toml · each agent in its own workflow, enforced per agent" className="ag-wide"
+        right={<>{dirty && <button className="btn sm ghost" onClick={() => setTeams(info.teams)}>Revert</button>}<button className="btn sm primary" disabled={!dirty} onClick={() => act("teams_save", { teams }, "Teams saved to kula.toml").catch(() => {})}>Save</button></>}>
+        <p className="muted ag-meta">A team gives every agent its own workflow. Claude Code can run an autoresearch loop while Cursor writes tests and Codex reviews – the same hook knows which agent is asking and holds each one to its own fences.</p>
+        {teams.length === 0 && <div className="muted ag-empty">No teams yet.</div>}
+        {teams.map((t, i) => {
+          const on = info.team?.name === t.name;
+          const saved = info.teams.some((x) => x.name === t.name);
+          return (
+            <div key={i} className={`team ${on ? "on" : ""}`}>
+              <div className="row team-head">
+                <input className="input mono team-name" value={t.name} onChange={(e) => set(i, { name: e.target.value.replace(/[^\w-]/g, "") })} placeholder="name" aria-label="Team name" />
+                <input className="input team-about" value={t.about ?? ""} onChange={(e) => set(i, { about: e.target.value })} placeholder="what this team is for" aria-label="Team about" />
+                {on && <span className="tag accent">at work</span>}
+                <span className="spacer" />
+                {on
+                  ? <button className="btn sm" onClick={() => act("team_stop", {}, `${t.name} stood down`)}>Stand down</button>
+                  : <button className="btn sm primary" disabled={dirty || !saved} title={dirty ? "Save first" : ""} onClick={() => act("team_start", { name: t.name }, `${t.name} at work`).catch(() => {})}><Icon.play /> Put to work</button>}
+                <button className="btn sm ghost icon-only danger" onClick={() => setTeams(teams.filter((_, j) => j !== i))} aria-label="Remove team"><Icon.close /></button>
+              </div>
+              {t.members.map((m, k) => {
+                const known = AGENT_IDS.includes(m.agent);
+                return (
+                  <div key={k} className="team-member">
+                    <AgentMark id={m.agent} />
+                    <select className="input" value={known ? m.agent : "other"} onChange={(e) => setM(i, k, { agent: e.target.value === "other" ? "aider" : e.target.value })} aria-label="Agent">
+                      {AGENT_IDS.map((a) => <option key={a} value={a}>{AGENT_NAME[a]}</option>)}<option value="other">other…</option>
+                    </select>
+                    {!known && <input className="input mono" value={m.agent} onChange={(e) => setM(i, k, { agent: e.target.value })} placeholder="agent name" aria-label="Agent name" />}
+                    <select className="input" value={m.workflow ?? ""} onChange={(e) => setM(i, k, { workflow: e.target.value })} aria-label="Workflow">
+                      <option value="">no workflow</option>{info.workflows.map((w) => <option key={w.name} value={w.name}>{w.name}</option>)}
+                    </select>
+                    <input className="input team-role" value={m.role ?? ""} onChange={(e) => setM(i, k, { role: e.target.value })} placeholder="role, e.g. speed up the indexer" aria-label="Role" />
+                    <button className="btn sm ghost icon-only danger" onClick={() => set(i, { members: t.members.filter((_, j) => j !== k) })} aria-label="Remove agent"><Icon.close /></button>
+                  </div>
+                );
+              })}
+              <button className="btn sm ghost" onClick={() => set(i, { members: [...t.members, { agent: AGENT_IDS.find((a) => !t.members.some((m) => m.agent === a)) ?? "aider", workflow: "", role: "" }] })}><Icon.plus /> Add an agent</button>
+            </div>
+          );
+        })}
+        <div className="row">
+          <button className="btn sm" onClick={() => setTeams([...teams, { name: teams.length ? `team-${teams.length + 1}` : "ship", about: "", members: [{ agent: "claude", workflow: "autoresearch", role: "" }, { agent: "cursor", workflow: "tests", role: "" }] }])}><Icon.plus /> New team</button>
+        </div>
+      </Card>
+      <Card title="From the shell" sub="the same teams, for scripts and CI">
+        <Snippet text={`kula team save ship \\
+  -m claude=autoresearch:"speed up the indexer" \\
+  -m cursor=tests -m codex=explore:review
+kula team start ship    # each agent now works in its own workflow
+kula team stop`} />
+      </Card>
+    </div>
   );
 }
 
@@ -601,47 +865,80 @@ function Docs({ info, act }: { info: AgentsInfo; act: Act }) {
 
 // ------------------------------------------------------------------ connect
 
-const BLURB: Record<string, string> = {
-  claude: "MCP in .mcp.json; a PreToolUse hook blocks fenced edits and reads.",
-  cursor: "MCP in .cursor/mcp.json; preToolUse and beforeReadFile hooks.",
-  codex: "[mcp_servers.kula] in .codex/config.toml; a PreToolUse hook reads apply_patch.",
-  gemini: "mcpServers and a BeforeTool hook in .gemini/settings.json.",
+const WIRING: Record<string, { mcp: string; hook: string }> = {
+  claude: { mcp: ".mcp.json", hook: "PreToolUse: Edit, Write, Read and Bash" },
+  cursor: { mcp: ".cursor/mcp.json", hook: "preToolUse, beforeReadFile, beforeShellExecution" },
+  codex: { mcp: ".codex/config.toml [mcp_servers.kula]", hook: "PreToolUse: apply_patch and shell" },
+  gemini: { mcp: ".gemini/settings.json mcpServers", hook: "BeforeTool: file tools and run_shell_command" },
 };
 
 function Connect({ info, act }: { info: AgentsInfo; act: Act }) {
+  const hooks = info.git_hooks ?? [];
+  const pre = hooks.find(([h]) => h === "pre-commit")?.[1];
+  const reindex = hooks.filter(([h, on]) => h !== "pre-commit" && on).length;
+  const brief = info.docs.find((d) => d.path === "AGENTS.md");
   return (
     <div className="ag-grid">
-      <Card title="Agents" sub="one command each – or kula agents connect all" className="ag-wide"
+      <Card title="Harnesses" sub="each in its own config format – or kula agents connect all" className="ag-wide"
         right={<button className="btn sm" onClick={async () => { for (const c of info.connections) if (!(c.mcp && c.hook)) await act("connect", { agent: c.id }, "").catch(() => {}); }}><Icon.plug /> Connect all</button>}>
         <div className="conn-grid">
           {info.connections.map((c) => (
             <div key={c.id} className={`conn ${c.mcp && c.hook ? "ok" : ""}`}>
-              <div className="row"><b>{c.name}</b><span className="spacer" /><span className={`dot ${c.mcp && c.hook ? "ok" : c.mcp || c.hook ? "warn" : ""}`} /></div>
-              <div className="conn-checks"><span className={c.mcp ? "on" : ""}>{c.mcp ? "✓" : "·"} graph tools (MCP)</span><span className={c.hook ? "on" : ""}>{c.hook ? "✓" : "·"} fence hook</span></div>
-              <p className="muted">{BLURB[c.id]}</p>
-              <div className="mono muted conn-files">{c.files.join(" · ")}</div>
-              <div className="row"><span className="spacer" />
-                <button className={`btn sm ${c.mcp && c.hook ? "ghost" : "primary"}`} onClick={() => act("connect", { agent: c.id }, `${c.name} connected`).catch(() => {})}>{c.mcp && c.hook ? "Rewrite" : "Connect"}</button></div>
+              <div className="row conn-title">
+                <a className="conn-brand" href={c.docs} target="_blank" rel="noreferrer" title={`${c.name} docs`}><Mark id={c.id} size={22} /><b>{c.name}</b></a>
+                <span className="spacer" /><span className={`dot ${c.mcp && c.hook ? "ok" : c.mcp || c.hook ? "warn" : ""}`} title={c.mcp && c.hook ? "connected" : "not connected"} />
+              </div>
+              <ul className="conn-wires">
+                <li className={c.mcp ? "on" : ""}><span>{c.mcp ? "✓" : "·"}</span><b>MCP</b><span className="mono muted">{WIRING[c.id]?.mcp}</span></li>
+                <li className={c.hook ? "on" : ""}><span>{c.hook ? "✓" : "·"}</span><b>fence hook</b><span className="muted">{WIRING[c.id]?.hook}</span></li>
+                <li className={c.workflows.length ? "on" : ""}><span>{c.workflows.length ? "✓" : "·"}</span><b>workflows</b><span className="muted">{c.workflows.length ? c.workflows.join(" · ") : c.id === "codex" ? "reads AGENTS.md" : "install from Workflows"}</span></li>
+                <li className={brief?.current ? "on" : ""}><span>{brief?.current ? "✓" : "·"}</span><b>brief</b><span className="muted">{c.id === "claude" ? "CLAUDE.md / AGENTS.md" : c.id === "gemini" ? "GEMINI.md / AGENTS.md" : "AGENTS.md"}</span></li>
+              </ul>
+              <div className="row">
+                <a className="btn sm ghost" href={c.docs} target="_blank" rel="noreferrer">docs <Icon.arrow /></a><span className="spacer" />
+                <button className={`btn sm ${c.mcp && c.hook ? "ghost" : "primary"}`} onClick={() => act("connect", { agent: c.id }, `${c.name} connected`).catch(() => {})}>{c.mcp && c.hook ? "Rewrite" : "Connect"}</button>
+              </div>
             </div>
           ))}
-          <div className="conn other">
-            <div className="row"><b>Any other agent</b></div>
-            <p className="muted">Anything that speaks MCP – Windsurf, Zed, Copilot, Continue, Cline, Goose, Amp – runs <code>kula mcp</code>. Agents without MCP read the brief in AGENTS.md and use the shell; <code>kula check</code> in CI catches fenced edits either way.</p>
-            <Snippet text={MCP} />
-          </div>
         </div>
       </Card>
+
+      <Card title="Enforced everywhere" sub="what holds any agent, connected or not" className="ag-wide">
+        <div className="mod-grid">
+          <Module id="mcp" name="MCP server" on what={<><code>kula mcp</code> – the graph, fences, memory and research as 23 tools, for any MCP client</>} />
+          <Module id="git" name="git hooks" on={!!pre} what={<>pre-commit refuses an agent's commit of fenced changes{reindex ? `; ${reindex} more keep the graph current` : ""}</>}
+            action={!pre ? <button className="btn sm primary" onClick={() => act("hooks_install", {}, "git hooks installed").catch(() => {})}>Install</button> : undefined} />
+          <Module id="githubactions" name="CI gate" on={!!info.ci} what={info.ci ? <><code>{info.ci}</code> runs <code>kula check</code> on every pull request</> : <>add it with <code>kula init --ci github</code></>} />
+          <Module icon={<Icon.shield />} name="kula run" on what={<>any other harness – Aider, OpenCode, Goose, a script: <code>kula run -w fix -- aider</code> holds fenced files and puts back what it changed</>} docs="https://github.com/A12N4V/kula/blob/main/docs/AGENTS.md" />
+          <Module icon={<Icon.doc />} name="AGENTS.md" on={!!brief?.current} what={<>the brief: tools, fences, workflows and teams, for agents that read instructions</>} docs="https://agents.md" />
+          <Module id="rdf" name="RDF · SPARQL" on what={<>the graph as W3C RDF: <code>sparql</code> for any structural question</>} />
+        </div>
+      </Card>
+
       <Card title="Tools" sub="what a connected agent can call">
         {TOOLS.map(([t, d]) => <div key={t} className="ag-tool"><span className="mono">{t}</span><span className="muted">{d}</span></div>)}
       </Card>
-      <Card title="From the shell" sub="the same answers, for agents without MCP">
-        <Snippet text={`kula workflow show refactor     # steps, docs, fences
-kula task start "split auth" -w refactor
-kula pack "how does login work"
-kula before login               # callers, tests, risk, fences
-kula verify                     # after the edit
-kula memory recall login`} />
+      <Card title="Any other agent" sub="MCP, or the shell">
+        <p className="muted ag-meta">Windsurf, Zed, Copilot, Continue, Cline, Goose and Amp speak MCP: point them at <code>kula mcp</code>.</p>
+        <Snippet text={MCP} />
+        <Snippet text={`kula run -w refactor -- opencode   # fenced for the run
+kula workflow prompt refactor       # the workflow, for a system prompt
+kula verify                         # after the edit`} />
       </Card>
+    </div>
+  );
+}
+
+/** One piece of kula's enforcement: its mark opens its docs. */
+function Module({ id, icon, name, on, what, action, docs }: { id?: string; icon?: ReactNode; name: string; on: boolean; what: ReactNode; action?: ReactNode; docs?: string }) {
+  const href = docs ?? (id ? BRANDS[id]?.docs : undefined);
+  return (
+    <div className={`mod ${on ? "on" : ""}`}>
+      <a className="mod-mark" href={href} target="_blank" rel="noreferrer" title={href ? `${name} docs` : name}>{id ? <Mark id={id} size={20} /> : icon}</a>
+      <div className="mod-body">
+        <div className="row"><a className="mod-name" href={href} target="_blank" rel="noreferrer">{name}</a><span className={`dot ${on ? "ok" : ""}`} /><span className="spacer" />{action}</div>
+        <div className="muted">{what}</div>
+      </div>
     </div>
   );
 }

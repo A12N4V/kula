@@ -52,6 +52,10 @@ fn tools() -> Value {
           "inputSchema": s(json!({}), &[]) },
         { "name": "update_memory", "description": "Maintain a memory: rewrite its text, move it to another target, confirm it still holds after the code changed (still_true), or flag it stale. Agents may change memories agents wrote.",
           "inputSchema": s(json!({ "id": { "type": "integer" }, "text": { "type": "string" }, "target": { "type": "string" }, "still_true": { "type": "boolean" }, "stale": { "type": "boolean" } }), &["id"]) },
+        { "name": "research", "description": "The autoresearch run: the metric kula measures, which way is better, the baseline, the best so far, the budget left, the scope you may change, and every experiment tried with its result. Read it before forming a hypothesis, so you don't repeat what failed.",
+          "inputSchema": s(json!({}), &[]) },
+        { "name": "experiment", "description": "Run one autoresearch experiment: your working-tree change, in scope, is the experiment. kula checks it against the fences, runs the metric itself, commits the change if the number improved and reverts it if not. Give a one-line hypothesis; one idea per experiment.",
+          "inputSchema": s(json!({ "hypothesis": { "type": "string" } }), &["hypothesis"]) },
         { "name": "suggest", "description": "Propose a new fence or workflow for this repository; a person accepts or dismisses it. Use it when you notice code that should not be changed casually (generated files, migrations, vendored code), or a repeatable way of working.",
           "inputSchema": s(json!({ "kind": { "type": "string", "enum": ["guard", "workflow"] }, "why": { "type": "string" },
             "guard": { "type": "object", "properties": { "paths": { "type": "array", "items": { "type": "string" } }, "symbols": { "type": "array", "items": { "type": "string" } }, "level": { "type": "string", "enum": ["locked", "hidden", "review"] }, "reason": { "type": "string" } } },
@@ -96,7 +100,7 @@ fn memory_allowed(repo: &Repo, g: &Guards, write: bool) -> Result<()> {
 
 fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
     let st = || Store::open(repo);
-    let g = Guards::load(repo)?;
+    let g = Guards::for_agent(repo, CLIENT.get().map(String::as_str))?;
     let str_arg = |k: &str| a.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
     let int_arg = |k: &str, d: usize| a.get(k).and_then(|v| v.as_u64()).map(|v| v as usize).unwrap_or(d);
     Ok(match name {
@@ -178,7 +182,7 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             refuse_hidden(&g, &graph::resolve_one(&s, &str_arg("symbol"))?)?;
             json!(crate::agent::pre_edit(repo, &s, &str_arg("symbol"))?)
         }
-        "verify_edit" => json!(crate::agent::verify_edit(repo)?),
+        "verify_edit" => json!(crate::agent::verify_edit(repo, CLIENT.get().map(String::as_str))?),
         "guards" => {
             let paths: Vec<String> = a
                 .get("paths")
@@ -205,9 +209,12 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
         }
         "workflows" => {
             let cfg = crate::config::Config::load(&repo.root)?;
-            let list: Vec<Value> =
-                crate::workflow::all(&cfg).into_iter().map(|w| json!({ "name": w.name, "about": w.about, "builtin": w.builtin })).collect();
-            json!({ "workflows": list, "task": g.task(), "active": g.workflow(), "docs": crate::agents::docs(repo)?.into_iter().filter(|d| d.exists).map(|d| d.path).collect::<Vec<_>>() })
+            let list: Vec<Value> = crate::workflow::all(&cfg)
+                .into_iter()
+                .map(|w| json!({ "name": w.name, "about": w.about, "builtin": w.builtin, "research": w.research.is_some() }))
+                .collect();
+            let team = CLIENT.get().and_then(|c| crate::guard::member(repo, &cfg, c)).map(|(t, m)| json!({ "team": t, "you": m }));
+            json!({ "workflows": list, "task": g.task(), "active": g.workflow(), "team": team, "docs": crate::agents::docs(repo)?.into_iter().filter(|d| d.exists).map(|d| d.path).collect::<Vec<_>>() })
         }
         "start_task" => {
             if let Some(t) = g.task() {
@@ -220,7 +227,7 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
                 .unwrap_or_default();
             let wf = str_arg("workflow");
             let t = crate::guard::task_start(repo, &str_arg("title"), scope, (!wf.is_empty()).then_some(wf.as_str()), &agent())?;
-            let g = Guards::load(repo)?;
+            let g = Guards::for_agent(repo, CLIENT.get().map(String::as_str))?;
             json!({ "task": t, "workflow": g.workflow() })
         }
         "finish_task" => match g.task() {
@@ -261,6 +268,19 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             }
             out
         }
+        "research" => {
+            let cur = crate::research::active(repo).or_else(|| crate::research::list(repo).into_iter().next());
+            match cur {
+                Some(st) => {
+                    let w = crate::workflow::find(&crate::config::Config::load(&repo.root)?, &st.workflow);
+                    json!({ "run": st, "gain": st.gain(), "left": st.left(), "scope": w.map(|w| w.scope).unwrap_or_default() })
+                }
+                None => {
+                    json!({ "run": null, "hint": "no research yet – a person sets one up: `kula research init --metric \"<command>\"`, then `kula research start`" })
+                }
+            }
+        }
+        "experiment" => json!(crate::research::experiment(repo, &str_arg("hypothesis"), &agent())?),
         "suggest" => {
             let sug: crate::agents::Suggestion = serde_json::from_value(a.clone())?;
             json!(crate::agents::suggest(repo, sug, &agent())?)

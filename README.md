@@ -118,11 +118,25 @@ kula agents sync            # a brief of tools, fences and workflows in AGENTS.m
 
 | agent | connected through |
 |---|---|
-| Claude Code | `.mcp.json` · `PreToolUse` hook in `.claude/settings.json` |
-| Cursor | `.cursor/mcp.json` · `preToolUse` and `beforeReadFile` in `.cursor/hooks.json` |
-| Codex | `[mcp_servers.kula]` in `.codex/config.toml` · `PreToolUse` on `apply_patch` in `.codex/hooks.json` |
-| Gemini CLI | `mcpServers` and a `BeforeTool` hook in `.gemini/settings.json` |
-| Windsurf, Zed, Copilot, Continue, Cline, Goose, Amp, … | `kula mcp` over stdio, and the brief in `AGENTS.md` |
+| Claude Code | `.mcp.json` · `PreToolUse` on edits, reads and `Bash` in `.claude/settings.json` |
+| Cursor | `.cursor/mcp.json` · `preToolUse`, `beforeReadFile` and `beforeShellExecution` in `.cursor/hooks.json` |
+| Codex | `[mcp_servers.kula]` in `.codex/config.toml` · `PreToolUse` on `apply_patch` and `shell` in `.codex/hooks.json` |
+| Gemini CLI | `mcpServers` and a `BeforeTool` hook on file tools and `run_shell_command` in `.gemini/settings.json` |
+| Windsurf, Zed, Copilot, Continue, Cline, Goose, Amp, … | `kula mcp` over stdio, the brief in `AGENTS.md` |
+| Aider, OpenCode, a script, anything | `kula run -w <workflow> -- <command>` |
+
+### Enforced, not advised
+
+Fences are not a paragraph in a prompt. Every way an agent can change code meets the same verdict:
+
+| how an agent acts | what holds it |
+|---|---|
+| a file tool – Edit, Write, apply_patch, write_file | the pre-tool hook refuses the call and tells the agent why |
+| a shell command – `rm`, `mv`, `sed -i`, `> file`, `tee`, `git rm` | the same hook reads the command for every file it writes or reads |
+| switching kula off – editing `kula.toml` or a hook, `kula task done`, `git commit --no-verify` | refused: kula's own config is locked for agents, always; they may `suggest` |
+| a commit | the git `pre-commit` hook refuses an agent's commit that holds fenced changes |
+| a harness kula doesn't know | `kula run` makes fenced files read-only for the run (hidden ones unreadable) and puts back anything fenced it changed; the agent's version is kept in `.kula/run/` |
+| a branch | `kula check` fails it in CI |
 
 ### Workflows
 
@@ -140,6 +154,7 @@ kula task start "split the auth module" --workflow refactor
 | `refactor` | restructure without changing behaviour | tests locked | write |
 | `tests` | write tests; leave the code under test alone | only tests editable | write |
 | `docs` | documentation, no code | only docs editable | read |
+| `autoresearch` | an experiment loop: change, measure, keep what's better | its scope | write |
 | *yours* | anything – `[[workflow]]` in `kula.toml` | `scope` · `lock` · `hide` · `review` | write · read · off |
 
 ```toml
@@ -151,6 +166,40 @@ lock = ["src/db/pool.rs"]
 memory = "read"
 steps = ["Write the migration and its rollback", "pre_edit every query on the changed tables", "verify_edit"]
 docs = ["docs/MIGRATIONS.md"]
+```
+
+Any harness can work in any workflow: through MCP and the hooks, under `kula run -w <name>`, or as the agent's own file – `kula workflow install <name>` writes it as a Claude Code subagent (`.claude/agents/`), a Cursor rule (`.cursor/rules/`) and a Gemini CLI command (`/kula:<name>`).
+
+### Autoresearch
+
+Give an agent a number to move – test time, bundle size, p95 latency, validation loss – and the code it may change. It forms a hypothesis, edits, and calls `experiment`: kula checks the change against the fences, **runs the metric itself**, commits the change when the number improves and reverts it when it doesn't. Agents never report their own scores, every kept step is a commit you can read, and memories carry what worked into the next run.
+
+```sh
+kula research init --metric "cargo bench --bench index 2>&1 | grep -o '[0-9.]* ms' | tail -1" --goal min --scope "src/index/**" --budget 40
+kula research start                 # the baseline, on a research/ branch
+kula research try "cache the parser per language"   # or the agent's `experiment` tool
+kula research status                # baseline, best, every experiment
+```
+
+```mermaid
+flowchart LR
+    R[research<br/>baseline · best · what failed] --> H[one hypothesis]
+    H --> E[edit, in scope<br/>fenced by the hook]
+    E --> X[experiment<br/>kula runs the metric]
+    X -->|better| K[kept as a commit]
+    X -->|worse · failed · fenced| V[reverted]
+    K --> M[remember why]
+    V --> M
+    M --> R
+```
+
+### Teams
+
+A team gives every agent its own workflow, and the hook holds each one to its own: Claude Code on an autoresearch loop, Cursor writing tests, Codex reviewing read-only – at the same time, in one checkout.
+
+```sh
+kula team save ship -m claude=autoresearch:"speed up the indexer" -m cursor=tests -m codex=explore:review
+kula team start ship
 ```
 
 ### Fences
@@ -176,7 +225,9 @@ flowchart LR
     K[.kula/task.json<br/>task · scope · workflow] --> V
     S[secrets<br/>.env · keys · certs] --> V
     V --> M[MCP answers<br/>hidden code left out]
-    V --> H[pre-edit hook<br/>blocks the edit, says why]
+    V --> H[pre-tool hook<br/>edits, reads, shell – refused with the reason]
+    V --> P[pre-commit hook<br/>an agent's fenced commit refused]
+    V --> R[kula run<br/>any harness, held for the run]
     V --> E[verify_edit<br/>reports what slipped]
     V --> C[kula check<br/>fails the branch in CI]
     V --> U[UI<br/>fences on the graph]
@@ -207,7 +258,8 @@ A memory is one fact pinned to a symbol, a file or the repo, stored with the not
 
 | MCP tool | |
 |---|---|
-| `workflows` · `start_task` · `finish_task` | how this kind of work is done here; declare a task in a workflow |
+| `workflows` · `start_task` · `finish_task` | how this kind of work is done here, and the agent's place in the team; declare a task in a workflow |
+| `research` · `experiment` | an autoresearch loop: kula runs the metric, keeps what's better, reverts the rest |
 | `context_pack` | the code a task needs – definitions, what they use, who uses them, tests – ranked by graph distance and fitted to a token budget |
 | `pre_edit` · `verify_edit` | before a change: callers, the tests that reach it, risk, the fence verdict, memories. After: what moved, what broke, what was fenced |
 | `guards` | what the agent may change, and why |
@@ -289,7 +341,8 @@ Kula is a **superset of git**: anything it doesn't know goes straight to `git`, 
 | **start** | `init` · `index` · `view` · `status` · `hooks install\|uninstall\|status` · `doctor` |
 | **explore** | `query` · `context` · `impact [--down]` · `trace` · `flows` · `clusters` · `deps` · `kg export\|sparql\|examples` |
 | **review** | `lg` · `compare` · `graph-diff` · `check [--md]` |
-| **agents** | `agents status\|connect\|sync\|brief\|suggestions\|accept\|dismiss` · `workflow list\|show` · `task start [-w]\|show\|done` · `guard list\|check\|hook` · `memory add\|recall\|edit\|stale\|confirm\|rm` · `pack` · `before` · `verify` · `mcp` |
+| **agents** | `agents status\|connect\|sync\|brief\|suggestions\|accept\|dismiss` · `workflow list\|show\|install\|prompt` · `task start [-w]\|show\|done` · `guard list\|check\|hook\|commit` · `memory add\|recall\|edit\|stale\|confirm\|rm` · `pack` · `before` · `verify` · `mcp` |
+| **enforce & research** | `run -w <workflow> -- <agent>` · `team save\|start\|stop\|list` · `research init\|start\|try\|status\|stop` |
 | **collaborate** | `issue` · `pr` · `note` · `sync` |
 
 The full reference, `kula.toml` and CI are in [docs/CLI.md](docs/CLI.md).

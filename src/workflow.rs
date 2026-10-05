@@ -7,8 +7,14 @@
 //! it should read first. Start a task in a workflow and every agent-facing
 //! answer – MCP, the pre-edit hook, `kula check` – applies them.
 //!
-//! Five are built in. `[[workflow]]` tables in kula.toml add more, or replace a
+//! Six are built in. `[[workflow]]` tables in kula.toml add more, or replace a
 //! built-in by reusing its name.
+//!
+//! A workflow with a `[workflow.research]` table is an autoresearch loop: the
+//! agent changes the code in scope, kula runs the metric itself, keeps the
+//! change as a commit when the number improves and reverts it when it doesn't
+//! (`research.rs`). Any harness can run any workflow: through MCP and the
+//! hooks, through `kula run`, or as a native agent file (`kula workflow install`).
 
 use crate::config::Config;
 use serde::{Deserialize, Serialize};
@@ -41,9 +47,54 @@ pub struct Workflow {
     /// Files to read before starting.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub docs: Vec<String>,
+    /// Makes this workflow an experiment loop (`kula research`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub research: Option<Research>,
     /// Shipped with kula (not from kula.toml).
     #[serde(skip_deserializing, skip_serializing_if = "std::ops::Not::not")]
     pub builtin: bool,
+}
+
+/// An autoresearch loop: what to measure and which way is better.
+///
+/// ```toml
+/// [workflow.research]
+/// metric = "cargo bench --bench index 2>&1 | grep -o 'time: [0-9.]*' | tail -1"
+/// goal = "min"        # min | max
+/// budget = 40         # experiments, 0 for no limit
+/// timeout = 600       # seconds per run of the metric
+/// ```
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Research {
+    /// A shell command run at the repository root; the last number it prints is the result.
+    pub metric: String,
+    /// min or max.
+    pub goal: String,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub budget: u32,
+    #[serde(skip_serializing_if = "is_zero_u64")]
+    pub timeout: u64,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+fn is_zero_u64(n: &u64) -> bool {
+    *n == 0
+}
+
+impl Research {
+    pub fn minimise(&self) -> bool {
+        self.goal != "max"
+    }
+    pub fn timeout_secs(&self) -> u64 {
+        if self.timeout == 0 {
+            600
+        } else {
+            self.timeout
+        }
+    }
 }
 
 impl Workflow {
@@ -127,6 +178,16 @@ pub fn builtin() -> Vec<Workflow> {
                 "Check examples against the current signatures",
             ]),
             ..b("docs", "Write documentation; no code changes")
+        },
+        Workflow {
+            steps: v(&[
+                "research: the metric, the baseline, the best so far and every experiment tried",
+                "Form one hypothesis; change only the files in scope",
+                "experiment: kula runs the metric, keeps the change as a commit if it is better, reverts it if not",
+                "remember what worked and what didn't, on the code it was about",
+                "Repeat until the budget is spent; never edit the metric or its inputs",
+            ]),
+            ..b("autoresearch", "Run experiments in a loop: change, measure, keep what's better")
         },
     ]
 }

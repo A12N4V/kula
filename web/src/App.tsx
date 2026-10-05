@@ -279,7 +279,7 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
       { label: "Contrast graph: HEAD → working tree", hint: "", run: () => go("graph", { contrast: { base: "HEAD", head: "WORKTREE" } }) },
       { label: "Reindex knowledge graph", hint: "", run: onReindex },
       { label: "Graph: show fences", hint: "f", run: () => go("graph", { fences: "" }) },
-      ...(["explore", "fix", "refactor", "tests", "docs"]).map((w) => ({ label: `Graph: preview the ${w} workflow's fences`, hint: "", run: () => go("graph", { fences: w }) })),
+      ...(["explore", "fix", "refactor", "tests", "docs", "autoresearch"]).map((w) => ({ label: `Graph: preview the ${w} workflow's fences`, hint: "", run: () => go("graph", { fences: w }) })),
       ...(["workflows", "fences", "memory", "docs", "connect"]).map((t) => ({ label: `Agents: ${t}`, hint: "", run: () => go("agents", { tab: t }) })),
       { label: "Open settings", hint: ",", run: onSettings },
       ...(["directory", "cluster", "kind", "churn"] as const).map((c) => ({ label: `Colour graph by ${c}`, hint: "", run: () => { settings.set({ colorBy: c }); go("graph"); } })),

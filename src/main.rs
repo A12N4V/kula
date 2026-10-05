@@ -12,6 +12,8 @@ mod mcp;
 mod memory;
 mod meta;
 mod project;
+mod research;
+mod run;
 mod server;
 mod store;
 mod term;
@@ -58,9 +60,12 @@ Work with AI agents
   before       before editing a symbol: callers, tests, risk, guards, memories
   verify       after editing: what moved, what broke, what was fenced
   agents       connect Claude Code, Cursor, Codex, Gemini; sync AGENTS.md; suggestions
-  workflow     work modes: explore, fix, refactor, tests, docs, and your own
+  workflow     work modes: explore, fix, refactor, tests, docs, autoresearch, your own
+  team         agent teams: each agent in its own workflow
+  research     autoresearch: an agent improves a metric, kula measures and keeps score
+  run          run any agent harness held to kula's fences: kula run -w fix -- aider
   task         the task an agent is on, its workflow, and the code it may change
-  guard        fences agents may not cross: list, check, and the pre-edit hook
+  guard        fences agents may not cross: list, check, the pre-tool and pre-commit hooks
   memory       facts about the code that agents keep, marked stale when it changes
   mcp          serve all of this to agents over MCP (stdio)
 
@@ -234,6 +239,26 @@ enum Cmd {
     /// Work modes for agents: each brings its own fences, scope, steps, docs and memory policy.
     #[command(subcommand, alias = "wf")]
     Workflow(WorkflowCmd),
+    /// Agent teams (kula.toml [[team]]): each agent works in its own workflow.
+    #[command(subcommand)]
+    Team(TeamCmd),
+    /// Autoresearch: an agent changes code, kula runs the metric and keeps what's better.
+    #[command(subcommand)]
+    Research(ResearchCmd),
+    /// Run any agent harness held to kula's fences: `kula run -w fix -- aider`.
+    Run {
+        /// The workflow to work in (starts a task in it).
+        #[arg(short, long)]
+        workflow: Option<String>,
+        /// Who is running: claude, cursor, codex, gemini, aider, …
+        #[arg(short, long, default_value = "agent")]
+        agent: String,
+        /// The task's title.
+        #[arg(short, long)]
+        title: Option<String>,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        cmd: Vec<String>,
+    },
     /// Bring any agent to kula: connect it, sync AGENTS.md, review what agents suggest.
     #[command(subcommand)]
     Agents(AgentsCmd),
@@ -333,6 +358,8 @@ enum GuardCmd {
         #[arg(long)]
         staged: bool,
     },
+    /// Git pre-commit hook: refuse an agent's commit that holds fenced changes.
+    Commit,
     /// Agent pre-tool hook: reads the tool call as JSON on stdin, exits 2 to block a fenced edit or read.
     Hook {
         /// claude | cursor | codex | gemini (only changes the reply format; payloads are detected).
@@ -350,6 +377,71 @@ enum WorkflowCmd {
     List,
     /// One workflow: fences, scope, steps, docs, memory policy.
     Show { name: String },
+    /// Install a workflow as each agent's own: a Claude Code subagent, a Cursor rule, a Gemini command.
+    Install {
+        name: String,
+        /// claude, cursor, gemini, or all.
+        #[arg(default_value = "all")]
+        agents: Vec<String>,
+    },
+    /// The workflow as instructions, for any harness's system prompt.
+    Prompt { name: String },
+}
+
+#[derive(Subcommand)]
+enum TeamCmd {
+    /// Every team in kula.toml, and the active one.
+    List,
+    /// Save a team: --member agent=workflow[:role], once per agent.
+    Save {
+        name: String,
+        #[arg(long, default_value = "")]
+        about: String,
+        #[arg(short, long, required = true)]
+        member: Vec<String>,
+    },
+    /// Put a team to work: each member agent now works in its own workflow.
+    Start { name: String },
+    /// Stand the team down.
+    Stop,
+}
+
+#[derive(Subcommand)]
+enum ResearchCmd {
+    /// Make a workflow an autoresearch loop: the metric, which way is better, the scope.
+    Init {
+        /// A shell command; the last number it prints is the result.
+        #[arg(short, long)]
+        metric: String,
+        /// min or max.
+        #[arg(short, long, default_value = "min")]
+        goal: String,
+        /// What agents may change (globs or symbols).
+        #[arg(short, long, num_args = 1..)]
+        scope: Vec<String>,
+        /// Experiments before it stops (0: no limit).
+        #[arg(short, long, default_value_t = 0)]
+        budget: u32,
+        /// Seconds per run of the metric.
+        #[arg(long, default_value_t = 600)]
+        timeout: u64,
+        #[arg(long, default_value = "autoresearch")]
+        name: String,
+    },
+    /// Measure the baseline and start the loop (on a research/ branch).
+    Start {
+        #[arg(default_value = "autoresearch")]
+        name: String,
+        /// Stay on the current branch.
+        #[arg(long)]
+        here: bool,
+    },
+    /// Run one experiment: the working tree's change, measured; kept if better, reverted if not.
+    Try { hypothesis: String },
+    /// The run: baseline, best, and every experiment.
+    Status,
+    /// End the run (its branch and commits stay).
+    Stop,
 }
 
 #[derive(Subcommand)]
@@ -484,7 +576,7 @@ fn run(cli: Cli) -> Result<()> {
     let cwd = cli.dir.clone().unwrap_or(std::env::current_dir()?);
     let json = cli.json;
     let Some(cmd) = cli.cmd else {
-        println!("{}", accent(BANNER));
+        println!("{}", banner());
         println!(
             "  {} build the graph      {} open the UI      {} all commands\n",
             bold("kula index"),
@@ -638,7 +730,7 @@ fn run(cli: Cli) -> Result<()> {
             }
         }
         Cmd::Verify => {
-            let r = agent::verify_edit(&repo)?;
+            let r = agent::verify_edit(&repo, agents::agent_from_env().as_deref())?;
             if json {
                 out(&serde_json::to_value(&r)?);
             } else {
@@ -908,6 +1000,25 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Task(tc) => task_cmd(&repo, tc, json)?,
         Cmd::Workflow(wc) => workflow_cmd(&repo, wc, json)?,
         Cmd::Agents(ac) => agents_cmd(&repo, ac, json)?,
+        Cmd::Team(tc) => team_cmd(&repo, tc, json)?,
+        Cmd::Research(rc) => research_cmd(&repo, rc, json)?,
+        Cmd::Run { workflow, agent, title, cmd } => {
+            let r = run::run(&repo, run::Opts { workflow, agent, title, cmd })?;
+            if json {
+                println!("{}", serde_json::to_string(&r)?);
+            } else if r.restored.is_empty() && r.moved.is_empty() {
+                eprintln!("kula run: {} fenced file{} untouched", r.fenced_files, if r.fenced_files == 1 { "" } else { "s" });
+            } else {
+                for (p, why) in &r.restored {
+                    eprintln!("  {} put back {}  {}", red("⊘"), bold(p), dim(why));
+                }
+                for (p, why) in &r.moved {
+                    eprintln!("  {} moved out {}  {}", red("⊘"), bold(p), dim(why));
+                }
+                eprintln!("  {}", dim(&format!("the agent's versions are in {}", r.kept_in)));
+            }
+            std::process::exit(if r.restored.is_empty() && r.moved.is_empty() { r.code } else { 3 });
+        }
         Cmd::Memory(mc) => memory_cmd(&repo, mc, json)?,
         Cmd::Kg(kc) => kg_cmd(&repo, kc, json)?,
         Cmd::Sync { remote } => print!("{}", meta::sync(&repo, &remote)?),
@@ -1314,7 +1425,7 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
             if staged {
                 paths.extend(repo.run(&["diff", "--cached", "--name-only"])?.lines().map(String::from));
             }
-            let bad = guard::violations(repo, st.as_ref(), &paths)?;
+            let bad = guard::violations(repo, st.as_ref(), &paths, agents::agent_from_env().as_deref())?;
             if json {
                 println!(
                     "{}",
@@ -1331,19 +1442,63 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                 std::process::exit(1);
             }
         }
+        GuardCmd::Commit => {
+            // Only agents are held here; a person's commit is theirs.
+            let Some(agent) = agents::agent_from_env() else { return Ok(()) };
+            let g = guard::Guards::for_agent(repo, Some(&agent))?;
+            let staged = repo.run(&["diff", "--cached", "--name-only", "-z"])?;
+            let bad: Vec<(String, guard::Verdict)> = staged
+                .split('\0')
+                .filter(|p| !p.is_empty())
+                .map(|p| (p.to_string(), g.edit(st.as_ref(), p)))
+                .filter(|(_, v)| !v.level.editable())
+                .collect();
+            if !bad.is_empty() {
+                eprintln!("kula guard: {agent}'s commit holds fenced changes – a person commits these:");
+                for (p, v) in &bad {
+                    eprintln!("  {} {}  {}", p, v.level.as_str(), v.reason);
+                }
+                std::process::exit(1);
+            }
+        }
         GuardCmd::Hook { agent, read } => {
             // One hook for every agent: Claude Code, Cursor, Codex and Gemini CLI all send the
             // tool call as JSON on stdin and treat exit 2 as "blocked, stderr is the reason".
+            // File tools, patches and shell commands are all read for what they touch.
             let mut input = String::new();
             std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)?;
             let v: serde_json::Value = serde_json::from_str(&input).unwrap_or_default();
-            let reads = read || agents::hook_reads(&v);
-            let g = guard::Guards::load(repo)?;
-            for path in agents::hook_paths(&v) {
-                let rel = repo_rel(repo, &path);
-                if rel.starts_with('/') || rel.starts_with("..") {
+            let deny = |msg: String| -> ! {
+                if agent == "cursor" {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "permission": "deny", "continue": true, "user_message": msg, "agent_message": msg })
+                    );
+                }
+                eprintln!("{msg}");
+                std::process::exit(2);
+            };
+            let call = agents::hook_call(&v);
+            if let Some(why) = call.tamper {
+                deny(format!("kula guard: refused – {why}."));
+            }
+            let g = guard::Guards::for_agent(repo, Some(&agent))?;
+            let mut paths: Vec<(String, bool)> = vec![];
+            for t in call.targets {
+                let rel = repo_rel(repo, &t.path);
+                if rel.starts_with('/') || rel.starts_with("..") || rel.starts_with('~') {
                     continue; // outside this repository: not ours to fence
                 }
+                // a directory stands for every file in it
+                if !rel.is_empty() && repo.root.join(&rel).is_dir() {
+                    let inner = repo.run(&["ls-files", "-z", "--", &rel]).unwrap_or_default();
+                    paths.extend(inner.split('\0').filter(|p| !p.is_empty()).map(|p| (p.to_string(), t.write)));
+                }
+                paths.push((rel, t.write));
+            }
+            for (rel, write) in paths {
+                let t = agents::Target { path: rel.clone(), write };
+                let reads = read || !t.write;
                 let verdict = if reads { g.path(&rel) } else { g.edit(st.as_ref(), &rel) };
                 let blocked = if reads { !verdict.level.readable() } else { !verdict.level.editable() };
                 if !blocked {
@@ -1353,7 +1508,7 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                     guard::Level::Scope => "outside the active task".to_string(),
                     l => format!("{} for agents", l.as_str()),
                 };
-                let msg = format!(
+                deny(format!(
                     "kula guard: {} is {} – {} ({}). {}",
                     rel,
                     what,
@@ -1364,15 +1519,7 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                     } else {
                         "Leave it to a person, or suggest a change to the fence with the `suggest` tool."
                     }
-                );
-                if agent == "cursor" {
-                    println!(
-                        "{}",
-                        serde_json::json!({ "permission": "deny", "continue": true, "user_message": msg, "agent_message": msg })
-                    );
-                }
-                eprintln!("{msg}");
-                std::process::exit(2);
+                ));
             }
         }
     }
@@ -1425,6 +1572,144 @@ fn workflow_cmd(repo: &Repo, c: WorkflowCmd, json: bool) -> Result<()> {
             } else {
                 workflow_lines(&w);
             }
+        }
+        WorkflowCmd::Install { name, agents: ids } => {
+            let ids: Vec<&str> =
+                if ids.iter().any(|a| a == "all") { vec!["claude", "cursor", "gemini"] } else { ids.iter().map(String::as_str).collect() };
+            let files = agents::install_workflow(&repo.root, &cfg, &name, &ids)?;
+            for f in &files {
+                println!("  {} {}", green("✓"), f);
+            }
+            println!("  {}", dim(&format!("any other harness: kula run -w {name} -- <command>  ·  kula workflow prompt {name}")));
+        }
+        WorkflowCmd::Prompt { name } => {
+            let Some(w) = workflow::find(&cfg, &name) else { bail!("no workflow called {name}") };
+            print!("{}", agents::workflow_prompt(&w));
+        }
+    }
+    Ok(())
+}
+
+fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
+    let cfg = config::Config::load(&repo.root)?;
+    match c {
+        TeamCmd::List => {
+            let active = guard::team(repo);
+            if json {
+                println!("{}", serde_json::json!({ "teams": cfg.teams, "active": active }));
+                return Ok(());
+            }
+            if cfg.teams.is_empty() {
+                println!("  {}", dim("no teams – kula team save <name> -m claude=autoresearch -m cursor=tests"));
+            }
+            for t in &cfg.teams {
+                let on = active.as_ref().is_some_and(|a| a.name == t.name);
+                println!("  {} {}  {}", if on { green("●") } else { dim("○") }, accent(&t.name), t.about);
+                for m in &t.members {
+                    println!(
+                        "      {:<10} {}  {}",
+                        m.agent,
+                        if m.workflow.is_empty() { dim("no workflow") } else { bold(&m.workflow) },
+                        dim(&m.role)
+                    );
+                }
+            }
+        }
+        TeamCmd::Save { name, about, member } => {
+            let mut members = vec![];
+            for m in member {
+                let Some((agent, rest)) = m.split_once('=') else { bail!("members are agent=workflow[:role], not {m}") };
+                let (wf, role) = rest.split_once(':').unwrap_or((rest, ""));
+                if !wf.is_empty() && workflow::find(&cfg, wf).is_none() {
+                    bail!("no workflow called {wf}");
+                }
+                members.push(config::Member {
+                    agent: agent.trim().into(),
+                    workflow: wf.trim().into(),
+                    role: role.trim().into(),
+                    scope: vec![],
+                });
+            }
+            let mut teams = cfg.teams.clone();
+            let t = config::Team { name: name.clone(), about, members };
+            match teams.iter_mut().find(|x| x.name == name) {
+                Some(x) => *x = t,
+                None => teams.push(t),
+            }
+            config::set_teams(&repo.root, &teams)?;
+            println!("  {} team {} saved in kula.toml", green("✓"), accent(&name));
+        }
+        TeamCmd::Start { name } => {
+            guard::team_start(repo, &name, &format!("user:{}", repo.user()))?;
+            println!("  {} team {} at work – each agent in its own workflow", green("✓"), accent(&name));
+        }
+        TeamCmd::Stop => match guard::team_stop(repo)? {
+            Some(t) => println!("  {} team {} stood down", green("✓"), t.name),
+            None => println!("  {}", dim("no team at work")),
+        },
+    }
+    Ok(())
+}
+
+fn research_cmd(repo: &Repo, c: ResearchCmd, json: bool) -> Result<()> {
+    let by = agents::agent_from_env().map(|a| format!("agent:{a}")).unwrap_or_else(|| format!("user:{}", repo.user()));
+    let show = |s: &research::State| {
+        if json {
+            println!("{}", serde_json::to_string(s).unwrap_or_default());
+            return;
+        }
+        println!(
+            "  {} {}  {}  {} {} → best {} ({:+.1}%)",
+            if s.active { green("●") } else { dim("○") },
+            accent(&s.workflow),
+            dim(&s.branch),
+            dim(&format!("{} is better · baseline", if s.goal == "max" { "higher" } else { "lower" })),
+            research::fmt(s.baseline),
+            bold(&research::fmt(s.best)),
+            s.gain() * 100.0
+        );
+        println!("    {}  {}", dim("metric"), s.metric);
+        for e in &s.experiments {
+            let v = e.value.map(research::fmt).unwrap_or_else(|| "–".into());
+            println!("    {:>3}  {}  {:>10}  {}  {}", e.n, if e.kept { green("kept") } else { dim("    ") }, v, e.hypothesis, dim(&e.note));
+        }
+        if let Some(n) = s.left() {
+            println!("    {}", dim(&format!("{n} experiments left")));
+        }
+    };
+    match c {
+        ResearchCmd::Init { metric, goal, scope, budget, timeout, name } => {
+            let w = research::init(repo, &name, workflow::Research { metric, goal, budget, timeout }, scope)?;
+            println!("  {} {} is a research loop in kula.toml", green("✓"), accent(&w.name));
+            println!("  {}", dim(&format!("next: kula research start {}  (measures the baseline on a research/ branch)", w.name)));
+        }
+        ResearchCmd::Start { name, here } => {
+            let s = research::start(repo, &name, &by, !here)?;
+            show(&s);
+        }
+        ResearchCmd::Try { hypothesis } => {
+            let e = research::experiment(repo, &hypothesis, &by)?;
+            if json {
+                println!("{}", serde_json::to_string(&e)?);
+            } else if e.kept {
+                println!(
+                    "  {} kept  {} → {}  {}",
+                    green("✓"),
+                    research::fmt(e.best_before.unwrap_or_default()),
+                    bold(&research::fmt(e.value.unwrap_or_default())),
+                    dim(&e.commit[..e.commit.len().min(8)])
+                );
+            } else {
+                println!("  {} {}", dim("·"), e.note);
+            }
+        }
+        ResearchCmd::Status => match research::active(repo).or_else(|| research::list(repo).into_iter().next()) {
+            Some(s) => show(&s),
+            None => println!("  {}", dim("no research yet – kula research init --metric \"<command>\"")),
+        },
+        ResearchCmd::Stop => {
+            let s = research::stop(repo)?;
+            show(&s);
         }
     }
     Ok(())

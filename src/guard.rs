@@ -14,6 +14,13 @@
 //!
 //! Rules live in `kula.toml` (`[[guard]]`, shared with the team); the task lives
 //! in `.kula/task.json` (local to this checkout).
+//!
+//! Fences are enforced, not advisory. kula's own config – kula.toml, `.kula/`,
+//! every agent's hook and MCP wiring, the git hooks – is always locked for
+//! agents, so no agent can loosen the fences it is held to (it may `suggest`).
+//! The pre-tool hook reads shell commands too, the git pre-commit hook refuses
+//! fenced changes from an agent, and `kula run` holds any other harness to the
+//! same verdicts.
 
 use crate::config::{Config, GuardRule};
 use crate::git::Repo;
@@ -40,6 +47,31 @@ pub const SECRETS: &[&str] = &[
     "**/credentials.json",
     "**/secrets/**",
 ];
+
+/// kula's own config and every agent's wiring to it: locked for agents, always.
+pub const OWN: &[&str] = &[
+    "kula.toml",
+    ".kula/**",
+    ".mcp.json",
+    ".claude/settings.json",
+    ".claude/settings.local.json",
+    ".cursor/mcp.json",
+    ".cursor/hooks.json",
+    ".codex/config.toml",
+    ".codex/hooks.json",
+    ".gemini/settings.json",
+    ".github/workflows/kula.yml",
+    ".kula-ci.yml",
+    ".git/**",
+];
+
+/// Whether a path is kula's own config or agent wiring.
+pub fn is_own(path: &str) -> bool {
+    static OWN_SET: std::sync::OnceLock<GlobSet> = std::sync::OnceLock::new();
+    OWN_SET
+        .get_or_init(|| globset(&OWN.iter().map(|s| s.to_string()).collect::<Vec<_>>()).unwrap_or_else(|_| GlobSet::empty()))
+        .is_match(path.trim_start_matches("./"))
+}
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[serde(rename_all = "lowercase")]
@@ -113,6 +145,7 @@ struct Compiled {
 /// Every fence in force for this checkout, compiled once.
 pub struct Guards {
     rules: Vec<Compiled>,
+    own: GlobSet,
     secrets: Option<GlobSet>,
     task: Option<(Task, GlobSet, Vec<String>)>,
     workflow: Option<Workflow>,
@@ -176,10 +209,82 @@ fn looks_like_path(s: &str) -> bool {
     s.contains('/') || s.contains('*') || s.contains('.')
 }
 
+// ------------------------------------------------------------------ teams
+
+/// The active team (`kula team start`): which agent works in which workflow.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct ActiveTeam {
+    pub name: String,
+    pub started: i64,
+    pub by: String,
+}
+
+fn team_path(repo: &Repo) -> std::path::PathBuf {
+    repo.kula_dir().join("team.json")
+}
+
+pub fn team(repo: &Repo) -> Option<ActiveTeam> {
+    serde_json::from_str(&std::fs::read_to_string(team_path(repo)).ok()?).ok()
+}
+
+pub fn team_start(repo: &Repo, name: &str, by: &str) -> Result<ActiveTeam> {
+    let cfg = Config::load(&repo.root)?;
+    let Some(t) = cfg.teams.iter().find(|t| t.name == name) else {
+        bail!("no team called {name} – `kula team list`");
+    };
+    for m in &t.members {
+        if !m.workflow.is_empty() && workflow::find(&cfg, &m.workflow).is_none() {
+            bail!("team {name}: {} works in {}, which is not a workflow", m.agent, m.workflow);
+        }
+    }
+    let a = ActiveTeam { name: name.into(), started: crate::meta::now(), by: by.into() };
+    std::fs::create_dir_all(repo.kula_dir())?;
+    std::fs::write(team_path(repo), serde_json::to_string_pretty(&a)?)?;
+    Ok(a)
+}
+
+pub fn team_stop(repo: &Repo) -> Result<Option<ActiveTeam>> {
+    let t = team(repo);
+    let _ = std::fs::remove_file(team_path(repo));
+    Ok(t)
+}
+
+/// One agent's place in the active team, if it has one.
+pub fn member(repo: &Repo, cfg: &Config, agent: &str) -> Option<(String, crate::config::Member)> {
+    let active = team(repo)?;
+    let t = cfg.teams.iter().find(|t| t.name == active.name)?;
+    let id = crate::agents::agent_id(agent);
+    t.members.iter().find(|m| crate::agents::agent_id(&m.agent) == id).map(|m| (t.name.clone(), m.clone()))
+}
+
 impl Guards {
     pub fn load(repo: &Repo) -> Result<Guards> {
         let cfg = Config::load(&repo.root)?;
         Guards::new(&cfg, task(repo))
+    }
+
+    /// The fences one agent works under: in an active team, its own workflow
+    /// (and scope) replace the task's – separate workflows for separate agents.
+    pub fn for_agent(repo: &Repo, agent: Option<&str>) -> Result<Guards> {
+        let cfg = Config::load(&repo.root)?;
+        let mut t = task(repo);
+        if let Some((team, m)) = agent.and_then(|a| member(repo, &cfg, a)) {
+            let wf = (!m.workflow.is_empty()).then(|| workflow::find(&cfg, &m.workflow)).flatten();
+            let scope = if !m.scope.is_empty() { m.scope.clone() } else { wf.as_ref().map(|w| w.scope.clone()).unwrap_or_default() };
+            let who = crate::agents::agent_id(agent.unwrap_or_default());
+            let base = Task {
+                title: format!(
+                    "team {team}: {who} in {}{}",
+                    if m.workflow.is_empty() { "no workflow" } else { &m.workflow },
+                    if m.role.is_empty() { String::new() } else { format!(" – {}", m.role) }
+                ),
+                started: t.as_ref().map(|t| t.started).unwrap_or_else(crate::meta::now),
+                by: format!("team:{team}"),
+                ..Default::default()
+            };
+            t = Some(Task { workflow: m.workflow.clone(), scope: if scope.is_empty() { base.scope.clone() } else { scope }, ..base });
+        }
+        Guards::new(&cfg, t)
     }
 
     pub fn new(cfg: &Config, task: Option<Task>) -> Result<Guards> {
@@ -222,7 +327,8 @@ impl Guards {
             Some(t) => Some((t, GlobSet::empty(), vec![])),
             None => None,
         };
-        Ok(Guards { rules, secrets, task, workflow: wf })
+        let own = globset(&OWN.iter().map(|s| s.to_string()).collect::<Vec<_>>())?;
+        Ok(Guards { rules, own, secrets, task, workflow: wf })
     }
 
     pub fn task(&self) -> Option<&Task> {
@@ -262,6 +368,13 @@ impl Guards {
                 best = v;
             }
         };
+        if self.own.is_match(path) {
+            raise(Verdict {
+                level: Level::Locked,
+                reason: "kula's own config and agent wiring – only a person changes it (agents can `suggest`)".into(),
+                rule: "kula".into(),
+            });
+        }
         if let Some(s) = &self.secrets {
             if s.is_match(path) {
                 raise(Verdict { level: Level::Hidden, reason: "likely a secret (agents.hide_secrets)".into(), rule: "secrets".into() });
@@ -319,8 +432,8 @@ pub fn guarded_files(repo: &Repo, store: &Store) -> Result<Vec<(String, Verdict)
 }
 
 /// Check paths for an agent edit: those whose verdict forbids editing.
-pub fn violations(repo: &Repo, store: Option<&Store>, paths: &[String]) -> Result<Vec<(String, Verdict)>> {
-    let g = Guards::load(repo)?;
+pub fn violations(repo: &Repo, store: Option<&Store>, paths: &[String], agent: Option<&str>) -> Result<Vec<(String, Verdict)>> {
+    let g = Guards::for_agent(repo, agent)?;
     Ok(paths.iter().map(|p| (p.clone(), g.edit(store, p))).filter(|(_, v)| !v.level.editable()).collect())
 }
 
@@ -411,6 +524,16 @@ mod tests {
             community: 0,
         };
         assert_eq!(g.node(&n).level, Level::Review);
+    }
+
+    #[test]
+    fn kula_config_is_always_locked() {
+        let g = guards("", None);
+        for p in ["kula.toml", ".kula/task.json", ".claude/settings.json", ".cursor/hooks.json", ".git/hooks/pre-commit", ".mcp.json"] {
+            assert_eq!(g.path(p).level, Level::Locked, "{p}");
+            assert_eq!(g.path(p).rule, "kula");
+        }
+        assert_eq!(g.path("src/kula.rs").level, Level::Open);
     }
 
     #[test]

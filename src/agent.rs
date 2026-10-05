@@ -301,7 +301,8 @@ pub struct Verify {
     pub guard_violations: Vec<(String, crate::guard::Verdict)>,
 }
 
-pub fn verify_edit(repo: &Repo) -> Result<Verify> {
+/// `agent`: whose fences to check against (a team gives each agent its own).
+pub fn verify_edit(repo: &Repo, agent: Option<&str>) -> Result<Verify> {
     let base = crate::index::snapshot_any(repo, "HEAD")?;
     let head = crate::index::worktree(repo);
     let d = graph::graph_diff(&base, &head, "HEAD", "WORKTREE", Some(false));
@@ -340,7 +341,12 @@ pub fn verify_edit(repo: &Repo) -> Result<Verify> {
     paths.sort();
     paths.dedup();
     let store = Store::open(repo).ok();
-    let guard_violations = crate::guard::violations(repo, store.as_ref(), &paths).unwrap_or_default();
+    // kula's own config changes are a person's (agents can't write it: the hooks refuse, `kula run` puts it back).
+    let guard_violations: Vec<_> = crate::guard::violations(repo, store.as_ref(), &paths, agent)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(_, v)| v.rule != "kula")
+        .collect();
     Ok(Verify {
         ok: dangling.is_empty() && guard_violations.is_empty(),
         summary: d.summary,

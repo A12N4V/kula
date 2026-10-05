@@ -495,7 +495,7 @@ test.describe("agents", () => {
     await expect(page.locator(".ag-steps li").first()).toContainText("recall memories");
     // Desktop's fences test accepts this suggestion; the other projects may run after it.
     if (info.project.name === "desktop") await expect(page.locator(".need.sugg")).toContainText("web/dist/**");
-    await expect(page.locator(".wf-tile")).toHaveCount(5);
+    await expect(page.locator(".wf-tile")).toHaveCount(6);
     await expect(page.locator(".wf-tile.active")).toContainText("fix");
     await page.getByRole("tab", { name: /Fences/ }).click();
     await expect(page.locator(".fence-row")).toHaveCount(3);

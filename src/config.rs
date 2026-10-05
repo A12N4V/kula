@@ -24,6 +24,46 @@ pub struct Config {
     /// `[[workflow]]` work modes; see `workflow.rs` for the built-ins.
     #[serde(rename = "workflow")]
     pub workflows: Vec<crate::workflow::Workflow>,
+    /// `[[team]]` agent teams: each agent in its own workflow.
+    #[serde(rename = "team")]
+    pub teams: Vec<Team>,
+}
+
+/// A team of agents, each working in its own workflow.
+///
+/// ```toml
+/// [[team]]
+/// name = "ship"
+/// about = "Claude Code researches, Cursor writes tests, Codex reviews"
+/// members = [
+///   { agent = "claude", workflow = "autoresearch", role = "speed up the indexer" },
+///   { agent = "cursor", workflow = "tests" },
+///   { agent = "codex", workflow = "explore", role = "review" },
+/// ]
+/// ```
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Team {
+    pub name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub about: String,
+    pub members: Vec<Member>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Member {
+    /// claude · cursor · codex · gemini, or any MCP client name.
+    pub agent: String,
+    /// The workflow this agent works in while the team is active.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub workflow: String,
+    /// Narrows the workflow's scope for this agent.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub scope: Vec<String>,
+    /// What this agent is for, in a few words.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub role: String,
 }
 
 /// What kula tells and allows AI agents (MCP, hooks).
@@ -233,6 +273,22 @@ pub fn set_workflows(root: &Path, wfs: &[crate::workflow::Workflow]) -> Result<C
     }
     let wfs: Vec<_> = wfs.iter().map(|w| crate::workflow::Workflow { builtin: false, ..w.clone() }).collect();
     edit(root, |d| set_tables(d, "workflow", &wfs))
+}
+
+pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
+    let mut seen = std::collections::HashSet::new();
+    for t in teams {
+        if !crate::workflow::valid_name(&t.name) {
+            anyhow::bail!("team names are letters, digits, - and _: {:?}", t.name);
+        }
+        if !seen.insert(&t.name) {
+            anyhow::bail!("two teams are called {}", t.name);
+        }
+        if t.members.iter().any(|m| m.agent.trim().is_empty()) {
+            anyhow::bail!("team {}: every member names an agent", t.name);
+        }
+    }
+    edit(root, |d| set_tables(d, "team", teams))
 }
 
 pub fn set_agents(root: &Path, a: &Agents) -> Result<Config> {

@@ -148,7 +148,10 @@ Likely secrets are hidden by default (`agents.hide_secrets = true`): `.env`, `.e
 | surface | what happens |
 |---|---|
 | MCP | `query`, `context`, `impact`, `trace`, `context_pack`, `pre_edit`, `notes`, `recall` and `sparql` leave hidden code out; naming a hidden symbol is refused. `pre_edit` returns the verdict with advice. |
-| pre-edit hook | blocks an edit to locked, hidden or out-of-scope code, and a read of hidden code, before it happens; the reason goes back to the agent. |
+| pre-tool hook | blocks an edit to locked, hidden or out-of-scope code, and a read of hidden code, before it happens – from a file tool, a patch or a shell command; the reason goes back to the agent. |
+| kula's own config | `kula.toml`, `.kula/`, `.mcp.json`, every agent's hook and MCP file, `.github/workflows/kula.yml` and `.git/` are locked for agents, whatever kula.toml says. Shell commands that would switch kula off – `kula task`, `kula team`, `kula agents accept`, `kula hooks uninstall`, `git commit --no-verify`, `git config core.hooksPath` – are refused. |
+| git `pre-commit` | `kula guard commit` refuses a commit holding fenced changes when an agent makes it (`KULA_AGENT`, or the variable each agent sets for its shell: `CLAUDECODE`, `CURSOR_AGENT`, `CODEX_SANDBOX`, `GEMINI_CLI`). A person's commits pass. |
+| `kula run` | any other harness: fenced files are read-only for the run, hidden ones unreadable, and anything fenced it changed anyway is put back afterwards (its version kept in `.kula/run/<time>/`). Exits 3 when it had to. |
 | `verify_edit` / `kula verify` | lists edits to fenced code that got through (`guard_violations`); `ok` is false. |
 | `kula check` | fails a branch that touches locked or hidden code; lists review code for a person. |
 | RDF | hidden nodes are not in the graph `sparql` sees. |
@@ -217,18 +220,57 @@ Everything outside the markers is yours and is kept. The brief is generated from
 
 Agents may propose, never decide. The `suggest` MCP tool records a fence or a workflow in `.kula/suggestions.json` with the agent's reason; it appears under **Needs you** in the UI and in `kula agents suggestions`, and a person accepts it into kula.toml (`kula agents accept <id>`) or dismisses it. An agent that could loosen its own fences would not be fenced, so nothing an agent sends changes kula.toml directly.
 
-## The pre-edit hook, per agent
+## Teams
+
+A team (`[[team]]` in kula.toml) names a workflow per agent. While it is at work (`kula team start <name>`, or Agents › Teams), every verdict is worked out for the agent asking – by `--agent` in the hook, `clientInfo` over MCP, `--agent` for `kula run` – so Claude Code can run an autoresearch loop while Cursor writes tests and Codex reads, each held to its own fences. A member's `scope` narrows its workflow's.
+
+```toml
+[[team]]
+name = "ship"
+about = "research, tests and review at once"
+members = [
+  { agent = "claude", workflow = "autoresearch", role = "speed up the indexer" },
+  { agent = "cursor", workflow = "tests" },
+  { agent = "codex", workflow = "explore", role = "review" },
+]
+```
+
+## Autoresearch
+
+A workflow with a `[workflow.research]` table is an experiment loop. `kula research start` measures a baseline (on a `research/<workflow>-<time>` branch unless `--here`) and opens a task in the workflow. Each `experiment` – the MCP tool, or `kula research try "<hypothesis>"` – takes the working tree's change as the experiment: if it touches anything fenced or out of scope it is reverted unrun; otherwise kula runs the metric, commits the change (`research #n: <hypothesis>`) if the number improved and restores the files if not. A metric that fails or prints no number counts as a failed experiment. The run's state is in `.kula/research/<workflow>.json`; the UI draws it under Agents › Research.
+
+```toml
+[[workflow]]
+name = "autoresearch"
+scope = ["src/index/**"]
+
+[workflow.research]
+metric = "cargo bench --bench index 2>&1 | grep -o '[0-9.]* ms' | tail -1"
+goal = "min"          # min | max
+budget = 40           # experiments; 0 for no limit
+timeout = 600         # seconds per run of the metric
+```
+
+## Any harness
+
+- **`kula run -w <workflow> --agent <name> -- <command>`** runs any agent CLI fenced for the run (see the table above), starting a task in the workflow and finishing it afterwards.
+- **`kula workflow install <name>`** writes a workflow as each agent's own: a Claude Code subagent (`.claude/agents/kula-<name>.md`), a Cursor rule (`.cursor/rules/kula-<name>.mdc`) and a Gemini CLI command (`.gemini/commands/kula/<name>.toml`, run as `/kula:<name>`).
+- **`kula workflow prompt <name>`** prints it as instructions for any system prompt.
+
+## The pre-tool hook, per agent
 
 `kula guard hook` reads one tool call as JSON on stdin and exits **0** to allow it or **2** to block it, with the reason on stderr. It understands each agent's payload:
 
 | agent | payload kula reads | reply |
 |---|---|---|
-| Claude Code | `tool_name`, `tool_input.file_path` / `notebook_path` | exit 2, reason on stderr |
-| Cursor | `tool_input.file_path`, or `file_path` for `beforeReadFile` | exit 2, and `{"permission":"deny","agent_message":…}` on stdout (`--agent cursor`) |
-| Codex | `tool_name: apply_patch`, the patch in `tool_input.command`: every `*** Add/Update/Delete File:` and `*** Move to:` path is checked | exit 2, reason on stderr |
-| Gemini CLI | `tool_name: write_file \| replace \| read_file`, `tool_input.file_path` / `absolute_path` | exit 2, reason on stderr |
+| Claude Code | `tool_name`, `tool_input.file_path` / `notebook_path`; `Bash` with `tool_input.command` | exit 2, reason on stderr |
+| Cursor | `tool_input.file_path`, `file_path` for `beforeReadFile`, `command` for `beforeShellExecution` | exit 2, and `{"permission":"deny","agent_message":…}` on stdout (`--agent cursor`) |
+| Codex | `tool_name: apply_patch`, the patch in `tool_input.command`: every `*** Add/Update/Delete File:` and `*** Move to:` path is checked; `shell` with `["bash", "-lc", "<script>"]` | exit 2, reason on stderr |
+| Gemini CLI | `tool_name: write_file \| replace \| read_file \| run_shell_command`, `tool_input.file_path` / `absolute_path` / `command` | exit 2, reason on stderr |
 
 Reads (`Read`, `read_file`, `read_many_files`, Cursor's `beforeReadFile`, or `--read`) are blocked only for hidden code; edits are blocked for hidden, locked and out-of-scope code. Paths outside the repository are not kula's to fence and always pass.
+
+A shell command is split into its commands (`;`, `&&`, `|`) and each is read for what it writes – redirections (`>`, `>>`), `rm`, `mv`, `cp` and `install` targets, `touch`, `truncate`, `chmod`, `tee`, `dd of=`, `sed -i` and `perl -i`, `git rm`, `git mv`, `git checkout --`, `git restore` – and what it reads; a directory stands for every file in it. `--agent` also says who is asking, which matters when a team is at work.
 
 ```sh
 echo '{"tool_name":"Edit","tool_input":{"file_path":"migrations/004.sql"}}' | kula guard hook; echo $?
@@ -242,7 +284,7 @@ echo '{"tool_name":"Edit","tool_input":{"file_path":"migrations/004.sql"}}' | ku
 
 | tool | arguments | returns |
 |---|---|---|
-| `workflows` | – | every workflow (name, about, built in or not), the task, the active workflow in full, the docs that exist |
+| `workflows` | – | every workflow (name, about, built in or not, research loop or not), the task, the active workflow in full, the agent's place in the active team, the docs that exist |
 | `start_task` | `title`, `workflow?`, `scope?` | the task and its workflow; refused when a task is active |
 | `finish_task` | – | the finished task; only one an agent started |
 | `guards` | `paths?` | kula.toml's rules, the active workflow's rules, the task, whether secrets are hidden, a verdict per path |
@@ -253,6 +295,8 @@ echo '{"tool_name":"Edit","tool_input":{"file_path":"migrations/004.sql"}}' | ku
 | `recall` | `target?`, `query?`, `limit?` | memories with `stale` and `via` |
 | `update_memory` | `id`, `text?`, `target?`, `still_true?`, `stale?` | the memory; only memories agents wrote |
 | `suggest` | `kind`, `why`, `guard?` or `workflow?` | the suggestion, waiting for a person |
+| `research` | – | the autoresearch run: metric, goal, baseline, best, budget left, scope, every experiment |
+| `experiment` | `hypothesis` | the experiment: the metric's value, kept (with its commit) or reverted, and why |
 | `sparql` | `query`, `limit?` (200, max 2000) | rows, a boolean, or triples |
 | `query` · `context` · `impact` · `trace` · `compare` · `graph_diff` · `flows` · `notes` · `issues` | as named | the graph |
 
@@ -260,6 +304,6 @@ The client name from the MCP handshake (`clientInfo.name`) signs everything an a
 
 ## What kula does not fence
 
-- **Shell commands.** An agent that runs `sed -i` or `rm` through a shell tool is not stopped by the hook, which fences file tools. `verify_edit` reports the result and `kula check` fails the branch in CI; for hard isolation run agents in a sandbox or container.
+- **Programs that write files on their own.** The hook reads shell commands, not what a script or an interpreter (`python -c`, `node -e`, a build tool) does once it runs. `kula run` still puts fenced files back afterwards, the pre-commit hook refuses the commit, `verify_edit` reports it and `kula check` fails the branch; for hard isolation run agents in a sandbox or container as well.
 - **Other checkouts.** Fences apply to the repository kula runs in.
 - **People.** Fences are for agents. You can edit locked code; `kula check` still lists it, so review sees it.

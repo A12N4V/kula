@@ -1,8 +1,8 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { dirColor, groupDirs, rankHue } from "./colors";
 import { settings, useKnownDirs, useSettings, type Settings } from "./settings";
 import { Icon } from "./ui";
-import { Grip, hasCustomSizes, resetSizes } from "./resize";
+import { hasCustomSizes, resetSizes } from "./resize";
 
 function Seg<T extends string | number>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
   return (
@@ -34,31 +34,48 @@ function Toggle({ k, label, hint }: { k: keyof Settings; label: string; hint?: s
   );
 }
 
-/** Everything cosmetic, out of the way: theme, density, graph encodings, directory colours. */
+const SECTIONS = [["appearance", "Appearance"], ["graph", "Graph encoding"], ["dirs", "Directory colours"]] as const;
+
+/** Everything cosmetic, in one dialog: theme, density, graph encodings, directory colours. */
 export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const s = useSettings();
   const dirs = useKnownDirs();
+  const body = useRef<HTMLDivElement>(null);
+  const [sec, setSec] = useState<string>("appearance");
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [onClose]);
+  // The section in view lights its tab.
+  const onScroll = () => {
+    const el = body.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    let cur: string = SECTIONS[0][0];
+    for (const [id] of SECTIONS) { const h = el.querySelector(`#set-${id}`); if (h && h.getBoundingClientRect().top - top < 80) cur = id; }
+    setSec(cur);
+  };
+  const jump = (id: string) => { body.current?.querySelector(`#set-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); setSec(id); };
   const groups = groupDirs([], s.dirDepth);
   groups.index = new Map(dirs.list.map(([d], i) => [d, i]));
   const custom = Object.keys(s.dirColors).length;
 
   return (
-    <div className="scrim clear" onMouseDown={onClose}>
-      <aside className="settings" role="dialog" aria-label="Settings" onMouseDown={(e) => e.stopPropagation()}>
-        <Grip id="settings" edge="left" min={300} max={720} label="Resize settings" />
+    <div className="scrim" onMouseDown={onClose}>
+      <section className="settings dialog" role="dialog" aria-modal="true" aria-label="Settings" onMouseDown={(e) => e.stopPropagation()}>
         <header>
           <Icon.gear />
           <h2>Settings</h2>
           <span className="spacer" />
           <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
         </header>
-        <div className="set-body">
-          <div className="set-sec">Appearance</div>
+        <div className="set-main">
+        <nav className="set-nav" aria-label="Settings sections">
+          {SECTIONS.map(([id, label]) => <button key={id} className={sec === id ? "on" : ""} onClick={() => jump(id)}>{label}</button>)}
+        </nav>
+        <div className="set-body" ref={body} onScroll={onScroll}>
+          <div className="set-sec" id="set-appearance">Appearance</div>
           <Row label="Theme"><Seg value={s.theme} options={[["system", "System"], ["dark", "Dark"], ["light", "Light"]]} onChange={(theme) => settings.set({ theme })} /></Row>
           <Toggle k="opening" label="Opening sequence" hint="Your repo's graph, dithered, once per session" />
           <Row label="Panel sizes" hint="Drag any panel edge; double-click an edge to reset it">
@@ -66,7 +83,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           </Row>
           <Row label="Density"><Seg value={s.density} options={[["compact", "Compact"], ["comfortable", "Comfortable"]]} onChange={(density) => settings.set({ density })} /></Row>
 
-          <div className="set-sec">Graph encoding</div>
+          <div className="set-sec" id="set-graph">Graph encoding</div>
           <Row label="Colour nodes by" hint={{ directory: "Where code lives", cluster: "What calls what", kind: "Function, method, class…", churn: "Commits in the last 90 days" }[s.colorBy]}>
             <Seg value={s.colorBy} options={[["directory", "Dir"], ["cluster", "Cluster"], ["kind", "Kind"], ["churn", "Churn"]]} onChange={(colorBy) => settings.set({ colorBy })} />
           </Row>
@@ -86,7 +103,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           <Toggle k="curved" label="Curved edges" />
           <Toggle k="flow" label="Call direction dots" hint="Moving dots on the focused symbol's calls" />
 
-          <div className="set-sec">
+          <div className="set-sec" id="set-dirs">
             Directory colours
             {custom > 0 && <button className="link" onClick={() => settings.set({ dirColors: {} })}>Reset {custom}</button>}
           </div>
@@ -112,12 +129,13 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
             })}
           </div>
         </div>
+        </div>
         <footer>
           <button className="btn sm ghost" onClick={() => { resetSizes(); settings.reset(); }}>Restore defaults</button>
           <span className="spacer" />
           <span className="muted">Saved in this browser</span>
         </footer>
-      </aside>
+      </section>
     </div>
   );
 }

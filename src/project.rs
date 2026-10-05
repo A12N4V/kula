@@ -61,7 +61,7 @@ fn done(what: &str, detail: &str) {
 /// `kula init`: make this directory a kula project. Idempotent – running it
 /// again only fills in what's missing.
 pub fn init(dir: &Path, o: InitOpts) -> Result<()> {
-    eprintln!("{}", accent(BANNER));
+    eprintln!("{}", banner());
     // 1. A git repository (kula is a superset of git).
     let repo = match Repo::discover(dir) {
         Ok(r) => r,
@@ -95,7 +95,7 @@ pub fn init(dir: &Path, o: InitOpts) -> Result<()> {
     // 4. Hooks keep the graph current without anyone thinking about it.
     if o.hooks.unwrap_or_else(|| ask(o.yes, "install git hooks that reindex after commit/checkout/merge?", cfg.hooks.reindex)) {
         let n = hooks_install(&repo)?;
-        done("git hooks", &format!("{n} installed (post-commit, post-checkout, post-merge)"));
+        done("git hooks", &format!("{n} installed (pre-commit fence check; reindex after commit, checkout, merge)"));
     }
 
     // 5. AI agents: register the MCP server for tools that read .mcp.json.
@@ -225,10 +225,12 @@ kula:check:
 
 // ------------------------------------------------------------------ hooks
 
-const HOOKS: &[&str] = &["post-commit", "post-checkout", "post-merge"];
+const HOOKS: &[&str] = &["pre-commit", "post-commit", "post-checkout", "post-merge"];
 const MARK: &str = "# >>> kula";
 const MARK_END: &str = "# <<< kula";
 const HOOK_BODY: &str = "command -v kula >/dev/null 2>&1 && (kula index --if-stale --quiet >/dev/null 2>&1 &)";
+/// Refuses an agent's commit of fenced changes (a person's commits pass untouched).
+const PRE_COMMIT: &str = "if command -v kula >/dev/null 2>&1; then kula guard commit || exit 1; fi";
 
 fn hooks_dir(repo: &Repo) -> Result<PathBuf> {
     let p = repo.run(&["rev-parse", "--git-path", "hooks"])?;
@@ -255,7 +257,12 @@ pub fn hooks_install(repo: &Repo) -> Result<usize> {
         } else {
             cur + "\n"
         };
-        std::fs::write(&p, format!("{base}{MARK} – keeps the knowledge graph current\n{HOOK_BODY}\n{MARK_END}\n"))?;
+        let (what, body) = if *h == "pre-commit" {
+            ("holds agents' commits to the fences", PRE_COMMIT)
+        } else {
+            ("keeps the knowledge graph current", HOOK_BODY)
+        };
+        std::fs::write(&p, format!("{base}{MARK} – {what}\n{body}\n{MARK_END}\n"))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

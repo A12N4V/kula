@@ -53,19 +53,32 @@ export interface AgentsInfo {
   memories: Memory[]; secrets_hidden: boolean; memory_enabled: boolean; mcp_registered: boolean; hook_installed: boolean; kula_toml: boolean;
   workflows: Workflow[]; workflow: Workflow | null; workflow_rules: GuardRule[]; raw_rules: RawRule[]; docs_list: string[];
   connections: Connection[]; docs: AgentDoc[]; suggestions: Suggestion[];
+  teams: Team[]; team: { name: string; started: number; by: string } | null; research: ResearchRun[];
+  git_hooks: [string, boolean][]; ci: string | null;
 }
+/** An autoresearch loop's settings ([workflow.research]). */
+export interface Research { metric: string; goal: "min" | "max" | ""; budget?: number; timeout?: number }
+export interface Experiment { n: number; hypothesis: string; value: number | null; best_before: number | null; kept: boolean; commit?: string; files: string[]; by: string; at: number; note?: string }
+/** A run of an autoresearch workflow (src/research.rs). */
+export interface ResearchRun {
+  workflow: string; metric: string; goal: string; budget: number; branch: string; base: string;
+  baseline: number; best: number; best_commit?: string; started: number; by: string; active: boolean; experiments: Experiment[];
+}
+/** A team (kula.toml [[team]]): each agent in its own workflow. */
+export interface Team { name: string; about?: string; members: { agent: string; workflow?: string; scope?: string[]; role?: string }[] }
 /** A work mode (src/workflow.rs): its own fences, scope, steps, docs and memory policy. */
 export interface Workflow {
   name: string; about?: string; scope?: string[]; lock?: string[]; hide?: string[]; review?: string[];
-  memory?: "write" | "read" | "off" | ""; steps?: string[]; docs?: string[]; builtin?: boolean;
+  memory?: "write" | "read" | "off" | ""; steps?: string[]; docs?: string[]; builtin?: boolean; research?: Research | null;
 }
 /** A guard rule as written in kula.toml. */
 export interface RawRule { paths?: string[]; symbols?: string[]; level: "locked" | "hidden" | "review"; reason?: string }
-export interface Connection { id: string; name: string; mcp: boolean; hook: boolean; files: string[] }
+export interface Connection { id: string; name: string; docs: string; workflows: string[]; mcp: boolean; hook: boolean; files: string[] }
 export interface AgentDoc { path: string; readers: string; exists: boolean; bytes: number; synced: boolean; current: boolean }
 export interface Suggestion { id: number; kind: "guard" | "workflow"; guard?: RawRule; workflow?: Workflow; why: string; by: string; created: number }
 export type AgentAction = "task_start" | "task_done" | "remember" | "confirm" | "forget" | "memory_edit" | "memory_stale" | "guards_save" | "workflows_save"
-  | "settings_save" | "doc_read" | "doc_save" | "docs_sync" | "brief" | "connect" | "suggestion_accept" | "suggestion_dismiss" | "preview";
+  | "settings_save" | "doc_read" | "doc_save" | "docs_sync" | "brief" | "connect" | "suggestion_accept" | "suggestion_dismiss" | "preview"
+  | "teams_save" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install";
 export type SparqlValue = string | number | boolean;
 export interface SparqlResult { vars?: string[]; rows?: Record<string, SparqlValue>[]; truncated?: boolean; boolean?: boolean; triples?: [SparqlValue, SparqlValue, SparqlValue][]; millis?: number }
 export interface Context {

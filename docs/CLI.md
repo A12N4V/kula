@@ -145,6 +145,23 @@ kula agents accept 3                     # into kula.toml
 
 Verdicts, strongest first: **hidden** (never read or edited, left out of every agent answer), **locked** (read, never edited), **scope** (outside the active task), **review** (editable, flagged by `check`). A workflow's fences sit on top of these while a task runs in it. `kula guard hook` reads the tool call of Claude Code, Cursor, Codex (`apply_patch`) or Gemini CLI as JSON on stdin and exits 2 with the reason on stderr to block it; `kula agents connect` registers it in each agent's own format. Shell commands an agent runs are not parsed – the hook fences file tools, MCP fences answers, and `check` is the backstop. The full model is in [AGENTS.md](AGENTS.md).
 
+### Enforcement for any harness, teams and autoresearch
+
+```sh
+kula run -w fix --agent aider -- aider        # any agent CLI, held to the fences for the run (exit 3: something was put back)
+kula workflow install refactor                 # as a Claude Code subagent, a Cursor rule, a Gemini command
+kula workflow prompt refactor                  # as instructions for any system prompt
+kula guard commit                              # the pre-commit check (installed by `kula hooks install`)
+
+kula team save ship -m claude=autoresearch:"speed up the indexer" -m cursor=tests -m codex=explore:review
+kula team start ship                           # each agent in its own workflow · kula team stop · kula team list
+
+kula research init --metric "<command>" --goal min --scope "src/index/**" --budget 40
+kula research start [workflow] [--here]        # baseline, on a research/ branch
+kula research try "<hypothesis>"               # one experiment: measured, kept or reverted
+kula research status                           # baseline, best, every experiment · kula research stop
+```
+
 ### `kula kg`, the graph as RDF
 
 ```

@@ -82,10 +82,16 @@ pub fn risk(r: &str) -> String {
     }
 }
 
-pub const BANNER: &str = r#"
-   ○───○        k u l a
-  ╱     ╲       git, with a map
- ○   ◯   ○
-  ╲     ╱
-   ○───○
-"#;
+/// The kula mark – a ring of seven-by-seven pixels around a centre node – in
+/// block characters (two per pixel, so they come out square), with the name.
+const MARK: [&str; 7] = ["..###..", ".#...#.", "#.....#", "#..#..#", "#.....#", ".#...#.", "..###.."];
+
+pub fn banner() -> String {
+    let side = ["", "", &bold("k u l a"), &dim("git, with a map"), &dim(&format!("v{}", env!("CARGO_PKG_VERSION"))), "", ""];
+    let mut out = String::from("\n");
+    for (row, text) in MARK.iter().zip(side) {
+        let px: String = row.chars().map(|c| if c == '#' { "██" } else { "  " }).collect();
+        out.push_str(&format!("  {}    {}\n", paint("38;2;240;82;1", &px), text));
+    }
+    out
+}
