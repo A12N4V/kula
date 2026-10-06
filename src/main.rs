@@ -2,6 +2,7 @@
 
 mod agent;
 mod agents;
+mod clean;
 mod config;
 mod git;
 mod graph;
@@ -311,6 +312,20 @@ enum Cmd {
     /// Check the environment.
     #[command(after_help = "Examples:\n  kula doctor")]
     Doctor,
+    /// Free disk space: old `kula run` snapshots, temp files, a compacted store.
+    /// `kula view` does this by itself after the idle timer (Settings → Disk).
+    #[command(after_help = "Examples:\n  kula clean   ·  kula clean --all   ·  kula clean --after 30   ·  kula clean --after 0 (timer off)")]
+    Clean {
+        /// Remove every kept run, not only those older than the timer
+        #[arg(long)]
+        all: bool,
+        /// Set the idle timer in minutes (0 turns auto-clean off) and exit
+        #[arg(long, value_name = "MIN")]
+        after: Option<u32>,
+        /// Show what would go without removing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Explicit git passthrough: `kula git <args>`.
     #[command(after_help = "Examples:\n  kula git stash list")]
     Git {
@@ -907,6 +922,28 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::View { port, no_open } => {
             // A missing graph is built by the server itself, behind the UI's progress loader.
             server::serve(repo, port, !no_open)?;
+        }
+        Cmd::Clean { all, after, dry_run } => {
+            if let Some(m) = after {
+                let p = clean::set_policy(&repo, clean::Policy { after_min: m })?;
+                if json {
+                    println!("{}", serde_json::to_string(&p)?);
+                } else if p.after_min == 0 {
+                    println!("auto-clean off");
+                } else {
+                    println!("auto-clean after {} min idle", p.after_min);
+                }
+                return Ok(());
+            }
+            let p = clean::policy(&repo);
+            let age = if all { std::time::Duration::ZERO } else { std::time::Duration::from_secs(p.after_min as u64 * 60) };
+            let r = clean::run(&repo, age, dry_run)?;
+            if json {
+                println!("{}", serde_json::to_string(&r)?);
+            } else {
+                let verb = if dry_run { "would remove" } else { "removed" };
+                println!("{verb} {} kept run(s), {} temp file(s); freed {} · .kula is {}", r.runs_removed, r.temp_removed, clean::human(r.freed_bytes), clean::human(r.size_bytes));
+            }
         }
         Cmd::Status => status(&repo, json)?,
         Cmd::Lg { limit } => {

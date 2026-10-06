@@ -3,6 +3,7 @@ import { dirColor, groupDirs, rankHue } from "./colors";
 import { fuzzyScore } from "./nav";
 import { settings, useKnownDirs, useSettings, type Settings } from "./settings";
 import { Icon } from "./ui";
+import { api } from "./api";
 import { hasCustomSizes, resetSizes } from "./resize";
 
 function Seg<T extends string | number>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
@@ -37,7 +38,31 @@ function Toggle({ k, label, hint, q }: { k: keyof Settings; label: string; hint?
   );
 }
 
-const SECTIONS = [["appearance", "Appearance"], ["graph", "Graph encoding"], ["dirs", "Directory colours"]] as const;
+const SECTIONS = [["appearance", "Appearance"], ["graph", "Graph encoding"], ["dirs", "Directory colours"], ["disk", "Disk"]] as const;
+
+const size = (b: number) => b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB` : b >= 1 << 20 ? `${(b / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+
+/** Kept agent runs, temp files and a store with free pages, cleared after the UI sits idle. Saved in the repo (`.kula/clean.json`) so the server can act on it. */
+function DiskRows({ q }: { q: string }) {
+  const [after, setAfter] = useState<number | null>(null);
+  const [used, setUsed] = useState<number | null>(null);
+  const [note, setNote] = useState("");
+  useEffect(() => { api.clean().then((c) => { setAfter(c.policy.after_min); setUsed(c.size_bytes); }).catch(() => {}); }, []);
+  const pick = (m: number) => { setAfter(m); api.setClean(m).catch((e) => setNote(e.message)); };
+  const now = () => { setNote("Cleaning…"); api.cleanNow().then((r) => { setUsed(r.size_bytes); setNote(r.freed_bytes ? `Freed ${size(r.freed_bytes)}` : "Already clean"); }).catch((e) => setNote(e.message)); };
+  if (after === null) return null;
+  return (
+    <>
+      <Row label="Clean up after" hint={after ? `Once kula has been idle ${after} min: old agent run copies, temp files, cached graphs; the store is compacted` : "Off – use Clean now or `kula clean`"} q={q}>
+        <Seg value={after} options={[[0, "Off"], [5, "5m"], [10, "10m"], [15, "15m"], [20, "20m"], [30, "30m"], [60, "1h"]]} onChange={pick} />
+      </Row>
+      <Row label="Disk used" hint={note || ".kula in this repository"} q={q}>
+        <span className="mono">{used === null ? "–" : size(used)}</span>
+        <button className="btn sm" onClick={now}>Clean now</button>
+      </Row>
+    </>
+  );
+}
 
 /** Everything cosmetic, in one dialog: theme, density, graph encodings, directory colours.
  *  Grouped, searchable – the search filters rows live, everything takes effect immediately. */
@@ -145,13 +170,15 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
             })}
             {q && !visible.length && <div className="muted set-empty">No directories match “{q}” – the rest of the settings above still searched.</div>}
           </div>
+          {(!q || fuzzyScore(q, "disk space clean cleanup idle timer storage") >= 0) && <div className="set-sec" id="set-disk">Disk</div>}
+          <DiskRows q={q} />
           {noHits && <div className="muted set-empty">Nothing matches “{q}”.</div>}
         </div>
         </div>
         <footer>
           <button className="btn sm ghost" onClick={() => { resetSizes(); settings.reset(); }}>Restore defaults</button>
           <span className="spacer" />
-          <span className="muted">Saved in this browser</span>
+          <span className="muted">Saved in this browser · Disk in .kula/clean.json</span>
         </footer>
       </section>
     </div>

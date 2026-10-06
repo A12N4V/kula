@@ -32,7 +32,12 @@ struct AppState {
     token: Arc<String>,
     /// Revision graphs by commit sha, for fast repeated branch contrasts.
     snapshots: Arc<std::sync::Mutex<HashMap<String, Arc<index::Built>>>>,
+    /// Unix seconds of the last request someone made (background polls don't count), for the idle clean.
+    used: Arc<std::sync::atomic::AtomicU64>,
 }
+
+/// What the UI asks for on its own every few seconds: not a sign anyone is using kula.
+const POLLS: &[&str] = &["/api/repo", "/api/meta", "/api/git/status", "/api/index/progress"];
 
 impl AppState {
     fn snapshot(&self, rev: &str) -> anyhow::Result<(String, Arc<index::Built>)> {
@@ -95,6 +100,9 @@ async fn guard(State(s): State<AppState>, req: Request, next: Next) -> Response 
     let hostname = host.rsplit_once(':').map(|(h, _)| h).unwrap_or(host);
     if !matches!(hostname, "localhost" | "127.0.0.1" | "[::1]") {
         return (StatusCode::FORBIDDEN, "kula only answers on localhost").into_response();
+    }
+    if req.uri().path().starts_with("/api/") && !POLLS.contains(&req.uri().path()) {
+        s.used.store(meta::now() as u64, std::sync::atomic::Ordering::Relaxed);
     }
     if req.uri().path().starts_with("/api/") {
         let tok = req.headers().get("x-kula-token").and_then(|h| h.to_str().ok()).unwrap_or("");
@@ -817,9 +825,60 @@ async fn agent_path_verdict(State(s): State<AppState>, Query(q): Query<HashMap<S
     .await
 }
 
+async fn clean_get(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        Ok(json!({ "policy": crate::clean::policy(r), "size_bytes": crate::clean::size(&r.kula_dir()) }))
+    })
+    .await
+}
+
+async fn clean_set(State(s): State<AppState>, Json(p): Json<crate::clean::Policy>) -> ApiResult {
+    blocking(move || Ok(json!(crate::clean::set_policy(&s.repo, p)?))).await
+}
+
+async fn clean_now(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        s.snapshots.lock().unwrap().clear();
+        Ok(json!(crate::clean::run(&s.repo, std::time::Duration::ZERO, false)?))
+    })
+    .await
+}
+
+/// Once nobody has used the UI for the timer, clean once (and drop cached
+/// revision graphs from memory), then wait for the next stretch of use.
+fn spawn_idle_clean(state: AppState) {
+    tokio::spawn(async move {
+        let mut cleaned_at = 0u64;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            let after = crate::clean::policy(&state.repo).after_min as u64 * 60;
+            let used = state.used.load(std::sync::atomic::Ordering::Relaxed);
+            let now = meta::now() as u64;
+            if after == 0 || cleaned_at >= used || now.saturating_sub(used) < after {
+                continue;
+            }
+            cleaned_at = now;
+            let s = state.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                s.snapshots.lock().unwrap().clear();
+                if let Ok(r) = crate::clean::run(&s.repo, std::time::Duration::from_secs(after), false) {
+                    if r.freed_bytes > 0 {
+                        eprintln!("  idle {} min: freed {}", after / 60, crate::clean::human(r.freed_bytes));
+                    }
+                }
+            })
+            .await;
+        }
+    });
+}
+
 pub fn router(repo: Repo, token: String) -> Router {
-    let state = AppState { repo, token: Arc::new(token), snapshots: Default::default() };
+    let state = AppState { repo, token: Arc::new(token), snapshots: Default::default(), used: Arc::new(meta::now().max(0).try_into().unwrap_or(0).into()) };
+    spawn_idle_clean(state.clone());
     Router::new()
+        .route("/api/clean", get(clean_get).post(clean_set))
+        .route("/api/clean/now", post(clean_now))
         .route("/api/repo", get(repo_info))
         .route("/api/index", post(reindex))
         .route("/api/index/progress", get(index_progress))
