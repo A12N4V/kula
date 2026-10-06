@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 300" width="1280" height="300" role="img" aria-label="The agent loop: workflows, context_pack, pre_edit, edit through the fence hook, verify_edit, remember">
+<style>
+  .box { fill: #0c0b0a; stroke: #24201d; }
+  .gate { stroke: #f0827a; }
+  .hatch { stroke: #f0827a; stroke-opacity: .16; }
+  text { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; }
+  .n { font-size: 11px; font-weight: 600; letter-spacing: .1em; fill: #f97f3a; }
+  .h { font-size: 16px; font-weight: 600; fill: #e8e2d9; }
+  .h.r { fill: #f0827a; }
+  .d { font-size: 12px; fill: #867d73; }
+  .arrow { fill: none; stroke: #332d28; stroke-width: 1.5; }
+  .cap { font-size: 12px; letter-spacing: .14em; fill: #867d73; }
+  .cap b { fill: #f97f3a; }
+  .pk { fill: #f97f3a; }
+  .no { fill: #f0827a; }
+  .ret { fill: none; stroke: #f0827a; stroke-dasharray: 3 5; stroke-opacity: .5; }
+  @media (prefers-reduced-motion: reduce) { .pk, .no { display: none; } }
+</style>
+<rect width="1280" height="300" fill="#000"/>
+<text x="47" y="52" class="cap">THE AGENT LOOP · EVERY STEP IS AN MCP TOOL, A CLI COMMAND, AND A UI VIEW</text>
+<g>
+  <rect x="47" y="92" width="176" height="96" class="box"/>
+  
+  <text x="61" y="118" class="n">01</text>
+  <text x="61" y="146" class="h">workflows</text>
+  <text x="61" y="168" class="d">learn how</text>
+  
+</g>
+<g>
+  <rect x="249" y="92" width="176" height="96" class="box"/>
+  
+  <text x="263" y="118" class="n">02</text>
+  <text x="263" y="146" class="h">context_pack</text>
+  <text x="263" y="168" class="d">read the graph</text>
+  <path d="M227 140h16" class="arrow"/><path d="M241 136l5 4-5 4" class="arrow"/>
+</g>
+<g>
+  <rect x="451" y="92" width="176" height="96" class="box"/>
+  
+  <text x="465" y="118" class="n">03</text>
+  <text x="465" y="146" class="h">pre_edit</text>
+  <text x="465" y="168" class="d">callers · tests · risk</text>
+  <path d="M429 140h16" class="arrow"/><path d="M443 136l5 4-5 4" class="arrow"/>
+</g>
+<g>
+  <rect x="653" y="92" width="176" height="96" class="box gate"/>
+  <path d="M653 188l96 -96M667 188l96 -96M681 188l96 -96M695 188l96 -96M709 188l96 -96M723 188l96 -96M737 188l92 -92M751 188l78 -78M765 188l64 -64M779 188l50 -50M793 188l36 -36M807 188l22 -22M821 188l8 -8M835 188l-6 --6" class="hatch" clip-path="url(#c3)"/><clipPath id="c3"><rect x="653" y="92" width="176" height="96"/></clipPath>
+  <text x="667" y="118" class="n">04</text>
+  <text x="667" y="146" class="h r">edit</text>
+  <text x="667" y="168" class="d">the hook checks fences</text>
+  <path d="M631 140h16" class="arrow"/><path d="M645 136l5 4-5 4" class="arrow"/>
+</g>
+<g>
+  <rect x="855" y="92" width="176" height="96" class="box"/>
+  
+  <text x="869" y="118" class="n">05</text>
+  <text x="869" y="146" class="h">verify_edit</text>
+  <text x="869" y="168" class="d">what moved</text>
+  <path d="M833 140h16" class="arrow"/><path d="M847 136l5 4-5 4" class="arrow"/>
+</g>
+<g>
+  <rect x="1057" y="92" width="176" height="96" class="box"/>
+  
+  <text x="1071" y="118" class="n">06</text>
+  <text x="1071" y="146" class="h">remember</text>
+  <text x="1071" y="168" class="d">anchored to code</text>
+  <path d="M1035 140h16" class="arrow"/><path d="M1049 136l5 4-5 4" class="arrow"/>
+</g>
+<path d="M741 188v34H539v-34" class="ret"/>
+<text x="569" y="246" class="d">a locked or out-of-scope edit is turned back, with the reason</text>
+<rect class="pk" x="-5" y="-5" width="10" height="10"><animateMotion dur="8s" repeatCount="indefinite" path="M135 140H1145" keyPoints="0;0.6;0.6;1" keyTimes="0;0.45;0.55;1" calcMode="linear"/></rect>
+<rect class="no" x="-4" y="-4" width="8" height="8" opacity="0"><animateMotion dur="8s" begin="3.6s" repeatCount="indefinite" path="M741 188v34H539v-34"/><animate attributeName="opacity" dur="8s" begin="3.6s" values="1;1;0;0" keyTimes="0;0.25;0.26;1" repeatCount="indefinite"/></rect>
+</svg>

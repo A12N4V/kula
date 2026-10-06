@@ -1,0 +1,24 @@
+{
+  "name": "kula-film",
+  "private": true,
+  "description": "The kula launch film, cut in Remotion. See ../README.md.",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Film out/kula-film.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.465",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "remotion": "4.0.465"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.15",
+    "typescript": "^5.9.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

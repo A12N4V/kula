@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="base.css"><canvas></canvas>
+<script type="module">
+// Outro, 4 bars: the final D major rings. The mark, the name, the one line to install it.
+import { C, W, H, canvas, dither, mark, word, typed, text, cursorOn, clamp, ease, bayer } from "./kit.js";
+const ctx = canvas();
+const BAR = 8 / 3, T = 4 * BAR;
+const CMD = "brew install kula";
+window.render = (t) => {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  dither(ctx, 12, (x, y) => 0.6 * Math.exp(-(((x - 520) / 700) ** 2 + ((y - 470) / 520) ** 2)) * clamp(t / 1.2), "#1d1a17", 0.45);
+  const appear = clamp(t / 1.4);
+  mark(ctx, 220, 220, 490, C.signal, 3, (px, py) => (appear * 1.3 - Math.hypot(px - 465, py - 465) / 600 > bayer(Math.floor(px / 7), Math.floor(py / 7)) ? 1 : 0));
+  const wr = clamp((t - 0.7) / 0.6);
+  const x = word(ctx, "KULA", 840, 300, 22, C.cream, (px, py) => (wr * 1.2 > bayer(Math.floor(px / 6), Math.floor(py / 6)) ? 1 : 0));
+  if (wr > 0.9) word(ctx, "1.0", x + 10, 300 + 7 * 22 - 7 * 9, 9, C.accent);
+  if (t > 1.4) text(ctx, typed("git, with a map – for you and your agents.", t, 1.4, 44), 840, 560, { size: 40, weight: 500, color: C.cream });
+  if (t > 3.0) {
+    ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.strokeRect(840.5, 620.5, 620, 70);
+    const s = typed(CMD, t, 3.0, 26);
+    text(ctx, "$", 862, 666, { size: 26, weight: 600, color: C.accent });
+    const w = text(ctx, s, 892, 666, { size: 26, weight: 500, color: C.cream });
+    if (t > 4.3) text(ctx, "or curl · apt · npm · pip · cargo · nix", 842, 732, { size: 20, weight: 500, color: C.dim });
+    if (cursorOn(t) && t < 6.5) { ctx.fillStyle = C.accent; ctx.fillRect(892 + w + 6, 643, 14, 30); }
+  }
+  if (t > 4.8) text(ctx, "WORKFLOWS · FENCES · MEMORY · THE GRAPH · MCP", 840, 800, { size: 20, weight: 600, color: C.dim, spacing: 4 });
+  if (t > 5.6) text(ctx, "github.com/A12N4V/kula   ·   GPL-3.0   ·   one binary, no account", 840, 846, { size: 20, weight: 600, color: C.accent, spacing: 1 });
+  const out = clamp((t - (T - 1.1)) / 1.0);
+  if (out > 0) dither(ctx, 8, () => ease(out) * 1.05, C.bg, 1.0);
+};
+window.ready = document.fonts.ready;
+</script>

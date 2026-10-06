@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="base.css"><canvas></canvas>
+<script type="module">
+// Build, 2 bars: the mark assembles out of dither, then the camera falls into its
+// centre – which holds the whole mark again – and lands on the wordmark at the drop.
+import { C, W, H, canvas, mark, word, bayer, clamp, ease, text } from "./kit.js";
+const ctx = canvas();
+const BAR = 8 / 3, T = 2 * BAR;
+window.render = (t) => {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  const size0 = 700;
+  const fall = clamp((t - 2.6) / (T - 2.6 - 0.35)); // zoom from 2.6 s to just before the drop
+  const s = fall * fall * (3 - 2 * fall);
+  const z = Math.pow(7 * 7, s);                       // two levels down, and back where it began
+  const size = size0 * z;
+  const cx = W / 2, cy = H / 2;
+  const x0 = cx - size / 2, y0 = cy - size / 2;
+  const appear = clamp(t / 2.2);
+  mark(ctx, x0, y0, size, C.signal, 3, (px, py) => {
+    const d = Math.hypot(px - cx, py - cy) / (size0 * 0.75);
+    return appear * 1.4 - d * 0.55 > bayer(Math.floor(px / 7), Math.floor(py / 7)) ? 1 : 0;
+  });
+  // at the very end: white flash in dither, then the wordmark
+  const flash = clamp((t - (T - 0.35)) / 0.3);
+  if (flash > 0) {
+    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+    word(ctx, "KULA", W / 2 - 4 * 6 * 24 / 2 - 24 * 3, H / 2 - 7 * 24 / 2, 24, C.cream, (x, y) => (flash * 1.2 > bayer(Math.floor(x / 8), Math.floor(y / 8)) ? 1 : 0));
+    word(ctx, "1.0", W / 2 + 4 * 6 * 24 / 2 - 24 * 2, H / 2 - 7 * 24 / 2 + 7 * 24 - 7 * 9, 9, C.accent, (x, y) => (flash > 0.5 ? 1 : 0));
+  }
+};
+window.ready = document.fonts.ready;
+</script>

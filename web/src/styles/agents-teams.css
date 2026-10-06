@@ -1,0 +1,142 @@
+/* Team and research rules (module T1): the static org chart, the research
+   loop panel, the shared run chart and inspector. */
+
+/* Research run chart and summary – shared with the agents overview (parts.tsx) */
+.run-chart { width: 100%; height: auto; display: block; background: var(--bg); border: 1px solid var(--line); }
+.rc-base { stroke: var(--line-2); stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+.rc-best { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.rc-kept { fill: var(--accent); }
+.rc-dot { fill: var(--bg); stroke: var(--text-3); vector-effect: non-scaling-stroke; }
+.rc-fail { fill: var(--red); opacity: .7; }
+.run-kpis { display: flex; flex-wrap: wrap; gap: 16px; font-size: 11.5px; color: var(--text-3); }
+.run-kpis b { font: 600 15px var(--mono); color: var(--text); margin-right: 4px; }
+.run-kpis b.lv-open { color: var(--accent); }
+.run-sum { display: grid; gap: 8px; }
+
+/* The research loop panel: head, metric row, files vs fenced, history table */
+.research { display: grid; gap: 12px; padding: 12px; background: var(--bg); }
+.r-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.r-name { font-size: 14px; color: var(--text); }
+.r-branch { font-size: 11.5px; color: var(--text-3); }
+.r-kpis { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 11.5px; color: var(--text-3); }
+.r-kpis b { font: 600 13px var(--mono); color: var(--text); margin-right: 4px; word-break: break-all; }
+.r-kpis b.lv-open { color: var(--accent); }
+.r-edit { display: grid; gap: 14px; padding: 12px; border: 1px solid var(--line-2); background: var(--panel); }
+.r-files { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.r-col { display: grid; gap: 5px; align-content: start; min-width: 0; padding: 10px; border: 1px solid var(--line); background: var(--panel); }
+.r-col h3 { margin: 0; font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.r-file { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.exp-table th { text-align: left; font: 600 10px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.exp-table td { padding: 4px 6px; border-bottom: 1px dashed var(--line); vertical-align: top; }
+.exp-table .v { text-align: right; font-family: var(--mono); }
+.exp-table tr.kept .v { color: var(--accent); }
+.r-hyp { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px; }
+.research-budget { width: 90px; flex: none; }
+
+/* The team org chart: lead on top, members indented under their lead,
+   orthogonal elbow connectors, everything readable in the DOM */
+.org { display: grid; gap: 4px; align-content: start; padding: 12px; background: var(--bg); overflow: auto; min-height: 0; }
+.org-row { display: flex; align-items: stretch; min-width: 0; }
+.org-elbow { flex: none; width: 18px; position: relative; }
+.org-elbow::before { content: ""; position: absolute; left: 9px; top: -4px; bottom: 50%; border-left: 1px solid var(--line-2); }
+.org-elbow::after { content: ""; position: absolute; left: 9px; right: -4px; top: 50%; border-top: 1px solid var(--line-2); }
+.org-card { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 7px 10px; border: 1px solid var(--line); background: var(--panel); font: inherit; font-size: 12px; color: var(--text-2); cursor: pointer; text-align: left; }
+.org-card:hover { border-color: var(--line-2); background: var(--panel-2); }
+.org-card.sel { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.org-card:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.org-name { display: inline-flex; align-items: center; gap: 6px; font: 600 12.5px var(--mono); color: var(--text); }
+.org-role { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); }
+.org-wf { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-2); border: 1px solid var(--line); padding: 2px 7px; }
+.org-wf i { width: 8px; height: 8px; flex: none; }
+.org-hand { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--accent); }
+.org-scope { font-size: 11px; color: var(--text-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+.org-err { flex-basis: 100%; color: var(--red); font-size: 11px; }
+.team-err { color: var(--red); font-size: 12px; padding: 6px 10px; border: 1px solid var(--red); background: color-mix(in oklab, var(--red) 8%, transparent); }
+
+/* Shared editor chrome: tabs, inspector, chips, preview */
+.team-card .ag-body { gap: 0; }
+.team-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 10px; overflow-x: auto; }
+.team-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.team-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.team-tabs .team-tab-add { margin-left: 4px; }
+.team-stage { display: grid; grid-template-columns: minmax(0, 1fr) 320px; border: 1px solid var(--line); min-height: 420px; }
+.team-graph { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; }
+.team-graph .org { min-height: 380px; }
+.map-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 10px; border-top: 1px solid var(--line); font-size: 11px; color: var(--text-3); }
+.map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.map-legend i { display: inline-block; width: 10px; height: 10px; opacity: .85; }
+.map-legend i.k-line { width: 16px; height: 0; border-top: 1.5px solid var(--line-2); opacity: 1; }
+.map-legend i.k-dash { width: 16px; height: 0; border-top: 1.5px dashed var(--accent); opacity: 1; }
+.map-inspector { display: grid; align-content: start; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: var(--panel); min-width: 0; overflow-y: auto; max-height: 560px; }
+.mi-kind { display: flex; align-items: center; gap: 7px; font: 600 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.mi-title { font: 600 15px var(--mono); color: var(--text); word-break: break-all; }
+input.mi-title { font: 600 14px var(--mono); }
+.mi-field { display: grid; gap: 4px; }
+.mi-field > span { font: 600 10px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.mi-field textarea { width: 100%; resize: vertical; font: 12px/1.5 var(--mono); }
+.mi-row { display: flex; gap: 6px; }
+.mi-row > * { flex: 1; min-width: 0; }
+.mi-hint { font-size: 11.5px; }
+.team-hands { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-toggle { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line); background: none; color: var(--text-3); font: inherit; font-size: 11.5px; cursor: pointer; }
+.chip-toggle.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+.team-preview { max-height: 280px; overflow: auto; white-space: pre-wrap; font-size: 11.5px; }
+.agent-glyph { display: inline-grid; place-items: center; border: 1px solid var(--line-2); font: 600 10px var(--mono); color: var(--text-2); flex: none; }
+.btn.on { border-color: var(--line-2); color: var(--text); }
+.team-mini { display: grid; gap: 6px; font-size: 12px; }
+.team-mini .row { gap: 8px; }
+
+@media (max-width: 1100px) {
+  .team-stage { grid-template-columns: 1fr; }
+  .map-inspector { border-left: 0; border-top: 1px solid var(--line); max-height: none; }
+  .r-files { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .r-hyp { white-space: normal; max-width: none; }
+  .exp-table th:nth-child(5), .exp-table td:nth-child(5) { display: none; }
+}
+
+/* The society of teams: nested boxes, a team's sub-teams inside it */
+.society { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; margin-bottom: 10px; border: 1px solid var(--line); background: var(--bg); }
+.soc-team { display: grid; gap: 6px; align-content: start; flex: 1 1 220px; min-width: 0; padding: 6px; border: 1px solid var(--line); background: var(--panel); }
+.soc-team .soc-team { background: var(--bg); }
+.soc-team .soc-team .soc-team { background: var(--panel); }
+.soc-team.sel { border-color: var(--accent); }
+.soc-team.on > .soc-head .soc-name { color: var(--accent); }
+.soc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 3px 4px; background: none; border: 0; font: inherit; font-size: 11.5px; color: var(--text-2); text-align: left; cursor: pointer; }
+.soc-head:hover .soc-name { text-decoration: underline; text-underline-offset: 3px; }
+.soc-head:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.soc-name { font: 600 12px var(--mono); color: var(--text); }
+.soc-lead { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); }
+.soc-members { display: inline-flex; gap: 2px; }
+.soc-members i { width: 7px; height: 7px; display: block; }
+.soc-n { margin-left: auto; font: 10.5px var(--mono); color: var(--text-3); }
+.soc-kids { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 10px; border-left: 1px solid var(--line-2); }
+.team-tabs button[data-depth="1"] { padding-left: 18px; }
+.team-tabs button[data-depth="2"], .team-tabs button[data-depth="3"] { padding-left: 26px; }
+.team-tabs .tab-up { color: var(--text-3); font-size: 10px; }
+
+/* Graphs beside lists: teams (SocietyGraph) and notes (NotesGraph), both on MiniGraph */
+.mini-graph { position: relative; width: 100%; height: 100%; min-height: 360px; }
+.mini-graph-canvas { position: absolute; inset: 0; }
+.graph-legend { position: absolute; left: 12px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 14px; padding: 6px 10px; font-size: 11px; color: var(--text-3); background: rgba(0,0,0,.72); border: 1px solid var(--line); pointer-events: none; }
+.graph-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.gk { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--text-3); }
+.gk.report { border-top-width: 1px; border-color: var(--line-2); }
+.gk.hand { border-top: 1px dashed var(--accent); }
+.gk.note, .gk.mem { width: 9px; height: 9px; border: 0; background: var(--text); }
+.gk.mem { background: var(--accent); }
+.graph-toggle { display: inline-flex; align-items: center; gap: 8px; }
+
+.soc-graph { position: relative; height: 640px; border: 1px solid var(--line); background: var(--bg); }
+.team-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(600px, 46%); gap: 12px; align-items: start; margin-bottom: 10px; }
+.team-side { min-width: 0; }
+@media (max-width: 1400px) { .team-split { grid-template-columns: 1fr; } .soc-graph { height: 520px; } }
+
+.notes-split { display: grid; grid-template-columns: minmax(0, 1fr) var(--size-notes-side, 400px); height: 100%; min-height: 0; }
+.notes-split > .notes-side { border-left: 1px solid var(--line); overflow: auto; min-height: 0; }
+.notes-graph { position: relative; height: 100%; min-height: 420px; background: var(--bg); }
+@media (max-width: 1100px) { .notes-split { grid-template-columns: 1fr; height: auto; } .notes-graph { height: 460px; } }
+/* the team graph takes the whole width; the other Agents tabs keep their measure */
+.ag-panel:has(.team-split) { max-width: none; }

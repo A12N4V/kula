@@ -1,0 +1,295 @@
+//! SQLite-backed graph store (`.kula/graph.db`).
+
+use crate::git::Repo;
+use anyhow::{bail, Result};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Node {
+    pub id: i64,
+    pub kind: String,
+    pub name: String,
+    pub path: String,
+    pub lang: String,
+    pub start_line: i64,
+    pub end_line: i64,
+    pub parent: Option<i64>,
+    pub community: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Edge {
+    pub src: i64,
+    pub dst: i64,
+    pub kind: String,
+    pub weight: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Community {
+    pub id: i64,
+    pub label: String,
+    pub size: i64,
+}
+
+pub struct Store {
+    pub conn: Connection,
+    /// Set while a fresh index is being built: (temporary file, final path). See `publish`.
+    staged: Option<(std::path::PathBuf, std::path::PathBuf)>,
+}
+
+const SCHEMA: &str = r#"
+PRAGMA journal_mode = DELETE;
+CREATE TABLE IF NOT EXISTS nodes (
+  id INTEGER PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, path TEXT NOT NULL,
+  lang TEXT, start_line INTEGER, end_line INTEGER, parent INTEGER, community INTEGER
+);
+CREATE TABLE IF NOT EXISTS edges (src INTEGER, dst INTEGER, kind TEXT, weight REAL);
+CREATE TABLE IF NOT EXISTS communities (id INTEGER PRIMARY KEY, label TEXT, size INTEGER);
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE INDEX IF NOT EXISTS edges_src ON edges(src, kind);
+CREATE INDEX IF NOT EXISTS edges_dst ON edges(dst, kind);
+CREATE INDEX IF NOT EXISTS nodes_name ON nodes(name);
+CREATE INDEX IF NOT EXISTS nodes_path ON nodes(path);
+CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(name, path, tokenize = 'unicode61 remove_diacritics 2');
+"#;
+
+fn row_node(r: &rusqlite::Row) -> rusqlite::Result<Node> {
+    Ok(Node {
+        id: r.get(0)?,
+        kind: r.get(1)?,
+        name: r.get(2)?,
+        path: r.get(3)?,
+        lang: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
+        start_line: r.get(5)?,
+        end_line: r.get(6)?,
+        parent: r.get(7)?,
+        community: r.get::<_, Option<i64>>(8)?.unwrap_or(0),
+    })
+}
+
+pub const NODE_COLS: &str = "id, kind, name, path, lang, start_line, end_line, parent, community";
+
+impl Store {
+    pub fn path(repo: &Repo) -> std::path::PathBuf {
+        repo.kula_dir().join("graph.db")
+    }
+
+    /// Fresh database for a full (re)index, built beside the live one. Nothing
+    /// reads it until `publish` swaps it in with one rename, so a running server's
+    /// open connections never see a half-written or vanishing file. (Deleting the
+    /// live WAL's -shm under open readers is what used to crash `kula view` with a
+    /// bus error when it reindexed.)
+    pub fn create(repo: &Repo) -> Result<Store> {
+        static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let dir = repo.kula_dir();
+        std::fs::create_dir_all(&dir)?;
+        // Keep the index out of version control without touching the user's .gitignore.
+        std::fs::write(dir.join(".gitignore"), "*\n").ok();
+        let dest = Self::path(repo);
+        // Builds that died before publishing leave their temp file; clear any older than ten minutes.
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for e in rd.flatten() {
+                let stale =
+                    e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 600);
+                if stale && e.file_name().to_string_lossy().starts_with("graph.db.building-") {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = dir.join(format!("graph.db.building-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_file(&tmp);
+        let conn = Connection::open(&tmp)?;
+        conn.execute_batch(SCHEMA)?;
+        Ok(Store { conn, staged: Some((tmp, dest)) })
+    }
+
+    /// Swap a freshly built index in for the live one. Readers holding the old
+    /// file keep reading it until they close; new opens get the new one.
+    pub fn publish(self) -> Result<()> {
+        let Store { conn, staged } = self;
+        let Some((tmp, dest)) = staged else { return Ok(()) };
+        conn.close().map_err(|(_, e)| e)?;
+        // Indexes from before this change used WAL; unlink (never truncate) its files
+        // so the new database doesn't inherit them. Open mappings survive an unlink.
+        for suffix in ["-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{}", dest.display(), suffix));
+        }
+        std::fs::rename(&tmp, &dest)?;
+        Ok(())
+    }
+
+    /// How the graph stands against HEAD: "missing", "current" or "stale". A repo
+    /// with no commits yet is current once indexed (its HEAD is recorded as "").
+    pub fn freshness(repo: &Repo) -> &'static str {
+        match Store::open(repo).ok().and_then(|s| s.meta("indexed_head")) {
+            None => "missing",
+            Some(i) if i == repo.head().unwrap_or_default() => "current",
+            _ => "stale",
+        }
+    }
+
+    pub fn open(repo: &Repo) -> Result<Store> {
+        let p = Self::path(repo);
+        if !p.exists() {
+            bail!("no index yet – run `kula index` first");
+        }
+        let conn = Connection::open(&p)?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        Ok(Store { conn, staged: None })
+    }
+
+    pub fn write_all(&self, nodes: &[Node], edges: &[Edge], communities: &[Community]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut n = tx.prepare("INSERT INTO nodes VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)")?;
+            let mut f = tx.prepare("INSERT INTO nodes_fts(rowid, name, path) VALUES (?1, ?2, ?3)")?;
+            for x in nodes {
+                n.execute(params![x.id, x.kind, x.name, x.path, x.lang, x.start_line, x.end_line, x.parent, x.community])?;
+                // Split camelCase / snake_case so partial words match.
+                f.execute(params![x.id, format!("{} {}", x.name, split_ident(&x.name)), x.path.replace('/', " ")])?;
+            }
+            let mut e = tx.prepare("INSERT INTO edges VALUES (?1,?2,?3,?4)")?;
+            for x in edges {
+                e.execute(params![x.src, x.dst, x.kind, x.weight])?;
+            }
+            let mut c = tx.prepare("INSERT INTO communities VALUES (?1,?2,?3)")?;
+            for x in communities {
+                c.execute(params![x.id, x.label, x.size])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn set_meta(&self, k: &str, v: &str) -> Result<()> {
+        self.conn.execute("INSERT OR REPLACE INTO meta VALUES (?1, ?2)", params![k, v])?;
+        Ok(())
+    }
+
+    pub fn meta(&self, k: &str) -> Option<String> {
+        self.conn.query_row("SELECT value FROM meta WHERE key = ?1", [k], |r| r.get(0)).optional().ok().flatten()
+    }
+
+    pub fn node(&self, id: i64) -> Result<Option<Node>> {
+        Ok(self.conn.query_row(&format!("SELECT {NODE_COLS} FROM nodes WHERE id = ?1"), [id], row_node).optional()?)
+    }
+
+    pub fn nodes_where(&self, clause: &str, p: impl rusqlite::Params) -> Result<Vec<Node>> {
+        let mut st = self.conn.prepare(&format!("SELECT {NODE_COLS} FROM nodes WHERE {clause}"))?;
+        let rows = st.query_map(p, row_node)?.collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    pub fn all_edges(&self) -> Result<Vec<Edge>> {
+        let mut st = self.conn.prepare("SELECT src, dst, kind, weight FROM edges")?;
+        let rows = st
+            .query_map([], |r| Ok(Edge { src: r.get(0)?, dst: r.get(1)?, kind: r.get(2)?, weight: r.get(3)? }))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    pub fn communities(&self) -> Result<Vec<Community>> {
+        let mut st = self.conn.prepare("SELECT id, label, size FROM communities ORDER BY size DESC")?;
+        let rows = st
+            .query_map([], |r| Ok(Community { id: r.get(0)?, label: r.get(1)?, size: r.get(2)? }))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Neighbours along `kind` edges. `out` = follow src→dst.
+    pub fn neighbours(&self, id: i64, kind: &str, out: bool) -> Result<Vec<(Node, f64)>> {
+        let sql = if out {
+            "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community, e.weight FROM edges e JOIN nodes n ON n.id = e.dst WHERE e.src = ?1 AND e.kind = ?2"
+        } else {
+            "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community, e.weight FROM edges e JOIN nodes n ON n.id = e.src WHERE e.dst = ?1 AND e.kind = ?2"
+        };
+        let mut st = self.conn.prepare(sql)?;
+        let rows = st.query_map(params![id, kind], |r| Ok((row_node(r)?, r.get(9)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Full-text search with prefix matching; falls back to LIKE.
+    pub fn search(&self, q: &str, limit: usize) -> Result<Vec<Node>> {
+        let terms: Vec<String> = q
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+            .filter(|t| !t.is_empty())
+            .map(|t| format!("\"{}\"*", t.replace('"', "")))
+            .collect();
+        if terms.is_empty() {
+            return Ok(vec![]);
+        }
+        let fts = terms.join(" ");
+        let sql = "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community
+             FROM nodes_fts f JOIN nodes n ON n.id = f.rowid
+             WHERE nodes_fts MATCH ?1
+             ORDER BY (lower(n.name) = lower(?2)) DESC, (n.kind = 'package') ASC, (n.kind = 'file') ASC, bm25(nodes_fts, 5.0, 1.0) LIMIT ?3";
+        let mut st = self.conn.prepare(sql)?;
+        let mut rows = st.query_map(params![fts, q.trim(), limit as i64], row_node)?.collect::<rusqlite::Result<Vec<_>>>()?;
+        if rows.is_empty() {
+            rows = self.nodes_where("name LIKE ?1 LIMIT ?2", params![format!("%{}%", q.trim()), limit as i64])?;
+        }
+        Ok(rows)
+    }
+
+    /// Resolve a user-supplied symbol reference: numeric id, `path:name`, or name.
+    pub fn resolve(&self, r: &str) -> Result<Vec<Node>> {
+        if let Ok(id) = r.parse::<i64>() {
+            return Ok(self.node(id)?.into_iter().collect());
+        }
+        if let Some((path, name)) = r.rsplit_once(':') {
+            let hits = self.nodes_where("name = ?1 AND path LIKE ?2 AND kind != 'file'", params![name, format!("%{path}")])?;
+            if !hits.is_empty() {
+                return Ok(hits);
+            }
+        }
+        let exact = self.nodes_where("name = ?1 AND kind != 'file' ORDER BY id", [r])?;
+        if !exact.is_empty() {
+            return Ok(exact);
+        }
+        // Owner.name, Owner::name, Owner#name: a member by its container.
+        if let Some((owner, name)) = r.rsplit_once("::").or_else(|| r.rsplit_once('.')).or_else(|| r.rsplit_once('#')) {
+            let hits = self.nodes_where(
+                "name = ?1 AND kind != 'file' AND parent IN (SELECT id FROM nodes WHERE name = ?2 AND kind != 'file') ORDER BY id",
+                params![name, owner],
+            )?;
+            if !hits.is_empty() {
+                return Ok(hits);
+            }
+        }
+        self.nodes_where("kind = 'file' AND (path = ?1 OR path LIKE ?2) ORDER BY length(path)", params![r, format!("%/{r}")])
+    }
+}
+
+/// `parseHttpRequest` → `parse http request`, `load_user_v2` → `load user v2`.
+pub fn split_ident(s: &str) -> String {
+    let mut out = String::new();
+    let mut prev_lower = false;
+    for c in s.chars() {
+        if c == '_' || c == '-' {
+            out.push(' ');
+            prev_lower = false;
+            continue;
+        }
+        if c.is_uppercase() && prev_lower {
+            out.push(' ');
+        }
+        prev_lower = c.is_lowercase() || c.is_ascii_digit();
+        out.extend(c.to_lowercase());
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_ident;
+
+    #[test]
+    fn splits_identifiers() {
+        assert_eq!(split_ident("parseHttpRequest"), "parse http request");
+        assert_eq!(split_ident("load_user_v2"), "load user v2");
+        assert_eq!(split_ident("URL"), "url");
+    }
+}

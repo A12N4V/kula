@@ -1,0 +1,51 @@
+/* system.css – D1
+   One interaction system for buttons, chips, tabs, rows, cards and inputs.
+   Hover/active/focus/disabled/selected are expressed here as shared classes
+   and states; per-view one-offs must defer to these. Hover is a quiet
+   background or border shift on the warm-line scale – never a shadow, glow,
+   scale or layout shift. */
+
+/* ---------- selected state (shared) ---------- */
+/* Any element that marks the current selection gets the accent field; the
+   1px inset line keeps it readable on both dark and light grounds. */
+.is-selected, .on:not(.seg > *) { background: var(--sel-bg); color: var(--text); }
+
+/* ---------- cards ---------- */
+.card { border: 1px solid var(--line); background: var(--panel); }
+.card:hover { border-color: var(--line-2); }
+.card.is-selected { border-color: var(--sel-line); background: var(--sel-bg); }
+
+/* ---------- rows ---------- */
+.row-hover { cursor: pointer; transition: background var(--dur), border-color var(--dur); }
+.row-hover:hover { background: var(--hover-bg); }
+.row-hover.is-selected { background: var(--sel-bg); }
+
+/* ---------- tabs and chips ---------- */
+/* Tab-like toggles: quiet text at rest, text + field when hovered, accent
+   when selected. Consumers keep their layout classes; these add behaviour. */
+.tab-btn { background: none; border: 1px solid transparent; color: var(--text-2); cursor: pointer; transition: background var(--dur), border-color var(--dur), color var(--dur); }
+.tab-btn:hover { background: var(--hover-bg); color: var(--text); }
+.tab-btn:active { background: var(--active-bg); }
+.tab-btn.on, .tab-btn.is-selected { background: var(--sel-bg); border-color: var(--sel-line); color: var(--text); }
+.tab-btn:disabled { color: var(--text-3); cursor: not-allowed; background: none; }
+
+.chip-btn { background: none; border: 1px solid var(--line); color: var(--text-2); cursor: pointer; transition: background var(--dur), border-color var(--dur), color var(--dur); }
+.chip-btn:hover { background: var(--hover-bg); border-color: var(--hover-line); color: var(--text); }
+.chip-btn:active { background: var(--active-bg); }
+.chip-btn.on { background: var(--sel-bg); border-color: var(--sel-line); color: var(--text); }
+.chip-btn:disabled { color: var(--text-3); border-color: var(--line); cursor: not-allowed; }
+
+/* ---------- keyboard focus ---------- */
+/* One visible focus style everywhere. Inputs focus with a border shift;
+   everything else keeps the global outline from base.css. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.input:focus-visible, .textarea:focus-visible { outline: none; }
+
+/* ---------- tooltips ---------- */
+/* The D1 tooltip: delayed, informative, 1px border instead of a shadow.
+   Component host: <Tip tip="path:line …"> triggers the box after
+   var(--tip-delay). The rail's [data-tip] tooltips follow the same language
+   with the same delay. */
+.tip-host { position: relative; display: inline-flex; }
+.tip-box { position: absolute; z-index: 60; top: calc(100% + 4px); left: 0; max-width: min(420px, 80vw); padding: 5px 8px; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); font-size: 11.5px; line-height: 1.45; white-space: pre-wrap; pointer-events: none; }
+.tip-host[data-place="top"] .tip-box { top: auto; bottom: calc(100% + 4px); }

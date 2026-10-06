@@ -1,0 +1,29 @@
+/* ================================================================ type
+   Developer voice, in Homonin's semiotic kit: JetBrains Mono and nothing else –
+   heavy tight titles, tracked uppercase labels, tabular figures. Square corners. */
+code, pre, .mono { font-size: 11.5px; }
+.section-title, .eyebrow, .kpi-label, .set-sec, .legend-head, .cp-group, .palette .grp, .help-sep, .hot-headrow, .split-tag .muted, .inspector header .kind {
+  font-family: var(--mono); font-weight: 500; font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+}
+.ov-title h1, .detail h1, .list-head h2, .card-head h2, .settings header h2, .help-head h2, .empty h3 {
+  font-family: var(--mono); font-weight: 700; letter-spacing: -.02em;
+}
+.ov-title h1 { font-size: 28px; line-height: 1; letter-spacing: -.03em; }
+.ov-title h1::before { content: "~/"; color: var(--accent); font-weight: 500; }
+.detail h1 { font-size: 24px; line-height: 1.05; }
+.card-head h2, .list-head h2 { font-size: 16px; }
+.settings header h2, .help-head h2 { font-size: 16px; }
+.kpi-cell b, .stat b, .cp-stat b { font-family: var(--display); font-weight: 600; font-size: 24px; line-height: 1; letter-spacing: -.03em; }
+.stat b, .cp-stat b { font-size: 26px; }
+.eyebrow { color: var(--accent); }
+.inspector header h2 { font-size: 16px; letter-spacing: -.01em; }
+.brand span { font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase; }
+.hud-stats b, .hc-stats b, .insp-facts b { font-family: var(--mono); font-weight: 600; font-size: 11px; }
+
+/* Code shows the characters that are in the file: no ligatures anywhere mono is used. */
+code, pre, kbd, .mono, .diff, .console, .code, input.mono, .kind-badge { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+
+.kpi-cell b, .stat b, .cp-stat b, .op-word, .ch-title, .ov-title h1 { font-variant-numeric: tabular-nums; }
+
+
+.cp-code, .code, pre, code { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }

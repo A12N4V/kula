@@ -1,0 +1,41 @@
+/* ================================================================ semiotic kit (homonin-landing /security, /ethics, /platform)
+   Crop marks on every framed surface and the 8px module grid behind the canvas. */
+:root { --crop: var(--text-3); }
+.card, .kpi-strip, .kpi, .inspector, .legend, .palette, .settings {
+  background-image:
+    linear-gradient(var(--crop), var(--crop)), linear-gradient(var(--crop), var(--crop)),
+    linear-gradient(var(--crop), var(--crop)), linear-gradient(var(--crop), var(--crop)),
+    linear-gradient(var(--crop), var(--crop)), linear-gradient(var(--crop), var(--crop)),
+    linear-gradient(var(--crop), var(--crop)), linear-gradient(var(--crop), var(--crop));
+  background-repeat: no-repeat;
+  background-size: 9px 1px, 1px 9px, 9px 1px, 1px 9px, 9px 1px, 1px 9px, 9px 1px, 1px 9px;
+  background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+}
+.overview, .graph-wrap {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--text) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--text) 4%, transparent) 1px, transparent 1px);
+  background-size: calc(var(--module) * 10) calc(var(--module) * 10);
+}
+.sb-warn { color: var(--yellow); }
+
+/* sweep fixes: hover rows stay inside their rail; ids never hide behind an ellipsis; headers and segments wrap on phones */
+.flow-step { border-left: 1px dashed var(--line-2); padding-left: 14px; margin-bottom: 6px; }
+.flow-step .sym { margin: 0; }
+.ov-title { gap: 6px; min-width: 0; flex-wrap: nowrap; }
+.ov-title .title { min-width: 0; }
+.ov-title .muted { flex: none; }
+.card-head { flex-wrap: wrap; row-gap: 6px; }
+.card-head .seg { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .ag-memory .card-head .seg { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .ag-memory .card-head .seg button { padding-inline: 4px; white-space: nowrap; }
+}
+
+/* ================================================================ integration pass (team/ux) */
+/* Hit targets on phones: every small button at least 40px wide. */
+@media (max-width: 760px) { .btn.sm { min-width: 40px; } }
+/* Long refs (remote branches, tags) shrink inside history rows instead of
+   pushing past the viewport; the tag ellipsises, the row keeps its lane. */
+.refs { min-width: 0; max-width: 100%; }
+.refs .tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }

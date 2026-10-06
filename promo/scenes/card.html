@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="base.css"><canvas></canvas>
+<script type="module">
+// One bar of type between movements. ?a=…&b=…&k=eyebrow
+import { C, W, H, canvas, dither, typed, text, cursorOn, clamp, ease } from "./kit.js";
+const ctx = canvas();
+const q = new URLSearchParams(location.search);
+const A = q.get("a") ?? "", B = q.get("b") ?? "", K = q.get("k") ?? "";
+const BAR = 8 / 3;
+window.render = (t) => {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  dither(ctx, 10, (x, y) => 0.5 * Math.exp(-(((x - W * 0.7) / 800) ** 2 + ((y - H * 0.5) / 500) ** 2)) * clamp(t / 0.6), "#1d1a17", 0.45);
+  if (K) text(ctx, K, 160, 380, { size: 20, weight: 600, color: C.accent, spacing: 4 });
+  const s1 = typed(A, t, 0.05, 30);
+  const w1 = text(ctx, s1, 160, 500, { size: 92, weight: 800, color: C.cream });
+  const s2 = typed(B, t, 0.05 + A.length / 30 + 0.15, 30);
+  const w2 = text(ctx, s2, 160, 620, { size: 92, weight: 800, color: C.accent });
+  const done = s2.length >= B.length;
+  if (cursorOn(t)) { ctx.fillStyle = C.accent; ctx.fillRect(160 + (s2 ? w2 : w1) + 12, (s2 ? 620 : 500) - 72, 46, 84); }
+  const out = clamp((t - (BAR - 0.3)) / 0.28);
+  if (out > 0) dither(ctx, 8, () => ease(out) * 1.05, C.bg, 1.0);
+};
+window.ready = document.fonts.ready;
+</script>

@@ -1,0 +1,43 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="base.css"><canvas></canvas>
+<script type="module">
+// Intro, 4 bars: strings alone. The problem, one line a bar.
+import { C, W, H, canvas, dither, typed, text, cursorOn, clamp, ease, bayer } from "./kit.js";
+const ctx = canvas();
+const BAR = 8 / 3;
+const LINES = [
+  { t: 0.35, a: "84%", b: " of developers now write code with AI." },
+  { t: BAR + 0.1, a: "46%", b: " don't trust what it writes." },
+  { t: 2 * BAR + 0.1, a: "", b: "It can't see the shape of your code." },
+  { t: 2 * BAR + 1.25, a: "", b: "It edits what it shouldn't. It forgets." },
+  { t: 3 * BAR + 0.1, a: "", b: "And review still reads it line by line." },
+];
+window.render = (t) => {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  // a slow dithered glow drifting across the ground
+  const gx = W * (0.25 + 0.5 * (t / (4 * BAR))), gy = H * 0.55;
+  dither(ctx, 12, (x, y) => 0.55 * Math.exp(-(((x - gx) / 900) ** 2 + ((y - gy) / 520) ** 2)) * clamp(t / 1.5), "#1d1a17", 0.45);
+  // eyebrow
+  text(ctx, "STACK OVERFLOW DEVELOPER SURVEY 2025", 160, 290, { size: 20, weight: 600, color: C.dim, spacing: 4 });
+  let y = 400;
+  LINES.forEach((l, i) => {
+    if (t < l.t) return;
+    const next = LINES[i + 1];
+    const old = next && t > next.t + 0.2;
+    const full = l.a + l.b;
+    const s = typed(full, t, l.t, 42);
+    const size = i < 2 ? 66 : 54;
+    const xa = 160;
+    const head = s.slice(0, Math.min(s.length, l.a.length));
+    const tail = s.slice(l.a.length);
+    let w = 0;
+    if (head) w = text(ctx, head, xa, y, { size, weight: 800, color: old ? "#7a3f1f" : C.accent });
+    const w2 = text(ctx, tail, xa + w, y, { size, weight: 500, color: old ? "#4a443e" : C.cream });
+    if (!old && s.length < full.length + 6 && cursorOn(t)) { ctx.fillStyle = C.accent; ctx.fillRect(xa + w + w2 + 8, y - size * 0.78, size * 0.5, size * 0.92); }
+    y += i < 2 ? 104 : 86;
+  });
+  // the last half bar dissolves to black in ordered dither
+  const out = clamp((t - (4 * BAR - 0.75)) / 0.7);
+  if (out > 0) dither(ctx, 8, (x, y) => ease(out) * 1.05, C.bg, 1.0);
+};
+window.ready = document.fonts.load("600 20px JBM").then(() => document.fonts.ready);
+</script>
