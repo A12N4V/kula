@@ -1,5 +1,5 @@
 {
-  description = "kula – git, with a map";
+  description = "kula: git, with a map";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -17,12 +17,12 @@
           pname = "kula-web";
           inherit version;
           src = ./web;
-          nativeBuildInputs = [ pkgs.nodejs pkgs.pnpm.configHook ];
-          pnpmDeps = pkgs.pnpm.fetchDeps {
+          nativeBuildInputs = [ pkgs.nodejs pkgs.pnpm pkgs.pnpmConfigHook ];
+          pnpmDeps = pkgs.fetchPnpmDeps {
+            inherit (pkgs) pnpm;
             inherit (finalAttrs) pname version src;
-            fetcherVersion = 2;
-            # Run `nix build` once; replace with the hash Nix reports.
-            hash = pkgs.lib.fakeHash;
+            fetcherVersion = 4;
+            hash = "sha256-zUu9nZWwUbJzc1PSBuXKAvej7z1uyjbTx0Fgs/WuLcQ=";
           };
           buildPhase = "pnpm exec vite build";
           installPhase = "cp -r dist $out";
