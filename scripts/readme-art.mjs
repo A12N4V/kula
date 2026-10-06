@@ -91,7 +91,7 @@ function hero() {
 <g shape-rendering="crispEdges"><path class="w" d="${word("KULA", fx, 140, 12)}"/><path class="w2" d="${sq(fx + 4 * 6 * 12 + 4, 140 + 6 * 12, 11.4)}"/></g>
 <text class="t" x="${fx}" y="268">git, with a map – for you and your agents<tspan class="cur">_</tspan></text>
 <text class="s" x="${fx}" y="300">KNOWLEDGE GRAPH · WORKFLOWS · FENCES · MEMORY · MCP</text>
-<text class="s" x="${fx}" y="100"><tspan class="o">●</tspan> V1.0.1 · GPL-3.0 · ONE BINARY · LOCAL-FIRST</text>
+<text class="s" x="${fx}" y="100"><tspan class="o">●</tspan> V1.0.2 · GPL-3.0 · ONE BINARY · LOCAL-FIRST</text>
 </svg>
 `;
 }

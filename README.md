@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/A12N4V/kula/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/A12N4V/kula/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="../../releases"><img alt="version" src="https://img.shields.io/badge/version-1.0.1-f97f3a?style=flat-square&labelColor=000000"></a>
+  <a href="../../releases"><img alt="version" src="https://img.shields.io/badge/version-1.0.2-f97f3a?style=flat-square&labelColor=000000"></a>
   <a href="LICENSE"><img alt="license GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-f97f3a?style=flat-square&labelColor=000000"></a>
   <img alt="rust" src="https://img.shields.io/badge/core-rust-e8e2d9?style=flat-square&labelColor=000000&logo=rust&logoColor=e8e2d9">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-21%20tools-8fd694?style=flat-square&labelColor=000000">
