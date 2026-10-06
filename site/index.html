@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kula docs</title>
+<meta name="description" content="kula: git, with a map. A local-first git client that turns your repository into a knowledge graph, for you and your agents.">
+<link rel="icon" href="assets/logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #000; --panel: #0b0a09; --line: #24201d; --line2: #3a332e;
+  --fg: #e8e2d9; --dim: #9a9188; --faint: #5f5852;
+  --accent: #f97f3a; --signal: #F05201;
+  --green: #8fd694; --blue: #7cb7ff; --violet: #d49cf0; --yellow: #e8c66a; --red: #ff6b5e;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --serif: "Cormorant Garamond", Georgia, serif;
+  --side: 264px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 13.5px/1.65 var(--mono); -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, kbd { font-family: var(--mono); font-size: 12.5px; }
+:not(pre) > code { color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+kbd { border: 1px solid var(--line2); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; color: var(--fg); }
+img { max-width: 100%; display: block; }
+
+/* sidebar */
+aside { position: fixed; inset: 0 auto 0 0; width: var(--side); border-right: 1px solid var(--line); overflow-y: auto; padding: 22px 18px 40px; background: var(--bg); z-index: 5; }
+.brand { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; color: var(--fg); }
+.brand img { width: 30px; height: 30px; image-rendering: pixelated; animation: breathe 6s ease-in-out infinite; }
+.brand b { font-size: 16px; letter-spacing: .32em; font-weight: 500; }
+.brand span { display: block; color: var(--dim); font-size: 11px; letter-spacing: .04em; }
+.ver { display: inline-block; margin: 10px 0 18px; font-size: 10.5px; color: var(--accent); border: 1px solid var(--line2); border-radius: 4px; padding: 1px 7px; letter-spacing: .1em; }
+.search { width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--fg); font: 12px var(--mono); padding: 7px 9px; margin-bottom: 16px; outline: none; }
+.search:focus { border-color: var(--accent); }
+nav h6 { margin: 18px 0 6px; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--faint); font-weight: 500; }
+nav a { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 12.5px; padding: 3px 8px; border-left: 1px solid var(--line); }
+nav a::before { content: ""; width: 5px; height: 5px; background: var(--line2); flex: none; transition: background .2s; }
+nav a:hover { color: var(--fg); text-decoration: none; }
+nav a.on { color: var(--fg); border-left-color: var(--accent); }
+nav a.on::before { background: var(--accent); }
+.burger { display: none; }
+
+/* main */
+main { margin-left: var(--side); max-width: 1060px; padding: 0 56px 120px; }
+section { padding-top: 46px; border-top: 1px solid var(--line); margin-top: 46px; transition: opacity .6s ease, transform .6s ease; }
+.js section:not(.in) { opacity: 0; transform: translateY(10px); }
+section:first-of-type { border-top: 0; margin-top: 0; }
+.eyebrow { font-size: 10.5px; letter-spacing: .22em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+h1 { font: 500 58px/1.02 var(--serif); margin: 0 0 14px; letter-spacing: -.01em; }
+h2 { font: 500 36px/1.1 var(--serif); margin: 0 0 12px; }
+h3 { font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); font-weight: 500; margin: 28px 0 10px; }
+p { margin: 0 0 12px; max-width: 76ch; }
+.lede { font: 500 23px/1.35 var(--serif); color: var(--fg); max-width: 40ch; }
+.dim { color: var(--dim); }
+
+pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; overflow-x: auto; margin: 12px 0 16px; font-size: 12.5px; line-height: 1.6; position: relative; }
+pre .c { color: var(--faint); }
+pre .k { color: var(--accent); }
+pre .s { color: var(--green); }
+.copy { position: absolute; top: 8px; right: 8px; background: var(--bg); border: 1px solid var(--line2); color: var(--dim); font: 10px var(--mono); letter-spacing: .1em; border-radius: 4px; padding: 2px 7px; cursor: pointer; opacity: 0; transition: opacity .2s; }
+pre:hover .copy { opacity: 1; }
+.copy.ok { color: var(--green); }
+
+table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; font-size: 12.5px; }
+th { text-align: left; font-weight: 500; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); padding: 6px 10px; border-bottom: 1px solid var(--line2); }
+td { padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td:first-child { white-space: nowrap; color: var(--fg); }
+tr:hover td { background: var(--panel); }
+
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); margin: 14px 0 18px; }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--panel); transition: border-color .2s, transform .2s; }
+.card:hover { border-color: var(--line2); transform: translateY(-1px); }
+.card b { display: flex; align-items: center; gap: 8px; font-weight: 500; margin-bottom: 4px; }
+.card p { color: var(--dim); font-size: 12.5px; margin: 0; }
+.ico { width: 14px; height: 14px; flex: none; }
+
+.shot { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 14px 0 6px; background: var(--panel); }
+.shot img { width: 100%; }
+.cap { font-size: 11.5px; color: var(--dim); margin: 0 0 16px; }
+.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.shots .shot { margin-bottom: 4px; }
+
+.flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0 18px; font-size: 12px; }
+.flow span { border: 1px solid var(--line2); border-radius: 4px; padding: 3px 9px; }
+.flow i { color: var(--faint); font-style: normal; }
+.flow .hot { border-color: var(--accent); color: var(--accent); }
+
+.lv { display: inline-block; font-size: 10.5px; letter-spacing: .08em; border-radius: 4px; padding: 0 6px; border: 1px solid; }
+.lv.h { color: var(--violet); } .lv.l { color: var(--red); } .lv.s { color: var(--accent); } .lv.r { color: var(--yellow); } .lv.o { color: var(--green); }
+
+.hero { padding-top: 54px; }
+.hero .art { margin: 26px 0 8px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 8px; margin: 18px 0; }
+.stats div { padding: 12px 14px; border-right: 1px solid var(--line); }
+.stats div:last-child { border-right: 0; }
+.stats b { display: block; font: 500 28px/1 var(--serif); color: var(--fg); }
+.stats span { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+.divider { margin: 8px 0 0; opacity: .9; }
+
+.cursor::after { content: "▍"; color: var(--accent); animation: blink 1s steps(1) infinite; margin-left: 2px; }
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes breathe { 50% { opacity: .65; transform: scale(.94); } }
+.scan { position: fixed; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255,255,255,.012) 0 1px, transparent 1px 3px); z-index: 50; }
+.progress { position: fixed; top: 0; left: var(--side); right: 0; height: 1px; background: var(--accent); transform-origin: 0 50%; transform: scaleX(0); z-index: 6; }
+
+footer { margin-top: 70px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--faint); font-size: 11.5px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+footer img { width: 18px; image-rendering: pixelated; }
+
+@media (max-width: 900px) {
+  aside { transform: translateX(-100%); transition: transform .25s; width: 280px; }
+  aside.open { transform: none; }
+  .burger { display: block; position: fixed; top: 12px; right: 12px; z-index: 6; background: var(--bg); border: 1px solid var(--line2); color: var(--fg); font: 11px var(--mono); letter-spacing: .12em; border-radius: 6px; padding: 6px 10px; }
+  main { margin-left: 0; padding: 0 16px 80px; }
+  .progress { left: 0; }
+  h1 { font-size: 42px; }
+  .shots { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .stats div:nth-child(2) { border-right: 0; }
+  .stats div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  td:first-child { white-space: normal; }
+  table { display: block; overflow-x: auto; }
+}
+@media (prefers-reduced-motion: reduce) { section { opacity: 1; transform: none; transition: none; } .brand img, .cursor::after { animation: none; } }
+</style>
+</head>
+<body>
+<div class="scan"></div>
+<div class="progress" id="progress"></div>
+<button class="burger" id="burger" aria-label="Contents">INDEX</button>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-graph" viewBox="0 0 14 14"><path fill="currentColor" d="M2 2h3v3H2zM9 2h3v3H9zM5.5 9h3v3h-3zM4.5 3h5v1h-5zM3 5h1v2h1v2H4V7H3zM10 5h1v2h-1v2H9V7h1z"/></symbol>
+  <symbol id="i-fence" viewBox="0 0 14 14"><path fill="currentColor" d="M2 3h2v9H2zM6 2h2v10H6zM10 3h2v9h-2zM1 5h12v1H1zM1 9h12v1H1z"/></symbol>
+  <symbol id="i-agent" viewBox="0 0 14 14"><path fill="currentColor" d="M4 2h6v1H4zM3 3h1v5H3zM10 3h1v5h-1zM4 8h6v1H4zM5 5h1v1H5zM8 5h1v1H8zM2 10h10v1H2zM1 11h1v2H1zM12 11h1v2h-1z"/></symbol>
+  <symbol id="i-memory" viewBox="0 0 14 14"><path fill="currentColor" d="M3 1h8v1H3zM2 2h1v10H2zM11 2h1v10h-1zM3 12h8v1H3zM5 4h4v1H5zM5 6h4v1H5zM5 8h2v1H5z"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 14 14"><path fill="currentColor" d="M3 1h2v2H3zM3.5 3h1v8h-1zM3 11h2v2H3zM9 3h2v2H9zM9.5 5h1v2h-1zM5 7h5v1H5z"/></symbol>
+  <symbol id="i-rdf" viewBox="0 0 14 14"><path fill="currentColor" d="M6 1h2v2H6zM1 10h2v2H1zM11 10h2v2h-2zM6.5 3h1v3h-1zM3 6h8v1H3zM3 7h1v3H3zM10 7h1v3h-1z"/></symbol>
+  <symbol id="i-team" viewBox="0 0 14 14"><path fill="currentColor" d="M5.5 1h3v3h-3zM1 9h3v3H1zM5.5 9h3v3h-3zM10 9h3v3h-3zM6.5 4h1v3h-1zM2 7h10v1H2zM2 8h1v1H2zM11 8h1v1h-1z"/></symbol>
+  <symbol id="i-research" viewBox="0 0 14 14"><path fill="currentColor" d="M1 12h12v1H1zM2 9h2v3H2zM5 7h2v5H5zM8 4h2v8H8zM11 2h2v10h-2z"/></symbol>
+  <symbol id="i-review" viewBox="0 0 14 14"><path fill="currentColor" d="M1 2h5v10H1zM8 2h5v10H8zM2 4h3v1H2zM9 4h3v1H9zM2 6h2v1H2zM9 6h3v1H9zM9 8h2v1H9z"/></symbol>
+  <symbol id="i-git" viewBox="0 0 14 14"><path fill="currentColor" d="M6 1h2v2H6zM6.5 3h1v4h-1zM6 7h2v2H6zM6.5 9h1v2h-1zM6 11h2v2H6zM8 7h3v1H8zM11 4h2v2h-2zM11.5 6h1v2h-1z"/></symbol>
+</svg>
+
+<aside id="side">
+  <a class="brand" href="#top"><img src="assets/logo.svg" alt=""><div><b>KULA</b><span>git, with a map</span></div></a>
+  <span class="ver">V1.0.0 · GPL-3.0</span>
+  <input class="search" id="q" placeholder="filter sections  /" aria-label="Filter sections">
+  <nav id="nav">
+    <h6>Start</h6>
+    <a href="#top">Overview</a>
+    <a href="#install">Install</a>
+    <a href="#quickstart">Quick start</a>
+    <a href="#init">kula init</a>
+    <a href="#config">kula.toml</a>
+    <h6>The map</h6>
+    <a href="#graph">Explore the graph</a>
+    <a href="#review">Review changes</a>
+    <a href="#ui">The UI</a>
+    <a href="#git">Still just git</a>
+    <a href="#collab">Issues, proposals, notes</a>
+    <a href="#rdf">RDF and SPARQL</a>
+    <h6>Agents</h6>
+    <a href="#connect">Connect agents</a>
+    <a href="#workflows">Workflows</a>
+    <a href="#fences">Fences</a>
+    <a href="#enforced">How fences hold</a>
+    <a href="#run">Any harness</a>
+    <a href="#teams">Teams</a>
+    <a href="#research">Autoresearch</a>
+    <a href="#memory">Memory</a>
+    <a href="#mcp">MCP tools</a>
+    <h6>Ship</h6>
+    <a href="#ci">CI gate</a>
+    <a href="#how">How it works</a>
+    <a href="#security">Security</a>
+    <a href="#commands">Command reference</a>
+  </nav>
+</aside>
+
+<main>
+
+<section class="hero" id="top">
+  <p class="eyebrow">kula 1.0</p>
+  <h1>git, with a map.</h1>
+  <p class="lede">Kula turns a repository into a knowledge graph and puts it to work, for you and for your agents.</p>
+  <p class="dim">Every git command. A graph of your code. Architectural review. Issues, proposals and notes stored in git. Agent workflows, fences and memory anchored to the code. One binary, no server, no account, no telemetry.</p>
+  <div class="art"><img src="assets/hero.svg" alt="kula"></div>
+  <div class="stats">
+    <div><b>11</b><span>languages parsed</span></div>
+    <div><b>21</b><span>MCP tools</span></div>
+    <div><b>1.4 s</b><span>to index git itself</span></div>
+    <div><b>0</b><span>servers or accounts</span></div>
+  </div>
+  <div class="grid">
+    <div class="card"><b><svg class="ico"><use href="#i-graph"/></svg>A live map</b><p>Every function, class and file, with calls, imports and clusters. Current with every commit.</p></div>
+    <div class="card"><b><svg class="ico"><use href="#i-fence"/></svg>Fences that know code</b><p>Lock a symbol, hide secrets, scope a task. Enforced on every edit, shell command and commit.</p></div>
+    <div class="card"><b><svg class="ico"><use href="#i-team"/></svg>Teams of agents</b><p>Each agent in its own workflow, in one checkout, teams answering to teams.</p></div>
+    <div class="card"><b><svg class="ico"><use href="#i-memory"/></svg>Memory that goes stale</b><p>Facts pinned to the code they describe, marked stale the moment it changes.</p></div>
+    <div class="card"><b><svg class="ico"><use href="#i-review"/></svg>Structural review</b><p>What a branch does to the architecture: symbols, edges, blast radius, risk.</p></div>
+    <div class="card"><b><svg class="ico"><use href="#i-rdf"/></svg>A graph you can take</b><p>The whole graph as RDF. Export it, or ask it anything in SPARQL.</p></div>
+  </div>
+</section>
+
+<section id="install">
+  <p class="eyebrow">Start</p>
+  <h2>Install</h2>
+  <p>One static binary with the web UI embedded. The only runtime dependency is <code>git</code>.</p>
+<pre>curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh | sh</pre>
+  <table>
+    <tr><th>channel</th><th>command</th></tr>
+    <tr><td>Homebrew</td><td><code>brew tap a12n4v/tap</code> then <code>brew install kula</code></td></tr>
+    <tr><td>nix</td><td><code>nix run github:A12N4V/kula</code> · <code>nix profile install github:A12N4V/kula</code></td></tr>
+    <tr><td>apt</td><td><code>sudo apt install kula</code> after adding the signed repository (below)</td></tr>
+    <tr><td>npm · pnpm · bun</td><td><code>npm i -g kula-cli</code> · <code>pnpm add -g kula-cli</code> · <code>bunx kula-cli</code></td></tr>
+    <tr><td>pip · uv · pipx</td><td><code>pip install kula</code> · <code>uv tool install kula</code> · <code>pipx install kula</code></td></tr>
+    <tr><td>cargo</td><td><code>cargo install --git https://github.com/A12N4V/kula</code></td></tr>
+    <tr><td>binaries</td><td>macOS (arm64, x64), Linux (x64, arm64), Windows (x64) and <code>.deb</code> on <a href="https://github.com/A12N4V/kula/releases">Releases</a></td></tr>
+  </table>
+  <h3>apt repository</h3>
+<pre>curl -fsSL https://a12n4v.github.io/kula/kula.gpg | sudo tee /usr/share/keyrings/kula.gpg &gt;/dev/null
+echo "deb [signed-by=/usr/share/keyrings/kula.gpg] https://a12n4v.github.io/kula/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/kula.list
+sudo apt update &amp;&amp; sudo apt install kula</pre>
+</section>
+
+<section id="quickstart">
+  <p class="eyebrow">Start</p>
+  <h2>Quick start</h2>
+<pre><span class="k">cd</span> your-repo
+<span class="k">kula init</span>                          <span class="c"># git init if needed · kula.toml · hooks · agents · first graph</span>
+<span class="k">kula view</span>                          <span class="c"># the map at http://localhost:7420</span>
+<span class="k">kula impact</span> parseConfig            <span class="c"># what breaks if this changes</span>
+<span class="k">kula graph-diff</span> main WORKTREE      <span class="c"># what uncommitted work does to the architecture</span>
+<span class="k">kula task start</span> "split auth" -w refactor   <span class="c"># agents may restructure; tests are locked</span>
+<span class="k">kula commit</span> -am "ship it"          <span class="c"># and it is still just git</span></pre>
+  <div class="shot"><img src="assets/terminal.svg" alt="A terminal session with kula"></div>
+</section>
+
+<section id="init">
+  <p class="eyebrow">Start</p>
+  <h2>kula init</h2>
+  <p>Runs once per repository, safe to run again. Interactive, or <code>-y</code> for every default.</p>
+<pre><span class="k">kula init</span> -y --hooks --agents --ci github</pre>
+  <table>
+    <tr><th>step</th><th>what it does</th></tr>
+    <tr><td>git</td><td><code>git init</code> when the folder is not a repository yet</td></tr>
+    <tr><td>kula.toml</td><td>the project's shared settings. Commit it so the team shares one graph</td></tr>
+    <tr><td>.kula/</td><td>the graph database. Ignores itself; your <code>.gitignore</code> is never touched</td></tr>
+    <tr><td>--hooks</td><td>reindex after commit, checkout and merge, plus the pre-commit fence check. Existing hooks are kept</td></tr>
+    <tr><td>--agents</td><td>MCP and the pre-edit hook for Claude Code, Cursor, Codex and Gemini CLI; the brief in <code>AGENTS.md</code></td></tr>
+    <tr><td>--ci</td><td><code>.github/workflows/kula.yml</code> or <code>.kula-ci.yml</code> with the check gate</td></tr>
+    <tr><td>graph</td><td>the first index (skip with <code>--no-index</code>)</td></tr>
+  </table>
+</section>
+
+<section id="config">
+  <p class="eyebrow">Start</p>
+  <h2>kula.toml</h2>
+  <p>Every key is optional. A repository without the file behaves exactly as plain git.</p>
+<pre>[project]
+name = "shop"
+default_branch = "main"          <span class="c"># what proposals and kula check compare against</span>
+
+[index]
+exclude = ["**/generated/**"]    <span class="c"># on top of .gitignore</span>
+max_file_kb = 1024
+
+[check]
+max_risk = "medium"              <span class="c"># none · low · medium · high</span>
+
+[agents]
+hide_secrets = true              <span class="c"># .env, keys, certificates never reach an agent</span>
+memory = true
+docs = ["docs/ARCHITECTURE.md"]  <span class="c"># every agent reads these first</span>
+
+[[guard]]
+symbols = ["src/billing.rs:charge_card"]
+level = "locked"
+reason = "money moves here; a person changes it"
+
+[[workflow]]
+name = "db-migrate"
+scope = ["migrations/**"]
+memory = "read"
+
+[[team]]
+name = "ship"
+under = "steer"
+members = [
+  { agent = "claude", workflow = "fix", role = "lead" },
+  { agent = "cursor", workflow = "tests", reports_to = "claude", hands_off = ["codex"] },
+]</pre>
+</section>
+
+<section id="graph">
+  <p class="eyebrow">The map</p>
+  <h2>Explore the graph</h2>
+  <p>Tree-sitter parses TypeScript, JavaScript, Python, Rust, Go, Java, C, C++, C#, Ruby and PHP. Calls resolve through imports; clusters come from label propagation. Every graph command takes <code>--json</code>.</p>
+<pre><span class="k">kula query</span> auth                  <span class="c"># search symbols and files</span>
+<span class="k">kula context</span> login               <span class="c"># callers, callees, container, source</span>
+<span class="k">kula impact</span> login [--down]       <span class="c"># blast radius, graded by risk</span>
+<span class="k">kula trace</span> main charge_card      <span class="c"># shortest call path</span>
+<span class="k">kula flows</span> · <span class="k">kula clusters</span>       <span class="c"># execution flows, functional clusters</span>
+<span class="k">kula deps</span> --undeclared           <span class="c"># imported but in no manifest</span></pre>
+  <div class="shot"><img src="assets/ui-graph.png" alt="The graph" loading="lazy"></div>
+  <p class="cap">Each directory settles into its own territory; the most connected symbols become tiles. <kbd>⇧</kbd>-click lights the shortest path, <kbd>f</kbd> shows fences.</p>
+</section>
+
+<section id="review">
+  <p class="eyebrow">The map</p>
+  <h2>Review changes</h2>
+  <p>Review the structure, not only the lines. Any two branches, tags, commits or the working tree, built from git objects without a checkout.</p>
+<pre><span class="k">kula graph-diff</span> main WORKTREE     <span class="c"># symbols gained, lost, rewritten; edges added and cut</span>
+<span class="k">kula compare</span> main feat/auth        <span class="c"># graph-aware branch comparison</span>
+<span class="k">kula lg</span>                            <span class="c"># commit graph</span></pre>
+  <div class="shots">
+    <div><div class="shot"><img src="assets/ui-contrast.png" alt="Contrast" loading="lazy"></div><p class="cap"><b>Contrast.</b> Overlay, side by side or report; changed symbols marked + − ~.</p></div>
+    <div><div class="shot"><img src="assets/ui-impact.png" alt="Impact" loading="lazy"></div><p class="cap"><b>Impact.</b> The blast radius, shaded by depth, graded by risk.</p></div>
+  </div>
+</section>
+
+<section id="ui">
+  <p class="eyebrow">The map</p>
+  <h2>The UI</h2>
+  <p><code>kula view</code> serves a local app on <code>127.0.0.1:7420</code> with a per-session token. Every place has a URL: <code>#graph/&lt;id&gt;/impact</code>, <code>#agents/memory</code>, <code>#issues/3</code>.</p>
+  <div class="shot"><img src="assets/ui-agents.png" alt="Agents" loading="lazy"></div>
+  <p class="cap"><b>Agents.</b> The task and its workflow, the loop with the fence gate, and what agents left for a person.</p>
+  <div class="shots">
+    <div><div class="shot"><img src="assets/ui-overview.png" alt="Overview" loading="lazy"></div><p class="cap"><b>Overview.</b> Proposals by risk, hotspots, a coupling matrix.</p></div>
+    <div><div class="shot"><img src="assets/ui-history.png" alt="History" loading="lazy"></div><p class="cap"><b>History.</b> Branches as lanes; contrast, cherry-pick, revert, tag.</p></div>
+    <div><div class="shot"><img src="assets/ui-changes.png" alt="Changes" loading="lazy"></div><p class="cap"><b>Changes.</b> Stage, commit, discard, with the graph beside it.</p></div>
+    <div><div class="shot"><img src="assets/ui-console.png" alt="Console" loading="lazy"></div><p class="cap"><b>Console.</b> kula and every git command, in tabs.</p></div>
+  </div>
+  <table>
+    <tr><th>keys</th><th></th></tr>
+    <tr><td><kbd>⌘K</kbd></td><td>search everything: <code>#</code> issues, <code>@</code> branches, <code>&gt;</code> commands</td></tr>
+    <tr><td><kbd>1</kbd> to <kbd>9</kbd> <kbd>0</kbd> <kbd>a</kbd> <kbd>q</kbd></td><td>switch views</td></tr>
+    <tr><td><kbd>[</kbd> <kbd>]</kbd> · <kbd>⌥←</kbd> <kbd>⌥→</kbd></td><td>inspected symbols · views and tabs</td></tr>
+    <tr><td><kbd>?</kbd></td><td>every shortcut</td></tr>
+  </table>
+</section>
+
+<section id="git">
+  <p class="eyebrow">The map</p>
+  <h2>Still just git</h2>
+  <p>Kula is a superset of git. Anything it does not know goes straight to <code>git</code>, so hooks, signing, credential helpers and LFS keep working.</p>
+<pre><span class="k">kula commit</span> -am fix · <span class="k">kula rebase</span> -i main · <span class="k">kula bisect</span> start · <span class="k">kula lfs</span> pull
+<span class="k">kula git</span> &lt;args&gt;                  <span class="c"># explicit pass-through</span>
+<span class="k">kula -C</span> ../other status            <span class="c"># like git -C</span></pre>
+</section>
+
+<section id="collab">
+  <p class="eyebrow">The map</p>
+  <h2>Issues, proposals, notes</h2>
+  <p>Stored as git objects on <code>refs/kula/meta</code>. Full history, nothing touches your branches, and they work offline and sync through any remote.</p>
+<pre><span class="k">kula issue new</span> "Recall ignores recency" -a src/memory.rs:recall -l memory
+<span class="k">kula pr new</span> "Cache renames" --base main --head feat/cache
+<span class="k">kula pr show</span> 1 · <span class="k">kula pr merge</span> 1   <span class="c"># with its graph impact</span>
+<span class="k">kula note add</span> symbol:Guards "One verdict per path."
+<span class="k">kula sync</span>                         <span class="c"># push and pull refs/kula/meta</span></pre>
+  <div class="shots">
+    <div><div class="shot"><img src="assets/ui-proposal.png" alt="Proposal" loading="lazy"></div><p class="cap"><b>Proposals.</b> Thread, graph impact, merge.</p></div>
+    <div><div class="shot"><img src="assets/ui-notes.png" alt="Notes" loading="lazy"></div><p class="cap"><b>Notes.</b> A knowledge graph beside the list; <code>[[</code> links a symbol.</p></div>
+  </div>
+</section>
+
+<section id="rdf">
+  <p class="eyebrow">The map</p>
+  <h2>RDF and SPARQL</h2>
+  <p>Symbols, files, clusters, calls, imports, notes, memories, issues and fences under <code>kula:</code> with stable <code>urn:kula:</code> IRIs. Oxigraph answers SPARQL 1.1, read only. Hidden code is never in the graph.</p>
+<pre><span class="k">kula kg export</span> -f jsonld -o graph.jsonld     <span class="c"># ttl · nt · jsonld · rdfxml</span>
+<span class="k">kula kg sparql</span> 'SELECT ?name (COUNT(?c) AS ?callers) WHERE {
+  ?s a kula:Function ; kula:name ?name . ?c kula:calls ?s
+} GROUP BY ?name ORDER BY DESC(?callers) LIMIT 10'</pre>
+  <div class="shot"><img src="assets/ui-query.png" alt="Query" loading="lazy"></div>
+</section>
+
+<section id="connect">
+  <p class="eyebrow">Agents</p>
+  <h2>Connect agents</h2>
+  <img class="divider" src="assets/agent-loop.svg" alt="workflows, context_pack, pre_edit, edit checked by the fence hook, verify_edit, remember">
+<pre><span class="k">kula agents connect</span> all    <span class="c"># MCP server + pre-edit hook, in each agent's own format</span>
+<span class="k">kula agents sync</span>           <span class="c"># the brief of tools, fences and workflows in AGENTS.md</span>
+<span class="k">kula agents status</span>         <span class="c"># who is wired up</span></pre>
+  <table>
+    <tr><th>agent</th><th>connected through</th></tr>
+    <tr><td>Claude Code</td><td><code>.mcp.json</code> · <code>PreToolUse</code> on edits, reads and Bash</td></tr>
+    <tr><td>Cursor</td><td><code>.cursor/mcp.json</code> · <code>preToolUse</code>, <code>beforeReadFile</code>, <code>beforeShellExecution</code></td></tr>
+    <tr><td>Codex</td><td><code>.codex/config.toml</code> · <code>PreToolUse</code> on <code>apply_patch</code> and <code>shell</code></td></tr>
+    <tr><td>Gemini CLI</td><td><code>.gemini/settings.json</code> · <code>BeforeTool</code> on file tools and shell</td></tr>
+    <tr><td>OpenCode, MiniMax Code, Aider, any CLI</td><td><code>kula run -w &lt;workflow&gt; -- &lt;command&gt;</code>, with any model: OpenRouter, DeepSeek, GLM, local</td></tr>
+    <tr><td>Windsurf, Zed, Copilot, Cline, Goose, Amp</td><td><code>kula mcp</code> over stdio and the brief in <code>AGENTS.md</code></td></tr>
+  </table>
+  <div class="shot"><img src="assets/ui-agents-connect.png" alt="Connect" loading="lazy"></div>
+</section>
+
+<section id="workflows">
+  <p class="eyebrow">Agents</p>
+  <h2>Workflows</h2>
+  <p>A workflow is a work mode. Start a task in one and its fences, scope, steps, docs and memory policy apply to every agent until it is done.</p>
+<pre><span class="k">kula workflow list</span>
+<span class="k">kula task start</span> "split the auth module" -w refactor
+<span class="k">kula workflow install</span> refactor   <span class="c"># Claude Code subagent, Cursor rule, Gemini command</span>
+<span class="k">kula workflow prompt</span> refactor    <span class="c"># for any system prompt</span></pre>
+  <table>
+    <tr><th>workflow</th><th>for</th><th>fences</th><th>memory</th></tr>
+    <tr><td><code>explore</code></td><td>read and explain</td><td>everything locked</td><td>write</td></tr>
+    <tr><td><code>fix</code></td><td>the smallest change that holds</td><td>none</td><td>write</td></tr>
+    <tr><td><code>refactor</code></td><td>restructure, same behaviour</td><td>tests locked</td><td>write</td></tr>
+    <tr><td><code>tests</code></td><td>write tests</td><td>only tests editable</td><td>write</td></tr>
+    <tr><td><code>docs</code></td><td>documentation</td><td>only docs editable</td><td>read</td></tr>
+    <tr><td><code>autoresearch</code></td><td>change, measure, keep what wins</td><td>its scope</td><td>write</td></tr>
+    <tr><td><i>yours</i></td><td><code>[[workflow]]</code> in kula.toml</td><td>scope · lock · hide · review</td><td>write · read · off</td></tr>
+  </table>
+  <div class="shots">
+    <div><div class="shot"><img src="assets/ui-agents-workflows.png" alt="Workflows" loading="lazy"></div><p class="cap"><b>Workflows.</b> Fences as chips, steps in order.</p></div>
+    <div><div class="shot"><img src="assets/ui-workflow-preview.png" alt="Preview" loading="lazy"></div><p class="cap"><b>Preview.</b> What a workflow fences, drawn on the graph.</p></div>
+  </div>
+</section>
+
+<section id="fences">
+  <p class="eyebrow">Agents</p>
+  <h2>Fences</h2>
+  <p>Fence a path or a <b>symbol</b>, which follows the code when it moves. The strongest level wins, so a task can narrow what kula.toml allows, never widen it.</p>
+  <div class="flow"><span class="lv h">hidden</span><i>&gt;</i><span class="lv l">locked</span><i>&gt;</i><span class="lv s">scope</span><i>&gt;</i><span class="lv r">review</span><i>&gt;</i><span class="lv o">open</span></div>
+  <table>
+    <tr><th>level</th><th>meaning</th></tr>
+    <tr><td><span class="lv h">hidden</span></td><td>never read or edited, left out of every agent answer. Likely secrets are hidden by default</td></tr>
+    <tr><td><span class="lv l">locked</span></td><td>read, never edited</td></tr>
+    <tr><td><span class="lv s">scope</span></td><td>outside the active task's scope</td></tr>
+    <tr><td><span class="lv r">review</span></td><td>editable; <code>kula check</code> flags it for a person</td></tr>
+  </table>
+<pre><span class="k">kula guard list</span> · <span class="k">kula guard check</span> src/billing.rs
+<span class="k">kula agents suggestions</span> · <span class="k">kula agents accept</span> 1   <span class="c"># agents suggest; a person decides</span></pre>
+  <div class="shot"><img src="assets/ui-fences.png" alt="Fences on the graph" loading="lazy"></div>
+</section>
+
+<section id="enforced">
+  <p class="eyebrow">Agents</p>
+  <h2>How fences hold</h2>
+  <p>Fences are not a paragraph in a prompt. Every way an agent can change code meets the same verdict.</p>
+  <div class="flow"><span>kula.toml</span><span>task</span><span>secrets</span><i>→</i><span class="hot">one verdict</span><i>→</i><span>MCP</span><span>pre-tool hook</span><span>pre-commit</span><span>kula run</span><span>verify_edit</span><span>CI</span><span>UI</span></div>
+  <table>
+    <tr><th>how an agent acts</th><th>what holds it</th></tr>
+    <tr><td>a file tool</td><td>the pre-tool hook refuses the call and says why</td></tr>
+    <tr><td>a shell command</td><td><code>rm</code>, <code>mv</code>, <code>sed -i</code>, <code>&gt; file</code>, <code>tee</code>, <code>git rm</code> and inline scripts (<code>python -c</code>, <code>node -e</code>) are read for every path they write</td></tr>
+    <tr><td>switching kula off</td><td>editing kula.toml or a hook, <code>kula task done</code>, <code>git commit --no-verify</code>, <code>core.hooksPath</code>: refused, always</td></tr>
+    <tr><td>a commit</td><td>the pre-commit hook refuses an agent's commit holding fenced changes</td></tr>
+    <tr><td>an unknown harness</td><td><code>kula run</code> makes fenced files read-only for the run, puts back anything fenced it changed, and keeps the agent's version in <code>.kula/run/</code></td></tr>
+    <tr><td>a branch</td><td><code>kula check</code> fails it in CI</td></tr>
+  </table>
+<pre><span class="c"># what an agent sees</span>
+kula guard: crypto.py is locked for agents – crypto is reviewed by hand (kula.toml guard #1).
+Leave it to a person, or suggest a change to the fence with the `suggest` tool.</pre>
+</section>
+
+<section id="run">
+  <p class="eyebrow">Agents</p>
+  <h2>Any harness, any model</h2>
+  <p>Wrap any agent CLI. It runs in a workflow and a task, held to the fences for the whole run. Exit code 3 means something fenced was put back.</p>
+<pre><span class="k">kula run</span> -w fix --agent aider -- aider
+<span class="k">kula run</span> -w docs --agent opencode -- opencode run -m openrouter/deepseek/deepseek-v3.2 "document calc.py"
+<span class="k">kula run</span> -w tests --agent minimax -- mcode exec --model &lt;provider/model&gt; "cover the parser"</pre>
+<pre><span class="c"># tested: opencode + DeepSeek V3.2 on OpenRouter, docs workflow</span>
+✓ README.md written and committed
+⊘ put back calc.py  task covers only **/*.md, docs/**, …
+  the agent's versions are in .kula/run/1791290556</pre>
+</section>
+
+<section id="teams">
+  <p class="eyebrow">Agents</p>
+  <h2>Teams</h2>
+  <p>A team gives every agent its own workflow, and the hook holds each to its own, at the same time in one checkout. Teams carry a lead, who answers to whom, hand-offs and prompts. A team can answer to another team, so they nest into a society.</p>
+<pre><span class="k">kula team save</span> ship -m claude=fix:lead -m cursor=tests -m codex=explore:review
+<span class="k">kula team prompt</span> ship cursor     <span class="c"># its full instructions: team, role, place, workflow</span>
+<span class="k">kula team start</span> ship · <span class="k">kula team stop</span> · <span class="k">kula team list</span></pre>
+  <p class="dim">Agents › Teams draws the society on the same renderer as the code map: a territory per team, hub tiles for leads, flow along hand-offs. Toggle it off for nested boxes.</p>
+  <div class="shot"><img src="assets/ui-agents.png" alt="Agents and teams" loading="lazy"></div>
+</section>
+
+<section id="research">
+  <p class="eyebrow">Agents</p>
+  <h2>Autoresearch</h2>
+  <p>Give an agent a number to move and the code it may change. Kula runs the metric itself, commits what improves it and reverts what does not. Agents never report their own scores.</p>
+<pre><span class="k">kula research init</span> --metric "cargo bench 2&gt;&amp;1 | grep -o '[0-9.]* ms' | tail -1" --goal min --scope "src/index/**" --budget 40
+<span class="k">kula research start</span>                     <span class="c"># baseline, on a research/ branch</span>
+<span class="k">kula research try</span> "cache the parser"      <span class="c"># measured: kept as a commit, or reverted</span>
+<span class="k">kula research status</span>                    <span class="c"># baseline, best, every experiment</span></pre>
+  <div class="flow"><span>hypothesis</span><i>→</i><span>edit in scope</span><i>→</i><span class="hot">kula measures</span><i>→</i><span>better: commit</span><i>·</i><span>worse: revert</span><i>→</i><span>remember why</span></div>
+</section>
+
+<section id="memory">
+  <p class="eyebrow">Agents</p>
+  <h2>Memory</h2>
+  <p>One fact pinned to a symbol, a file or the repo, stored in git. Recall ranks by the graph: the target, its file, its callers and callees. When the code changes, the memory comes back <b>stale</b> instead of being trusted.</p>
+<pre><span class="k">kula memory add</span> login "tokens are hashed twice for legacy clients"
+<span class="k">kula memory recall</span> login
+<span class="k">kula memory stale</span> 4 · <span class="k">kula memory confirm</span> 4 · <span class="k">kula memory rm</span> 4</pre>
+  <div class="flow"><span>remember</span><i>→</i><span class="lv o">fresh</span><i>→ code changes →</i><span class="lv r">stale</span><i>→ confirm →</i><span class="lv o">fresh</span></div>
+  <div class="shot"><img src="assets/ui-agents-memory.png" alt="Memory" loading="lazy"></div>
+</section>
+
+<section id="mcp">
+  <p class="eyebrow">Agents</p>
+  <h2>MCP tools</h2>
+  <p><code>kula mcp</code> serves 21 tools over stdio. Hidden code never appears in an answer.</p>
+  <table>
+    <tr><th>tool</th><th>does</th></tr>
+    <tr><td><code>workflows</code> · <code>start_task</code> · <code>finish_task</code></td><td>how work is done here, the agent's place in its team, declare a task</td></tr>
+    <tr><td><code>context_pack</code></td><td>the code a task needs, ranked by graph distance, fitted to a token budget</td></tr>
+    <tr><td><code>pre_edit</code> · <code>verify_edit</code></td><td>before: callers, tests, risk, verdict, memories. After: what moved, broke, or was fenced</td></tr>
+    <tr><td><code>guards</code> · <code>suggest</code></td><td>what may change and why; propose a fence or workflow</td></tr>
+    <tr><td><code>remember</code> · <code>recall</code> · <code>update_memory</code></td><td>facts that go stale with the code</td></tr>
+    <tr><td><code>research</code> · <code>experiment</code></td><td>the autoresearch loop</td></tr>
+    <tr><td><code>sparql</code></td><td>any structural question</td></tr>
+    <tr><td><code>query</code> · <code>context</code> · <code>impact</code> · <code>trace</code> · <code>compare</code> · <code>graph_diff</code> · <code>flows</code> · <code>notes</code> · <code>issues</code></td><td>the graph itself</td></tr>
+  </table>
+<pre><span class="k">kula pack</span> "add refunds" --budget 8000   <span class="c"># context_pack from the CLI</span>
+<span class="k">kula before</span> charge_card · <span class="k">kula verify</span>   <span class="c"># pre_edit and verify_edit</span></pre>
+</section>
+
+<section id="ci">
+  <p class="eyebrow">Ship</p>
+  <h2>CI gate</h2>
+  <p>Compares HEAD with a base through the graph: files, symbols touched, dependents, clusters crossed, undeclared imports. Exits <b>2</b> when risk exceeds <code>max_risk</code> or a change touches locked or hidden code.</p>
+<pre><span class="k">kula check</span>                            <span class="c"># base and gate from kula.toml</span>
+<span class="k">kula check</span> --base origin/main --md     <span class="c"># markdown for the PR summary</span></pre>
+  <div class="shot"><img src="assets/ui-report.png" alt="Report" loading="lazy"></div>
+</section>
+
+<section id="how">
+  <p class="eyebrow">Ship</p>
+  <h2>How it works</h2>
+  <div class="flow"><span>working tree</span><span>git objects</span><i>→</i><span class="hot">tree-sitter indexer</span><i>→</i><span>graph.db · SQLite FTS5</span><i>→</i><span>CLI</span><span>MCP · hooks</span><span>web UI</span><span>RDF</span></div>
+  <table>
+    <tr><td>indexing</td><td>parallel, respects .gitignore, 11 languages; git/git (4,783 files, 14,539 symbols, 60,351 edges) in 1.4 s</td></tr>
+    <tr><td>any revision</td><td>built from <code>git ls-tree</code> and one <code>cat-file --batch</code>, cached per commit, no checkout</td></tr>
+    <tr><td>storage</td><td><code>.kula/graph.db</code>, built beside the live file and swapped in with one rename</td></tr>
+    <tr><td>metadata</td><td>issues, proposals, notes, memories on <code>refs/kula/meta</code></td></tr>
+    <tr><td>git</td><td>never reimplemented; kula shells out to <code>git</code></td></tr>
+  </table>
+</section>
+
+<section id="security">
+  <p class="eyebrow">Ship</p>
+  <h2>Security</h2>
+  <table>
+    <tr><td>local only</td><td>the UI listens on <code>127.0.0.1</code>, rejects foreign Host headers, and needs a per-session token on every call</td></tr>
+    <tr><td>secrets</td><td><code>.env</code>, keys and certificates are hidden from agents by default</td></tr>
+    <tr><td>revisions</td><td>validated so they can never be read as options</td></tr>
+    <tr><td>no telemetry</td><td>no account, no server, nothing leaves the machine</td></tr>
+  </table>
+</section>
+
+<section id="commands">
+  <p class="eyebrow">Ship</p>
+  <h2>Command reference</h2>
+  <table>
+    <tr><th>group</th><th>commands</th></tr>
+    <tr><td>start</td><td><code>init</code> · <code>index</code> · <code>view</code> · <code>status</code> · <code>hooks install|uninstall|status</code> · <code>doctor</code></td></tr>
+    <tr><td>explore</td><td><code>query</code> · <code>context</code> · <code>impact [--down]</code> · <code>trace</code> · <code>flows</code> · <code>clusters</code> · <code>deps</code> · <code>kg export|sparql|examples</code></td></tr>
+    <tr><td>review</td><td><code>lg</code> · <code>compare</code> · <code>graph-diff</code> · <code>check [--md]</code></td></tr>
+    <tr><td>agents</td><td><code>agents status|connect|sync|brief|suggestions|accept|dismiss</code> · <code>workflow list|show|install|prompt</code> · <code>task start|show|done</code> · <code>guard list|check|hook|commit</code> · <code>memory add|recall|edit|stale|confirm|rm</code> · <code>pack</code> · <code>before</code> · <code>verify</code> · <code>mcp</code></td></tr>
+    <tr><td>orchestrate</td><td><code>run -w &lt;workflow&gt; -- &lt;cmd&gt;</code> · <code>team save|start|stop|list|prompt</code> · <code>research init|start|try|status|stop</code></td></tr>
+    <tr><td>collaborate</td><td><code>issue</code> · <code>pr</code> · <code>note</code> · <code>sync</code></td></tr>
+    <tr><td>git</td><td>everything else passes through: <code>kula &lt;git command&gt;</code></td></tr>
+  </table>
+  <footer>
+    <img src="assets/logo.svg" alt="">
+    <span>kula 1.0.0 · GPL-3.0 · © 2026 Arnav Sharma</span>
+    <a href="https://github.com/A12N4V/kula">github</a>
+    <a href="https://github.com/A12N4V/kula/releases">releases</a>
+    <a href="https://github.com/A12N4V/kula/tree/main/docs">reference docs</a>
+  </footer>
+</section>
+
+</main>
+
+<script>
+(() => {
+  document.documentElement.classList.add("js");
+  const secs = [...document.querySelectorAll("main section")];
+  const links = [...document.querySelectorAll("#nav a")];
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) e.target.classList.add("in"); }), { rootMargin: "0px 0px -5% 0px" });
+  secs.forEach(s => io.observe(s));
+  const prog = document.getElementById("progress");
+  const spy = () => {
+    const y = scrollY + 120;
+    let cur = secs[0];
+    for (const s of secs) if (s.offsetTop <= y) cur = s;
+    links.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + cur.id));
+    const h = document.documentElement.scrollHeight - innerHeight;
+    prog.style.transform = `scaleX(${h > 0 ? scrollY / h : 0})`;
+  };
+  addEventListener("scroll", spy, { passive: true }); spy();
+  const q = document.getElementById("q");
+  q.addEventListener("input", () => {
+    const t = q.value.trim().toLowerCase();
+    links.forEach(a => {
+      const s = document.querySelector(a.getAttribute("href"));
+      a.style.display = !t || a.textContent.toLowerCase().includes(t) || (s && s.textContent.toLowerCase().includes(t)) ? "" : "none";
+    });
+  });
+  addEventListener("keydown", e => { if (e.key === "/" && document.activeElement !== q) { e.preventDefault(); q.focus(); } });
+  const side = document.getElementById("side");
+  document.getElementById("burger").onclick = () => side.classList.toggle("open");
+  links.forEach(a => a.addEventListener("click", () => side.classList.remove("open")));
+  document.querySelectorAll("pre").forEach(p => {
+    const b = document.createElement("button"); b.className = "copy"; b.textContent = "COPY";
+    b.onclick = () => { navigator.clipboard?.writeText(p.innerText.replace(/COPY$|COPIED$/, "").trim()); b.textContent = "COPIED"; b.classList.add("ok"); setTimeout(() => { b.textContent = "COPY"; b.classList.remove("ok"); }, 1200); };
+    p.appendChild(b);
+  });
+  // the title types itself once
+  const h = document.querySelector(".hero h1"), full = h.textContent; h.textContent = ""; h.classList.add("cursor");
+  let i = 0; const tick = () => { h.textContent = full.slice(0, ++i); if (i < full.length) setTimeout(tick, 55); else setTimeout(() => h.classList.remove("cursor"), 1600); };
+  setTimeout(tick, 250);
+})();
+</script>
+</body>
+</html>

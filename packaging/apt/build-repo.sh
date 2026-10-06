@@ -31,10 +31,7 @@ cd - >/dev/null
 
 # Public key, binary form for `signed-by=`.
 gpg --export "$key" > "$out/kula.gpg"
-cat > "$out/index.html" <<HTML
-<!doctype html><meta charset=utf-8><title>kula apt repository</title>
-<pre>curl -fsSL https://a12n4v.github.io/kula/kula.gpg | sudo tee /usr/share/keyrings/kula.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/kula.gpg] https://a12n4v.github.io/kula/apt stable main" | sudo tee /etc/apt/sources.list.d/kula.list
-sudo apt update && sudo apt install kula</pre>
-HTML
+# The docs site at the root, the apt repository under it.
+cp -R site/. "$out/"
+mkdir -p "$out/assets" && cp docs/assets/*.svg docs/assets/*.png "$out/assets/"
 echo "apt repository ready in $repo (key $key)"
