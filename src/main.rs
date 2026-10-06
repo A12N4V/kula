@@ -1738,6 +1738,8 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                     ..old.unwrap_or_default()
                 });
             }
+            // `-m gemini=fix:lead` names the lead as well as --lead does
+            let lead = lead.or_else(|| members.iter().find(|m| m.role == "lead").map(|m| m.agent.clone()));
             if let Some(lead) = &lead {
                 for m in members.iter_mut() {
                     m.reports_to = if &m.agent == lead { String::new() } else { lead.clone() };
