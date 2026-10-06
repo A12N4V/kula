@@ -7,14 +7,14 @@ import noverlap from "graphology-layout-noverlap";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import EdgeCurveProgram from "@sigma/edge-curve";
 import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../graphfx";
-import { api, colorFor, relTime, type Context, type GraphData, type GuardLevel, type Impact, type Node, type SymbolHistory } from "../api";
+import { api, colorFor, relTime, type Context, type GraphData, type GuardLevel, type Impact, type Node, type RawRule, type SymbolHistory } from "../api";
 import { GuardTag, LEVEL_MEANS } from "./Agents";
 import { visit } from "../near";
 import { LinkArea } from "../Autofill";
 import { useCode } from "../CodePanel";
 import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLYPH, makeColorer } from "../colors";
 import { knownDirs, settings, useSettings, type Settings } from "../settings";
-import { Empty, Icon, Kind, Logo, Md, Sym, useToast } from "../ui";
+import { Empty, Icon, Kind, Logo, Md, ShowOutput, Sym, useToast } from "../ui";
 import { GraphLoader, type LoadStep } from "../AsciiMark";
 import { PreEditPanel } from "../AgentChecks";
 import type { IndexProgress } from "../api";
@@ -164,11 +164,23 @@ function MapView(props: Props) {
     }).catch(() => setFences(new Map()));
   }, [fencesOn, version, fenceWf]);
   // Path trace: shift-click a second symbol to light the shortest path between them.
+  // Armed from the keyboard with `t`: the next neighbour (arrows) or click becomes the other end.
   const [trace, setTrace] = useState<{ from: string; to: string; path: string[] | null } | null>(null);
+  const [traceArmed, setTraceArmed] = useState(false);
+  // Mirror of traceArmed for the sigma event closures, which never re-bind.
+  const armed = useRef(false);
+  // The key handler below binds once per graph: focus and toast travel in refs
+  // so a rebinding gap can never swallow a keystroke.
+  const focusRef = useRef<number | null>(focus);
+  // Where keyboard neighbour-walking is, per node: repeated arrows cycle that side.
+  const traceFromRef = useRef({ id: "", idx: -1 });
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [tabReq, setTabReq] = useState<{ tab: InspectorTab; n: number } | null>(null);
   const code = useCode();
   const toast = useToast();
+  focusRef.current = focus;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
   useEffect(() => {
     let dead = false;
@@ -393,7 +405,12 @@ function MapView(props: Props) {
     r.on("leaveNode", () => { setHover(null); box.current!.style.cursor = ""; });
     r.on("clickNode", ({ node, event }) => {
       const from = state.current.focus;
-      if (event.original.shiftKey && from != null && String(from) !== node) { setTrace({ from: String(from), to: node, path: shortest(graph, String(from), node) }); return; }
+      if ((armed.current || event.original.shiftKey) && from != null && String(from) !== node) {
+        setTrace({ from: String(from), to: node, path: shortest(graph, String(from), node) });
+        armed.current = false;
+        setTraceArmed(false);
+        return;
+      }
       setTrace(null);
       setFocus(Number(node));
     });
@@ -508,13 +525,50 @@ function MapView(props: Props) {
     const k = (e: KeyboardEvent) => {
       if (/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "f") setFencesOn((x) => !x);
-      if (e.key === "Escape") { setMenu(null); setTrace(null); }
+      if (e.key === "Escape") { setMenu(null); setTrace(null); armed.current = false; setTraceArmed(false); }
+      if (e.key === "t" && focusRef.current != null) {
+        armed.current = true;
+        setTraceArmed(true);
+        toastRef.current("Trace armed – press an arrow for a neighbour or click another symbol");
+      }
+      // Walk the neighbours of the selection: arrows down/right follow calls out,
+      // up/left follow calls in. Repeats cycle through that side's neighbours.
+      const dirKeys: Record<string, "in" | "out"> = { ArrowRight: "out", ArrowDown: "out", ArrowLeft: "in", ArrowUp: "in" };
+      const side = dirKeys[e.key];
+      const focus = focusRef.current;
+      if (side && focus != null && graph?.hasNode(String(focus))) {
+        e.preventDefault();
+        const id = String(focus);
+        const ns = (side === "out" ? graph.outNeighbors(id) : graph.inNeighbors(id)).filter((n) => !n.startsWith("__dir:"));
+        if (!ns.length) return;
+        const sorted = ns.sort((a, b) => graph.degree(b) - graph.degree(a));
+        const at = armed.current ? -1 : traceFromRef.current.idx;
+        const next = sorted[(at + 1) % sorted.length];
+        if (armed.current) {
+          // A trace is armed from this node: the neighbour becomes the other end.
+          setTrace({ from: id, to: next, path: shortest(graph, id, next) });
+          armed.current = false;
+          setTraceArmed(false);
+          traceFromRef.current = { id, idx: -1 };
+        } else {
+          traceFromRef.current = traceFromRef.current.id === id ? { id, idx: at + 1 } : { id, idx: 0 };
+          setFocus(Number(next));
+        }
+      }
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, []);
+  }, [graph, setFocus]);
   const cam = (f: (c: ReturnType<Sigma["getCamera"]>) => void) => sigma.current && f(sigma.current.getCamera());
   const hovered = hover && graph?.hasNode(hover) && !hover.startsWith("__dir:") ? graph.getNodeAttributes(hover) : null;
+  // The card waits a beat so brushing past nodes does not flicker it on.
+  const [cardOn, setCardOn] = useState(false);
+  useEffect(() => {
+    setCardOn(false);
+    if (!hover) return;
+    const t = window.setTimeout(() => setCardOn(true), 260);
+    return () => window.clearTimeout(t);
+  }, [hover]);
   const pkgCount = data ? data.nodes.filter((n) => n.kind === "package").length : 0;
   const hubCount = graph ? graph.filterNodes((_id, a) => isHub(a)).length : 0;
 
@@ -590,7 +644,7 @@ function MapView(props: Props) {
         />
       )}
 
-      {hovered && hover !== String(focus) && <HoverCard n={hovered.node} dir={groups.label(groups.of(hovered.node.path))} deg={[hovered.din, hovered.dout]} churn={churn[hovered.node.path] ?? 0} hub={isHub(hovered)} />}
+      {hovered && cardOn && hover !== String(focus) && <HoverCard n={hovered.node} dir={groups.label(groups.of(hovered.node.path))} deg={[hovered.din, hovered.dout]} churn={churn[hovered.node.path] ?? 0} hub={isHub(hovered)} fence={hover != null ? fences?.get(hover) ?? null : null} />}
 
       {data && (
         <Legend
@@ -606,12 +660,14 @@ function MapView(props: Props) {
         <button className="btn" aria-label="Re-run layout" title="Re-run layout" onClick={() => setData((d) => (d ? { ...d } : d))}><Icon.refresh /></button>
       </div>
 
-      {focus != null && <Inspector id={focus} tabReq={tabReq} onClose={() => setFocus(null)} setFocus={setFocus} impact={impact} setImpact={setImpact} go={go} churn={churn} deg={graph?.hasNode(String(focus)) ? [graph.getNodeAttribute(String(focus), "din"), graph.getNodeAttribute(String(focus), "dout")] : null} />}
+      {focus != null && <Inspector id={focus} tabReq={tabReq} onClose={() => setFocus(null)} setFocus={setFocus} impact={impact} setImpact={setImpact} go={go} churn={churn} deg={graph?.hasNode(String(focus)) ? [graph.getNodeAttribute(String(focus), "din"), graph.getNodeAttribute(String(focus), "dout")] : null}
+        onTrace={() => { armed.current = true; setTraceArmed(true); toast("Trace armed – press an arrow for a neighbour or click another symbol"); }}
+        traceArmed={traceArmed} />}
     </div>
   );
 }
 
-function HoverCard({ n, dir, deg, churn, hub }: { n: Node; dir: string; deg: [number, number]; churn: number; hub: boolean }) {
+function HoverCard({ n, dir, deg, churn, hub, fence }: { n: Node; dir: string; deg: [number, number]; churn: number; hub: boolean; fence: GuardLevel | null }) {
   const lines = n.end_line - n.start_line + 1;
   return (
     <div className="hover-card" key={n.id}>
@@ -626,6 +682,7 @@ function HoverCard({ n, dir, deg, churn, hub }: { n: Node; dir: string; deg: [nu
         {n.kind !== "file" && <span><b>{lines}</b> ln</span>}
         <span title="Commits touching this file in 90 days"><b>{churn}</b> {churn === 1 ? "commit" : "commits"}</span>
         <span className="hc-dir mono">{dir}</span>
+        {(fence && fence !== "scope") && <span title={LEVEL_MEANS[fence]}><GuardTag level={fence} /></span>}
       </div>
     </div>
   );
@@ -743,9 +800,11 @@ function Legend({ open, setOpen, mode, groups, settings: s, data, churn, filter,
   );
 }
 
-function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goView, churn, deg }: {
+function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goView, churn, deg, onTrace, traceArmed }: {
   id: number; tabReq: { tab: InspectorTab; n: number } | null; onClose: () => void; setFocus: (id: number) => void; impact: Impact | null; setImpact: (i: Impact | null) => void; go: Go;
   churn: Record<string, number>; deg: [number, number] | null;
+  /** Arm path-trace from this symbol (the keyboard path to shift-click). */
+  onTrace: () => void; traceArmed: boolean;
 }) {
   const [ctx, setCtx] = useState<Context | null>(null);
   const [tab, setTab] = useState<InspectorTab>("context");
@@ -775,6 +834,9 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
   const [dir, setDir] = useState<"up" | "down">("up");
   const [note, setNote] = useState("");
   const [asMemory, setAsMemory] = useState(false);
+  // Reach-for actions: blame output in place, and a fence picker for this symbol.
+  const [blame, setBlame] = useState<string | null>(null);
+  const [fencing, setFencing] = useState<"locked" | "review" | "hidden" | null>(null);
   const toast = useToast();
   const load = () => api.symbol(id).then((c) => { setCtx(c); visit({ path: c.node.path, name: c.node.name, kind: c.node.kind, id: c.node.id }); }).catch((e) => toast(e.message, "err"));
   // `#graph/<id>/impact` opens straight onto a tab (first load only).
@@ -791,6 +853,30 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
   const go = (n: Node) => setFocus(n.id);
   const lists: [string, Node[], string][] = ctx ? [["Called by", ctx.callers, "in"], ["Calls", ctx.callees, "out"], ["Contains", ctx.children, ""], ["Imports", ctx.imports, "out"], ["Imported by", ctx.imported_by, "in"]] : [];
   const target = ctx ? (ctx.node.kind === "file" ? `file:${ctx.node.path}` : `symbol:${ctx.node.path}:${ctx.node.name}`) : "";
+  const loc = ctx ? (ctx.node.kind === "file" ? ctx.node.path : `${ctx.node.path}:${ctx.node.start_line}`) : "";
+  const iri = ctx
+    ? ctx.node.kind === "file" ? `urn:kula:file:${ctx.node.path}` : ctx.node.kind === "package" ? `urn:kula:pkg:${ctx.node.name}` : `urn:kula:sym:${ctx.node.path}#${ctx.node.name}`
+    : "";
+  const copy = (text: string, what: string) => { navigator.clipboard?.writeText(text).then(() => toast(`Copied ${what}`)).catch(() => {}); };
+  const runBlame = () => {
+    if (!ctx) return;
+    setBlame(null);
+    const n = ctx.node;
+    const args = n.kind === "file" ? ["blame", "--", n.path] : ["blame", "-L", `${n.start_line},${n.end_line}`, "--", n.path];
+    api.exec(args).then((r) => setBlame(r.stdout || r.stderr || "(no output)")).catch((e) => toast(e.message, "err"));
+  };
+  const fence = async (level: "locked" | "review" | "hidden") => {
+    if (!ctx) return;
+    const rule: RawRule = { paths: [ctx.node.path], level, reason: "fenced from the inspector" };
+    try {
+      const a = await api.agents();
+      const rules = [...(a.rules ?? []).filter((r) => !r.paths?.includes(ctx.node.path) || r.level === level), rule];
+      await api.agentAction("guards_save", { rules });
+      toast(`${ctx.node.kind === "file" ? "File" : "Symbol"} fenced: ${level}`);
+      setFencing(null);
+      load();
+    } catch (e: any) { toast(e.message, "err"); }
+  };
 
   return (
     <aside className="inspector" aria-label="Symbol inspector">
@@ -818,6 +904,34 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
         {ctx?.guard && ctx.guard.level !== "open" && (
           <div className={`insp-guard ${ctx.guard.level}`} title={ctx.guard.rule}>
             <Icon.lock /><GuardTag level={ctx.guard.level} /><span>{ctx.guard.reason}</span>
+          </div>
+        )}
+        {ctx && (
+          <div className="insp-actions">
+            <button className="btn sm" onClick={() => setTab("impact")}><Icon.workflow /> Impact</button>
+            <button className={`btn sm ${traceArmed ? "on" : ""}`} onClick={onTrace} title="Path to another symbol  t"><Icon.arrow /> Trace</button>
+            <button className="btn sm" onClick={() => setTab("history")}><Icon.history /> History</button>
+            <button className="btn sm" onClick={runBlame}><Icon.search /> Blame</button>
+            <button className="btn sm" aria-label="Open memory notes" onClick={() => setTab("notes")}><Icon.memory /> Remember</button>
+            <span className="fence-wrap">
+              <button className={`btn sm ${fencing !== null ? "on" : ""}`} aria-expanded={fencing !== null} onClick={() => setFencing(fencing === null ? "locked" : null)}><Icon.fence /> Fence this</button>
+              {fencing !== null && (
+                <span className="fence-pick" role="menu" aria-label="Fence level">
+                  {(["locked", "review", "hidden"] as const).map((l) => (
+                    <button key={l} role="menuitem" className={fencing === l ? "on" : ""} onClick={() => { setFencing(l); fence(l); }}><GuardTag level={l} /></button>
+                  ))}
+                </span>
+              )}
+            </span>
+            <span className="spacer" />
+            <button className="btn sm ghost" onClick={() => copy(loc, "location")} title={`Copy ${loc}`}>Copy path:line</button>
+            <button className="btn sm ghost" onClick={() => copy(iri, "symbol id")} title={`Copy ${iri}`}>Copy id</button>
+          </div>
+        )}
+        {blame !== null && (
+          <div className="insp-blame">
+            <div className="row"><span className="section-title" style={{ margin: 0 }}>Blame</span><span className="spacer" /><button className="btn ghost sm" aria-label="Hide blame" onClick={() => setBlame(null)}><Icon.close /></button></div>
+            <ShowOutput text={blame} />
           </div>
         )}
       </header>

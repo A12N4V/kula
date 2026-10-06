@@ -11,6 +11,10 @@ export default defineConfig({
   testDir: "e2e",
   timeout: 30_000,
   fullyParallel: true,
+  // Three workers, one per project, is the sweet spot here: every graph page
+  // runs sigma WebGL against one repo server, and more concurrent browsers
+  // than that stall the loader and flake the canvas tests.
+  workers: 3,
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL: `http://localhost:${PORT}`,
@@ -31,7 +35,8 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },
-    // A disposable clone with guards, a task and memories (e2e/fixture.sh): the agents tests write to it.
-    { command: `sh e2e/fixture.sh ${PORT + 1}`, url: `http://localhost:${PORT + 1}`, reuseExistingServer: false, timeout: 90_000 },
+    // A disposable clone with guards, a task and memories (e2e/fixture.sh): only
+    // the opt-in shots run needs it now – ui.spec spawns one fixture per worker.
+    { command: `sh e2e/fixture.sh ${PORT + 1}`, url: `http://localhost:${PORT + 1}`, reuseExistingServer: !process.env.CI, timeout: 90_000 },
   ],
 });

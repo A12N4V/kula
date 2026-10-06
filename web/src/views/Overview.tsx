@@ -36,7 +36,7 @@ export default function Overview({ repo, version, go }: Props) {
           <h1>{repo?.name}</h1>
           <span className="muted mono">{repo?.branch}</span>
           {repo?.branch !== o.default_branch && <span className="muted">from <span className="mono">{o.default_branch}</span></span>}
-          {s && <span className="muted">{s.files.toLocaleString()} files · {s.symbols.toLocaleString()} symbols · indexed in {s.millis}ms</span>}
+          {s && <span className="muted ov-facts">{s.files.toLocaleString()} files · {s.symbols.toLocaleString()} symbols · indexed in {s.millis}ms</span>}
         </div>
         <div className="row" style={{ gap: 8 }}>
           <button className="btn" onClick={() => go("graph")}><Icon.graph /> Open map</button>

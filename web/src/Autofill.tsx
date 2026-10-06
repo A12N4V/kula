@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Keyboa
 import { api, type Node } from "./api";
 import { useCode } from "./CodePanel";
 import { recent, subscribe, targetOf, type Place } from "./near";
-import { Kind } from "./ui";
+import { Icon, Kind } from "./ui";
 
 type Opt = { value: string; label: string; hint: string; kind: string; group: string };
 
@@ -98,7 +98,7 @@ function OptList({ opts, at, pick, setAt }: { opts: Opt[]; at: number; pick: (o:
         <div key={o.value}>
           {(i === 0 || opts[i - 1].group !== o.group) && <div className="af-grp">{o.group}</div>}
           <div role="option" aria-selected={i === at} className={`af-opt ${i === at ? "on" : ""}`} onMouseEnter={() => setAt(i)} onClick={() => pick(o)}>
-            {o.kind === "repo" || o.kind === "dir" ? <span className="af-ico">{o.kind === "repo" ? "◯" : "▤"}</span> : <Kind kind={o.kind} size={16} />}
+            {o.kind === "repo" || o.kind === "dir" ? <span className="af-ico">{o.kind === "repo" ? <Icon.box /> : <Icon.doc />}</span> : <Kind kind={o.kind} size={16} />}
             <span className="af-label mono">{o.label}</span>
             <span className="af-hint">{o.hint}</span>
           </div>

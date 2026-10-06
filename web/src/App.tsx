@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
 import type { ContrastMode, Go, Target, View } from "./nav";
+import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, fuzzyScore } from "./nav";
 import GraphView from "./views/GraphView";
 import Overview from "./views/Overview";
 import { Branches, Changes, Console, History } from "./views/GitViews";
@@ -70,6 +71,8 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const [indexing, setIndexing] = useState(false);
   const [prefs, setPrefs] = useState(false);
+  // The server's last error: when set, the shell shows it with a retry instead of a blank page.
+  const [serverError, setServerError] = useState<string | null>(null);
   // The opening plays once per session (or on demand with ?opening), never under reduced motion.
   const [opening, setOpening] = useState(() => {
     const forced = new URLSearchParams(location.search).has("opening");
@@ -84,14 +87,15 @@ export default function App() {
 
   const refresh = useCallback(() => {
     api.repo().then((r) => {
+      setServerError(null);
       setRepo(r);
       // The server reindexes when HEAD moves; refresh views once it lands.
       if (lastHead.current && r.indexed_head && r.indexed_head !== lastHead.current) setVersion((v) => v + 1);
       lastHead.current = r.indexed_head;
-    }).catch((e) => toast(e.message, "err"));
+    }).catch((e) => setServerError(e.message || "Server unreachable"));
     api.meta().then(setMeta).catch(() => {});
     api.status().then((s) => setChanges(s.files.length)).catch(() => {});
-  }, [toast]);
+  }, []);
   const onChanged = useCallback(() => { refresh(); setVersion((v) => v + 1); }, [refresh]);
 
   useEffect(() => { refresh(); const t = setInterval(refresh, 5000); return () => clearInterval(t); }, [refresh]);
@@ -200,6 +204,26 @@ export default function App() {
       {rail && <div className="rail-scrim" onClick={() => setRail(false)} aria-hidden="true" />}
 
       <main className="main">
+        {/* Full panel only when nothing has loaded; once data is in, a failed poll
+            is a slim banner so the view (and its state) survives the blip. */}
+        {serverError && !repo ? (
+          <div className="shell-error" data-testid="server-error" role="alert">
+            <h2>Server unreachable</h2>
+            <p className="mono">{serverError}</p>
+            <p className="hint">kula's server answers every view – nothing can load until it is back.</p>
+            <div className="shell-error-actions">
+              <button className="btn primary" onClick={refresh}>Retry now</button>
+              <span className="muted">or restart with <code>kula serve</code></span>
+            </div>
+          </div>
+        ) : (
+        <>
+        {serverError && repo && (
+          <div className="server-note" data-testid="server-note" role="alert">
+            <span className="mono">{serverError}</span>
+            <button className="btn sm" onClick={refresh}>Retry</button>
+          </div>
+        )}
         {/* Keyed so each view change plays a short enter transition. */}
         <div className="view-enter" key={view + (contrast ? ":c" : "")}>
           {view === "overview" && <Overview repo={repo} version={version} go={go} />}
@@ -215,12 +239,14 @@ export default function App() {
           {view === "query" && <Query {...nav} />}
           {view === "console" && <Console {...nav} />}
         </div>
+        </>
+        )}
       </main>
 
       <footer className="statusbar">
         <span>kula {repo?.version}</span>
-        {(indexing || repo?.index !== "current") && <span className="sb-warn">{indexing || repo?.index === "stale" ? "reindexing…" : "no graph – ⌘K › Reindex"}</span>}
-        {repo?.stats && <span>{repo.stats.files} files · {repo.stats.symbols} symbols · {repo.stats.edges} edges · {repo.stats.communities} clusters</span>}
+        {(indexing || repo?.index !== "current") && <span className="sb-warn">{indexing || repo?.index === "stale" ? "reindexing…" : "no graph – ⌘K, then Reindex"}</span>}
+        {repo?.stats && <span className="sb-stats">{repo.stats.files} files · {repo.stats.symbols} symbols · {repo.stats.edges} edges · {repo.stats.communities} clusters</span>}
         <span className="spacer" />
         <span>{changes ? `${changes} changed` : "clean"}</span>
         <span className="mono">{repo?.head?.slice(0, 8)}</span>
@@ -237,13 +263,24 @@ export default function App() {
   );
 }
 
-type Item = { key: string; group: string; el: React.ReactNode; run: () => void };
+type Item = { key: string; text: string; group: string; el: React.ReactNode; run: () => void };
 
-/** One box for everything: symbols, issues, proposals, branches, views and actions. */
+const RECENT_KEY = "kula.palette.recent";
+function readRecents(): string[] {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]"); } catch { return []; }
+}
+function pushRecent(key: string) {
+  const next = [key, ...readRecents().filter((k) => k !== key)].slice(0, 12);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch { /* private window */ }
+}
+
+/** One box for everything: symbols, issues, proposals, branches, views and actions.
+ *  Fuzzy matching, recently used commands first, every result shows its shortcut. */
 function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | null; onClose: () => void; go: Go; onReindex: () => void; onSettings: () => void }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Node[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [recents, setRecents] = useState<string[]>(readRecents);
   const [i, setI] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -261,31 +298,46 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
   // Prefixes narrow the search: # issues/proposals, @ branches, > commands.
   const mode = q[0] === "#" ? "#" : q[0] === "@" ? "@" : q[0] === ">" ? ">" : "";
   const s = (mode ? q.slice(1) : q).trim().toLowerCase();
-  const match = (t: string) => !s || t.toLowerCase().includes(s);
+  const score = (t: string) => fuzzyScore(s, t);
+  const run = (it: Item) => { pushRecent(it.key); setRecents(readRecents()); it.run(); };
+  const fresh = (it: Item): Item => ({ ...it, run: () => run(it) });
 
   const items: Item[] = [];
-  if (!mode) hits.slice(0, 12).forEach((n) => items.push({ key: `n${n.id}`, group: "Symbols & files", run: () => go("graph", { symbol: n.id }), el: <><Kind kind={n.kind} community={n.community} size={18} /><span className="mono">{n.name}</span><span className="p">{n.path}:{n.start_line}</span></> }));
+  if (!mode) hits.slice(0, 12).forEach((n) => items.push({ key: `n${n.id}`, text: `${n.name} ${n.path}`, group: "Symbols & files", run: () => go("graph", { symbol: n.id }), el: <><Kind kind={n.kind} community={n.community} size={18} /><span className="mono">{n.name}</span><span className="p">{n.path}:{n.start_line}</span></> }));
   if (!mode || mode === "#") {
-    meta?.proposals.filter((p) => p.status === "open" && match(`${p.id} ${p.title} ${p.head}`)).slice(0, 6).forEach((p) =>
-      items.push({ key: `p${p.id}`, group: "Proposals", run: () => go("proposals", { proposal: p.id }), el: <><span className="pal-ico" style={{ color: "var(--green)" }}><Icon.pr /></span><span>{p.title}</span><span className="p mono">#{p.id} · {p.head} → {p.base}</span></> }));
-    meta?.issues.filter((x) => x.status === "open" && match(`${x.id} ${x.title} ${x.labels.join(" ")}`)).slice(0, 6).forEach((x) =>
-      items.push({ key: `i${x.id}`, group: "Issues", run: () => go("issues", { issue: x.id }), el: <><span className="pal-ico" style={{ color: "var(--green)" }}><Icon.issues /></span><span>{x.title}</span><span className="p">#{x.id} · {relTime(x.created)}</span></> }));
+    meta?.proposals.filter((p) => p.status === "open" && score(`${p.id} ${p.title} ${p.head}`) >= 0).slice(0, 6).forEach((p) =>
+      items.push({ key: `p${p.id}`, text: `${p.id} ${p.title}`, group: "Proposals", run: () => go("proposals", { proposal: p.id }), el: <><span className="pal-ico" style={{ color: "var(--green)" }}><Icon.pr /></span><span>{p.title}</span><span className="p mono">#{p.id} · {p.head} → {p.base}</span></> }));
+    meta?.issues.filter((x) => x.status === "open" && score(`${x.id} ${x.title} ${x.labels.join(" ")}`) >= 0).slice(0, 6).forEach((x) =>
+      items.push({ key: `i${x.id}`, text: `${x.id} ${x.title}`, group: "Issues", run: () => go("issues", { issue: x.id }), el: <><span className="pal-ico" style={{ color: "var(--green)" }}><Icon.issues /></span><span>{x.title}</span><span className="p">#{x.id} · {relTime(x.created)}</span></> }));
   }
-  if (!mode || mode === "@") branches.filter((b) => match(b.name)).slice(0, mode ? 20 : 4).forEach((b) =>
-    items.push({ key: `b${b.name}`, group: "Branches", run: () => go("graph", { contrast: { base: "HEAD", head: b.name } }), el: <><span className="pal-ico"><Icon.branches /></span><span className="mono">{b.name}</span><span className="p">contrast graph with HEAD</span></> }));
+  if (!mode || mode === "@") branches.filter((b) => score(b.name) >= 0).slice(0, mode ? 20 : 4).forEach((b) =>
+    items.push({ key: `b${b.name}`, text: b.name, group: "Branches", run: () => go("graph", { contrast: { base: "HEAD", head: b.name } }), el: <><span className="pal-ico"><Icon.branches /></span><span className="mono">{b.name}</span><span className="p">contrast graph with HEAD</span></> }));
   if (!mode || mode === ">") {
     [
-      ...VIEWS.map((v) => ({ label: `Go to ${v.label}`, hint: v.key, run: () => go(v.id) })),
-      { label: "Contrast graph: HEAD → working tree", hint: "", run: () => go("graph", { contrast: { base: "HEAD", head: "WORKTREE" } }) },
-      { label: "Reindex knowledge graph", hint: "", run: onReindex },
-      { label: "Graph: show fences", hint: "f", run: () => go("graph", { fences: "" }) },
-      ...(["explore", "fix", "refactor", "tests", "docs", "autoresearch"]).map((w) => ({ label: `Graph: preview the ${w} workflow's fences`, hint: "", run: () => go("graph", { fences: w }) })),
-      ...(["workflows", "fences", "memory", "docs", "connect"]).map((t) => ({ label: `Agents: ${t}`, hint: "", run: () => go("agents", { tab: t }) })),
-      { label: "Open settings", hint: ",", run: onSettings },
-      ...(["directory", "cluster", "kind", "churn"] as const).map((c) => ({ label: `Colour graph by ${c}`, hint: "", run: () => { settings.set({ colorBy: c }); go("graph"); } })),
-      ...(["dark", "light", "system"] as const).map((t) => ({ label: `Theme: ${t}`, hint: "", run: () => { settings.set({ theme: t }); onClose(); } })),
-    ].filter((c) => match(c.label)).forEach((c) => items.push({ key: c.label, group: "Commands", run: c.run, el: <><span className="pal-ico" style={{ color: "var(--accent)" }}>›</span><span>{c.label}</span><span className="p">{c.hint && <kbd>{c.hint}</kbd>}</span></> }));
+      ...VIEWS.map((v) => ({ key: `go:${v.id}`, label: `Go to ${v.label}`, hint: v.key, run: () => go(v.id) })),
+      { key: "contrast:worktree", label: "Contrast graph: HEAD → working tree", hint: "", run: () => go("graph", { contrast: { base: "HEAD", head: "WORKTREE" } }) },
+      { key: "reindex", label: "Reindex knowledge graph", hint: "", run: onReindex },
+      { key: "fences", label: "Graph: show fences", hint: "f", run: () => go("graph", { fences: "" }) },
+      ...(["explore", "fix", "refactor", "tests", "docs", "autoresearch"]).map((w) => ({ key: `fences:${w}`, label: `Graph: preview the ${w} workflow's fences`, hint: "", run: () => go("graph", { fences: w }) })),
+      ...(["workflows", "fences", "memory", "docs", "connect"]).map((t) => ({ key: `agents:${t}`, label: `Agents: ${t}`, hint: "", run: () => go("agents", { tab: t }) })),
+      { key: "settings", label: "Open settings", hint: ",", run: onSettings },
+      { key: "help", label: "Keyboard shortcuts", hint: "?", run: () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" })); } },
+      ...(["directory", "cluster", "kind", "churn"] as const).map((c) => ({ key: `color:${c}`, label: `Colour graph by ${c}`, hint: "", run: () => { settings.set({ colorBy: c }); go("graph"); } })),
+      ...(["dark", "light", "system"] as const).map((t) => ({ key: `theme:${t}`, label: `Theme: ${t}`, hint: "", run: () => { settings.set({ theme: t }); onClose(); } })),
+    ].filter((c) => score(c.label) >= 0).forEach((c) => items.push({ key: c.key, text: c.label, group: "Commands", run: c.run, el: <><span className="pal-ico" style={{ color: "var(--accent)" }}><Icon.arrow /></span><span>{c.label}</span><span className="p">{c.hint && <kbd>{c.hint}</kbd>}</span></> }));
   }
+
+  // Filter by fuzz, then order: recently used first, then best fuzzy match.
+  const scored = items.map((it) => ({ it, sc: s ? score(it.text) : 0 })).filter((x) => x.sc >= 0)
+    .sort((a, b) => {
+      const ra = recents.indexOf(a.it.key), rb = recents.indexOf(b.it.key);
+      if (ra >= 0 || rb >= 0) return (ra < 0 ? Infinity : ra) - (rb < 0 ? Infinity : rb);
+      return b.sc - a.sc;
+    }).map((x) => fresh(x.it));
+  const seenGroups = new Set<string>();
+  // The highlight clamps to the list on every render, so Enter always has a
+  // target even after typing has narrowed the results.
+  const k = Math.min(i, scored.length - 1);
 
   return (
     <div className="scrim" onMouseDown={onClose}>
@@ -293,18 +345,19 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
         <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search symbols, #issues, @branches, >commands…"
           onKeyDown={(e) => {
             if (e.key === "Escape") onClose();
-            if (e.key === "ArrowDown") { e.preventDefault(); setI((x) => Math.min(items.length - 1, x + 1)); }
+            if (e.key === "ArrowDown") { e.preventDefault(); setI((x) => Math.min(scored.length - 1, x + 1)); }
             if (e.key === "ArrowUp") { e.preventDefault(); setI((x) => Math.max(0, x - 1)); }
-            if (e.key === "Enter") items[i]?.run();
+            if (e.key === "Enter") scored[k]?.run();
           }} />
         <div className="results" ref={list}>
-          {items.map((it, k) => (
+          {scored.map((it, j) => (
             <div key={it.key}>
-              {(k === 0 || items[k - 1].group !== it.group) && <div className="grp">{it.group}</div>}
-              <div className={`res ${k === i ? "on" : ""}`} onMouseEnter={() => setI(k)} onClick={it.run}>{it.el}</div>
+              {!seenGroups.has(it.group) && <div className="grp">{it.group}</div>}
+              {seenGroups.add(it.group)}
+              <div className={`res ${k === j ? "on" : ""}`} onMouseEnter={() => setI(j)} onClick={it.run}>{it.el}</div>
             </div>
           ))}
-          {!items.length && <div className="empty">No matches</div>}
+          {!scored.length && <div className="empty">No matches</div>}
         </div>
         <footer><span><kbd>↑↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>#</kbd> issues</span><span><kbd>@</kbd> branches</span><span><kbd>&gt;</kbd> commands</span><span className="spacer" /><span><kbd>esc</kbd></span></footer>
       </div>
@@ -313,31 +366,17 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
 }
 
 function Help({ onClose }: { onClose: () => void }) {
-  const rows: [string, string][] = [
-    ["⌘K  /", "Search everything"],
-    ["1 – 9, 0", "Switch view"],
-    ["a  q", "Agents · Query (SPARQL)"],
-    ["?", "This sheet"],
-    [",", "Settings: theme, colours, graph encodings"],
-    ["[  ]", "Back / forward through inspected symbols"],
-    ["⇧ click", "Graph: trace the path from the selected symbol"],
-    ["right-click", "Graph: actions for a symbol"],
-    ["f", "Graph: show fences (what agents may not touch)"],
-    ["⌥← ⌥→", "Back / forward through views"],
-    ["[[", "Notes and memories: link a symbol (autofill)"],
-    ["tab", "Accept the autofill"],
-    ["esc", "Close panel or dialog"],
-    ["⌘↵", "Commit (Changes) · save (Notes) · run (Query)"],
-    ["↑ ↓", "Command history (Console)"],
-  ];
+  // One registry, one sheet: the list cannot drift from what the shell does.
   return (
     <div className="scrim" onMouseDown={onClose}>
       <div className="palette help" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Keyboard shortcuts">
         <div className="help-head"><Logo /><h2>Keyboard shortcuts</h2><span className="spacer" /><button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button></div>
-        <div className="help-grid">
-          {rows.map(([k, d]) => (<div key={k} className="help-row"><kbd>{k}</kbd><span>{d}</span></div>))}
+        <div className="help-grid" data-testid="help-grid">
+          {GLOBAL_SHORTCUTS.map((k) => (<div key={k.keys} className="help-row" data-keys={k.keys}><kbd>{k.keys}</kbd><span>{k.label}</span></div>))}
           <div className="help-sep">Views</div>
-          {VIEWS.map((v) => (<div key={v.id} className="help-row"><kbd>{v.key}</kbd><span>{v.label}</span></div>))}
+          {VIEWS.map((v) => (<div key={v.id} className="help-row" data-keys={v.key}><kbd>{v.key}</kbd><span>{v.label}</span></div>))}
+          <div className="help-sep">In context</div>
+          {CONTEXT_SHORTCUTS.map((k) => (<div key={k.keys} className="help-row" data-keys={k.keys}><kbd>{k.keys}</kbd><span>{k.label}</span></div>))}
         </div>
       </div>
     </div>

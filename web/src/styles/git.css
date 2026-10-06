@@ -1,0 +1,83 @@
+/* ---------- diff ---------- */
+.diff { font-family: var(--mono); font-size: 12px; line-height: 1.55; border: 1px solid var(--line); border-radius: 0; overflow: hidden; background: var(--panel); }
+.diff .file { padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel-2); color: var(--text); font-weight: 500; position: sticky; top: 0; }
+.diff .hunk { color: var(--blue); background: rgba(124, 183, 255, 0.06); padding: 2px 12px; }
+.diff .ln { display: grid; grid-template-columns: 44px 44px 1fr; white-space: pre; }
+.diff .ln .n { color: var(--text-3); text-align: right; padding-right: 10px; user-select: none; }
+.diff .ln .c { padding-right: 12px; overflow: hidden; text-overflow: ellipsis; }
+.diff .add { background: var(--add-bg); }
+.diff .add .c { color: var(--green); }
+.diff .del { background: var(--del-bg); }
+.diff .del .c { color: var(--red); }
+.diff .meta { color: var(--text-3); padding: 0 12px; white-space: pre; }
+pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 0; background: var(--panel); overflow: auto; max-height: 360px; }
+
+/* ---------- console ---------- */
+.console { height: 100%; display: flex; flex-direction: column; background: var(--bg); font-family: var(--mono); font-size: 12.5px; }
+.console .out { flex: 1; overflow: auto; padding: 14px 18px 18px; cursor: text; }
+.console .entry { margin-bottom: 10px; }
+.console .cmd, .console .prompt { color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.console .ps { color: var(--text-3); }
+.console .ps-br { color: var(--accent); }
+.console .ps-sym { color: var(--text-3); }
+.console .ps-kula { color: var(--text); margin-right: .6ch; }
+.console .exit { margin-left: 1ch; color: var(--red); }
+.console pre { margin: 2px 0 0; white-space: pre-wrap; word-break: break-word; color: var(--text-2); font: inherit; }
+.console pre.err { color: var(--red); }
+.console form.prompt { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 .6ch; padding: 0; border: 0; background: none; }
+.console form.prompt input { flex: 1; min-width: 12ch; padding: 0; border: 0; background: transparent; outline: none; color: var(--text); font: inherit; caret-color: var(--accent); }
+.console form.prompt input::placeholder { color: var(--text-3); opacity: .6; }
+.term-bar { display: flex; align-items: stretch; height: 32px; flex-shrink: 0; border-bottom: 1px solid var(--line); background: var(--bg-2); overflow-x: auto; scrollbar-width: none; }
+.term-tab { display: flex; align-items: center; gap: 6px; padding: 0 6px 0 12px; border-right: 1px solid var(--line); color: var(--text-3); font-size: 11.5px; cursor: pointer; white-space: nowrap; }
+.term-tab svg { width: 13px; height: 13px; }
+.term-tab.on { color: var(--text); background: var(--bg); box-shadow: inset 0 1px 0 var(--accent); }
+.term-x { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; background: none; color: inherit; opacity: 0; cursor: pointer; }
+.term-x svg { width: 12px; height: 12px; }
+.term-tab:hover .term-x, .term-tab.on .term-x { opacity: .7; }
+.term-x:hover { opacity: 1; color: var(--text); }
+.term-btn { display: grid; place-items: center; min-width: 40px; padding: 0 10px; border: 0; background: none; color: var(--text-3); font: 500 11px var(--mono); cursor: pointer; }
+.term-btn:hover { color: var(--text); }
+@media (hover: none) { .term-x { opacity: .7; } }
+/* The command line and the terminal bar stay reachable at every width:
+   28px hit targets on desktop, 40px on phones (integration pass). */
+.console form.prompt { min-height: 28px; }
+.console form.prompt input { min-height: 28px; }
+@media (max-width: 760px) {
+  .term-bar { height: 41px; }
+  .term-x { width: 40px; height: 40px; }
+  .console form.prompt { min-height: 40px; align-items: center; }
+  .console form.prompt input { min-height: 40px; }
+}
+
+/* ---------- history lanes ---------- */
+.lane-svg { flex: none; }
+.refs { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+
+/* console hero */
+.console-hero { display: grid; grid-template-columns: minmax(220px, 380px) auto minmax(0, 1fr); gap: 28px; align-items: center; margin: 4px 0 18px; padding-bottom: 18px; cursor: default; border-bottom: 1px dashed var(--line-2); font-family: var(--font); }
+.ch-dither { height: 260px; }
+/* Game of Life beside the graph: same 3px cells, seeded from the mark (Life.tsx) */
+.ch-life { width: 100%; height: 260px; --life-on: var(--text-2); --life-new: var(--accent); opacity: .9; }
+.ch-eyebrow { font: 500 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+.ch-title { margin: 6px 0 18px; font: 800 clamp(40px, 6vw, 80px)/.95 var(--display); letter-spacing: -.04em; color: var(--text); }
+.ch-text p { margin: 0 0 14px; max-width: 520px; color: var(--text-2); font-size: 13px; }
+.ch-text b { color: var(--text); font-family: var(--mono); font-weight: 500; font-size: 12px; }
+@media (max-width: 760px) { .console-hero { grid-template-columns: 1fr; } .ch-dither { height: 180px; } .ch-life { height: 120px; } }
+
+/* g1: split grips – a real grab strip, not a 7px hairline. */
+.split > .grip { width: 28px; left: calc(var(--list-w, 340px) - 15px); }
+.split > .grip::after { left: 14px; }
+
+/* g1: the history filter input meets the hit-target floor. */
+.list-head .input { height: 28px; }
+
+/* g1: compare report columns cannot push the page wider than the viewport. */
+.cmp-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+.cmp-grid > div { min-width: 0; }
+.cmp-grid .sym .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* g1: phone floor – everything reachable is 40px in the git views. */
+@media (max-width: 760px) {
+  .list-head .input { height: 40px; }
+  .split .btn.sm { min-height: 40px; }
+}

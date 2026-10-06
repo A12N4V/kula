@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Node } from "./api";
 import { GLYPH, kindColor } from "./colors";
 import { nodeTarget, useCode } from "./CodePanel";
@@ -8,49 +8,50 @@ import { markPath, N } from "./mark";
 // One grammar on a 24 grid, 1.5 stroke: rounded squares are structure (files,
 // hubs, heads), circles are points in time or graph nodes, a filled mark is
 // "you are here". Mirrors the graph, where hubs are square tiles.
-const P = { fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+const P = { className: "ico", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 export const Icon = {
-  box: () => (<svg viewBox="0 0 24 24" {...P}><rect x="3.5" y="7" width="17" height="10" /><path d="M7 7v10" /></svg>),
-  home: () => (<svg viewBox="0 0 24 24" {...P}><rect x="4" y="4" width="7" height="7" fill="currentColor" /><rect x="13" y="4" width="7" height="7" /><rect x="4" y="13" width="7" height="7" /><rect x="13" y="13" width="7" height="7" /></svg>),
-  graph: () => (<svg viewBox="0 0 24 24" {...P}><path d="M12 12 5.5 6.5M12 12l6.5-5.5M12 12v7" /><rect x="9.5" y="9.5" width="5" height="5" fill="currentColor" /><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="20" r="2" /></svg>),
-  changes: () => (<svg viewBox="0 0 24 24" {...P}><rect x="4" y="4" width="16" height="16" /><path d="M12 7.5v6M9 10.5h6M9 16.5h6" /></svg>),
-  history: () => (<svg viewBox="0 0 24 24" {...P}><path d="M12 3v5.5M12 10.5v3M12 15.5V21" /><circle cx="12" cy="9.5" r="1.1" fill="currentColor" /><circle cx="12" cy="14.5" r="1.1" fill="currentColor" /><circle cx="12" cy="9.5" r="2.5" /><circle cx="12" cy="14.5" r="2.5" /></svg>),
-  branches: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="7" cy="5" r="2" /><circle cx="7" cy="19" r="2" /><rect x="15" y="6" width="4" height="4" /><path d="M7 7v10M17 10c0 4-3 5-10 7" /></svg>),
-  compare: () => (<svg viewBox="0 0 24 24" {...P}><rect x="3.5" y="3.5" width="11" height="11" /><rect x="9.5" y="9.5" width="11" height="11" stroke-dasharray="2.2 2.2" /><rect x="9.5" y="9.5" width="5" height="5" fill="currentColor" stroke="none" /></svg>),
-  issues: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="12" cy="12" r="8.5" /><rect x="10.5" y="10.5" width="3" height="3" fill="currentColor" /></svg>),
-  pr: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="6" cy="5.5" r="2" /><circle cx="6" cy="18.5" r="2" /><rect x="16" y="16.5" width="4" height="4" /><path d="M6 7.5v9M18 16.5V9a3 3 0 0 0-3-3h-4" /><path d="m13 3.5-2.5 2.5L13 8.5" /></svg>),
-  notes: () => (<svg viewBox="0 0 24 24" {...P}><path d="M5 4h10l4 4v12H5z" /><path d="M15 4v4h4" /><path d="M8.5 12h7M8.5 15.5h4" /></svg>),
-  flows: () => (<svg viewBox="0 0 24 24" {...P}><circle cx="5" cy="6" r="2" /><path d="M7 6h7.5a3.5 3.5 0 0 1 0 7h-5a3.5 3.5 0 0 0 0 7H19" /><path d="m16.5 17.5 2.5 2.5-2.5 2.5" /></svg>),
-  console: () => (<svg viewBox="0 0 24 24" {...P}><rect x="3" y="4" width="18" height="16" /><path d="m7 9.5 3 2.5-3 2.5M12.5 15h4.5" /></svg>),
-  search: () => (<svg viewBox="0 0 24 24" {...P} width="15" height="15"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></svg>),
+  box: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="7" width="17" height="10" /><path d="M7 7v10" /></svg>),
+  home: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="4" y="4" width="7" height="7" fill="currentColor" /><rect x="13" y="4" width="7" height="7" /><rect x="4" y="13" width="7" height="7" /><rect x="13" y="13" width="7" height="7" /></svg>),
+  graph: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 12 5.5 6.5M12 12l6.5-5.5M12 12v7" /><rect x="9.5" y="9.5" width="5" height="5" fill="currentColor" /><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="20" r="2" /></svg>),
+  changes: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="4" y="4" width="16" height="16" /><path d="M12 7.5v6M9 10.5h6M9 16.5h6" /></svg>),
+  history: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 3v5.5M12 10.5v3M12 15.5V21" /><circle cx="12" cy="9.5" r="1.1" fill="currentColor" /><circle cx="12" cy="14.5" r="1.1" fill="currentColor" /><circle cx="12" cy="9.5" r="2.5" /><circle cx="12" cy="14.5" r="2.5" /></svg>),
+  branches: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="7" cy="5" r="2" /><circle cx="7" cy="19" r="2" /><rect x="15" y="6" width="4" height="4" /><path d="M7 7v10M17 10c0 4-3 5-10 7" /></svg>),
+  compare: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="3.5" width="11" height="11" /><rect x="9.5" y="9.5" width="11" height="11" stroke-dasharray="2.2 2.2" /><rect x="9.5" y="9.5" width="5" height="5" fill="currentColor" stroke="none" /></svg>),
+  issues: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="12" cy="12" r="8.5" /><rect x="10.5" y="10.5" width="3" height="3" fill="currentColor" /></svg>),
+  pr: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="6" cy="5.5" r="2" /><circle cx="6" cy="18.5" r="2" /><rect x="16" y="16.5" width="4" height="4" /><path d="M6 7.5v9M18 16.5V9a3 3 0 0 0-3-3h-4" /><path d="m13 3.5-2.5 2.5L13 8.5" /></svg>),
+  notes: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M5 4h10l4 4v12H5z" /><path d="M15 4v4h4" /><path d="M8.5 12h7M8.5 15.5h4" /></svg>),
+  flows: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="5" cy="6" r="2" /><path d="M7 6h7.5a3.5 3.5 0 0 1 0 7h-5a3.5 3.5 0 0 0 0 7H19" /><path d="m16.5 17.5 2.5 2.5-2.5 2.5" /></svg>),
+  console: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3" y="4" width="18" height="16" /><path d="m7 9.5 3 2.5-3 2.5M12.5 15h4.5" /></svg>),
+  search: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></svg>),
   close: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M6 6l12 12M18 6 6 18" /></svg>),
-  refresh: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" /></svg>),
-  plus: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M12 5v14M5 12h14" /></svg>),
-  minus: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M5 12h14" /></svg>),
-  target: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /></svg>),
-  gear: () => (<svg viewBox="0 0 24 24" {...P} width="15" height="15"><path d="M18.88 9.87L21.36 10.39L21.36 13.61L18.88 14.13L18.37 15.36L19.76 17.48L17.48 19.76L15.36 18.37L14.13 18.88L13.61 21.36L10.39 21.36L9.87 18.88L8.64 18.37L6.52 19.76L4.24 17.48L5.63 15.36L5.12 14.13L2.64 13.61L2.64 10.39L5.12 9.87L5.63 8.64L4.24 6.52L6.52 4.24L8.64 5.63L9.87 5.12L10.39 2.64L13.61 2.64L14.13 5.12L15.36 5.63L17.48 4.24L19.76 6.52L18.37 8.64Z" /><circle cx="12" cy="12" r="3" /></svg>),
+  refresh: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" /></svg>),
+  plus: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 5v14M5 12h14" /></svg>),
+  minus: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M5 12h14" /></svg>),
+  target: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /></svg>),
+  gear: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M18.88 9.87L21.36 10.39L21.36 13.61L18.88 14.13L18.37 15.36L19.76 17.48L17.48 19.76L15.36 18.37L14.13 18.88L13.61 21.36L10.39 21.36L9.87 18.88L8.64 18.37L6.52 19.76L4.24 17.48L5.63 15.36L5.12 14.13L2.64 13.61L2.64 10.39L5.12 9.87L5.63 8.64L4.24 6.52L6.52 4.24L8.64 5.63L9.87 5.12L10.39 2.64L13.61 2.64L14.13 5.12L15.36 5.63L17.48 4.24L19.76 6.52L18.37 8.64Z" /><circle cx="12" cy="12" r="3" /></svg>),
   // An agent: a head (structure) wired to the graph by its antenna (a node), eyes as "you are here" marks.
-  agents: () => (<svg viewBox="0 0 24 24" {...P}><rect x="5" y="8.5" width="14" height="11" /><path d="M12 8.5V5.5M3 12.5v3.5M21 12.5v3.5M9.5 16.5h5" /><circle cx="12" cy="4" r="1.6" /><rect x="8.5" y="11.5" width="2" height="2" fill="currentColor" /><rect x="13.5" y="11.5" width="2" height="2" fill="currentColor" /></svg>),
-  workflow: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><rect x="3.5" y="4" width="5" height="5" /><rect x="15.5" y="4" width="5" height="5" fill="currentColor" /><rect x="9.5" y="15" width="5" height="5" /><path d="M8.5 6.5h7M18 9v3.5H12V15" /></svg>),
-  memory: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M6 4h12v16l-6-4-6 4z" /><circle cx="12" cy="10" r="1.6" fill="currentColor" /></svg>),
-  doc: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M5 3.5h9l5 5v12H5z" /><path d="M14 3.5v5h5M8.5 13h7M8.5 16.5h5" /></svg>),
-  team: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><rect x="3.5" y="4" width="6" height="6" /><rect x="14.5" y="4" width="6" height="6" fill="currentColor" /><rect x="9" y="14" width="6" height="6" /><path d="M6.5 10v2h11v-2M12 12v2" /></svg>),
-  flask: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M9.5 3.5h5M10.5 3.5v6L5 19a1.2 1.2 0 0 0 1 1.5h12a1.2 1.2 0 0 0 1-1.5l-5.5-9.5v-6" /><path d="M7.5 15h9" /></svg>),
-  shield: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M12 3.5l7 2.5v5.5c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9V6z" /><path d="M9 12l2 2 4-4" /></svg>),
-  plug: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M9 3.5v4M15 3.5v4M6.5 7.5h11v4a5.5 5.5 0 0 1-11 0zM12 17v3.5" /></svg>),
-  fence: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M5 20V7l2-2.5L9 7v13M15 20V7l2-2.5L19 7v13M3 11h18M3 16h18" /></svg>),
-  edit: () => (<svg viewBox="0 0 24 24" {...P} width="13" height="13"><path d="M4 20h4L19.5 8.5l-4-4L4 16z" /><path d="m13.5 6.5 4 4" /></svg>),
-  up: () => (<svg viewBox="0 0 24 24" {...P} width="12" height="12"><path d="m6 15 6-6 6 6" /></svg>),
-  down: () => (<svg viewBox="0 0 24 24" {...P} width="12" height="12"><path d="m6 9 6 6 6-6" /></svg>),
-  back: () => (<svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>),
-  arrow: () => (<svg viewBox="0 0 24 24" {...P} width="12" height="12"><path d="M5 12h14M13 6l6 6-6 6" /></svg>),
-  query: () => (<svg viewBox="0 0 24 24" {...P}><path d="M8 4H6.5A1.5 1.5 0 0 0 5 5.5v4L3.5 12 5 14.5v4A1.5 1.5 0 0 0 6.5 20H8M16 4h1.5A1.5 1.5 0 0 1 19 5.5v4l1.5 2.5-1.5 2.5v4a1.5 1.5 0 0 1-1.5 1.5H16" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /></svg>),
-  copy: () => (<svg viewBox="0 0 24 24" {...P} width="13" height="13"><rect x="8.5" y="8.5" width="11" height="11" /><path d="M15.5 8.5V5.5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3" /></svg>),
-  play: () => (<svg viewBox="0 0 24 24" {...P} width="12" height="12"><path d="M7 5v14l11-7z" fill="currentColor" /></svg>),
-  lock: () => (<svg viewBox="0 0 24 24" {...P} width="13" height="13"><rect x="5" y="11" width="14" height="9" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>),
-  sidebar: () => (<svg viewBox="0 0 24 24" {...P} width="17" height="17"><rect x="3.5" y="4.5" width="17" height="15" /><path d="M9.5 4.5v15" /><path d="M5.8 8.5h1.6M5.8 11h1.6M5.8 13.5h1.6" /></svg>),
-  chevron: () => (<svg viewBox="0 0 24 24" {...P} width="13" height="13"><path d="m6 9 6 6 6-6" /></svg>),
-  sun: () => (<svg viewBox="0 0 24 24" {...P} width="15" height="15"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>),
+  agents: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="5" y="8.5" width="14" height="11" /><path d="M12 8.5V5.5M3 12.5v3.5M21 12.5v3.5M9.5 16.5h5" /><circle cx="12" cy="4" r="1.6" /><rect x="8.5" y="11.5" width="2" height="2" fill="currentColor" /><rect x="13.5" y="11.5" width="2" height="2" fill="currentColor" /></svg>),
+  workflow: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="4" width="5" height="5" /><rect x="15.5" y="4" width="5" height="5" fill="currentColor" /><rect x="9.5" y="15" width="5" height="5" /><path d="M8.5 6.5h7M18 9v3.5H12V15" /></svg>),
+  memory: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M6 4h12v16l-6-4-6 4z" /><circle cx="12" cy="10" r="1.6" fill="currentColor" /></svg>),
+  doc: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M5 3.5h9l5 5v12H5z" /><path d="M14 3.5v5h5M8.5 13h7M8.5 16.5h5" /></svg>),
+  team: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="4" width="6" height="6" /><rect x="14.5" y="4" width="6" height="6" fill="currentColor" /><rect x="9" y="14" width="6" height="6" /><path d="M6.5 10v2h11v-2M12 12v2" /></svg>),
+  flask: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M9.5 3.5h5M10.5 3.5v6L5 19a1.2 1.2 0 0 0 1 1.5h12a1.2 1.2 0 0 0 1-1.5l-5.5-9.5v-6" /><path d="M7.5 15h9" /></svg>),
+  shield: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 3.5l7 2.5v5.5c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9V6z" /><path d="M9 12l2 2 4-4" /></svg>),
+  plug: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M9 3.5v4M15 3.5v4M6.5 7.5h11v4a5.5 5.5 0 0 1-11 0zM12 17v3.5" /></svg>),
+  fence: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M5 20V7l2-2.5L9 7v13M15 20V7l2-2.5L19 7v13M3 11h18M3 16h18" /></svg>),
+  edit: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 20h4L19.5 8.5l-4-4L4 16z" /><path d="m13.5 6.5 4 4" /></svg>),
+  up: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m6 15 6-6 6 6" /></svg>),
+  down: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m6 9 6 6 6-6" /></svg>),
+  back: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>),
+  arrow: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M5 12h14M13 6l6 6-6 6" /></svg>),
+  query: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M8 4H6.5A1.5 1.5 0 0 0 5 5.5v4L3.5 12 5 14.5v4A1.5 1.5 0 0 0 6.5 20H8M16 4h1.5A1.5 1.5 0 0 1 19 5.5v4l1.5 2.5-1.5 2.5v4a1.5 1.5 0 0 1-1.5 1.5H16" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /></svg>),
+  copy: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="8.5" y="8.5" width="11" height="11" /><path d="M15.5 8.5V5.5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3" /></svg>),
+  play: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M7 5v14l11-7z" fill="currentColor" /></svg>),
+  lock: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="5" y="11" width="14" height="9" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>),
+  sidebar: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="4.5" width="17" height="15" /><path d="M9.5 4.5v15" /><path d="M5.8 8.5h1.6M5.8 11h1.6M5.8 13.5h1.6" /></svg>),
+  chevron: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m6 9 6 6 6-6" /></svg>),
+  sun: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>),
+  check: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>),
 };
 /**
  * The mark: the kula ring drawn with kula rings (src/mark.ts). Small sizes show
@@ -68,8 +69,7 @@ export function Logo({ size = 18 }: { size?: number }) {
 }
 
 
-/** Square glyph for a symbol kind – the same tile the graph draws for hubs. */
-export function Kind({ kind, size = 16 }: { kind: string; community?: number; size?: number }) {
+/** Square glyph for a symbol kind – the same tile the graph draws for hubs. */export function Kind({ kind, size = 16 }: { kind: string; community?: number; size?: number }) {
   const letter = GLYPH[kind] ?? "·";
   const c = kindColor(kind);
   return (
@@ -96,6 +96,26 @@ export function Sym({ n, onClick, right }: { n: Node; onClick?: (n: Node) => voi
         <button className="sym-locate" aria-label={`Locate ${n.name} in the graph`} title="Locate in graph" onClick={(e) => { e.stopPropagation(); onClick(n); }}><Icon.target /></button>
       )}
     </div>
+  );
+}
+
+// ---------- tooltips ----------
+/**
+ * The one tooltip: appears after a short delay, carries real information
+ * (full path, exact value, shortcut) and never repeats the visible label.
+ * Styling and delay live in styles/system.css.
+ */
+export function Tip({ tip, place, children }: { tip: ReactNode; place?: "top" | "bottom"; children: ReactNode }) {
+  const [show, setShow] = useState(false);
+  const t = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (t.current) clearTimeout(t.current); }, []);
+  const enter = () => { t.current = setTimeout(() => setShow(true), 450); };
+  const leave = () => { if (t.current) clearTimeout(t.current); setShow(false); };
+  return (
+    <span className="tip-host" data-place={place} onPointerEnter={enter} onPointerLeave={leave} onPointerDown={leave}>
+      {children}
+      {show && <span className="tip-box" role="tooltip">{tip}</span>}
+    </span>
   );
 }
 

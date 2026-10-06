@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, relTime, type Branch, type Commit, type Compare, type FileStatus, type GraphData, type RepoInfo } from "../api";
 import Dither from "../Dither";
+import Life from "../Life";
 import type { Go, Target } from "../nav";
 import { Diff, Empty, Icon, ShowOutput, Sym, useToast } from "../ui";
 import { Grip, listWidth } from "../resize";
@@ -42,6 +43,29 @@ export function Changes({ onChanged, version }: Nav) {
     } catch (e: any) { toast(e.message, "err"); }
   };
 
+  // Keyboard: j/k walks the files, s stages, u unstages, ⌘/ctrl+↵ commits.
+  // One flat walk order: staged files first, then the rest – the same order as the list.
+  const ordered = useMemo(() => [...staged.map((f) => ({ f, s: true })), ...unstaged.map((f) => ({ f, s: false }))], [files]);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      const editable = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { if (msg.trim() && (staged.length || amend)) { e.preventDefault(); commit(); } return; }
+      if (editable || e.metaKey || e.ctrlKey || e.altKey) return;
+      const at = ordered.findIndex((x) => x.f.path === sel?.path && x.s === sel?.staged);
+      if (e.key === "j" || e.key === "k") {
+        e.preventDefault();
+        const d = e.key === "j" ? 1 : -1;
+        const n = ordered[at === -1 ? 0 : (at + d + ordered.length) % ordered.length];
+        if (n) setSel({ path: n.f.path, staged: n.s });
+        return;
+      }
+      if (e.key === "s" && sel) { e.preventDefault(); act("stage", [sel.path]); return; }
+      if (e.key === "u" && sel) { e.preventDefault(); act("unstage", [sel.path]); return; }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [ordered, sel, msg, amend, staged.length, files]);
+
   const group = (title: string, list: FileStatus[], isStaged: boolean) => (
     <>
       <div className="list-head" style={{ position: "static", borderBottom: 0, paddingBottom: 4 }}>
@@ -65,8 +89,8 @@ export function Changes({ onChanged, version }: Nav) {
   return (
     <div className="split" style={listWidth("changes", 340)}>
       <div className="list" style={{ display: "flex", flexDirection: "column" }}>
-        <div className="list-head"><h2>Changes</h2><span className="spacer" /><button className="btn sm ghost" onClick={refresh}><Icon.refresh /></button></div>
-        <div style={{ flex: 1, overflow: "auto" }}>
+        <div className="list-head"><h2>Changes</h2><span className="muted">{files.length}</span><span className="spacer" /><button className="btn sm ghost" aria-label="Refresh changes" title="Refresh" onClick={refresh}><Icon.refresh /></button></div>
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
           {files.length === 0 ? <Empty title="Working tree clean">Nothing to commit.</Empty> : (<>{group("Staged", staged, true)}{group("Changes", unstaged, false)}</>)}
         </div>
         {files.length > 0 && <VerifyPanel version={files.map((f) => f.path + f.index + f.worktree).join("|") + version} />}
@@ -75,6 +99,7 @@ export function Changes({ onChanged, version }: Nav) {
             onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && msg.trim()) commit(); }} style={{ minHeight: 70 }} />
           <div className="row">
             <label className="row muted" style={{ gap: 6, cursor: "pointer" }}><input type="checkbox" checked={amend} onChange={(e) => setAmend(e.target.checked)} /> Amend</label>
+            <span className="muted hide-sm row" style={{ gap: 4 }}>j/k walk · s stage · u unstage</span>
             <span className="spacer" />
             <button className="btn primary" disabled={!msg.trim() || (!staged.length && !amend)} onClick={commit}>Commit {staged.length ? `${staged.length} file${staged.length > 1 ? "s" : ""}` : ""}</button>
           </div>
@@ -133,11 +158,25 @@ export function History({ version, target, go }: Nav) {
   const width = Math.min(10, Math.max(1, ...lanes.map((l) => Math.max(l.before.length, l.after.length, l.lane + 1)))) * 12 + 8;
   const ROW = 48;
   const visible = commits.map((c, i) => ({ c, i })).filter(({ c }) => !filter || (c.subject + c.author + c.short).toLowerCase().includes(filter.toLowerCase()));
+  // j/k walks the visible list; Enter is already selection by itself, so no extra binding.
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== "j" && e.key !== "k") return;
+      e.preventDefault();
+      const at = visible.findIndex(({ c }) => c.sha === sel);
+      const d = e.key === "j" ? 1 : -1;
+      const n = visible[at === -1 ? 0 : (at + d + visible.length) % visible.length];
+      if (n) setSel(n.c.sha);
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [visible, sel]);
 
   return (
     <div className="split" style={listWidth("history", 420)}>
       <div className="list">
-        <div className="list-head"><h2>History</h2><span className="muted">{commits.length}</span><span className="spacer" /><input className="input" style={{ width: 160, height: 26 }} placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
+        <div className="list-head"><h2>History</h2><span className="muted">{commits.length}</span><span className="spacer" /><input className="input" style={{ width: 160 }} placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
         {commits.length === 0 && <Empty title="No commits yet" />}
         {visible.map(({ c, i }) => {
           const L = lanes[i];
@@ -145,7 +184,7 @@ export function History({ version, target, go }: Nav) {
           return (
             <div key={c.sha} className={`item ${sel === c.sha ? "on" : ""}`} style={{ padding: "0 14px 0 6px", height: ROW, alignItems: "center" }} onClick={() => setSel(c.sha)}>
               {!filter && (
-                <svg className="lane-svg" width={width} height={ROW}>
+                <svg className="lane-svg" data-figure width={width} height={ROW}>
                   {L.before.map((s, l) => s && <line key={"b" + l} x1={x(l)} y1={0} x2={x(l === L.lane || s === c.sha ? L.lane : l)} y2={ROW / 2} stroke={LANE_COLORS[l % 7]} strokeWidth="1.6" />)}
                   {L.after.map((s, l) => s && <line key={"a" + l} x1={x(l === L.lane || (L.extra.includes(l) && L.before[l] !== s) ? L.lane : l)} y1={ROW / 2} x2={x(l)} y2={ROW} stroke={LANE_COLORS[l % 7]} strokeWidth="1.6" />)}
                   <circle cx={x(L.lane)} cy={ROW / 2} r={c.parents.length > 1 ? 4.5 : 4} fill={c.parents.length > 1 ? "var(--bg-2)" : LANE_COLORS[L.lane % 7]} stroke={LANE_COLORS[L.lane % 7]} strokeWidth="2" />
@@ -155,7 +194,7 @@ export function History({ version, target, go }: Nav) {
                 <div className="title">{c.subject}</div>
                 <div className="sub row" style={{ gap: 6 }}>
                   <span className="mono">{c.short}</span>·<span>{c.author}</span>·<span>{relTime(c.time)}</span>
-                  <span className="refs">{c.refs.slice(0, 3).map((r) => <span key={r} className={`tag ${r.startsWith("HEAD") ? "accent" : r.startsWith("tag:") ? "yellow" : ""}`} style={{ height: 17, fontSize: 10.5 }}>{r.replace("HEAD -> ", "● ")}</span>)}</span>
+                  <span className="refs">{c.refs.slice(0, 3).map((r) => <span key={r} className={`tag ${r.startsWith("HEAD") ? "accent" : r.startsWith("tag:") ? "yellow" : ""}`} style={{ height: 17, fontSize: 10.5 }}>{r.replace("HEAD -> ", "")}</span>)}</span>
                 </div>
               </div>
             </div>
@@ -214,6 +253,21 @@ export function Branches({ onChanged, openSymbol, version, initialCompare, go }:
   const local = data?.branches.filter((b) => !b.remote) ?? [];
   const remote = data?.branches.filter((b) => b.remote) ?? [];
   const names = data?.branches.map((b) => b.name) ?? [];
+  // j/k walks local branches, then remote ones. Enter is left to the focused
+  // element – a key that reaches a focused button must not be swallowed here.
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (/INPUT|TEXTAREA|SELECT|BUTTON/.test((e.target as HTMLElement).tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== "j" && e.key !== "k") return;
+      e.preventDefault();
+      const rows = [...local, ...remote];
+      const at = rows.findIndex((b) => b.name === head);
+      const n = rows[at === -1 ? 0 : (at + (e.key === "k" ? -1 : 1) + rows.length) % rows.length];
+      if (n) setHead(n.name);
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [data, head]);
 
   const row = (b: Branch) => (
     <div key={b.name} className={`item ${head === b.name ? "on" : ""}`} onClick={() => setHead(b.name)}>
@@ -236,7 +290,7 @@ export function Branches({ onChanged, openSymbol, version, initialCompare, go }:
           <button className="btn sm" onClick={() => run("fetch", {}, "Fetched all remotes")}>Fetch</button>
           <button className="btn sm" onClick={() => run("pull", {}, "Pulled")}>Pull</button>
           <button className="btn sm" onClick={() => run("push", {}, "Pushed")}>Push</button>
-          <button className="btn sm primary" onClick={() => { const n = prompt("New branch from HEAD"); if (n) run("branch", { name: n }, `Created ${n}`); }}><Icon.plus /></button>
+          <button className="btn sm primary" aria-label="New branch from HEAD" title="New branch from HEAD" onClick={() => { const n = prompt("New branch from HEAD"); if (n) run("branch", { name: n }, `Created ${n}`); }}><Icon.plus /></button>
         </div>
         <div className="section-title" style={{ padding: "0 14px" }}>Local <span className="count">{local.length}</span></div>
         {local.map(row)}
@@ -284,7 +338,7 @@ export function CompareReport({ c, openSymbol }: { c: Compare; openSymbol: (id: 
         <div className="stat"><b className={`risk ${c.risk}`}>{c.risk}</b><span>{c.affected.length} dependents</span></div>
       </div>
       {c.communities.length > 0 && <div className="row" style={{ flexWrap: "wrap", gap: 4 }}><span className="muted">Clusters affected:</span>{c.communities.map((x) => <span key={x} className="tag">{x}</span>)}</div>}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+      <div className="cmp-grid">
         <div>
           <div className="section-title">Changed files</div>
           {c.files.map((f) => (
@@ -393,6 +447,7 @@ export function Console({ onChanged }: Nav) {
             <h1 className="ch-title">Console</h1>
             <button className="btn sm mono" onClick={() => exec("help")}>kula help</button>
           </div>
+          <Life className="ch-life" />
         </section>
         {term.hist.map((h, i) => (
           <div key={i} className="entry">

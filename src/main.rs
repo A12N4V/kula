@@ -101,6 +101,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     /// Set kula up in this project: kula.toml, hooks, MCP, CI, first graph (like `npm init`).
+    #[command(after_help = "Examples:\n  kula init -y --hooks --agents --ci github")]
     Init {
         /// Accept every default without asking.
         #[arg(short, long)]
@@ -123,6 +124,7 @@ enum Cmd {
         no_index: bool,
     },
     /// Build or rebuild the knowledge graph (.kula/graph.db).
+    #[command(after_help = "Examples:\n  kula index          ·  kula index --if-stale --quiet   (what the hooks run)")]
     Index {
         /// Only rebuild when HEAD moved since the last index (what the hooks run).
         #[arg(long)]
@@ -132,6 +134,7 @@ enum Cmd {
         quiet: bool,
     },
     /// External packages: who imports them, and whether manifests declare them.
+    #[command(after_help = "Examples:\n  kula deps --undeclared   ·  kula deps --unused")]
     Deps {
         /// Only packages imported but not declared in any manifest.
         #[arg(long)]
@@ -141,6 +144,7 @@ enum Cmd {
         unused: bool,
     },
     /// Agent context: the code a task needs, ranked by graph distance and fitted to a token budget.
+    #[command(after_help = "Examples:\n  kula pack \"how does login validate a token\" --budget 6000")]
     Pack {
         /// Symbols, files or a question.
         #[arg(required = true)]
@@ -149,10 +153,13 @@ enum Cmd {
         budget: usize,
     },
     /// Before editing a symbol: callers, tests that reach it, co-changing files, risk, advice.
+    #[command(after_help = "Examples:\n  kula before hashToken")]
     Before { symbol: String },
     /// After editing: the worktree against HEAD through the graph; exits 2 on dangling callers.
+    #[command(after_help = "Examples:\n  kula verify")]
     Verify,
     /// CI gate: the graph blast radius of HEAD against a base; fails above max_risk.
+    #[command(after_help = "Examples:\n  kula check --base origin/main --md   ·  kula check --max-risk low")]
     Check {
         /// Base ref (defaults to kula.toml's default_branch).
         #[arg(long)]
@@ -165,11 +172,13 @@ enum Cmd {
         md: bool,
     },
     /// Git hooks that keep the graph current: install | uninstall | status.
+    #[command(after_help = "Examples:\n  kula hooks install   ·  kula hooks status")]
     Hooks {
         #[arg(default_value = "status")]
         action: String,
     },
     /// Open the web UI (graph, changes, history, branches, issues, notes).
+    #[command(after_help = "Examples:\n  kula view   ·  kula view --port 7420 --no-open")]
     View {
         #[arg(short, long, default_value_t = 7420)]
         port: u16,
@@ -178,21 +187,26 @@ enum Cmd {
         no_open: bool,
     },
     /// Repository overview: branch, changes, index freshness.
+    #[command(after_help = "Examples:\n  kula status   ·  kula status --json")]
     Status,
     /// Pretty commit graph.
+    #[command(after_help = "Examples:\n  kula lg -n 40")]
     Lg {
         #[arg(short = 'n', default_value_t = 20)]
         limit: usize,
     },
     /// Search symbols and files.
+    #[command(after_help = "Examples:\n  kula query token   ·  kula query \"login session\" --limit 30")]
     Query {
         text: Vec<String>,
         #[arg(short, long, default_value_t = 15)]
         limit: usize,
     },
     /// 360° view of a symbol: callers, callees, container, source.
+    #[command(after_help = "Examples:\n  kula context hashToken")]
     Context { symbol: String },
     /// Blast radius of changing a symbol.
+    #[command(after_help = "Examples:\n  kula impact salt   ·  kula impact salt --down --depth 2")]
     Impact {
         symbol: String,
         /// Follow dependencies (what it uses) instead of dependents.
@@ -202,17 +216,22 @@ enum Cmd {
         depth: usize,
     },
     /// Shortest call path between two symbols.
+    #[command(after_help = "Examples:\n  kula trace handleLogin salt")]
     Trace { from: String, to: String },
     /// Execution flows discovered from entry points.
+    #[command(after_help = "Examples:\n  kula flows   ·  kula flows --limit 20")]
     Flows {
         #[arg(short, long, default_value_t = 10)]
         limit: usize,
     },
     /// Functional clusters (communities) in the codebase.
+    #[command(after_help = "Examples:\n  kula clusters")]
     Clusters,
     /// Graph-aware branch comparison.
+    #[command(after_help = "Examples:\n  kula compare main   ·  kula compare main feature/auth")]
     Compare { base: String, head: Option<String> },
     /// Contrast the knowledge graphs of two revisions (use WORKTREE for uncommitted code).
+    #[command(after_help = "Examples:\n  kula graph-diff main   ·  kula graph-diff main WORKTREE --all")]
     #[command(name = "graph-diff", alias = "gdiff")]
     GraphDiff {
         base: String,
@@ -222,30 +241,39 @@ enum Cmd {
         all: bool,
     },
     /// Local issues stored in git.
+    #[command(after_help = "Examples:\n  kula issue new \"login fails on empty token\" --label bug --anchor src/auth.rs:login")]
     #[command(subcommand)]
     Issue(IssueCmd),
     /// Proposals – local pull requests between branches.
+    #[command(after_help = "Examples:\n  kula pr new \"split auth\" --base main")]
     #[command(subcommand, name = "pr", alias = "proposal")]
     Pr(PrCmd),
     /// Notes & annotations on the repo, files, symbols or commits.
+    #[command(after_help = "Examples:\n  kula note add repo \"we are mid-migration off the legacy pool\"")]
     #[command(subcommand)]
     Note(NoteCmd),
     /// Fences for AI agents (kula.toml [[guard]]): list them, check paths, or run as an agent's pre-edit hook.
+    #[command(after_help = "Examples:\n  kula guard list   ·  kula guard check src/billing.rs")]
     #[command(subcommand)]
     Guard(GuardCmd),
     /// The task an agent is on, its workflow, and the part of the code it may change.
+    #[command(after_help = "Examples:\n  kula task start \"split auth\" --workflow refactor --scope \"src/auth/**\"")]
     #[command(subcommand)]
     Task(TaskCmd),
     /// Work modes for agents: each brings its own fences, scope, steps, docs and memory policy.
+    #[command(after_help = "Examples:\n  kula workflow list   ·  kula workflow show refactor")]
     #[command(subcommand, alias = "wf")]
     Workflow(WorkflowCmd),
     /// Agent teams (kula.toml [[team]]): each agent works in its own workflow.
+    #[command(after_help = "Examples:\n  kula team save ship -m claude=fix:lead -m cursor=tests   ·  kula team start ship")]
     #[command(subcommand)]
     Team(TeamCmd),
     /// Autoresearch: an agent changes code, kula runs the metric and keeps what's better.
+    #[command(after_help = "Examples:\n  kula research init --metric \"cargo test --quiet\" --goal min --scope \"src/**\"")]
     #[command(subcommand)]
     Research(ResearchCmd),
     /// Run any agent harness held to kula's fences: `kula run -w fix -- aider`.
+    #[command(after_help = "Examples:\n  kula run -w fix --agent aider -- aider")]
     Run {
         /// The workflow to work in (starts a task in it).
         #[arg(short, long)]
@@ -260,24 +288,31 @@ enum Cmd {
         cmd: Vec<String>,
     },
     /// Bring any agent to kula: connect it, sync AGENTS.md, review what agents suggest.
+    #[command(after_help = "Examples:\n  kula agents connect all   ·  kula agents sync")]
     #[command(subcommand)]
     Agents(AgentsCmd),
     /// Agent memories pinned to symbols and files; marked stale when that code changes.
+    #[command(after_help = "Examples:\n  kula memory add charge_card \"amounts are integer cents\"")]
     #[command(subcommand, alias = "mem")]
     Memory(MemoryCmd),
     /// The knowledge graph as RDF: export Turtle / JSON-LD / N-Triples, or query it in SPARQL.
+    #[command(after_help = "Examples:\n  kula kg export -f ttl -o graph.ttl   ·  kula kg examples")]
     #[command(subcommand)]
     Kg(KgCmd),
     /// Push/pull issues, proposals and notes with a remote.
+    #[command(after_help = "Examples:\n  kula sync   ·  kula sync upstream")]
     Sync {
         #[arg(default_value = "origin")]
         remote: String,
     },
     /// Serve the graph to AI agents over MCP (stdio).
+    #[command(after_help = "Examples:\n  kula mcp")]
     Mcp,
     /// Check the environment.
+    #[command(after_help = "Examples:\n  kula doctor")]
     Doctor,
     /// Explicit git passthrough: `kula git <args>`.
+    #[command(after_help = "Examples:\n  kula git stash list")]
     Git {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
@@ -289,6 +324,7 @@ enum Cmd {
 #[derive(Subcommand)]
 enum IssueCmd {
     /// Open an issue.
+    #[command(after_help = "Examples:\n  kula issue new \"login fails on empty token\" --label bug --anchor src/auth.rs:login")]
     New {
         title: String,
         #[arg(short, long, default_value = "")]
@@ -300,23 +336,29 @@ enum IssueCmd {
         anchor: Vec<String>,
     },
     /// List issues.
+    #[command(after_help = "Examples:\n  kula issue list   ·  kula issue list --all")]
     List {
         #[arg(long)]
         all: bool,
     },
     /// Show one issue.
+    #[command(after_help = "Examples:\n  kula issue show 3")]
     Show { id: u64 },
     /// Close an issue.
+    #[command(after_help = "Examples:\n  kula issue close 3")]
     Close { id: u64 },
     /// Reopen an issue.
+    #[command(after_help = "Examples:\n  kula issue reopen 3")]
     Reopen { id: u64 },
     /// Comment on an issue.
+    #[command(after_help = "Examples:\n  kula issue comment 3 \"reproduced on 1.2\"")]
     Comment { id: u64, body: String },
 }
 
 #[derive(Subcommand)]
 enum PrCmd {
     /// Propose merging HEAD (or --head) into --base.
+    #[command(after_help = "Examples:\n  kula pr new \"split auth\" --base main")]
     New {
         title: String,
         #[arg(long, default_value = "main")]
@@ -326,32 +368,32 @@ enum PrCmd {
         #[arg(short, long, default_value = "")]
         body: String,
     },
+    /// List proposals.
+    #[command(after_help = "Examples:\n  kula pr list   ·  kula pr list --all")]
     List {
         #[arg(long)]
         all: bool,
     },
     /// Show a proposal with its graph impact.
-    Show {
-        id: u64,
-    },
+    #[command(after_help = "Examples:\n  kula pr show 2")]
+    Show { id: u64 },
     /// Merge (no-ff) into the base branch.
-    Merge {
-        id: u64,
-    },
-    Close {
-        id: u64,
-    },
-    Comment {
-        id: u64,
-        body: String,
-    },
+    #[command(after_help = "Examples:\n  kula pr merge 2")]
+    Merge { id: u64 },
+    #[command(after_help = "Examples:\n  kula pr close 2")]
+    Close { id: u64 },
+    /// Comment on a proposal.
+    #[command(after_help = "Examples:\n  kula pr comment 2 \"needs a rebase first\"")]
+    Comment { id: u64, body: String },
 }
 
 #[derive(Subcommand)]
 enum GuardCmd {
     /// Every guard rule, the active task, and the files they fence.
+    #[command(after_help = "Examples:\n  kula guard list")]
     List,
     /// Exit 1 if an agent may not edit these paths (or the staged files).
+    #[command(after_help = "Examples:\n  kula guard check src/billing.rs   ·  kula guard check --staged")]
     Check {
         paths: Vec<String>,
         /// Check the files staged for commit.
@@ -359,8 +401,12 @@ enum GuardCmd {
         staged: bool,
     },
     /// Git pre-commit hook: refuse an agent's commit that holds fenced changes.
+    #[command(after_help = "Examples:\n  kula guard commit")]
     Commit,
     /// Agent pre-tool hook: reads the tool call as JSON on stdin, exits 2 to block a fenced edit or read.
+    #[command(
+        after_help = "Examples:\n  echo '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"migrations/1.sql\"}}' | kula guard hook"
+    )]
     Hook {
         /// claude | cursor | codex | gemini (only changes the reply format; payloads are detected).
         #[arg(long, default_value = "claude")]
@@ -374,10 +420,13 @@ enum GuardCmd {
 #[derive(Subcommand)]
 enum WorkflowCmd {
     /// Every workflow: built in and from kula.toml.
+    #[command(after_help = "Examples:\n  kula workflow list")]
     List,
     /// One workflow: fences, scope, steps, docs, memory policy.
+    #[command(after_help = "Examples:\n  kula workflow show refactor")]
     Show { name: String },
     /// Install a workflow as each agent's own: a Claude Code subagent, a Cursor rule, a Gemini command.
+    #[command(after_help = "Examples:\n  kula workflow install refactor   ·  kula workflow install fix claude cursor")]
     Install {
         name: String,
         /// claude, cursor, gemini, or all.
@@ -385,6 +434,7 @@ enum WorkflowCmd {
         agents: Vec<String>,
     },
     /// The workflow as instructions, for any harness's system prompt.
+    #[command(after_help = "Examples:\n  kula workflow prompt refactor")]
     Prompt { name: String },
 }
 
@@ -566,8 +616,37 @@ enum NoteCmd {
 fn main() {
     let cli = Cli::parse();
     if let Err(e) = run(cli) {
-        eprintln!("{} {e:#}", red("✗"));
+        let msg = format!("{e:#}");
+        eprintln!("{}", failure(&msg, next_step(&msg)));
         std::process::exit(1);
+    }
+}
+
+/// What to run next for the errors a user hits, matched on the message's opening
+/// words so hints survive the details that follow them.
+fn next_step(msg: &str) -> Option<&'static str> {
+    let short = msg.split('–').next().unwrap_or(msg).trim();
+    let m = |p: &str| short.starts_with(p);
+    if m("no workflow called") {
+        Some("kula workflow list")
+    } else if m("no team called") {
+        Some("kula team list")
+    } else if m("no issue") {
+        Some("kula issue list --all")
+    } else if m("no proposal") {
+        Some("kula pr list --all")
+    } else if m("no research yet") || m("the autoresearch workflow has no metric") {
+        Some("kula research init --metric \"<command>\" --scope \"<paths>\"")
+    } else if m("commit or stash your changes first") {
+        Some("git commit -am \"wip\"")
+    } else if m("not a git repository") || m("could not find repository") || m("not inside a git repository") {
+        Some("git init  ·  kula init")
+    } else if m("no active task") || m("no task") {
+        Some("kula task start \"<title>\"")
+    } else if m("no index") || m("no graph") {
+        Some("kula index")
+    } else {
+        None
     }
 }
 
@@ -1135,24 +1214,26 @@ fn status(repo: &Repo, json: bool) -> Result<()> {
         println!("{}", serde_json::json!({ "branch": repo.branch(), "head": head, "index": fresh, "files": files }));
         return Ok(());
     }
-    header(&format!("{}  {}", repo.name(), accent(&format!(" {}", repo.branch()))));
+    header(&format!("{} {}", repo.name(), accent(&repo.branch())));
     let idx = match fresh {
         "current" => green("● graph current"),
         "stale" => yellow("● graph behind HEAD – run `kula index`"),
         _ => dim("○ no graph yet – run `kula index`"),
     };
-    println!("  {idx}\n");
+    println!("  {idx}");
     if files.is_empty() {
         println!("  {}", dim("working tree clean"));
+        return Ok(());
     }
     let staged: Vec<_> = files.iter().filter(|f| f.staged).collect();
     let unstaged: Vec<_> = files.iter().filter(|f| f.unstaged && !f.untracked).collect();
     let untracked: Vec<_> = files.iter().filter(|f| f.untracked).collect();
+    println!();
     for (title, list, col) in [("staged", staged, 0), ("changed", unstaged, 1), ("untracked", untracked, 2)] {
         if list.is_empty() {
             continue;
         }
-        println!("  {}", bold(title));
+        println!("  {} {}", bold(&list.len().to_string()), bold(title));
         for f in list {
             let code = if col == 0 { &f.index } else { &f.worktree };
             let c = match col {
@@ -1608,17 +1689,29 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 return Ok(());
             }
             if cfg.teams.is_empty() {
-                println!("  {}", dim("no teams – kula team save <name> -m claude=autoresearch -m cursor=tests"));
+                println!("  {}", dim("no teams"));
+                hint("kula team save <name> -m claude=autoresearch -m cursor=tests");
+                return Ok(());
             }
+            header("teams");
             for t in &cfg.teams {
                 let on = active.as_ref().is_some_and(|a| a.name == t.name);
-                println!("  {} {}  {}", if on { green("●") } else { dim("○") }, accent(&t.name), t.about);
+                println!("  {} {}  {}", if on { green("●") } else { dim("○") }, accent(&t.name), dim(&t.about));
+                let lead = t.members.iter().find(|m| m.reports_to.is_empty()).map(|m| m.agent.clone());
+                let w = t.members.iter().map(|m| m.agent.chars().count()).max().unwrap_or(5).max(5);
+                let r = t.members.iter().map(|m| m.workflow.chars().count()).max().unwrap_or(8).max(8);
                 for m in &t.members {
+                    let tag = if lead.as_deref() == Some(m.agent.as_str()) && m.role.is_empty() { green("lead") } else { String::new() };
+                    let tag = if tag.is_empty() { String::new() } else { format!(" {tag}") };
+                    let wf = if m.workflow.is_empty() { dim("none") } else { bold(&m.workflow) };
                     println!(
-                        "      {:<10} {}  {}",
+                        "      {:<w$}  {:<r$}  {}{}",
                         m.agent,
-                        if m.workflow.is_empty() { dim("no workflow") } else { bold(&m.workflow) },
-                        dim(&m.role)
+                        wf,
+                        if m.role.is_empty() { dim("member") } else { dim(&m.role) },
+                        tag,
+                        w = w,
+                        r = r
                     );
                 }
             }
@@ -1691,13 +1784,14 @@ fn research_cmd(repo: &Repo, c: ResearchCmd, json: bool) -> Result<()> {
             bold(&research::fmt(s.best)),
             s.gain() * 100.0
         );
-        println!("    {}  {}", dim("metric"), s.metric);
-        for e in &s.experiments {
-            let v = e.value.map(research::fmt).unwrap_or_else(|| "–".into());
-            println!("    {:>3}  {}  {:>10}  {}  {}", e.n, if e.kept { green("kept") } else { dim("    ") }, v, e.hypothesis, dim(&e.note));
-        }
-        if let Some(n) = s.left() {
-            println!("    {}", dim(&format!("{n} experiments left")));
+        kv(10, "metric", &s.metric);
+        kv(10, "budget", &if let Some(n) = s.left() { format!("{n} experiments left") } else { "no limit".into() });
+        if !s.experiments.is_empty() {
+            println!("  {}", dim("#   kept   value      hypothesis"));
+            for e in &s.experiments {
+                let v = e.value.map(research::fmt).unwrap_or_else(|| "–".into());
+                println!("  {:<3} {} {:>10}  {}  {}", e.n, if e.kept { green("kept") } else { dim("····") }, v, e.hypothesis, dim(&e.note));
+            }
         }
     };
     match c {
@@ -1748,11 +1842,13 @@ fn agents_cmd(repo: &Repo, c: AgentsCmd, json: bool) -> Result<()> {
                 return Ok(());
             }
             header("agents");
+            let w = conns.iter().map(|c| c.name.chars().count()).max().unwrap_or(6).max(6);
             for c in conns {
                 let mark = |b: bool| if b { green("✓") } else { dim("·") };
-                println!("  {:<12} {} mcp  {} hook   {}", c.name, mark(c.mcp), mark(c.hook), dim(&c.files.join(", ")));
+                println!("  {:<w$} {} mcp  {} hook   {}", c.name, mark(c.mcp), mark(c.hook), dim(&c.files.join(", ")), w = w);
             }
             println!();
+            let dwidth = docs.iter().map(|d| d.path.chars().count()).max().unwrap_or(10).max(10);
             for d in docs {
                 let state = if !d.exists {
                     dim("missing")
@@ -1763,7 +1859,7 @@ fn agents_cmd(repo: &Repo, c: AgentsCmd, json: bool) -> Result<()> {
                 } else {
                     dim("no brief")
                 };
-                println!("  {:<34} {}  {}", d.path, state, dim(&d.readers));
+                println!("  {:<dwidth$} {}  {}", d.path, state, dim(&d.readers), dwidth = dwidth);
             }
             let n = agents::suggestions(repo).len();
             if n > 0 {

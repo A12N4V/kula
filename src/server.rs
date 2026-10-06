@@ -107,6 +107,10 @@ async fn guard(State(s): State<AppState>, req: Request, next: Next) -> Response 
 
 async fn static_file(State(s): State<AppState>, req: Request) -> Response {
     let path = req.uri().path().trim_start_matches('/');
+    // Unmatched API paths fall through here: answer as the API would, not with the UI shell.
+    if req.uri().path().starts_with("/api/") {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("no such endpoint {}", req.uri().path()) }))).into_response();
+    }
     let path = if path.is_empty() { "index.html" } else { path };
     let (file, name) = match Assets::get(path) {
         Some(f) => (f, path.to_string()),
@@ -257,9 +261,9 @@ async fn file(State(s): State<AppState>, Query(q): Query<HashMap<String, String>
     blocking(move || {
         let p = q.get("path").cloned().unwrap_or_default();
         if p.contains("..") || p.starts_with('/') {
-            return Err(anyhow!("bad path"));
+            return Err(anyhow!("path must be relative to the repository root, got {p}"));
         }
-        let content = std::fs::read_to_string(s.repo.root.join(&p))?;
+        let content = std::fs::read_to_string(s.repo.root.join(&p)).map_err(|e| anyhow!("cannot read {p}: {e}"))?;
         Ok(json!({ "path": p, "content": content }))
     })
     .await
@@ -404,6 +408,21 @@ struct GitAction {
 async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(a): Json<GitAction>) -> ApiResult {
     blocking(move || {
         let r = &s.repo;
+        // Q1: the UI polls status every 5 s, and `git status` refreshes the
+        // index under a lock; when a write races that refresh, git fails with
+        // an index.lock error. It is transient – retry before giving up.
+        let run = |args: &[String]| -> anyhow::Result<String> {
+            let mut res = r.run(args);
+            for _ in 0..4 {
+                let transient = matches!(&res, Err(e) if e.to_string().contains("index.lock"));
+                if !transient {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                res = r.run(args);
+            }
+            res
+        };
         for p in &a.paths {
             if p.starts_with('-') {
                 return Err(anyhow!("bad path {p}"));
@@ -421,7 +440,7 @@ async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(
             Ok(n)
         };
         let out = match action.as_str() {
-            "stage" => r.run(&if a.paths.is_empty() { vec!["add".to_string(), "-A".into()] } else { with_paths(&["add"]) })?,
+            "stage" => run(&if a.paths.is_empty() { vec!["add".to_string(), "-A".into()] } else { with_paths(&["add"]) })?,
             "unstage" => r
                 .run(&if a.paths.is_empty() { vec!["reset".to_string(), "-q".into()] } else { with_paths(&["reset", "-q", "HEAD"]) })
                 .or_else(|_| r.run(&with_paths(&["rm", "--cached", "-q"])))?,
@@ -435,11 +454,11 @@ async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(
             }
             "commit" => {
                 let msg = a.message.clone().filter(|m| !m.trim().is_empty()).ok_or_else(|| anyhow!("commit message required"))?;
-                let mut args = vec!["commit", "-m", msg.as_str()];
+                let mut args = vec!["commit".to_string(), "-m".into(), msg.clone()];
                 if a.amend {
-                    args.push("--amend");
+                    args.push("--amend".into());
                 }
-                r.run(&args)?
+                run(&args)?
             }
             "checkout" => r.run(&["switch", &name()?])?,
             "branch" => {
@@ -776,6 +795,28 @@ async fn meta_action(State(s): State<AppState>, Path((kind, action)): Path<(Stri
     .await
 }
 
+// A1: fence-path verdict endpoint – read-only. The Fences tab asks what one
+// path would get for the task's fences and for each agent's (a team member
+// may sit under a different workflow), without starting anything.
+
+async fn agent_path_verdict(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        let path = q.get("path").cloned().unwrap_or_default();
+        anyhow::ensure!(!path.is_empty(), "send ?path=");
+        let g = crate::guard::Guards::load(r)?;
+        let task = g.path(&path);
+        let mut agents = serde_json::Map::new();
+        for c in crate::agents::connections(&r.root) {
+            if let Ok(g) = crate::guard::Guards::for_agent(r, Some(c.id)) {
+                agents.insert(c.id.to_string(), json!(g.path(&path)));
+            }
+        }
+        Ok(json!({ "path": path, "task": task, "agents": agents }))
+    })
+    .await
+}
+
 pub fn router(repo: Repo, token: String) -> Router {
     let state = AppState { repo, token: Arc::new(token), snapshots: Default::default() };
     Router::new()
@@ -783,6 +824,8 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/index", post(reindex))
         .route("/api/index/progress", get(index_progress))
         .route("/api/agent/pre_edit/{id}", get(agent_pre_edit))
+        // A1: fence-path verdict endpoint (see the A1 block above).
+        .route("/api/agent/guard_path", get(agent_path_verdict))
         .route("/api/agent/verify", get(agent_verify))
         .route("/api/graph", get(graph_data))
         .route("/api/search", get(search))

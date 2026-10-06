@@ -118,7 +118,9 @@ export default function AsciiMark({ className, period = 3.6 }: { className?: str
       pre.textContent = out;
       if (reduced) cancelAnimationFrame(raf);
     };
-    raf = requestAnimationFrame(frame);
+    // The first frame is drawn synchronously: a backgrounded headless page can
+    // have its rAFs throttled, and reduced motion gets exactly one frame.
+    frame(performance.now() + 34);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, [period]);
   return <pre ref={ref} className={`ascii-mark ${className ?? ""}`} aria-hidden="true" />;

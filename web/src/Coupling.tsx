@@ -47,7 +47,7 @@ function build(g: GraphData): Model | null {
 }
 
 /** A small ring, the mark's loop, for the cells that close one. */
-const Ring = () => <svg viewBox="0 0 7 7" className="cp-ring" aria-hidden="true"><circle cx="3.5" cy="3.5" r="2.6" /></svg>;
+const Ring = () => <svg viewBox="0 0 7 7" className="cp-ring" data-figure aria-hidden="true"><circle cx="3.5" cy="3.5" r="2.6" /></svg>;
 
 export default function Coupling({ onDir }: { onDir: (dir: string) => void }) {
   const [g, setG] = useState<GraphData | null>(null);

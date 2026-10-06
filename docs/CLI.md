@@ -84,7 +84,7 @@ The scheme is `kula <verb>`. Graph verbs answer questions, project verbs keep th
 |---|---|
 | project | `init` · `index [--if-stale] [--quiet]` · `hooks install\|uninstall\|status` · `doctor` |
 | graph | `query` · `context` · `impact [--down]` · `trace` · `flows` · `clusters` · `deps` |
-| agents | `agents status\|connect\|sync\|brief\|suggestions\|accept\|dismiss` · `workflow list\|show` · `task start [-w workflow]\|show\|done` · `guard list\|check\|hook` · `memory add\|recall\|edit\|stale\|confirm\|rm` · `pack` · `before` · `verify` (and the MCP tools of the same purpose) |
+| agents | `agents status\|connect\|sync\|brief\|suggestions\|accept\|dismiss` · `workflow list\|show\|install\|prompt` · `task start [-w workflow]\|show\|done` · `guard list\|check\|hook\|commit` · `memory add\|recall\|edit\|stale\|confirm\|rm` · `pack` · `before` · `verify` · `run -w <workflow> -- <agent>…` · `team save\|start\|stop\|list` · `research init\|start\|try\|status\|stop` (and the MCP tools of the same purpose) |
 | knowledge graph | `kg export [-f ttl\|nt\|jsonld\|rdfxml]` · `kg sparql <query\|@file\|->` · `kg examples` |
 | review | `compare` · `graph-diff` · `check` · `pr` · `issue` · `note` · `sync` |
 | surfaces | `view` (web UI) · `mcp` (agents over stdio) · `status` · `lg` |

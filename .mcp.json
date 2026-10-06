@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "kula": {
+      "args": [
+        "mcp"
+      ],
+      "command": "kula"
+    }
+  }
+}

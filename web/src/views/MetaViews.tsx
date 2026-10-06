@@ -208,7 +208,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
           {[...groups.entries()].map(([t, list]) => (
             <div key={t} style={{ marginBottom: 18 }}>
               <div className="row" style={{ marginBottom: 6 }}>
-                <button className="btn sm ghost mono" onClick={() => t !== "repo" && openByName(t, openSymbol)}>{t.startsWith("file:") ? "▤" : t.startsWith("symbol:") ? "ƒ" : t.startsWith("commit:") ? "●" : "◯"} {t}</button>
+                <button className="btn sm ghost mono" onClick={() => t !== "repo" && openByName(t, openSymbol)}>{t.startsWith("file:") ? <Icon.doc /> : t.startsWith("symbol:") ? "ƒ" : t.startsWith("commit:") ? <Icon.history /> : <Icon.box />} {t}</button>
               </div>
               {list.map((n) => (
                 <div key={n.id} className={`note ${n.kind === "memory" ? "mem" : ""}`}>
@@ -242,7 +242,7 @@ export function Flows({ openSymbol, version }: Nav) {
         {flows?.length === 0 && <Empty title="No flows found">Entry points are functions nothing calls that call at least two others.</Empty>}
         {flows?.map((x, i) => (
           <div key={x.entry.id} className={`item ${sel === i ? "on" : ""}`} onClick={() => setSel(i)}>
-            <span style={{ color: colorFor(x.entry.community) }}>▶</span>
+            <span className="dot" style={{ background: colorFor(x.entry.community) }} />
             <div style={{ minWidth: 0, flex: 1 }}><div className="title mono">{x.entry.name}</div><div className="sub">{x.entry.path} · reaches {x.reach}</div></div>
           </div>
         ))}

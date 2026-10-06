@@ -6,8 +6,38 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 K="$ROOT/target/debug/kula"
-D=$(mktemp -d)/kula
-git clone -q "$ROOT" "$D"
+# /tmp on purpose: mktemp in the system temp dir (macOS /var/folders) is
+# unreliable in sandboxed checkouts – git clone intermittently fails with
+# "Operation not permitted" – so the fixture repo always lives under /tmp.
+D=$(mktemp -d "/tmp/kula-fixture.XXXXXX")/kula
+echo "$D" > "/tmp/kula-fixture-$1.path"
+# Clone through a cached bundle: in sandboxed checkouts a concurrent temp-file
+# reaper can make a loose object in the shared object store unreadable
+# ("Operation not permitted") while a clone streams it, and every clone re-reads
+# all of them (fresh loose objects are also intermittently unreadable for a
+# moment under macOS Desktop file protection). So pack the repo once per HEAD
+# into a bundle under /tmp (atomic rename, so concurrent workers share one
+# winner) and clone from that single file – the clone then reads no loose
+# objects at all – retrying before giving up.
+SHA=$(git -C "$ROOT" rev-parse HEAD)
+CACHE="/tmp/kula-fixture-bundle-$SHA.bundle"
+if [ ! -f "$CACHE" ]; then
+  n=0
+  until git -C "$ROOT" bundle create "$CACHE.tmp.$$" --all 2>/dev/null && \
+        mv -f "$CACHE.tmp.$$" "$CACHE"; do
+    rm -f "$CACHE.tmp.$$"
+    n=$((n + 1))
+    [ "$n" -ge 10 ] && { echo "fixture: git bundle failed $n times, giving up" >&2; exit 1; }
+    sleep 1
+  done
+fi
+n=0
+until git clone -q "$CACHE" "$D"; do
+  rm -rf "$D"
+  n=$((n + 1))
+  [ "$n" -ge 10 ] && { echo "fixture: git clone failed $n times, giving up" >&2; exit 1; }
+  sleep 1
+done
 cd "$D"
 git config user.name e2e
 git config user.email e2e@example.com
@@ -28,6 +58,19 @@ reason = "atomic index swap"
 paths = ["web/src/colors.ts"]
 level = "review"
 reason = "palette is shared with the README"
+
+# T1: a team the Teams tab and its e2e tests can show – a lead and three
+# members across two workflows, with hand-offs between them.
+[[team]]
+name = "ship"
+about = "the e2e team: build it, then check it"
+prompt = "ship the change; keep the graph green"
+members = [
+  { agent = "claude", workflow = "tests", role = "lead", prompt = "you lead; review every hand-off before it lands" },
+  { agent = "cursor", workflow = "tests", role = "builder", reports_to = "claude", hands_off = ["codex"] },
+  { agent = "codex", workflow = "explore", role = "review", reports_to = "claude" },
+  { agent = "gemini", workflow = "explore", role = "scout", reports_to = "claude", hands_off = ["cursor"] },
+]
 TOML
 git add kula.toml
 git commit -qm "e2e guards"

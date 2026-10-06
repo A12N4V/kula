@@ -84,7 +84,11 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
         <div className="cp-path"><span className="muted">{dir}</span>{file}</div>
         <div className="cp-actions">
           {t.id != null && onLocate && <button className="btn sm" onClick={() => onLocate(t.id!)} title="Focus it in the graph"><Icon.target /> Locate</button>}
-          <button className="btn sm" onClick={() => navigator.clipboard?.writeText(t.line ? `${t.path}:${t.line}` : t.path)} title="Copy path">Copy path</button>
+          <button className="btn sm" onClick={() => navigator.clipboard?.writeText(t.line ? `${t.path}:${t.line}` : t.path)} title={t.line ? `Copy ${t.path}:${t.line}` : `Copy ${t.path}`}>Copy path:line</button>
+          {t.id != null && t.name && (
+            <button className="btn sm ghost" title={`Copy ${t.kind === "file" ? `urn:kula:file:${t.path}` : `urn:kula:sym:${t.path}#${t.name}`}`}
+              onClick={() => navigator.clipboard?.writeText(t.kind === "file" ? `urn:kula:file:${t.path}` : `urn:kula:sym:${t.path}#${t.name}`)}>Copy id</button>
+          )}
           <span className="spacer" />
           <button className="btn sm ghost icon-only" onClick={onClose} aria-label="Close source" title="Close  esc"><Icon.close /></button>
         </div>

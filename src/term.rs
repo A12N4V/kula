@@ -61,6 +61,24 @@ pub fn header(title: &str) {
     println!("{} {}", accent("◯"), bold(title));
 }
 
+/// A label/value line, the label dim and padded so values line up in a block.
+pub fn kv(width: usize, k: &str, v: &str) {
+    println!("  {:<width$}{}", dim(k), v, width = width);
+}
+
+/// The next thing to run, after an output block: dim, indented.
+pub fn hint(cmd: &str) {
+    println!("  {}", dim(&format!("→ {cmd}")));
+}
+
+/// What failed and what to run next. Returns the strings for tests; main prints them.
+pub fn failure(msg: &str, next: Option<&str>) -> String {
+    match next {
+        Some(n) => format!("{} {msg}\n{} {}", red("✗"), dim("→"), n),
+        None => format!("{} {msg}", red("✗")),
+    }
+}
+
 pub fn rel_time(ts: i64) -> String {
     let now = crate::meta::now();
     let d = (now - ts).max(0);
