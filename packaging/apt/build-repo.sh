@@ -32,6 +32,6 @@ cd - >/dev/null
 # Public key, binary form for `signed-by=`.
 gpg --export "$key" > "$out/kula.gpg"
 # The docs site at the root, the apt repository under it.
-cp -R site/. "$out/"
+[ "$(cd site && pwd -P)" = "$(cd "$out" && pwd -P)" ] || cp -R site/. "$out/"
 mkdir -p "$out/assets" && cp docs/assets/*.svg docs/assets/*.png "$out/assets/"
 echo "apt repository ready in $repo (key $key)"
