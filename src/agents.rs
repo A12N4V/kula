@@ -653,6 +653,17 @@ pub fn shell_targets(cmd: &str) -> (Vec<Target>, Option<String>) {
                 let skip = usize::from(scripts.is_empty());
                 plain.iter().filter(|a| !scripts.contains(a)).skip(skip).filter(|a| looks_like_path(a)).for_each(|a| write(a, &mut out));
             }
+            // an inline script (`python -c`, `node -e`, `sh -c`) can write anything it names:
+            // every path in it counts as a write
+            "python" | "python3" | "node" | "deno" | "bun" | "ruby" | "perl" | "php" | "sh" | "bash" | "zsh" | "osascript"
+                if args.iter().any(|a| matches!(*a, "-c" | "-e" | "--eval" | "-r")) =>
+            {
+                args.windows(2)
+                    .filter(|w| matches!(w[0], "-c" | "-e" | "--eval" | "-r"))
+                    .flat_map(|w| w[1].split(|c: char| !(c.is_ascii_alphanumeric() || "_./-".contains(c))))
+                    .filter(|a| looks_like_path(a) && a.chars().any(|c| c.is_ascii_alphabetic()) && (!a.starts_with('.') || a.starts_with("./") || a.starts_with("../")))
+                    .for_each(|a| write(a, &mut out));
+            }
             _ => plain.iter().filter(|a| looks_like_path(a)).for_each(|a| out.push(Target { path: a.to_string(), write: false })),
         }
     }
@@ -992,6 +1003,8 @@ mod tests {
         assert_eq!(w("sed -i.bak -e 's/a/b/' src/x.rs src/y.rs"), ["src/x.rs", "src/y.rs"]);
         assert_eq!(w("echo hi > out.txt 2>&1"), ["out.txt"]);
         assert_eq!(w("cp a.rs b.rs && rm -rf build/"), ["b.rs", "build/"]);
+        assert_eq!(w(r#"python3 -c "open('src/crypto.py','w').write('x')""#), ["src/crypto.py"]);
+        assert_eq!(w("node -e \"require('fs').writeFileSync('a.json', '')\""), ["a.json"]);
         assert!(shell_targets("git commit --no-verify -m x").1.is_some());
         assert!(shell_targets("kula task show").1.is_none());
     }
