@@ -1,4 +1,4 @@
-/* ================================================================ semiotic kit (homonin-landing /security, /ethics, /platform)
+/* ================================================================ design kit (homonin-landing /security, /ethics, /platform)
    Crop marks on every framed surface and the 8px module grid behind the canvas. */
 :root { --crop: var(--text-3); }
 .card, .kpi-strip, .kpi, .inspector, .legend, .palette, .settings {

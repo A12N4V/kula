@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# kula — unified test script.
+# kula: unified test script.
 #
 #   ./scripts/test.sh           everything
 #   ./scripts/test.sh --quick   skip packaging checks

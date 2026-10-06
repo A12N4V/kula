@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="kula 1.0 – git, with a map, for you and your agents" width="100%">
+  <img src="docs/assets/hero.svg" alt="kula 1.0: git, with a map, for you and your agents" width="100%">
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <b>Kula turns a git repository into a knowledge graph – and puts it to work for you and for your AI agents.</b><br>
+  <b>Kula turns a git repository into a knowledge graph, and puts it to work for you and for your AI agents.</b><br>
   Every git command · a graph of your code · architectural review · issues, proposals and notes stored in git ·<br>
   agent workflows, fences and memory anchored to the code · the whole graph as RDF. One binary. No server. No account.
 </p>
@@ -40,12 +40,12 @@ cd your-repo && kula init        # kula.toml, git hooks, agents connected, first
 kula view                        # the map, at http://localhost:7420
 ```
 
-<p align="center"><img src="docs/assets/promo.gif" alt="Cursor tries three ways round kula's fences – an edit, sed, ending the task – and is refused each time, then bumps the version" width="100%"></p>
-<p align="center"><sub>Cursor, inside the <a href="docs/assets/promo.mp4">two-minute launch film</a> – watch it with sound. Made in <a href="promo/">promo/</a> from the real app and a real Claude Code + Cursor session: Remotion, an original score, three voices.</sub></p>
+<p align="center"><img src="docs/assets/promo.gif" alt="Cursor tries three ways round kula's fences (an edit, sed, ending the task) and is refused each time, then bumps the version" width="100%"></p>
+<p align="center"><sub>Cursor, inside the <a href="docs/assets/promo.mp4">two-minute launch film</a>. Watch it with sound. Made in <a href="promo/">promo/</a> from the real app and a real Claude Code + Cursor session: Remotion, an original score, three voices.</sub></p>
 
 ## Why kula
 
-AI writes a growing share of the code, and the people shipping it trust it less every year. In the [Stack Overflow 2025 Developer Survey](https://survey.stackoverflow.co/2025/ai), **84%** of developers use or plan to use AI tools, **46%** distrust their accuracy (33% trust it), and the most common complaint – **66%** – is code that is *almost right, but not quite*. The gap is context and control: an agent greps a codebase it cannot see the shape of, edits code it should never touch, and forgets what it learned between sessions. And the review that has to catch all of this still reads diffs line by line.
+AI writes a growing share of the code, and the people shipping it trust it less every year. In the [Stack Overflow 2025 Developer Survey](https://survey.stackoverflow.co/2025/ai), **84%** of developers use or plan to use AI tools, **46%** distrust their accuracy (33% trust it), and the most common complaint, at **66%**, is code that is *almost right, but not quite*. The gap is context and control: an agent greps a codebase it cannot see the shape of, edits code it should never touch, and forgets what it learned between sessions. And the review that has to catch all of this still reads diffs line by line.
 
 Developer tooling splits into camps, and each leaves part of that gap open:
 
@@ -57,12 +57,12 @@ Developer tooling splits into camps, and each leaves part of that gap open:
 | agent memory | mem0, TencentDB Agent Memory | long-term memory for assistants | built around conversations; vector stores that never learn the code changed |
 | agent guardrails | Claude Code permissions, Cursor rules, leash | allow and deny lists | paths only: a rule can't name a function, follow it when it moves, or change with the kind of work |
 
-Kula is the one place where those meet, because they all need the same thing – a graph of the code that stays current with git:
+Kula is the one place where those meet, because they all need the same thing: a graph of the code that stays current with git:
 
 1. **Workflows for agents.** `explore`, `fix`, `refactor`, `tests`, `docs` and your own: each a work mode with its own fences, scope, steps, docs and memory policy. A refactor can't touch the tests that define "unchanged"; a test-writing session can't "fix" the code under test.
 2. **Fences that know the code.** Lock a *symbol*, not just a path; hide secrets; scope a task to part of the graph. One verdict serves MCP, a pre-edit hook in Claude Code, Cursor, Codex and Gemini CLI, and the CI gate.
 3. **Memory anchored to code.** What an agent learns is pinned to the function it describes, stored in git, and marked **stale** the moment that function changes.
-4. **Architectural review.** `graph-diff` and Contrast show what a branch does to the *structure* – symbols gained, lost and rewritten, call edges added and cut, blast radius by risk.
+4. **Architectural review.** `graph-diff` and Contrast show what a branch does to the *structure*: symbols gained, lost and rewritten, call edges added and cut, blast radius by risk.
 5. **Offline collaboration.** Proposals, issues, notes and memories are git objects on `refs/kula/meta`: they work on a plane and sync through any remote.
 6. **A graph you can take with you.** The whole graph is RDF under a published vocabulary: export Turtle or JSON-LD, or ask it anything in SPARQL.
 
@@ -73,8 +73,8 @@ One static binary with the web UI embedded. The only runtime dependency is `git`
 | | command |
 |---|---|
 | **curl** (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh \| sh` |
-| **Homebrew** | `brew install kula` – tap it once first: `brew tap a12n4v/tap` |
-| **apt** (Debian, Ubuntu) | `sudo apt install kula` – add the signed repository once first (below) |
+| **Homebrew** | `brew install kula`, after a one-time `brew tap a12n4v/tap` |
+| **apt** (Debian, Ubuntu) | `sudo apt install kula`, after adding the signed repository (below) |
 | **npm · pnpm · bun** | `npm i -g kula-cli` · `pnpm add -g kula-cli` · `bunx kula-cli` |
 | **pip · uv · pipx** | `pip install kula` · `uv tool install kula` · `pipx install kula` |
 | **cargo** | `cargo install kula` |
@@ -83,7 +83,7 @@ One static binary with the web UI embedded. The only runtime dependency is `git`
 | **source** | `pnpm -C web install && pnpm -C web build && cargo install --path .` |
 
 <details>
-<summary><b>The apt repository</b> – add it once, then <code>apt install</code> and <code>apt upgrade</code> as usual</summary>
+<summary><b>The apt repository</b>: add it once, then <code>apt install</code> and <code>apt upgrade</code> as usual</summary>
 
 ```bash
 curl -fsSL https://a12n4v.github.io/kula/kula.gpg | sudo tee /usr/share/keyrings/kula.gpg >/dev/null
@@ -112,7 +112,7 @@ kula commit -am "ship it"          # …and it's still just git
 <p align="center"><img src="docs/assets/agent-loop.svg" alt="The agent loop: workflows → context_pack → pre_edit → edit, checked by the fence hook → verify_edit → remember" width="100%"></p>
 
 ```sh
-kula agents connect all     # Claude Code, Cursor, Codex, Gemini CLI – MCP server + pre-edit hook, in each one's own format
+kula agents connect all     # Claude Code, Cursor, Codex, Gemini CLI: MCP server + pre-edit hook, in each one's own format
 kula agents sync            # a brief of tools, fences and workflows in AGENTS.md, for every other agent
 ```
 
@@ -131,9 +131,9 @@ Fences are not a paragraph in a prompt. Every way an agent can change code meets
 
 | how an agent acts | what holds it |
 |---|---|
-| a file tool – Edit, Write, apply_patch, write_file | the pre-tool hook refuses the call and tells the agent why |
-| a shell command – `rm`, `mv`, `sed -i`, `> file`, `tee`, `git rm` | the same hook reads the command for every file it writes or reads |
-| switching kula off – editing `kula.toml` or a hook, `kula task done`, `git commit --no-verify` | refused: kula's own config is locked for agents, always; they may `suggest` |
+| a file tool: Edit, Write, apply_patch, write_file | the pre-tool hook refuses the call and tells the agent why |
+| a shell command: `rm`, `mv`, `sed -i`, `> file`, `tee`, `git rm` | the same hook reads the command for every file it writes or reads |
+| switching kula off: editing `kula.toml` or a hook, `kula task done`, `git commit --no-verify` | refused: kula's own config is locked for agents, always; they may `suggest` |
 | a commit | the git `pre-commit` hook refuses an agent's commit that holds fenced changes |
 | a harness kula doesn't know | `kula run` makes fenced files read-only for the run (hidden ones unreadable) and puts back anything fenced it changed; the agent's version is kept in `.kula/run/` |
 | a branch | `kula check` fails it in CI |
@@ -155,7 +155,7 @@ kula task start "split the auth module" --workflow refactor
 | `tests` | write tests; leave the code under test alone | only tests editable | write |
 | `docs` | documentation, no code | only docs editable | read |
 | `autoresearch` | an experiment loop: change, measure, keep what's better | its scope | write |
-| *yours* | anything – `[[workflow]]` in `kula.toml` | `scope` · `lock` · `hide` · `review` | write · read · off |
+| *yours* | anything, via `[[workflow]]` in `kula.toml` | `scope` · `lock` · `hide` · `review` | write · read · off |
 
 ```toml
 [[workflow]]
@@ -168,11 +168,11 @@ steps = ["Write the migration and its rollback", "pre_edit every query on the ch
 docs = ["docs/MIGRATIONS.md"]
 ```
 
-Any harness can work in any workflow: through MCP and the hooks, under `kula run -w <name>`, or as the agent's own file – `kula workflow install <name>` writes it as a Claude Code subagent (`.claude/agents/`), a Cursor rule (`.cursor/rules/`) and a Gemini CLI command (`/kula:<name>`).
+Any harness can work in any workflow: through MCP and the hooks, under `kula run -w <name>`, or as the agent's own file: `kula workflow install <name>` writes it as a Claude Code subagent (`.claude/agents/`), a Cursor rule (`.cursor/rules/`) and a Gemini CLI command (`/kula:<name>`).
 
 ### Autoresearch
 
-Give an agent a number to move – test time, bundle size, p95 latency, validation loss – and the code it may change. It forms a hypothesis, edits, and calls `experiment`: kula checks the change against the fences, **runs the metric itself**, commits the change when the number improves and reverts it when it doesn't. Agents never report their own scores, every kept step is a commit you can read, and memories carry what worked into the next run.
+Give an agent a number to move (test time, bundle size, p95 latency, validation loss) and the code it may change. It forms a hypothesis, edits, and calls `experiment`: kula checks the change against the fences, **runs the metric itself**, commits the change when the number improves and reverts it when it doesn't. Agents never report their own scores, every kept step is a commit you can read, and memories carry what worked into the next run.
 
 ```sh
 kula research init --metric "cargo bench --bench index 2>&1 | grep -o '[0-9.]* ms' | tail -1" --goal min --scope "src/index/**" --budget 40
@@ -228,7 +228,7 @@ flowchart LR
     K[.kula/task.json<br/>task · scope · workflow] --> V
     S[secrets<br/>.env · keys · certs] --> V
     V --> M[MCP answers<br/>hidden code left out]
-    V --> H[pre-tool hook<br/>edits, reads, shell – refused with the reason]
+    V --> H[pre-tool hook<br/>edits, reads, shell, refused with the reason]
     V --> P[pre-commit hook<br/>an agent's fenced commit refused]
     V --> R[kula run<br/>any harness, held for the run]
     V --> E[verify_edit<br/>reports what slipped]
@@ -236,7 +236,7 @@ flowchart LR
     V --> U[UI<br/>fences on the graph]
 ```
 
-The strongest level wins – `hidden > locked > scope > review > open` – so a task can narrow what kula.toml allows, never widen it. Likely secrets are hidden by default. Agents can **suggest** a fence or a workflow over MCP; only a person accepts it into kula.toml.
+The strongest level wins: `hidden > locked > scope > review > open`, so a task can narrow what kula.toml allows, never widen it. Likely secrets are hidden by default. Agents can **suggest** a fence or a workflow over MCP; only a person accepts it into kula.toml.
 
 ### Memory
 
@@ -248,9 +248,9 @@ kula memory recall login       # its own, its file's, its callers' and callees',
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> fresh: remember – anchored to a hash of the code
+    [*] --> fresh: remember, anchored to a hash of the code
     fresh --> stale: the code changes
-    stale --> fresh: confirm – re-anchored
+    stale --> fresh: confirm, re-anchored
     fresh --> [*]: forget
     stale --> [*]: forget
 ```
@@ -263,7 +263,7 @@ A memory is one fact pinned to a symbol, a file or the repo, stored with the not
 |---|---|
 | `workflows` · `start_task` · `finish_task` | how this kind of work is done here, and the agent's place in the team; declare a task in a workflow |
 | `research` · `experiment` | an autoresearch loop: kula runs the metric, keeps what's better, reverts the rest |
-| `context_pack` | the code a task needs – definitions, what they use, who uses them, tests – ranked by graph distance and fitted to a token budget |
+| `context_pack` | the code a task needs (definitions, what they use, who uses them, tests), ranked by graph distance and fitted to a token budget |
 | `pre_edit` · `verify_edit` | before a change: callers, the tests that reach it, risk, the fence verdict, memories. After: what moved, what broke, what was fenced |
 | `guards` | what the agent may change, and why |
 | `remember` · `recall` · `update_memory` | facts about the code that go stale when it changes |
@@ -271,7 +271,7 @@ A memory is one fact pinned to a symbol, a file or the repo, stored with the not
 | `sparql` | any structural question over the whole graph |
 | `query` · `context` · `impact` · `trace` · `compare` · `graph_diff` · `flows` · `notes` · `issues` | the graph itself |
 
-The full model – levels, the hook protocol per agent, recall ranking, the brief – is in [docs/AGENTS.md](docs/AGENTS.md).
+The full model (levels, the hook protocol per agent, recall ranking, the brief) is in [docs/AGENTS.md](docs/AGENTS.md).
 
 <img src="docs/assets/divider.svg" width="100%" alt="">
 
@@ -310,11 +310,11 @@ The full model – levels, the hook protocol per agent, recall ranking, the brie
 </tr>
 <tr>
 <td><img src="docs/assets/ui-overview.png" alt="Overview"><p align="center"><b>Overview.</b> Proposals by risk, issues, branches, hotspots, and a directory coupling matrix with loops marked.</p></td>
-<td><img src="docs/assets/ui-autofill.png" alt="Notes autofill"><p align="center"><b>Autofill.</b> Notes and memories offer what you were just looking at – the symbol, its file, its siblings. <kbd>Tab</kbd> takes the completion; <code>[[</code> links a symbol.</p></td>
+<td><img src="docs/assets/ui-autofill.png" alt="Notes autofill"><p align="center"><b>Autofill.</b> Notes and memories offer what you were just looking at: the symbol, its file, its siblings. <kbd>Tab</kbd> takes the completion; <code>[[</code> links a symbol.</p></td>
 </tr>
 <tr>
 <td><img src="docs/assets/ui-query.png" alt="Query"><p align="center"><b>Query.</b> SPARQL over the graph, with examples and the vocabulary beside it; results open in the map.</p></td>
-<td><img src="docs/assets/ui-console.png" alt="Console"><p align="center"><b>Console.</b> A terminal that runs kula itself – its commands and every git command – in tabs.</p></td>
+<td><img src="docs/assets/ui-console.png" alt="Console"><p align="center"><b>Console.</b> A terminal that runs kula itself: its commands and every git command – in tabs.</p></td>
 </tr>
 <tr>
 <td><img src="docs/assets/ui-proposal.png" alt="Proposals"><p align="center"><b>Proposals.</b> Pull requests that live in your repo: thread, graph impact, merge.</p></td>
@@ -323,7 +323,7 @@ The full model – levels, the hook protocol per agent, recall ranking, the brie
 </table>
 
 <details>
-<summary><b>More of the UI</b> – split view, report, changes, compare, issues, notes, the opening</summary>
+<summary><b>More of the UI</b>: split view, report, changes, compare, issues, notes, the opening</summary>
 
 | | |
 |---|---|
@@ -397,7 +397,7 @@ flowchart LR
 - **Git itself** is never reimplemented: kula shells out to `git`, so hooks, signing, credential helpers and LFS keep working.
 - **Security.** The UI listens on `127.0.0.1`, rejects foreign `Host` headers (DNS rebinding), requires a per-session token on every call, and validates revisions so they can't be read as options.
 
-The internals – resolution, the store, risk, the meta ref, the API – are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The internals (resolution, the store, risk, the meta ref, the API) are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Docs
 
@@ -435,10 +435,8 @@ pnpm -C web test:ui                         # Playwright: desktop, tablet and ph
 - Two-way sync with GitHub and GitLab issues and pull requests
 - Time-travel: scrub through history and watch the architecture change
 
-## Why "kula"?
-
-In the Trobriand Islands the **kula ring** is a circuit of gifts: shell necklaces travel one way around the islands and armbands the other, and nobody keeps them – their value is the history of hands they have passed through. A commit works the same way. <img src="docs/assets/logo.svg" width="40" align="right" alt="">The mark is **the kula ring drawn with kula rings**: a 7×7 ring around a centre node, where every lit cell is the whole mark again, so the app's loader can zoom into the centre forever and land where it started.
+<img src="docs/assets/logo.svg" width="40" align="right" alt="">
 
 ## License
 
-[GPL-3.0](LICENSE) © 2026 Arnav Sharma – the GNU General Public License, version 3, as used across Ubuntu and the GNU tools. You may use, study, share and change kula; if you distribute a modified version, you share its source under the same terms. Kula is an independent, clean-room project and contains no code from other code-graph tools.
+[GPL-3.0](LICENSE) © 2026 Arnav Sharma. The GNU General Public License, version 3, as used across Ubuntu and the GNU tools. You may use, study, share and change kula; if you distribute a modified version, you share its source under the same terms. Kula is an independent, clean-room project and contains no code from other code-graph tools.
