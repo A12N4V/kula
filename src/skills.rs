@@ -118,7 +118,13 @@ pub fn list(root: &Path) -> Vec<Skill> {
         let mut files = vec![];
         files_in(&dir, &dir, &mut files);
         files.sort();
-        let mut s = Skill { name: name.clone(), description: fm.get("description").cloned().unwrap_or_default(), body, files, targets: BTreeMap::new() };
+        let mut s = Skill {
+            name: name.clone(),
+            description: fm.get("description").cloned().unwrap_or_default(),
+            body,
+            files,
+            targets: BTreeMap::new(),
+        };
         for a in &ags {
             let state = match target(a, &name) {
                 None => "native",
@@ -145,7 +151,12 @@ pub fn strays(root: &Path) -> Vec<Stray> {
             let name = e.file_name().to_string_lossy().to_string();
             let p = e.path().join("SKILL.md");
             if let (false, Ok(text)) = (have.contains(&name), std::fs::read_to_string(&p)) {
-                out.push(Stray { agent: agent.into(), path: format!("{dir}/{name}/SKILL.md"), description: parse(&text).0.get("description").cloned().unwrap_or_default(), name });
+                out.push(Stray {
+                    agent: agent.into(),
+                    path: format!("{dir}/{name}/SKILL.md"),
+                    description: parse(&text).0.get("description").cloned().unwrap_or_default(),
+                    name,
+                });
             }
         }
     }
@@ -156,7 +167,12 @@ pub fn strays(root: &Path) -> Vec<Stray> {
             continue;
         }
         if let Ok(text) = std::fs::read_to_string(e.path()) {
-            out.push(Stray { agent: "cursor".into(), path: format!(".cursor/rules/{f}"), description: parse(&text).0.get("description").cloned().unwrap_or_default(), name: name.into() });
+            out.push(Stray {
+                agent: "cursor".into(),
+                path: format!(".cursor/rules/{f}"),
+                description: parse(&text).0.get("description").cloned().unwrap_or_default(),
+                name: name.into(),
+            });
         }
     }
     out
@@ -227,15 +243,19 @@ pub fn sync(root: &Path) -> Result<Vec<String>> {
 
 /// Take a skill one agent has into the source, then share it with the rest.
 pub fn adopt(root: &Path, agent: &str, name: &str) -> Result<Vec<String>> {
-    let s = strays(root).into_iter().find(|s| s.agent == agent && s.name == name).ok_or_else(|| anyhow::anyhow!("{agent} has no skill {name} to adopt"))?;
-    let slug: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect();
+    let s = strays(root)
+        .into_iter()
+        .find(|s| s.agent == agent && s.name == name)
+        .ok_or_else(|| anyhow::anyhow!("{agent} has no skill {name} to adopt"))?;
+    let slug: String =
+        name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect();
     let text = std::fs::read_to_string(root.join(&s.path))?;
     let (fm, body) = parse(&text);
     let description = fm.get("description").cloned().filter(|d| !d.is_empty()).unwrap_or_else(|| format!("{name}, adopted from {agent}"));
     if agent == "cursor" {
         save(root, &slug, &description, &body)?;
     } else {
-        copy_dir(&root.join(&s.path).parent().unwrap().to_path_buf(), &root.join(SOURCE).join(&slug))?;
+        copy_dir(root.join(&s.path).parent().unwrap(), &root.join(SOURCE).join(&slug))?;
         save(root, &slug, &description, &body)?;
     }
     sync(root)

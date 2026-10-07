@@ -661,7 +661,11 @@ pub fn shell_targets(cmd: &str) -> (Vec<Target>, Option<String>) {
                 args.windows(2)
                     .filter(|w| matches!(w[0], "-c" | "-e" | "--eval" | "-r"))
                     .flat_map(|w| w[1].split(|c: char| !(c.is_ascii_alphanumeric() || "_./-".contains(c))))
-                    .filter(|a| looks_like_path(a) && a.chars().any(|c| c.is_ascii_alphabetic()) && (!a.starts_with('.') || a.starts_with("./") || a.starts_with("../")))
+                    .filter(|a| {
+                        looks_like_path(a)
+                            && a.chars().any(|c| c.is_ascii_alphabetic())
+                            && (!a.starts_with('.') || a.starts_with("./") || a.starts_with("../"))
+                    })
                     .for_each(|a| write(a, &mut out));
             }
             _ => plain.iter().filter(|a| looks_like_path(a)).for_each(|a| out.push(Target { path: a.to_string(), write: false })),
