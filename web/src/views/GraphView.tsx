@@ -6,7 +6,7 @@ import forceAtlas2 from "graphology-layout-forceatlas2";
 import noverlap from "graphology-layout-noverlap";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import EdgeCurveProgram from "@sigma/edge-curve";
-import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../graphfx";
+import { attachOverlay, CURVATURE, cssVar, drawHover, drawOutlinedLabel, withAlpha, type Overlay } from "../graphfx";
 import { api, colorFor, relTime, type Context, type GraphData, type GuardLevel, type Impact, type Node, type RawRule, type SymbolHistory } from "../api";
 import { GuardTag, LEVEL_MEANS } from "./Agents";
 import { visit } from "../near";
@@ -56,15 +56,6 @@ export function layoutSettings(g: Graph) {
   return { ...forceAtlas2.inferSettings(g), linLogMode: true, outboundAttractionDistribution: true, edgeWeightInfluence: 1, gravity: 1.1, scalingRatio: 7, slowDown: 3, barnesHutOptimize: g.order > 600 };
 }
 
-export function cssVar(name: string) {
-  // Sigma's colour parser rejects "rgba(1, 2, 3, 0.4)" with spaces; normalise.
-  return getComputedStyle(document.documentElement).getPropertyValue(name).replace(/\s+/g, "") || "#888";
-}
-
-/** `c` at opacity `a`, pre-blended onto the page background (edge shaders ignore alpha). */
-export const withAlpha = (c: string, a: number) => blend(c, a, cssVar("--bg"));
-
-export const CURVATURE = 0.25; // @sigma/edge-curve default
 const LABELS = { few: [0.35, 9], normal: [0.8, 6], many: [1.8, 3] } as const;
 const TRANSPARENT = "rgba(0,0,0,0)";
 
