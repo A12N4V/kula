@@ -13,9 +13,10 @@
 import { useEffect, useState } from "react";
 import { type AgentsInfo, type Workflow } from "../../api";
 import { Chips } from "../../Autofill";
-import { Icon } from "../../ui";
+import { Icon, StatTable } from "../../ui";
 import { blank, type Act } from "./data";
-import { Card, num, pct, RunChart } from "./parts";
+import { Card, num, pct, RunChart, TabStrip } from "./parts";
+import { LOOP_TEMPLATES, metricFor, type LoopTemplate } from "./templates";
 import ResearchFlow from "./ResearchFlow";
 import type { Go } from "../../nav";
 import { workflowColor } from "./TeamOrg";
@@ -38,12 +39,11 @@ export default function ResearchTab({ info, act, open, go }: { info: AgentsInfo;
   const w = loops.find((x) => x.name === cur) ?? loops[0];
   return (
     <Card title="Research" sub={w ? `${loops.length} loop${loops.length > 1 ? "s" : ""}` : undefined} className="ag-wide team-card"
-      right={<button className="btn sm ghost" onClick={() => setAdding(true)}><Icon.plus /> loop</button>}>
-      {loops.length > 1 && (
-        <div className="team-tabs" role="tablist" aria-label="Loops">
-          {loops.map((x) => <button key={x.name} role="tab" aria-selected={x.name === w?.name} className={x.name === w?.name ? "on" : ""} onClick={() => { setCur(x.name); setAdding(false); }}>{x.name}{info.research.some((r) => r.workflow === x.name && r.active) && <i className="dot ok" title="running" />}</button>)}
-        </div>
-      )}
+      right={info.research.some((r) => r.active) ? <span className="tag accent">a loop is running</span> : undefined}>
+      <TabStrip label="Loops" addLabel="New loop from a template" cur={adding || !w ? "" : w.name}
+        items={loops.map((x) => ({ key: x.name, label: x.name, dot: info.research.some((r) => r.workflow === x.name && r.active), fixed: x.builtin, title: x.builtin ? "built in – double-click makes a renamed copy" : undefined }))}
+        onPick={(k) => { setCur(k); setAdding(false); }} onAdd={() => setAdding(true)}
+        onRename={(from, to) => act("workflow_rename", { workflow: from, name: to }, `${from} renamed to ${to}`).then(() => setCur(to)).catch(() => {})} />
       {adding || !w ? <NewLoop info={info} act={act} done={(n) => { setCur(n); setAdding(false); }} cancel={loops.length ? () => setAdding(false) : undefined} />
         : <LoopPanel key={w.name} w={w} info={info} act={act} open={open} go={go} />}
     </Card>
@@ -76,14 +76,15 @@ function LoopPanel({ w, info, act, open, go }: { w: Workflow; info: AgentsInfo; 
           ? <button className="btn sm" onClick={() => (confirm === "stop" ? (setConfirm(""), act("research_stop", {}, `${w.name} stopped`).catch(() => {})) : setConfirm("stop"))}>{confirm === "stop" ? "Confirm stop" : "Stop"}</button>
           : <button className="btn sm primary" onClick={() => (confirm === "start" ? (setConfirm(""), act("research_start", { workflow: w.name }, `${w.name} running – baseline measured`).catch(() => {})) : setConfirm("start"))}><Icon.play />{confirm === "start" ? "Confirm start" : "Start"}</button>}
       </div>
-      <div className="r-kpis">
-        <span><b className="mono">{w.research!.metric}</b> metric</span>
-        <span><b>{w.research!.goal === "max" ? "higher" : "lower"}</b> is better</span>
-        <span><b>{used}</b> budget used</span>
-        {run && <span><b>{num(run.baseline)}</b> baseline</span>}
-        {run && <span><b className="lv-open">{num(run.best)}</b> best</span>}
-        {run && <span><b>{pct(run).toFixed(1)}%</b></span>}
-      </div>
+      <StatTable className="r-stats" label={`${w.name} at a glance`} rows={[
+        { label: "Metric", value: <span className="mono r-metric">{w.research!.metric}</span>, note: w.research!.goal === "max" ? "higher is better" : "lower is better" },
+        { label: "Budget used", value: used },
+        ...(run ? [
+          { label: "Baseline", value: num(run.baseline) },
+          { label: "Best", value: num(run.best), tone: "accent" },
+          { label: "Better by", value: `${pct(run).toFixed(1)}%` },
+        ] : []),
+      ]} />
       {editing && (
         <div className="r-edit">
           <MetricEdit w={w} save={save} />
@@ -145,22 +146,39 @@ function MetricEdit({ w, save }: { w: Workflow; save: (x: Partial<Workflow>) => 
 
 function NewLoop({ info, act, done, cancel }: { info: AgentsInfo; act: Act; done: (name: string) => void; cancel?: () => void }) {
   const own = info.workflows.filter((w) => !w.builtin);
-  const taken = info.workflows.filter((w) => w.research?.metric).map((w) => w.name);
-  const [name, setName] = useState(taken.includes("autoresearch") ? `research-${taken.length + 1}` : "autoresearch");
-  const [metric, setMetric] = useState("");
-  const [goal, setGoal] = useState<"min" | "max">("min");
-  const [budget, setBudget] = useState(20);
-  const [scope, setScope] = useState<string[]>([]);
-  const [prompt, setPrompt] = useState("");
+  const stack = info.stack ?? [];
+  const free = (base: string) => { let n = base, i = 2; while (info.workflows.some((w) => w.name === n && w.research?.metric)) n = `${base}-${i++}`; return n; };
+  const fits = LOOP_TEMPLATES.filter((t) => metricFor(t, stack).fits);
+  const [tpl, setTpl] = useState<LoopTemplate>(fits[0] ?? LOOP_TEMPLATES[LOOP_TEMPLATES.length - 1]);
+  const [name, setName] = useState(free(tpl.id));
+  const [metric, setMetric] = useState(metricFor(tpl, stack).cmd);
+  const [goal, setGoal] = useState<"min" | "max">(tpl.goal);
+  const [budget, setBudget] = useState(tpl.budget);
+  const [scope, setScope] = useState<string[]>(tpl.scope);
+  const [prompt, setPrompt] = useState(tpl.prompt);
+  const use = (t: LoopTemplate) => { setTpl(t); setName(free(t.id)); setMetric(metricFor(t, stack).cmd); setGoal(t.goal); setBudget(t.budget); setScope(t.scope); setPrompt(t.prompt); };
   const auto = info.workflows.find((w) => w.name === "autoresearch");
   const save = () => {
-    const b = info.workflows.find((w) => w.name === name) ?? { ...blank(), name, about: auto?.about ?? "" };
+    const b = info.workflows.find((w) => w.name === name) ?? { ...blank(), name, about: tpl.about || auto?.about || "" };
     const w: Workflow = { ...blank(), ...b, builtin: undefined, scope, prompt, steps: b.steps?.length ? b.steps : auto?.steps ?? [], research: { metric, goal, budget } };
     act("workflows_save", { workflows: [...own.filter((x) => x.name !== name), w] }, `${name} saved`).then(() => done(name)).catch(() => {});
   };
   return (
-    <div className="team-stage">
-      <div className="team-graph">
+    <div className="tpl">
+      <div className="stack">
+        <div className="tpl-grid" role="radiogroup" aria-label="Loop templates">
+          {[...fits, ...LOOP_TEMPLATES.filter((t) => !fits.includes(t))].map((t) => {
+            const m = metricFor(t, stack);
+            return (
+              <button key={t.id} role="radio" aria-checked={tpl.id === t.id} className={`tpl-card ${tpl.id === t.id ? "on" : ""} ${m.fits ? "" : "off"}`} onClick={() => use(t)}
+                title={m.fits ? undefined : `no command for ${stack.join(", ") || "this stack"} – edit the metric`}>
+                <b>{t.title} <span className="muted">{t.goal === "min" ? "↓ lower" : "↑ higher"}</span></b>
+                <span className="tpl-about">{t.about}</span>
+                <span className="tpl-metric">{m.cmd || "your command"}</span>
+              </button>
+            );
+          })}
+        </div>
         <div className="loop">
           {RESEARCH_LOOP.map((st, i) => (
             <div key={st.tool} className={`loop-step ${st.gate ? "gate" : ""}`}>
@@ -170,15 +188,15 @@ function NewLoop({ info, act, done, cancel }: { info: AgentsInfo; act: Act; done
           ))}
         </div>
       </div>
-      <form className="map-inspector" onSubmit={(e) => { e.preventDefault(); save(); }}>
-        <div className="mi-kind">new loop{cancel && <><span className="spacer" /><button type="button" className="btn sm ghost icon-only" onClick={cancel} aria-label="Cancel"><Icon.close /></button></>}</div>
-        <input className="input mono mi-title" value={name} onChange={(e) => setName(e.target.value.replace(/[^\w-]/g, ""))} aria-label="Workflow name" />
-        <label className="mi-field"><span>benchmark</span><input className="input mono" value={metric} onChange={(e) => setMetric(e.target.value)} placeholder="cmd whose last number is the score" aria-label="Metric command" /></label>
+      <form className="tpl-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
+        <div className="mi-kind">new loop{stack.length > 0 && <span className="muted"> · {stack.join(" + ")} repo</span>}{cancel && <><span className="spacer" /><button type="button" className="btn sm ghost icon-only" onClick={cancel} aria-label="Cancel"><Icon.close /></button></>}</div>
+        <input className="input mono mi-title" value={name} onChange={(e) => setName(e.target.value.replace(/[^\w-]/g, ""))} aria-label="Loop name" />
+        <label className="mi-field"><span>metric – the last number it prints</span><textarea className="input mono" rows={3} value={metric} onChange={(e) => setMetric(e.target.value)} placeholder="cmd whose last number is the score" aria-label="Metric command" /></label>
         <div className="row"><div className="seg">{(["min", "max"] as const).map((g) => <button key={g} type="button" className={goal === g ? "on" : ""} onClick={() => setGoal(g)}>{g === "min" ? "lower" : "higher"}</button>)}</div>
-          <input className="input mono research-budget" type="number" min={0} value={budget} onChange={(e) => setBudget(Math.max(0, Number(e.target.value) || 0))} aria-label="Budget" title="budget" /></div>
-        <div className="mi-field"><span>may edit</span><Chips values={scope} onChange={setScope} placeholder="src/index/**" label="Scope" /></div>
-        <label className="mi-field"><span>system prompt</span><textarea className="input" rows={4} value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label="System prompt" /></label>
-        <div className="row"><span className="spacer" /><button className="btn sm primary" disabled={!name || !metric.trim()}>Save loop</button></div>
+          <input className="input mono research-budget" type="number" min={0} value={budget} onChange={(e) => setBudget(Math.max(0, Number(e.target.value) || 0))} aria-label="Budget" title="experiments before it stops; 0 for no limit" /><span className="muted">tries</span></div>
+        <div className="mi-field"><span>may edit – the rest is fenced</span><Chips values={scope} onChange={setScope} placeholder="src/**" label="Scope" /></div>
+        <label className="mi-field"><span>system prompt</span><textarea className="input" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label="System prompt" /></label>
+        <div className="row"><span className="spacer" /><button className="btn sm primary" disabled={!name || !metric.trim()}>Create {name}</button></div>
       </form>
     </div>
   );

@@ -56,6 +56,7 @@ export interface AgentsInfo {
   teams: Team[]; team: { name: string; started: number; by: string } | null; research: ResearchRun[];
   git_hooks: [string, boolean][]; ci: string | null;
   research_scope: Record<string, { files: string[]; count: number; fenced: number }>;
+  skills?: Skill[]; skill_strays?: SkillStray[]; stack?: string[];
 }
 /** An autoresearch loop's settings ([workflow.research]). */
 export interface Research { metric: string; goal: "min" | "max" | ""; budget?: number; timeout?: number }
@@ -82,7 +83,12 @@ export interface AgentDoc { path: string; readers: string; exists: boolean; byte
 export interface Suggestion { id: number; kind: "guard" | "workflow"; guard?: RawRule; workflow?: Workflow; why: string; by: string; created: number }
 export type AgentAction = "task_start" | "task_done" | "remember" | "confirm" | "forget" | "memory_edit" | "memory_stale" | "guards_save" | "workflows_save"
   | "settings_save" | "doc_read" | "doc_save" | "docs_sync" | "brief" | "connect" | "suggestion_accept" | "suggestion_dismiss" | "preview"
-  | "teams_save" | "team_prompt" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install";
+  | "teams_save" | "team_prompt" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install"
+  | "workflow_rename" | "skill_save" | "skill_delete" | "skills_sync" | "skill_adopt";
+/** A shared skill (src/skills.rs): one source in .agents/skills, a copy per agent. */
+export type SkillState = "synced" | "differs" | "missing" | "native";
+export interface Skill { name: string; description: string; body: string; files: string[]; targets: Record<string, SkillState> }
+export interface SkillStray { agent: string; name: string; path: string; description: string }
 export type SparqlValue = string | number | boolean;
 export interface SparqlResult { vars?: string[]; rows?: Record<string, SparqlValue>[]; truncated?: boolean; boolean?: boolean; triples?: [SparqlValue, SparqlValue, SparqlValue][]; millis?: number }
 export interface Context {

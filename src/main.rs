@@ -15,6 +15,7 @@ mod meta;
 mod project;
 mod research;
 mod run;
+mod skills;
 mod server;
 mod store;
 mod term;
@@ -273,6 +274,10 @@ enum Cmd {
     #[command(after_help = "Examples:\n  kula research init --metric \"cargo test --quiet\" --goal min --scope \"src/**\"")]
     #[command(subcommand)]
     Research(ResearchCmd),
+    /// One set of skills for every agent: .agents/skills, synced to each agent's own place.
+    #[command(after_help = "Examples:\n  kula skill list  ·  kula skill new release-notes -d \"Write release notes from merged PRs\"  ·  kula skill sync  ·  kula skill adopt claude triage")]
+    #[command(subcommand)]
+    Skill(SkillCmd),
     /// Run any agent harness held to kula's fences: `kula run -w fix -- aider`.
     #[command(after_help = "Examples:\n  kula run -w fix --agent aider -- aider")]
     Run {
@@ -480,6 +485,25 @@ enum TeamCmd {
     Stop,
     /// One member's full instructions: the team's prompt, its own, its place, its workflow.
     Prompt { name: String, agent: String },
+}
+
+#[derive(Subcommand)]
+enum SkillCmd {
+    /// Every skill, and whether each agent has the current copy.
+    List,
+    /// Start a skill in .agents/skills and share it with every agent.
+    New {
+        name: String,
+        /// When an agent should use it – agents pick skills by this.
+        #[arg(short, long)]
+        description: String,
+    },
+    /// Write every skill where each agent reads it.
+    Sync,
+    /// Take a skill one agent already has into the shared set.
+    Adopt { agent: String, name: String },
+    /// Remove a skill from the set and from every agent.
+    Rm { name: String },
 }
 
 #[derive(Subcommand)]
@@ -1129,6 +1153,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Agents(ac) => agents_cmd(&repo, ac, json)?,
         Cmd::Team(tc) => team_cmd(&repo, tc, json)?,
         Cmd::Research(rc) => research_cmd(&repo, rc, json)?,
+        Cmd::Skill(sc) => skill_cmd(&repo.root, sc, json)?,
         Cmd::Run { workflow, agent, title, cmd } => {
             let r = run::run(&repo, run::Opts { workflow, agent, title, cmd })?;
             if json {
@@ -2132,4 +2157,46 @@ mod erased {
             serde_json::to_string_pretty(self).unwrap_or_default()
         }
     }
+}
+
+fn skill_cmd(root: &std::path::Path, sc: SkillCmd, json: bool) -> Result<()> {
+    let wrote = |w: Vec<String>| {
+        for f in &w {
+            println!("  {} {f}", green("✓"));
+        }
+        if w.is_empty() {
+            println!("  {}", dim("every agent already has the current skills"));
+        }
+    };
+    match sc {
+        SkillCmd::List => {
+            let (all, strays) = (skills::list(root), skills::strays(root));
+            if json {
+                println!("{}", serde_json::json!({ "skills": all, "strays": strays }));
+                return Ok(());
+            }
+            if all.is_empty() {
+                println!("  {}", dim("no skills yet – `kula skill new <name> -d \"when to use it\"`"));
+            }
+            for s in &all {
+                let t: Vec<String> = s.targets.iter().map(|(a, st)| format!("{a} {st}")).collect();
+                println!("  {}  {}\n    {}", accent(&s.name), s.description, dim(&t.join(" · ")));
+            }
+            for s in &strays {
+                println!("  {} {} has {} – `kula skill adopt {} {}`", dim("·"), s.agent, s.name, s.agent, s.name);
+            }
+        }
+        SkillCmd::New { name, description } => {
+            skills::save(root, &name, &description, "Describe the steps here.")?;
+            println!("  {} .agents/skills/{name}/SKILL.md", green("✓"));
+            wrote(skills::sync(root)?);
+        }
+        SkillCmd::Sync => wrote(skills::sync(root)?),
+        SkillCmd::Adopt { agent, name } => wrote(skills::adopt(root, &agent, &name)?),
+        SkillCmd::Rm { name } => {
+            skills::remove(root, &name)?;
+            println!("  {} removed {name} from every agent", green("✓"));
+        }
+    }
+    Ok(())
 }

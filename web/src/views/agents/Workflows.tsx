@@ -12,18 +12,17 @@ import type { AgentsInfo, GuardLevel, Workflow } from "../../api";
 import { Mark } from "../../brands";
 import { Chips } from "../../Autofill";
 import { Empty, Icon } from "../../ui";
-import { blank, type Act } from "./data";
-import { SuggestionRow, WorkflowTile, useListNav } from "./parts";
+import { blank, type Act, type Tab } from "./data";
+import { SuggestionRow, TabStrip } from "./parts";
 
 const BUILTIN = ["explore", "fix", "refactor", "tests", "docs", "autoresearch"];
 const NATIVE: [string, string, string][] = [["claude", "Claude Code subagent", ".claude/agents/kula-"], ["cursor", "Cursor rule", ".cursor/rules/kula-"], ["gemini", "Gemini CLI command", ".gemini/commands/kula/"]];
-export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; act: Act; onGraph: (wf?: string) => void }) {
+export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; act: Act; onGraph: (wf?: string) => void; setTab?: (t: Tab) => void }) {
   const [sel, setSel] = useState<string>(info.workflow?.name ?? info.workflows[0]?.name ?? "");
   const [draft, setDraft] = useState<Workflow | null>(null);
   const [orig, setOrig] = useState<string | null>(null);
   const cur = info.workflows.find((w) => w.name === sel);
   useEffect(() => { if (cur) { setDraft({ ...blank(), ...cur, memory: cur.memory || "write" }); setOrig(cur.name); } }, [sel, info]);
-  const nav = useListNav(info.workflows.length, (i) => setSel(info.workflows[i].name), sel);
   const own = info.workflows.filter((w) => !w.builtin);
   const dirty = !!draft && !!cur && JSON.stringify({ ...blank(), ...cur, memory: cur.memory || "write", builtin: undefined }) !== JSON.stringify({ ...draft, builtin: undefined });
   const isNew = orig === null;
@@ -45,14 +44,21 @@ export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; ac
   const sugg = info.suggestions.filter((s) => s.kind === "workflow");
 
   return (
-    <div className="wf-split">
-      <div className="wf-list">
-        {sugg.map((s) => <SuggestionRow key={s.id} s={s} act={act} />)}
-        <div {...nav.props}>
-          {info.workflows.map((w, i) => <WorkflowTile key={w.name} w={w} idx={i} sel={nav.sel === i && !isNew} active={info.workflow?.name === w.name} on={sel === w.name && !isNew} onClick={() => setSel(w.name)} />)}
+    <div className="wf-tabs">
+      {sugg.map((s) => <SuggestionRow key={s.id} s={s} act={act} />)}
+      <TabStrip label="Workflows" addLabel="New workflow" cur={isNew ? "" : sel}
+        items={info.workflows.map((w) => ({ key: w.name, label: w.name, dot: info.workflow?.name === w.name, title: w.builtin ? `${w.about ?? "built in"} – double-click makes a renamed copy` : w.about || undefined }))}
+        onPick={setSel} onAdd={() => { setDraft(blank()); setOrig(null); setSel(""); }}
+        onRename={(from, to) => act("workflow_rename", { workflow: from, name: to }, `${from} renamed to ${to}`).then(() => setSel(to)).catch(() => {})} />
+      {isNew && draft && (
+        <div className="wf-from">
+          <span className="muted">start from</span>
+          {info.workflows.map((w) => (
+            <button key={w.name} className="chip-toggle" title={w.about} onClick={() => setDraft({ ...blank(), ...w, name: `${w.name}-copy`, builtin: undefined, memory: w.memory || "write" })}>{w.name}</button>
+          ))}
+          <button className="chip-toggle" onClick={() => setDraft(blank())}>blank</button>
         </div>
-        <button className="btn sm wf-new" onClick={() => { setDraft(blank()); setOrig(null); setSel(""); }}><Icon.plus /> New workflow</button>
-      </div>
+      )}
       {draft ? (
         <section className="card wf-edit">
           <div className="card-head">

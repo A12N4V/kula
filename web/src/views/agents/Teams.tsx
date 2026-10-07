@@ -11,12 +11,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type AgentsInfo, type Team } from "../../api";
 import { Icon, useToast } from "../../ui";
-import { AGENT_IDS, AGENT_NAME, type Act } from "./data";
-import { AgentMark, Card } from "./parts";
+import { AGENT_IDS, AGENT_NAME, type Act, type Tab } from "./data";
+import { TEAM_TEMPLATES, teamFrom, type TeamTemplate } from "./templates";
+import { AgentMark, Card, TabStrip } from "./parts";
 import { Society, SocietyGraph, societyOrder } from "./Society";
 import { TeamOrg, teamProblems, workflowColor } from "./TeamOrg";
 
-export default function Teams({ info, act }: { info: AgentsInfo; act: Act }) {
+export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Act; setTab?: (t: Tab) => void }) {
+  const [picking, setPicking] = useState(info.teams.length === 0);
   const [teams, setTeams] = useState<Team[]>(info.teams);
   const [view, setView] = useState<"boxes" | "graph">(() => { try { return localStorage.getItem("kula.teams.view") === "boxes" ? "boxes" : "graph"; } catch { return "graph"; } });
   const pickView = (v: "boxes" | "graph") => { setView(v); try { localStorage.setItem("kula.teams.view", v); } catch { /* */ } };
@@ -29,31 +31,24 @@ export default function Teams({ info, act }: { info: AgentsInfo; act: Act }) {
     const was = teams[cur]?.name;
     setTeams(teams.map((y, j) => (j === cur ? { ...y, ...x } : x.name !== undefined && y.under === was ? { ...y, under: x.name } : y)));
   };
-  const add = () => {
-    setTeams([...teams, {
-      name: teams.length ? `team-${teams.length + 1}` : "ship", about: "", prompt: "",
-      members: [
-        { agent: "claude", workflow: "autoresearch", role: "lead", hands_off: ["codex"] },
-        { agent: "cursor", workflow: "tests", reports_to: "claude", hands_off: ["codex"] },
-        { agent: "codex", workflow: "explore", role: "review", reports_to: "claude" },
-      ],
-    }]);
-    setCur(teams.length);
+  // a new team is saved at once, so its tab is real; edits after that wait for Save
+  const create = (t: Team) => {
+    const next = [...info.teams, t];
+    act("teams_save", { teams: next }, `${t.name} created`).then(() => { setCur(next.length - 1); setPicking(false); }).catch(() => {});
   };
+  const rename = (from: string, to: string) => {
+    if (teams.some((x) => x.name === to)) return;
+    const next = teams.map((y) => (y.name === from ? { ...y, name: to } : y.under === from ? { ...y, under: to } : y));
+    act("teams_save", { teams: next }, `${from} renamed to ${to}`).catch(() => {});
+  };
+  const nest = (name: string, under: string) => setTeams(teams.map((y) => (y.name === name ? { ...y, under } : y)));
   const editor = (
     <>
-      <div className="team-tabs" role="tablist" aria-label="Teams">
-        {societyOrder(teams).map(({ t: x, depth }) => {
-          const i = teams.indexOf(x);
-          return (
-            <button key={i} role="tab" aria-selected={i === cur} className={i === cur ? "on" : ""} data-depth={Math.min(depth, 3)} onClick={() => setCur(i)}>
-              {depth > 0 && <span className="tab-up" aria-hidden="true">└</span>}{x.name || "unnamed"}{info.team?.name === x.name && <i className="dot ok" title="at work" />}
-            </button>
-          );
-        })}
-        <button className="team-tab-add" onClick={add} aria-label="New team"><Icon.plus /></button>
-      </div>
-      {t ? <TeamEditor key={cur} team={t} all={teams} info={info} on={info.team?.name === t.name} saved={info.teams.some((x) => x.name === t.name)} dirty={dirty}
+      <TabStrip label="Teams" addLabel="New team from a template" cur={picking ? "" : String(cur)}
+        items={societyOrder(teams).map(({ t: x, depth }) => ({ key: String(teams.indexOf(x)), label: x.name || "unnamed", depth, dot: info.team?.name === x.name, fixed: !info.teams.some((y) => y.name === x.name) }))}
+        onPick={(k) => { setCur(Number(k)); setPicking(false); }} onAdd={() => setPicking(true)} onRename={(k, to) => rename(teams[Number(k)].name, to)} />
+      {picking ? <TeamPicker info={info} create={create} cancel={teams.length ? () => setPicking(false) : undefined} setTab={setTab} />
+        : t ? <TeamEditor key={cur} team={t} all={teams} info={info} on={info.team?.name === t.name} saved={info.teams.some((x) => x.name === t.name)} dirty={dirty}
         set={set} remove={() => { setTeams(teams.filter((_, j) => j !== cur).map((y) => (y.under === t.name ? { ...y, under: t.under ?? "" } : y))); setCur(0); }} act={act} /> : <div className="muted ag-empty">No teams.</div>}
     </>
   );
@@ -75,7 +70,7 @@ export default function Teams({ info, act }: { info: AgentsInfo; act: Act }) {
         </div>
       ) : (
         <>
-          {teams.length > 1 && <Society teams={teams} workflows={info.workflows} cur={t?.name ?? ""} active={info.team?.name} onPick={(n) => setCur(Math.max(0, teams.findIndex((x) => x.name === n)))} />}
+          {teams.length > 1 && <Society teams={teams} workflows={info.workflows} cur={t?.name ?? ""} active={info.team?.name} onPick={(n) => { setCur(Math.max(0, teams.findIndex((x) => x.name === n))); setPicking(false); }} onNest={nest} />}
           {editor}
         </>
       )}
@@ -131,7 +126,9 @@ function TeamEditor({ team: t, all, info, on, saved, dirty, set, remove, act }: 
   return (
     <div className="team-stage">
       <div className="team-graph">
-        <TeamOrg team={t} info={info} selected={sel} onSelect={setSel} problems={perMember} />
+        <TeamOrg team={t} info={info} selected={sel} onSelect={setSel} problems={perMember}
+          onReport={(a, to) => setM(t.members.findIndex((m) => m.agent === a), { reports_to: to })}
+          onHand={(a, to) => { const m = t.members.find((x) => x.agent === a)!; const h = m.hands_off ?? []; setM(t.members.indexOf(m), { hands_off: h.includes(to) ? h.filter((x) => x !== to) : [...h, to] }); }} />
         <div className="map-legend">
           {used.map((w) => <span key={w}><i style={{ background: workflowColor(info.workflows, w) }} />{w || "no workflow"}</span>)}
           <span><i className="k-line" />answers to</span><span><i className="k-dash" />hands off</span>
@@ -229,4 +226,58 @@ function within(all: Team[], name: string, top: string) {
     cur = all.find((x) => x.name === cur)?.under;
   }
   return false;
+}
+
+/** Pick a starting shape: each template drawn as the org it makes, seats filled by the agents connected here. */
+function TeamPicker({ info, create, cancel, setTab }: { info: AgentsInfo; create: (t: Team) => void; cancel?: () => void; setTab?: (t: Tab) => void }) {
+  const connected = info.connections.filter((c) => c.mcp).map((c) => c.id);
+  const loops = info.workflows.filter((w) => w.research?.metric).map((w) => w.name);
+  const [pick, setPick] = useState<TeamTemplate>(TEAM_TEMPLATES[0]);
+  const [loop, setLoop] = useState(loops[0] ?? "autoresearch");
+  const free = (base: string) => { let n = base, i = 2; while (info.teams.some((t) => t.name === n)) n = `${base}-${i++}`; return n; };
+  const [name, setName] = useState(free(TEAM_TEMPLATES[0].id));
+  const team = teamFrom(pick, name, connected, loop);
+  const missing = [...new Set(team.members.map((m) => m.workflow))].filter((w) => w && !info.workflows.some((x) => x.name === w));
+  return (
+    <div className="tpl">
+      <div className="tpl-grid" role="radiogroup" aria-label="Team templates">
+        {TEAM_TEMPLATES.map((x) => {
+          const preview = teamFrom(x, x.id, connected, loop);
+          return (
+            <button key={x.id} role="radio" aria-checked={pick.id === x.id} className={`tpl-card ${pick.id === x.id ? "on" : ""}`}
+              onClick={() => { setPick(x); setName(free(x.id)); }}>
+              <b>{x.title}</b>
+              <span className="tpl-about">{x.about}</span>
+              <span className="tpl-seats">
+                {preview.members.map((m, i) => (
+                  <span key={i} className="tpl-seat" style={{ marginLeft: m.reports_to ? 14 : 0, borderLeftColor: workflowColor(info.workflows, m.workflow) }}>
+                    <AgentMark id={m.agent} size={11} /> {m.role} <i className="mono">{m.workflow}</i>
+                  </span>
+                ))}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <form className="tpl-form" onSubmit={(e) => { e.preventDefault(); create(team); }}>
+        <label className="mi-field"><span>name</span><input className="input mono" value={name} onChange={(e) => setName(e.target.value.replace(/[^\w-]/g, ""))} aria-label="Team name" /></label>
+        {pick.seats.some((s) => s.workflow === "@loop") && (
+          <label className="mi-field"><span>loop to attack</span>
+            {loops.length
+              ? <select className="input" value={loop} onChange={(e) => setLoop(e.target.value)} aria-label="Research loop">{loops.map((l) => <option key={l}>{l}</option>)}</select>
+              : <span className="muted">no loop yet – <button type="button" className="linkish" onClick={() => setTab?.("research")}>set one up in Research</button>; the built-in autoresearch is used until then</span>}
+          </label>
+        )}
+        <div className="tpl-note muted">
+          Seats are filled by {connected.length ? `the agents connected here (${connected.map((c) => AGENT_NAME[c] ?? c).join(", ")})` : "Claude, Cursor, Codex and Gemini in turn – connect agents in Connect"}; change any seat after.
+          {missing.length > 0 && <> Needs the workflow {missing.join(", ")}.</>}
+        </div>
+        <div className="row">
+          {cancel && <button type="button" className="btn sm ghost" onClick={cancel}>Cancel</button>}
+          <span className="spacer" />
+          <button className="btn sm primary" disabled={!name || info.teams.some((t) => t.name === name)}>Create {name}</button>
+        </div>
+      </form>
+    </div>
+  );
 }

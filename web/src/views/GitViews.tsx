@@ -3,7 +3,7 @@ import { api, relTime, type Branch, type Commit, type Compare, type FileStatus, 
 import Dither from "../Dither";
 import Life from "../Life";
 import type { Go, Target } from "../nav";
-import { Diff, Empty, Icon, ShowOutput, Sym, useToast } from "../ui";
+import { Diff, Empty, Icon, ShowOutput, StatTable, Sym, useToast } from "../ui";
 import { Grip, listWidth } from "../resize";
 import { VerifyPanel } from "../AgentChecks";
 
@@ -330,13 +330,13 @@ export function CompareReport({ c, openSymbol }: { c: Compare; openSymbol: (id: 
   const [file, setFile] = useState<string | null>(null);
   return (
     <div className="stack">
-      <div className="stat-row" style={{ gridTemplateColumns: "repeat(5, 1fr)", margin: 0 }}>
-        <div className="stat"><b style={{ color: "var(--green)" }}>{c.ahead}</b><span>ahead</span></div>
-        <div className="stat"><b style={{ color: "var(--red)" }}>{c.behind}</b><span>behind</span></div>
-        <div className="stat"><b>{c.files.length}</b><span>files</span></div>
-        <div className="stat"><b>{c.touched}</b><span>symbols changed</span></div>
-        <div className="stat"><b className={`risk ${c.risk}`}>{c.risk}</b><span>{c.affected.length} dependents</span></div>
-      </div>
+      <StatTable rows={[
+        { label: "Ahead", value: c.ahead, tone: c.ahead ? "green" : "" },
+        { label: "Behind", value: c.behind, tone: c.behind ? "red" : "" },
+        { label: "Files", value: c.files.length },
+        { label: "Symbols changed", value: c.touched },
+        { label: "Risk", value: <b className={`risk ${c.risk}`}>{c.risk}</b>, note: `${c.affected.length} dependents` },
+      ]} />
       {c.communities.length > 0 && <div className="row" style={{ flexWrap: "wrap", gap: 4 }}><span className="muted">Clusters affected:</span>{c.communities.map((x) => <span key={x} className="tag">{x}</span>)}</div>}
       <div className="cmp-grid">
         <div>

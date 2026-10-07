@@ -3,6 +3,7 @@
 // Static and readable as text; click a team to edit it. Teams nest through
 // kula.toml's `under`, so a team of teams is just more boxes.
 
+import { useState } from "react";
 import type { Team, Workflow } from "../../api";
 import { AGENT_NAME } from "./data";
 import { AgentMark } from "./parts";
@@ -41,9 +42,20 @@ export function societyOrder(teams: Team[]) {
   return out;
 }
 
-export function Society({ teams, workflows, cur, active, onPick }: {
+export function Society({ teams, workflows, cur, active, onPick, onNest }: {
   teams: Team[]; workflows: Workflow[]; cur: string; active?: string; onPick: (name: string) => void;
+  /** Dropping one team on another: it answers to that team ("" – top level). */
+  onNest?: (team: string, under: string) => void;
 }) {
+  const [drag, setDrag] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const inside = (name: string, top: string) => { let c = teams.find((x) => x.name === name)?.under, n = 0; while (c && n++ < 50) { if (c === top) return true; c = teams.find((x) => x.name === c)?.under; } return false; };
+  const can = (to: string) => !!drag && drag !== to && (to === "" || !inside(to, drag));
+  const zone = (to: string) => onNest ? {
+    onDragOver: (e: React.DragEvent) => { if (can(to)) { e.preventDefault(); e.stopPropagation(); setOver(to); } },
+    onDragLeave: () => setOver((o) => (o === to ? null : o)),
+    onDrop: (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); if (drag && can(to)) onNest(drag, to); setDrag(null); setOver(null); },
+  } : {};
   const { roots, kids } = nesting(teams);
   const count = (t: Team, seen = new Set<string>()): number => {
     if (seen.has(t.name)) return 0;
@@ -56,8 +68,9 @@ export function Society({ teams, workflows, cur, active, onPick }: {
     const lead = t.members.find((m) => !m.reports_to) ?? t.members[0];
     const below = kids.get(t.name) ?? [];
     return (
-      <div key={t.name} className={`soc-team ${t.name === cur ? "sel" : ""} ${t.name === active ? "on" : ""}`} data-depth={depth}>
+      <div key={t.name} className={`soc-team ${t.name === cur ? "sel" : ""} ${t.name === active ? "on" : ""} ${over === t.name ? "over" : ""} ${drag === t.name ? "dragging" : ""}`} data-depth={depth} {...zone(t.name)}>
         <button type="button" className="soc-head" onClick={() => onPick(t.name)} aria-pressed={t.name === cur}
+          draggable={!!onNest} onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData("text/plain", t.name); setDrag(t.name); }} onDragEnd={() => { setDrag(null); setOver(null); }}
           title={`${t.name}: ${t.members.length} agents${below.length ? `, ${below.length} team${below.length === 1 ? "" : "s"} under it` : ""}`}>
           <span className="soc-name">{t.name}</span>
           {lead && <span className="soc-lead"><AgentMark id={lead.agent} size={12} />{AGENT_NAME[lead.agent] ?? lead.agent}</span>}
@@ -72,7 +85,13 @@ export function Society({ teams, workflows, cur, active, onPick }: {
     );
   };
   const seen = new Set<string>();
-  return <div className="society" aria-label="Teams and the teams under them">{roots.map((t) => box(t, 0, seen))}</div>;
+  return (
+    <div className="society" aria-label="Teams and the teams under them">
+      {roots.map((t) => box(t, 0, seen))}
+      {onNest && drag && <div className={`soc-top ${over === "" ? "over" : ""}`} {...zone("")}>drop here: {drag} answers to no team</div>}
+      {onNest && !drag && teams.length > 1 && <div className="soc-hint muted">drag a team onto another to put it under that team</div>}
+    </div>
+  );
 }
 
 /**

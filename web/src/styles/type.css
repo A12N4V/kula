@@ -27,3 +27,22 @@ code, pre, kbd, .mono, .diff, .console, .code, input.mono, .kind-badge { font-va
 
 
 .cp-code, .code, pre, code { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+
+/* Stat table: one figure per row – the name left, the number right */
+.stat-table { width: 100%; border-collapse: collapse; border: 1px solid var(--line); background: var(--panel); font-size: 12px; margin: 10px 0; }
+.stat-table tr + tr { border-top: 1px solid var(--line); }
+.stat-table th { padding: 7px 12px; text-align: left; font-weight: 500; color: var(--text-2); }
+.stat-table .st-note { margin-left: 10px; font-size: 11px; color: var(--text-3); }
+.stat-table td { padding: 7px 12px; text-align: right; white-space: nowrap; font: 600 13px var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+.stat-table td b { font: inherit; }
+.stat-table tr.go { cursor: pointer; }
+.stat-table tr.go:hover { background: var(--panel-2); }
+.stat-table tr.go:hover th { color: var(--text); }
+.stat-table tr.go:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.stat-table .tone-locked td, .stat-table .tone-red td, .stat-table .tone-bad td { color: var(--red); }
+.stat-table .tone-bad .st-note { color: var(--red); }
+.stat-table .tone-warn td, .stat-table .tone-review td { color: var(--yellow); }
+.stat-table .tone-hidden td { color: var(--violet); }
+.stat-table .tone-green td { color: var(--green); }
+.stat-table .tone-accent td { color: var(--accent); }
+.ov-stats, .ag-stats { margin: 0 0 12px; }

@@ -569,11 +569,28 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "team": crate::guard::team(r),
             "research": crate::research::list(r),
             "research_scope": research_scope(r, &cfg),
+            "skills": crate::skills::list(&r.root),
+            "skill_strays": crate::skills::strays(&r.root),
+            "stack": stack(&r.root),
             "git_hooks": crate::project::hooks_status(r).unwrap_or_default(),
             "ci": ci,
         }))
     })
     .await
+}
+
+/// What the repository is built with, so templates can offer commands that run here.
+fn stack(root: &std::path::Path) -> Vec<&'static str> {
+    [("Cargo.toml", "rust"), ("package.json", "node"), ("pyproject.toml", "python"), ("requirements.txt", "python"), ("go.mod", "go"), ("Makefile", "make")]
+        .into_iter()
+        .filter(|(f, _)| root.join(f).exists())
+        .map(|(_, s)| s)
+        .fold(vec![], |mut v, s| {
+            if !v.contains(&s) {
+                v.push(s);
+            }
+            v
+        })
 }
 
 /// For each research loop: the files its agents may change (the rest is fenced).
@@ -602,6 +619,7 @@ struct AgentReq {
     text: String,
     id: u64,
     workflow: String,
+    description: String,
     path: String,
     agent: String,
     rules: Vec<crate::config::GuardRule>,
@@ -693,6 +711,20 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
             }
             "research_start" => json!(crate::research::start(r, &a.workflow, &format!("user:{}", r.user()), true)?),
             "research_stop" => json!(crate::research::stop(r)?),
+            "workflow_rename" => {
+                crate::research::rename_workflow(r, &a.workflow, &a.name)?;
+                json!({ "ok": true })
+            }
+            "skill_save" => {
+                crate::skills::save(&r.root, &a.name, &a.description, &a.text)?;
+                json!({ "written": crate::skills::sync(&r.root)? })
+            }
+            "skill_delete" => {
+                crate::skills::remove(&r.root, &a.name)?;
+                json!({ "ok": true })
+            }
+            "skills_sync" => json!({ "written": crate::skills::sync(&r.root)? }),
+            "skill_adopt" => json!({ "written": crate::skills::adopt(&r.root, &a.agent, &a.name)? }),
             "workflow_install" => {
                 let cfg = crate::config::Config::load(&r.root)?;
                 let ids: Vec<&str> = a.targets.iter().map(String::as_str).collect();

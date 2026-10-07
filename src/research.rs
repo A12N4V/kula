@@ -339,6 +339,48 @@ pub fn experiment(repo: &Repo, hypothesis: &str, by: &str) -> Result<Experiment>
     Ok(e)
 }
 
+/// Rename a workflow everywhere it is named: kula.toml, the team seats that
+/// use it, and its research run. A built-in stays; the new name is its copy.
+pub fn rename_workflow(repo: &Repo, from: &str, to: &str) -> Result<()> {
+    if !workflow::valid_name(to) {
+        bail!("workflow names are letters, digits, - and _: {to:?}");
+    }
+    let cfg = Config::load(&repo.root)?;
+    if from == to {
+        return Ok(());
+    }
+    if workflow::find(&cfg, to).is_some() {
+        bail!("there is already a workflow called {to}");
+    }
+    let Some(w) = workflow::find(&cfg, from) else { bail!("no workflow called {from}") };
+    let mut wfs = cfg.workflows.clone();
+    if w.builtin {
+        wfs.push(Workflow { name: to.into(), builtin: false, ..w });
+    } else {
+        wfs.iter_mut().filter(|x| x.name == from).for_each(|x| x.name = to.into());
+        let mut teams = cfg.teams.clone();
+        let mut moved = false;
+        for m in teams.iter_mut().flat_map(|t| t.members.iter_mut()).filter(|m| m.workflow == from) {
+            m.workflow = to.into();
+            moved = true;
+        }
+        crate::config::set_workflows(&repo.root, &wfs)?;
+        if moved {
+            crate::config::set_teams(&repo.root, &teams)?;
+        }
+        let old = dir(repo).join(format!("{from}.json"));
+        if let Ok(text) = std::fs::read_to_string(&old) {
+            let mut s: State = serde_json::from_str(&text)?;
+            s.workflow = to.into();
+            save(repo, &s)?;
+            std::fs::remove_file(old)?;
+        }
+        return Ok(());
+    }
+    crate::config::set_workflows(&repo.root, &wfs)?;
+    Ok(())
+}
+
 pub fn fmt(v: f64) -> String {
     if v.fract() == 0.0 && v.abs() < 1e12 {
         format!("{v:.0}")

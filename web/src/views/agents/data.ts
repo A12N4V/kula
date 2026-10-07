@@ -27,4 +27,4 @@ export function useAgentsInfo(version: number) {
   return { info, err, load };
 }
 export type Act = (action: Parameters<typeof api.agentAction>[0], body: Record<string, unknown>, done: string) => Promise<unknown>;
-export type Tab = "overview" | "workflows" | "research" | "teams" | "fences" | "memory" | "docs" | "connect";
+export type Tab = "overview" | "workflows" | "research" | "teams" | "skills" | "fences" | "memory" | "docs" | "connect";

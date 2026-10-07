@@ -334,3 +334,8 @@
 /* .page is a grid child; without min-height:0 it can grow past its grid
    row and the last row's buttons overlap the statusbar controls. */
 .page { min-height: 0; }
+
+/* Workflows as tabs, like Research and Teams */
+.wf-tabs { display: grid; gap: 10px; min-width: 0; }
+.wf-tabs .need.sugg { padding: 10px 12px; border: 1px dashed var(--accent); background: var(--bg-2); }
+.wf-from { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; }

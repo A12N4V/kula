@@ -12,7 +12,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { relTime, type AgentsInfo, type GuardLevel, type ResearchRun, type Suggestion, type Workflow } from "../../api";
 import { BRANDS, Mark } from "../../brands";
 import { Chips } from "../../Autofill";
-import { Icon } from "../../ui";
+import { Icon, StatTable } from "../../ui";
 import type { Act } from "./data";
 
 export const LEVEL_TEXT: Record<GuardLevel, string> = {
@@ -121,10 +121,12 @@ export function RunSummary({ run }: { run: ResearchRun }) {
     <div className="run-sum">
       <div className="row"><b className="mono">{run.workflow}</b>{run.active ? <span className="tag accent">running</span> : <span className="tag">finished</span>}<span className="spacer" /><span className="muted mono">{run.branch}</span></div>
       <RunChart run={run} w={560} h={110} />
-      <div className="run-kpis">
-        <span><b>{num(run.baseline)}</b> baseline</span><span><b className="lv-open">{num(run.best)}</b> best</span>
-        <span><b>{pct(run).toFixed(1)}%</b> better</span><span><b>{kept}/{run.experiments.length}</b> kept</span>
-      </div>
+      <StatTable rows={[
+        { label: "Baseline", value: num(run.baseline) },
+        { label: "Best", value: num(run.best), tone: "accent" },
+        { label: "Better by", value: `${pct(run).toFixed(1)}%` },
+        { label: "Kept", value: `${kept} of ${run.experiments.length}` },
+      ]} />
     </div>
   );
 }
@@ -217,6 +219,40 @@ export function Snippet({ text }: { text: string }) {
       <button className="btn sm ghost snippet-copy" onClick={() => { navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1200); }).catch(() => {}); }} aria-label="Copy">
         {done ? "copied" : <><Icon.copy /> copy</>}
       </button>
+    </div>
+  );
+}
+
+/**
+ * The tab strip Workflows, Research, Teams and Skills share: one tab per item,
+ * a + right after the newest, double-click (or F2) to rename in place.
+ */
+export type TabItem = { key: string; label: string; dot?: boolean; depth?: number; title?: string; fixed?: boolean };
+export function TabStrip({ items, cur, onPick, onAdd, onRename, label, addLabel }: {
+  items: TabItem[]; cur: string; onPick: (k: string) => void; onAdd?: () => void; onRename?: (k: string, to: string) => void; label: string; addLabel: string;
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [val, setVal] = useState("");
+  const begin = (it: TabItem) => { if (onRename && !it.fixed) { setEditing(it.key); setVal(it.label); } };
+  const commit = () => {
+    const it = items.find((x) => x.key === editing);
+    if (it && val && val !== it.label) onRename?.(it.key, val);
+    setEditing(null);
+  };
+  return (
+    <div className="team-tabs tab-strip" role="tablist" aria-label={label}>
+      {items.map((it) => editing === it.key ? (
+        <input key={it.key} className="tab-rename mono" autoFocus value={val} size={Math.max(6, val.length + 1)} aria-label={`Rename ${it.label}`}
+          onChange={(e) => setVal(e.target.value.replace(/[^\w-]/g, ""))} onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); else if (e.key === "Escape") setEditing(null); }} />
+      ) : (
+        <button key={it.key} role="tab" aria-selected={it.key === cur} className={it.key === cur ? "on" : ""} data-depth={it.depth ? Math.min(it.depth, 3) : undefined}
+          title={it.title ?? (onRename && !it.fixed ? "double-click to rename" : undefined)}
+          onClick={() => onPick(it.key)} onDoubleClick={() => begin(it)} onKeyDown={(e) => { if (e.key === "F2") begin(it); }}>
+          {!!it.depth && <span className="tab-up" aria-hidden="true">└</span>}{it.label}{it.dot && <i className="dot ok" title="running" />}
+        </button>
+      ))}
+      {onAdd && <button className={`team-tab-add ${cur === "" ? "on" : ""}`} onClick={onAdd} aria-label={addLabel} title={addLabel}><Icon.plus /></button>}
     </div>
   );
 }

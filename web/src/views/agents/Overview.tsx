@@ -9,7 +9,7 @@
 // workflows, research and teams at a glance (module S1).
 
 import { relTime, type AgentsInfo, type GuardLevel } from "../../api";
-import { Icon } from "../../ui";
+import { Icon, StatTable } from "../../ui";
 import type { Act } from "./data";
 import type { Tab } from "./data";
 import { AgentMark, Card, Loop, RunSummary, SuggestionRow, StartTask, WorkflowTile } from "./parts";
@@ -22,15 +22,17 @@ export default function Overview({ info, act, setTab, onGraph, open }: { info: A
   const wf = info.workflow;
   return (
     <>
-      <div className="ag-strip">
-        <Kpi n={info.workflows.length} label="workflows" onClick={() => setTab("workflows")} />
-        <Kpi n={info.rules.length} label="fence rules" onClick={() => setTab("fences")} />
-        <Kpi n={by("locked")} label="locked files" tone={by("locked") ? "locked" : ""} onClick={() => onGraph()} />
-        <Kpi n={by("hidden")} label="hidden files" tone={by("hidden") ? "hidden" : ""} onClick={() => onGraph()} />
-        <Kpi n={by("review")} label="pending review" tone={by("review") ? "review" : ""} onClick={() => setTab("fences")} />
-        <Kpi n={info.memories.length} label="memories" onClick={() => setTab("memory")} />
-        <Kpi n={stale.length} label="stale" tone={stale.length ? "review" : ""} onClick={() => setTab("memory")} />
-      </div>
+      <StatTable className="ag-stats" label="Agents at a glance" rows={[
+        { label: "Workflows", value: info.workflows.length, onClick: () => setTab("workflows") },
+        { label: "Research loops", value: info.workflows.filter((w) => w.research?.metric).length, note: info.research.some((r) => r.active) ? "one running" : undefined, onClick: () => setTab("research") },
+        { label: "Teams", value: info.teams.length, note: info.team ? `${info.team.name} at work` : undefined, onClick: () => setTab("teams") },
+        { label: "Skills", value: info.skills?.length ?? 0, note: info.skills?.some((s) => Object.values(s.targets).some((t) => t === "missing" || t === "differs")) ? "out of sync" : undefined, tone: info.skills?.some((s) => Object.values(s.targets).some((t) => t === "missing" || t === "differs")) ? "review" : "", onClick: () => setTab("skills") },
+        { label: "Fence rules", value: info.rules.length, onClick: () => setTab("fences") },
+        { label: "Locked files", value: by("locked"), tone: by("locked") ? "locked" : "", onClick: () => onGraph() },
+        { label: "Hidden files", value: by("hidden"), tone: by("hidden") ? "hidden" : "", onClick: () => onGraph() },
+        { label: "Pending review", value: by("review"), tone: by("review") ? "review" : "", onClick: () => setTab("fences") },
+        { label: "Memories", value: info.memories.length, note: stale.length ? `${stale.length} stale` : undefined, tone: stale.length ? "review" : "", onClick: () => setTab("memory") },
+      ]} />
 
       <div className="ag-grid">
         <Card title={info.task ? "Now" : "Start a task"} sub={info.task ? `${info.task.by} · ${relTime(info.task.started)}` : undefined} className="ag-now">
@@ -106,9 +108,5 @@ export default function Overview({ info, act, setTab, onGraph, open }: { info: A
       </div>
     </>
   );
-}
-
-function Kpi({ n, label, tone = "", onClick }: { n: number; label: string; tone?: string; onClick?: () => void }) {
-  return <button className="kpi-cell" onClick={onClick}><b className={tone ? `lv-${tone}` : ""}>{n}</b><span>{label}</span></button>;
 }
 

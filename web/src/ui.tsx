@@ -198,3 +198,21 @@ export function Md({ text, onSymbol }: { text: string; onSymbol?: (name: string)
     </div>
   );
 }
+
+/** A number per row: the name on the left, the figure on the right (replaces the old tile strips). */
+export type Stat = { label: string; value: ReactNode; note?: ReactNode; tone?: string; onClick?: () => void; title?: string };
+export function StatTable({ rows, label, className = "" }: { rows: Stat[]; label?: string; className?: string }) {
+  return (
+    <table className={`stat-table ${className}`} aria-label={label}>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.label} className={`${r.onClick ? "go" : ""} ${r.tone ? `tone-${r.tone}` : ""}`} title={r.title}
+            onClick={r.onClick} tabIndex={r.onClick ? 0 : undefined} onKeyDown={r.onClick ? (e) => { if (e.key === "Enter") r.onClick!(); } : undefined}>
+            <th scope="row">{r.label}{r.note !== undefined && <span className="st-note">{r.note}</span>}</th>
+            <td>{typeof r.value === "number" ? r.value.toLocaleString() : r.value}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}

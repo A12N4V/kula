@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { api, type AgentRef, type PreEdit, type Verify } from "./api";
 import { useCode } from "./CodePanel";
+import { StatTable } from "./ui";
 import { GuardTag } from "./views/Agents";
 
 /** One located symbol; the location opens in the code panel. */
@@ -41,11 +42,11 @@ export function PreEditPanel({ id }: { id: number }) {
   if (!p) return <div className="muted ac-empty">Reading callers, tests and history…</div>;
   return (
     <div className="ac">
-      <div className="stat-row">
-        <div className="stat"><b className={`risk ${p.risk}`}>{p.risk}</b><span>risk</span></div>
-        <div className="stat"><b>{p.dependents}</b><span>dependents</span></div>
-        <div className="stat"><b>{p.test_refs.length}</b><span>tests reach it</span></div>
-      </div>
+      <StatTable rows={[
+        { label: "Risk", value: <b className={`risk ${p.risk}`}>{p.risk}</b> },
+        { label: "Dependents", value: p.dependents },
+        { label: "Tests reach it", value: p.test_refs.length, tone: p.test_refs.length ? "" : "review" },
+      ]} />
       {p.guard.level !== "open" && (
         <div className={`insp-guard ${p.guard.level}`}><GuardTag level={p.guard.level} /><span>{p.guard.reason}</span><span className="muted mono">{p.guard.rule}</span></div>
       )}

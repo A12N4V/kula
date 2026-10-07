@@ -203,7 +203,18 @@ kula team prompt ship codex     # the team's prompt, its own, its place, its wor
 kula team start ship
 ```
 
-Teams carry a hierarchy (who leads, who answers to whom), hand-offs, and system prompts for the team and each agent; Agents › Teams draws them on the same renderer as the code graph, tinted by workflow.
+Teams carry a hierarchy (who leads, who answers to whom), hand-offs, and system prompts for the team and each agent; Agents › Teams draws them on the same renderer as the code graph, tinted by workflow. Start one from a template (ship a feature, bug hunt, research swarm, safe refactor, docs pass) and rewire it by dragging one member onto another.
+
+### Skills
+
+One set of skills for every agent, kept in git. Each lives in `.agents/skills/<name>/SKILL.md`, which Codex reads directly; kula writes the same skill where Claude Code, Gemini CLI and Cursor look for theirs. A skill only one agent has can be adopted into the shared set.
+
+```sh
+kula skill new release-notes -d "Write release notes from the commits since the last tag"
+kula skill list                 # each skill, and whether each agent has the current copy
+kula skill adopt claude triage  # take an agent's own skill into the shared set
+kula skill sync
+```
 
 ### Fences
 

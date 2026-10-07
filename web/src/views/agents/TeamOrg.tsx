@@ -10,6 +10,7 @@
 // directed tags. Nothing animates; hierarchy, workflow, scope and hand-offs
 // read in the DOM text without hovering. Replaces the sigma team map.
 
+import { useState } from "react";
 import type { Team, Workflow } from "../../api";
 import { hue } from "../../colors";
 import { AGENT_NAME } from "./data";
@@ -67,10 +68,28 @@ export function teamProblems(t: Team): string[] {
   return out;
 }
 
-export function TeamOrg({ team, info, selected, onSelect, problems }: {
+export function TeamOrg({ team, info, selected, onSelect, problems, onReport, onHand }: {
   team: Team; info: { workflows: Workflow[] }; selected: string | null; onSelect: (agent: string | null) => void;
   problems: Record<string, string[]>;
+  /** Dragging a member onto another: it now answers to them ("" – it leads). */
+  onReport?: (agent: string, to: string) => void;
+  /** Shift-dragging: hand work off to them, or stop. */
+  onHand?: (agent: string, to: string) => void;
 }) {
+  const [drag, setDrag] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  // a member cannot answer to someone who (eventually) answers to it
+  const under = (a: string, top: string) => { let c = team.members.find((x) => x.agent === a)?.reports_to, n = 0; while (c && n++ < 50) { if (c === top) return true; c = team.members.find((x) => x.agent === c)?.reports_to; } return false; };
+  const can = (to: string) => !!drag && drag !== to && (to === "" || !under(to, drag));
+  const drop = (to: string, shift: boolean) => {
+    if (drag && can(to)) (shift && to ? onHand : onReport)?.(drag, to);
+    setDrag(null); setOver(null);
+  };
+  const zone = (to: string) => onReport ? {
+    onDragOver: (e: React.DragEvent) => { if (can(to)) { e.preventDefault(); setOver(to); } },
+    onDragLeave: () => setOver((o) => (o === to ? null : o)),
+    onDrop: (e: React.DragEvent) => { e.preventDefault(); drop(to, e.shiftKey); },
+  } : {};
   const rows = orgRows(team.members);
   const k = Math.max(0, rows.findIndex((r) => r.m.agent === selected));
   const focus = (dir: 1 | -1) => {
@@ -84,13 +103,17 @@ export function TeamOrg({ team, info, selected, onSelect, problems }: {
         if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); focus(1); }
         else if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); focus(-1); }
       }}>
+      {onReport && drag && <div className={`org-leadzone ${over === "" ? "over" : ""}`} {...zone("")}>drop here to make {AGENT_NAME[drag] ?? drag} a lead</div>}
       {rows.map(({ m, depth, orphan }) => {
         const errs = problems[m.agent] ?? [];
         return (
           <div key={m.agent} className="org-row" style={{ paddingLeft: depth * 22 }}>
             {depth > 0 && <span className="org-elbow" aria-hidden="true" />}
             <button type="button" role="option" aria-selected={selected === m.agent} data-org={m.agent} tabIndex={0}
-              className={`org-card ${selected === m.agent ? "sel" : ""}`}
+              className={`org-card ${selected === m.agent ? "sel" : ""} ${drag === m.agent ? "dragging" : ""} ${over === m.agent ? "over" : ""} ${drag && !can(m.agent) && drag !== m.agent ? "nodrop" : ""}`}
+              draggable={!!onReport} onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", m.agent); setDrag(m.agent); }}
+              onDragEnd={() => { setDrag(null); setOver(null); }} {...zone(m.agent)}
+              title={onReport ? "drag onto a member: answers to them · shift-drop: hands off to them" : undefined}
               onClick={() => onSelect(selected === m.agent ? null : m.agent)}>
               <span className="org-name"><AgentMark id={m.agent} size={14} />{AGENT_NAME[m.agent] ?? (m.agent || "unnamed")}</span>
               <span className="org-role">{m.role || (m.reports_to ? "member" : "lead")}</span>

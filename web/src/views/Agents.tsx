@@ -22,12 +22,14 @@ import Fences from "./agents/Fences";
 import MemoryTab from "./agents/Memory";
 import Docs from "./agents/Docs";
 import Connect from "./agents/Connect";
+import Skills from "./agents/Skills";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: Icon.agents },
   { id: "workflows", label: "Workflows", icon: Icon.workflow },
   { id: "research", label: "Research", icon: Icon.flask },
   { id: "teams", label: "Teams", icon: Icon.team },
+  { id: "skills", label: "Skills", icon: Icon.box },
   { id: "fences", label: "Fences", icon: Icon.fence },
   { id: "memory", label: "Memory", icon: Icon.memory },
   { id: "docs", label: "Docs", icon: Icon.doc },
@@ -68,7 +70,7 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
   if (!info) return <div className="page"><div className="muted">Reading workflows, fences and memories…</div></div>;
   const stale = info.memories.filter((m) => m.stale).length;
   const outdated = info.docs.filter((d) => d.synced && !d.current).length;
-  const badge: Partial<Record<Tab, number>> = { memory: stale, docs: outdated, fences: info.suggestions.filter((s) => s.kind === "guard").length, workflows: info.suggestions.filter((s) => s.kind === "workflow").length };
+  const badge: Partial<Record<Tab, number>> = { memory: stale, docs: outdated, fences: info.suggestions.filter((s) => s.kind === "guard").length, workflows: info.suggestions.filter((s) => s.kind === "workflow").length, skills: (info.skills ?? []).filter((s) => Object.values(s.targets).some((t) => t === "missing" || t === "differs")).length + (info.skill_strays?.length ?? 0) };
 
   return (
     <div className="page agents">
@@ -88,9 +90,10 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
 
       <div className="ag-panel" key={tab}>
         {tab === "overview" && <Overview info={info} act={act} setTab={setTab} onGraph={onGraph} open={open} />}
-        {tab === "workflows" && <Workflows info={info} act={act} onGraph={onGraph} />}
+        {tab === "workflows" && <Workflows info={info} act={act} onGraph={onGraph} setTab={setTab} />}
         {tab === "research" && <ResearchTab info={info} act={act} open={open} go={go} />}
-        {tab === "teams" && <Teams info={info} act={act} />}
+        {tab === "teams" && <Teams info={info} act={act} setTab={setTab} />}
+        {tab === "skills" && <Skills info={info} act={act} open={open} />}
         {tab === "fences" && <Fences info={info} act={act} onGraph={onGraph} />}
         {tab === "memory" && <MemoryTab info={info} act={act} open={open} />}
         {tab === "docs" && <Docs info={info} act={act} />}

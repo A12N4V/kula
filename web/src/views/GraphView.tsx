@@ -14,7 +14,7 @@ import { LinkArea } from "../Autofill";
 import { useCode } from "../CodePanel";
 import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLYPH, makeColorer } from "../colors";
 import { knownDirs, settings, useSettings, type Settings } from "../settings";
-import { Empty, Icon, Kind, Logo, Md, ShowOutput, Sym, useToast } from "../ui";
+import { Empty, Icon, Kind, Logo, Md, ShowOutput, StatTable, Sym, useToast } from "../ui";
 import { GraphLoader, type LoadStep } from "../AsciiMark";
 import { PreEditPanel } from "../AgentChecks";
 import type { IndexProgress } from "../api";
@@ -963,11 +963,11 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
             </div>
             {impact && (
               <>
-                <div className="stat-row">
-                  <div className="stat"><b className={`risk ${impact.risk}`}>{impact.risk}</b><span>risk</span></div>
-                  <div className="stat"><b>{impact.hits.length}</b><span>symbols</span></div>
-                  <div className="stat"><b>{impact.files}</b><span>files</span></div>
-                </div>
+                <StatTable rows={[
+                  { label: "Risk", value: <b className={`risk ${impact.risk}`}>{impact.risk}</b> },
+                  { label: "Symbols", value: impact.hits.length },
+                  { label: "Files", value: impact.files },
+                ]} />
                 {[1, 2, 3].map((d) => {
                   const l = impact.hits.filter((h) => h.depth === d);
                   return l.length ? (

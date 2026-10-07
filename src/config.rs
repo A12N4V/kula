@@ -261,7 +261,33 @@ fn set_tables<T: Serialize>(doc: &mut toml_edit::DocumentMut, key: &str, items: 
         }
     }
     doc.insert(key, item);
+    renumber(doc);
     Ok(())
+}
+
+/// Lay every table out in key order, each one's subtables right after it, so a
+/// team's members never end up below some other section.
+fn renumber(doc: &mut toml_edit::DocumentMut) {
+    fn walk(t: &mut toml_edit::Table, n: &mut isize) {
+        for (_, item) in t.iter_mut() {
+            match item {
+                toml_edit::Item::Table(t) => {
+                    t.set_position(*n);
+                    *n += 1;
+                    walk(t, n);
+                }
+                toml_edit::Item::ArrayOfTables(a) => {
+                    for t in a.iter_mut() {
+                        t.set_position(*n);
+                        *n += 1;
+                        walk(t, n);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    walk(doc.as_table_mut(), &mut 0);
 }
 
 pub fn set_guards(root: &Path, rules: &[GuardRule]) -> Result<Config> {

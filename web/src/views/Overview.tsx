@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, relTime, type Overview as O, type RepoInfo } from "../api";
-import { Empty, Icon } from "../ui";
+import { Empty, Icon, StatTable } from "../ui";
 import type { Go } from "../nav";
 import Coupling from "../Coupling";
 import { useCode } from "../CodePanel";
@@ -45,22 +45,14 @@ export default function Overview({ repo, version, go }: Props) {
       </header>
 
 
-      <section className="kpi-strip">
-        {([
+      <StatTable className="ov-stats" label="Repository at a glance" rows={([
           ["Proposals", o.proposals.length, highRisk ? `${highRisk} high risk` : o.proposals.length ? "none high risk" : "queue empty", () => go("proposals"), highRisk ? "bad" : ""],
           ["Issues", o.issues_open, Number.isFinite(oldest) ? `oldest ${relTime(oldest).replace(" ago", "")}` : "none open", () => go("issues"), ""],
           ["Uncommitted", o.changes, o.changes ? "files in worktree" : "clean", () => go("changes"), o.changes ? "warn" : ""],
           ["Branches", o.branches.length, stale ? `${stale} behind ${o.default_branch}` : "all current", () => go("branches"), ""],
           ["Hotspots", o.hotspots.length, o.hotspots[0] ? o.hotspots[0].path.split("/").pop()! : "no churn", () => go("graph", { search: o.hotspots[0]?.path }), ""],
           ["Notes", o.notes, "on symbols & files", () => go("notes"), ""],
-        ] as [string, number, string, () => void, string][]).map(([label, value, sub, fn, tone]) => (
-          <button key={label} className={`kpi-cell ${tone}`} onClick={fn}>
-            <span className="kpi-label">{label}</span>
-            <b>{value.toLocaleString()}</b>
-            <span className="kpi-sub">{sub}</span>
-          </button>
-        ))}
-      </section>
+        ] as [string, number, string, () => void, string][]).map(([label, value, note, onClick, tone]) => ({ label, value, note, onClick, tone }))} />
 
       <Coupling onDir={(d) => go("graph", { search: d })} />
 
