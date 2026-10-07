@@ -89,7 +89,7 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
       <div className="ag-panel" key={tab}>
         {tab === "overview" && <Overview info={info} act={act} setTab={setTab} onGraph={onGraph} open={open} />}
         {tab === "workflows" && <Workflows info={info} act={act} onGraph={onGraph} />}
-        {tab === "research" && <ResearchTab info={info} act={act} />}
+        {tab === "research" && <ResearchTab info={info} act={act} open={open} go={go} />}
         {tab === "teams" && <Teams info={info} act={act} />}
         {tab === "fences" && <Fences info={info} act={act} onGraph={onGraph} />}
         {tab === "memory" && <MemoryTab info={info} act={act} open={open} />}

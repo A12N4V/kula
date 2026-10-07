@@ -140,3 +140,93 @@ input.mi-title { font: 600 14px var(--mono); }
 @media (max-width: 1100px) { .notes-split { grid-template-columns: 1fr; height: auto; } .notes-graph { height: 460px; } }
 /* the team graph takes the whole width; the other Agents tabs keep their measure */
 .ag-panel:has(.team-split) { max-width: none; }
+
+/* Research flow: solvers → attempts → gate → frontier, wired on fixed rows */
+.rf { display: grid; gap: 10px; min-width: 0; }
+.rf-cols { position: relative; height: 16px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.rf-cols > span { position: absolute; top: 0; display: inline-flex; gap: 8px; white-space: nowrap; }
+.rf-more { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.rf-stage { position: relative; min-width: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background:
+  repeating-linear-gradient(to bottom, transparent 0 29px, color-mix(in oklab, var(--line) 45%, transparent) 29px 30px) 0 4px / 100% 100% no-repeat; }
+.rf-wires { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rf-wires path { fill: none; vector-effect: non-scaling-stroke; stroke-width: 1; transition: opacity .15s, stroke .15s; }
+.rf-w path { stroke: var(--line-2); }
+.rf-w.kept path { stroke: var(--accent); stroke-width: 1.4; }
+.rf-w path.in { stroke: var(--line-2); stroke-width: 1; stroke-dasharray: none; }
+.rf-w.lit path.in { stroke: var(--text-2); }
+.rf-w.fenced path { stroke: var(--red); stroke-dasharray: 3 3; }
+.rf-w.failed path { stroke: var(--yellow, #d6b24a); stroke-dasharray: 1 3; }
+.rf-w.dim { opacity: .12; }
+.rf-w.lit path { stroke-width: 1.8; }
+.rf-w.lit:not(.kept):not(.fenced):not(.failed) path { stroke: var(--text-2); }
+.rf-back { stroke: var(--accent); stroke-dasharray: 2 4; opacity: .55; }
+.rf-col { position: absolute; top: 4px; display: grid; align-content: start; min-width: 0; }
+.rf-solvers { left: 0; }
+.rf-solver, .rf-try, .rf-rec { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0 8px; background: none; border: 0; border-left: 2px solid transparent; color: var(--text-2); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; transition: opacity .15s, background .15s; }
+.rf-solver:hover, .rf-try:hover, .rf-rec:hover { background: var(--panel-2); color: var(--text); }
+.rf-solver.sel, .rf-try.sel { border-left-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.rf-sname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.rf-share { flex: none; width: 34px; height: 4px; background: var(--line); overflow: hidden; }
+.rf-share i { display: block; height: 100%; }
+.rf-snum { flex: none; font-size: 10.5px; color: var(--text-3); min-width: 30px; text-align: right; }
+.rf-try { background: var(--bg); }
+.rf-n { flex: none; width: 18px; text-align: right; font-size: 10.5px; color: var(--text-3); }
+.rf-hyp { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rf-files { flex: none; max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--text-3); }
+.rf-try.kept .rf-hyp { color: var(--text); }
+.rf-try.fenced .rf-hyp { color: var(--text-3); text-decoration: line-through; text-decoration-color: color-mix(in oklab, var(--red) 70%, transparent); }
+.rf-try.kept { border-left-color: var(--accent); }
+.rf .dim { opacity: .28; }
+.rf-gate { position: absolute; top: 0; bottom: 0; width: 2%; border-left: 1px solid var(--line-2); border-right: 1px solid var(--line-2); background: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in oklab, var(--line-2) 55%, transparent) 4px 5px); }
+.rf-pin { position: absolute; left: 50%; width: 10px; height: 10px; margin-left: -5px; border: 1px solid var(--text-3); background: var(--bg); transition: opacity .15s; }
+.rf-pin.kept { background: var(--accent); border-color: var(--accent); }
+.rf-pin.fenced { border-color: var(--red); background: var(--red); clip-path: polygon(20% 0, 50% 30%, 80% 0, 100% 20%, 70% 50%, 100% 80%, 80% 100%, 50% 70%, 20% 100%, 0 80%, 30% 50%, 0 20%); }
+.rf-pin.failed { border-color: var(--yellow, #d6b24a); }
+.rf-rec { gap: 9px; color: var(--text-2); }
+.rf-rec b { min-width: 64px; font-size: 12.5px; color: var(--text); }
+.rf-rec.best b { color: var(--accent); }
+.rf-gain { font-size: 10.5px; color: var(--accent); min-width: 48px; }
+.rf-sha { font-size: 10.5px; color: var(--text-3); }
+.rf-rec.base { cursor: default; border-top: 1px dashed var(--line-2); }
+.rf-rec.base:hover { background: none; }
+.rf-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 11px; color: var(--text-3); }
+.rf-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--text-3); }
+.rf-legend i.kept { background: var(--accent); border-color: var(--accent); }
+.rf-legend i.fenced { background: var(--red); border-color: var(--red); }
+.rf-legend i.failed { border-color: var(--yellow, #d6b24a); }
+.rf-back-key::before { content: ""; display: inline-block; width: 18px; margin-right: 6px; vertical-align: middle; border-top: 1px dashed var(--accent); }
+.rf-legend .btn { margin-left: auto; }
+.rf-lower { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 12px; }
+.rf-panel { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 10px; border: 1px solid var(--line); background: var(--panel); }
+.rf-panel h3 { display: flex; align-items: center; gap: 6px; margin: 0; font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.rf-file { display: grid; grid-template-columns: minmax(0, 1fr) 90px 24px 64px auto; align-items: center; gap: 10px; min-height: 26px; border-bottom: 1px dashed var(--line); transition: opacity .15s; }
+.rf-file.sel .rf-path { color: var(--accent); }
+.rf-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; background: none; border: 0; color: var(--text); font-size: 11.5px; text-align: left; cursor: pointer; }
+.rf-heat { display: flex; height: 6px; background: var(--line); }
+.rf-heat i { display: block; height: 100%; background: var(--text-3); }
+.rf-heat i.kept { background: var(--accent); }
+.rf-heat i.fenced { background: var(--red); }
+.rf-heat i.failed { background: var(--yellow, #d6b24a); }
+.rf-fn { font-size: 10.5px; color: var(--text-3); text-align: right; }
+.rf-by { display: flex; gap: 4px; }
+.rf-open { opacity: 0; }
+.rf-file:hover .rf-open, .rf-open:focus-visible { opacity: 1; }
+.rf-detail { display: grid; gap: 8px; }
+.rf-dhyp { font-size: 13px; color: var(--text); }
+.rf-dl { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 6px 10px; margin: 0; font-size: 11.5px; }
+.rf-dl dt { font: 600 10px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); padding-top: 2px; }
+.rf-dl dd { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0; min-width: 0; color: var(--text-2); word-break: break-word; }
+.rf-v.kept, .rf-up { color: var(--accent); }
+.rf-v.fenced { color: var(--red); }
+.rf-v.failed { color: var(--yellow, #d6b24a); }
+.rf-hint { margin: 0; font-size: 11px; }
+.linkish { padding: 0; background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: color-mix(in oklab, var(--accent) 40%, transparent); text-underline-offset: 2px; }
+.rf-dfile { font-size: 11px; }
+@media (max-width: 760px) {
+  .rf-cols, .rf-wires, .rf-gate { display: none; }
+  .rf-stage { height: auto !important; background: none; display: grid; gap: 10px; border: 0; }
+  .rf-col { position: static; width: auto !important; }
+  .rf-lower { grid-template-columns: 1fr; }
+  .rf-file { grid-template-columns: minmax(0, 1fr) 60px 20px; }
+  .rf-by, .rf-open { display: none; }
+}

@@ -7,7 +7,8 @@
 
 // Research tab: autoresearch loops shown as a static structure – editable
 // files against the fenced rest, metric and goal, budget used, the experiment
-// history as a compact table plus the metric-over-time chart (module T1).
+// flow from solvers through the gate to the frontier (ResearchFlow), over the
+// metric-over-time chart.
 
 import { useEffect, useState } from "react";
 import { type AgentsInfo, type Workflow } from "../../api";
@@ -15,6 +16,8 @@ import { Chips } from "../../Autofill";
 import { Icon } from "../../ui";
 import { blank, type Act } from "./data";
 import { Card, num, pct, RunChart } from "./parts";
+import ResearchFlow from "./ResearchFlow";
+import type { Go } from "../../nav";
 import { workflowColor } from "./TeamOrg";
 
 const RESEARCH_LOOP: { tool: string; what: string; gate?: boolean }[] = [
@@ -26,7 +29,9 @@ const RESEARCH_LOOP: { tool: string; what: string; gate?: boolean }[] = [
   { tool: "remember", what: "why it worked" },
 ];
 
-export default function ResearchTab({ info, act }: { info: AgentsInfo; act: Act }) {
+type Links = { open: (t: string) => void; go?: Go };
+
+export default function ResearchTab({ info, act, open, go }: { info: AgentsInfo; act: Act } & Links) {
   const loops = info.workflows.filter((w) => w.research?.metric);
   const [cur, setCur] = useState(loops[0]?.name ?? "");
   const [adding, setAdding] = useState(loops.length === 0);
@@ -40,16 +45,15 @@ export default function ResearchTab({ info, act }: { info: AgentsInfo; act: Act 
         </div>
       )}
       {adding || !w ? <NewLoop info={info} act={act} done={(n) => { setCur(n); setAdding(false); }} cancel={loops.length ? () => setAdding(false) : undefined} />
-        : <LoopPanel key={w.name} w={w} info={info} act={act} />}
+        : <LoopPanel key={w.name} w={w} info={info} act={act} open={open} go={go} />}
     </Card>
   );
 }
 
 /** One loop, read as a structure: head, files vs fenced, metric, history. */
-function LoopPanel({ w, info, act }: { w: Workflow; info: AgentsInfo; act: Act }) {
+function LoopPanel({ w, info, act, open, go }: { w: Workflow; info: AgentsInfo; act: Act } & Links) {
   const runs = info.research.filter((r) => r.workflow === w.name);
   const run = runs.find((r) => r.active) ?? runs[0];
-  const exps = [...(run?.experiments ?? [])].reverse();
   const scope = info.research_scope?.[w.name];
   const color = workflowColor(info.workflows, w.name);
   const [editing, setEditing] = useState(false);
@@ -86,37 +90,24 @@ function LoopPanel({ w, info, act }: { w: Workflow; info: AgentsInfo; act: Act }
           <LoopSettings w={w} save={save} />
         </div>
       )}
-      <div className="r-files">
-        <div className="r-col" style={{ borderTop: `2px solid ${color}` }}>
-          <h3>may edit{scope ? ` – ${scope.files.length} file${scope.files.length === 1 ? "" : "s"}` : ""}</h3>
-          {scope?.files.length
-            ? scope.files.map((f) => <div key={f} className="r-file mono">{f}</div>)
-            : (w.scope?.length ? w.scope.map((s) => <div key={s} className="r-file mono">{s}</div>) : <div className="muted r-file">no scope: the whole repo is in play</div>)}
+      {run ? <>
+        <RunChart run={run} w={1200} h={110} />
+        <ResearchFlow run={run} scopeFiles={scope?.files ?? []} openFile={(p) => open(`file:${p}`)} openCommit={(sha) => go?.("history", { sha })} />
+      </> : (
+        <div className="r-files">
+          <div className="r-col" style={{ borderTop: `2px solid ${color}` }}>
+            <h3>may edit{scope ? ` – ${scope.files.length} file${scope.files.length === 1 ? "" : "s"}` : ""}</h3>
+            {scope?.files.length
+              ? scope.files.map((f) => <div key={f} className="r-file mono">{f}</div>)
+              : (w.scope?.length ? w.scope.map((s) => <div key={s} className="r-file mono">{s}</div>) : <div className="muted r-file">no scope: the whole repo is in play</div>)}
+          </div>
+          <div className="r-col">
+            <h3>fenced – {scope?.fenced ?? 0} file{scope?.fenced === 1 ? "" : "s"} read only</h3>
+            <div className="muted r-file">everything outside the scope: read only; an experiment that touches it is reverted unrun</div>
+            {!!w.lock?.length && <div className="r-file">locks {w.lock.join(", ")}</div>}
+          </div>
         </div>
-        <div className="r-col">
-          <h3>fenced – {scope?.fenced ?? 0} file{scope?.fenced === 1 ? "" : "s"} read only</h3>
-          <div className="muted r-file">everything outside the scope: read only; an experiment that touches it is reverted unrun</div>
-          {!!w.lock?.length && <div className="r-file">locks {w.lock.join(", ")}</div>}
-          {!!w.review?.length && <div className="r-file">review {w.review.join(", ")}</div>}
-          {!!w.hide?.length && <div className="r-file">hides {w.hide.join(", ")}</div>}
-        </div>
-      </div>
-      {run && <RunChart run={run} w={560} h={140} />}
-      <table className="exp-table" aria-label={`Experiment history for ${w.name}`}>
-        <thead><tr><th>#</th><th>value</th><th>kept</th><th>hypothesis</th><th>by</th></tr></thead>
-        <tbody>
-          {exps.length === 0 && <tr><td colSpan={5} className="muted">no experiments yet</td></tr>}
-          {exps.slice(0, 14).map((e) => (
-            <tr key={`${e.n}-${e.at}`} className={e.kept ? "kept" : ""}>
-              <td className="mono">{e.n}</td>
-              <td className="v mono">{e.value === null ? "–" : num(e.value)}</td>
-              <td>{e.kept ? "kept" : e.value === null ? "failed" : "reverted"}</td>
-              <td className="r-hyp">{e.hypothesis}{e.note && <small className="muted"> – {e.note}</small>}</td>
-              <td className="muted">{e.by.replace(/^agent:/, "").replace(/^user:/, "you:")}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      )}
     </div>
   );
 }
