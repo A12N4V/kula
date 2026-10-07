@@ -188,6 +188,7 @@ pub fn for_path(path: &str) -> Option<&'static str> {
         "cs" => "csharp",
         "rb" | "rake" | "gemspec" => "ruby",
         "php" => "php",
+        "s" | "S" | "asm" | "nasm" | "inc" | "objdump" | "dump" | "dis" | "lst" | "disasm" => "asm",
         _ => return None,
     })
 }

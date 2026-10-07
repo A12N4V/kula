@@ -1,5 +1,6 @@
 //! The indexer: files → tree-sitter → symbols, calls, imports → knowledge graph.
 
+pub mod asm;
 pub mod langs;
 
 use crate::git::Repo;
@@ -576,6 +577,42 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                     let mut parser = Parser::new();
                     let mut out = Vec::new();
                     for (path, lid) in batch {
+                        // Disassembly text: hand-rolled line parser, no tree-sitter.
+                        // `langs::get("asm")` is None by design (not in IDS).
+                        if *lid == "asm" {
+                            let Some(src) = read(path) else { continue };
+                            if src.contains('\0') {
+                                if let Some(p) = progress {
+                                    p.done.fetch_add(1, Relaxed);
+                                }
+                                continue;
+                            }
+                            let (defs, calls) = asm::parse_asm(path, &src);
+                            out.push(ParsedFile {
+                                path: path.clone(),
+                                lang: "asm",
+                                loc: src.lines().count() as u32,
+                                defs: defs
+                                    .into_iter()
+                                    .map(|d| Def {
+                                        name: d.name,
+                                        kind: "function",
+                                        start_line: d.start_line,
+                                        end_line: d.end_line,
+                                        start_byte: d.start_byte,
+                                        end_byte: d.end_byte,
+                                        parent_name: None,
+                                        hash: d.hash,
+                                    })
+                                    .collect(),
+                                calls,
+                                imports: Vec::new(),
+                            });
+                            if let Some(p) = progress {
+                                p.done.fetch_add(1, Relaxed);
+                            }
+                            continue;
+                        }
                         let Some(lang) = langs::get(lid) else { continue };
                         if parser.set_language(&lang.language).is_err() {
                             continue;

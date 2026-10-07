@@ -812,3 +812,27 @@ fn fences_hold_for_shells_commits_teams_research_and_any_harness() {
     let prompt = std::fs::read_to_string(d.join(".claude/agents/kula-tests.md")).unwrap();
     assert!(prompt.starts_with("---\nname: kula-tests") && prompt.contains("enforced"), "{prompt}");
 }
+
+#[test]
+fn asm_text_parses_across_dialects() {
+    let t = tempfile::tempdir().unwrap();
+    let d = t.path();
+    git(d, &["init", "-q", "-b", "main"]);
+    write(d, "asm/intel.s", "auth_check:\n    push rbp\n    ret\nhash_token:\n    ret\nlogin_main:\n    call auth_check\n    call hash_token\n    ret\n");
+    write(d, "asm/dump.objdump", "Disassembly of section .text:\n\n00000000 <login_main>:\n   0:\te8 00 00 00 00 \tcall   5 <hash_token>\n   5:\tc3                   \tret\n\n00000010 <hash_token>:\n  10:\tc3 \tret\n");
+    write(d, "asm/arm.s", "_start:\n    bl hash_token\n    blx r3\nhash_token:\n    bx lr\n");
+    git(d, &["add", "-A"]);
+    git(d, &["config", "user.name", "Tester"]);
+    git(d, &["config", "user.email", "t@example.com"]);
+    git(d, &["config", "commit.gpgsign", "false"]);
+    git(d, &["commit", "-qm", "initial"]);
+    let out = kula(d, &["index"]);
+    assert!(out.contains("parsed"), "{out}");
+    let hits = kula_json(d, &["query", "hash_token"]);
+    assert!(hits.as_array().unwrap().iter().any(|n| n["name"] == "hash_token" && n["lang"] == "asm"), "{hits}");
+    let ctx = kula_json(d, &["context", "login_main"]);
+    let callees: Vec<&str> = ctx["callees"].as_array().unwrap().iter().map(|n| n["name"].as_str().unwrap()).collect();
+    assert!(callees.contains(&"hash_token"), "{ctx}");
+    let imp = kula_json(d, &["impact", "auth_check"]);
+    assert!(imp["hits"].as_array().unwrap().iter().any(|h| h["node"]["name"] == "login_main"), "{imp}");
+}
