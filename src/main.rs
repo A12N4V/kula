@@ -2,6 +2,7 @@
 
 mod agent;
 mod agents;
+mod cache;
 mod clean;
 mod config;
 mod git;

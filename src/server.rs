@@ -52,7 +52,12 @@ impl AppState {
         let built = Arc::new(index::snapshot(&self.repo, &sha)?);
         let mut cache = self.snapshots.lock().unwrap();
         if cache.len() >= 8 {
-            cache.clear();
+            // Evict one entry, not the whole cache – clearing threw away the
+            // hot HEAD snapshot every time a contrast touched a ninth commit.
+            let oldest = cache.keys().next().cloned();
+            if let Some(k) = oldest {
+                cache.remove(&k);
+            }
         }
         cache.insert(sha.clone(), built.clone());
         Ok((sha, built))
@@ -186,12 +191,17 @@ async fn index_progress() -> Json<Value> {
 
 async fn graph_data(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
-        let st = Store::open(&s.repo)?;
+        let root = s.repo.root.clone();
         let level = q.get("level").map(String::as_str).unwrap_or("symbol").to_string();
         let limit = q.get("limit").and_then(|l| l.parse().ok()).unwrap_or(4000);
-        let mut out = json!(graph::export(&st, &level, limit)?);
-        out["churn"] = json!(graph::churn(&s.repo, 90));
-        Ok(out)
+        // P1: the exported graph only changes when the store or HEAD does –
+        // cache it per (level, limit) instead of re-exporting every poll.
+        crate::cache::cached(&format!("graph:{level}:{limit}"), &root, move || {
+            let st = Store::open(&s.repo)?;
+            let mut out = json!(graph::export(&st, &level, limit)?);
+            out["churn"] = json!(graph::churn(&s.repo, 90));
+            Ok(out)
+        })
     })
     .await
 }
@@ -310,7 +320,11 @@ async fn history(State(s): State<AppState>, Path(id): Path<i64>) -> ApiResult {
 
 /// Everything that needs a human's attention, in one payload.
 async fn overview(State(s): State<AppState>) -> ApiResult {
+    // P1: branches, proposals (each a graph::compare), hotspots and log are
+    // pure functions of git + store state – rebuild only when that moves.
+    let root = s.repo.root.clone();
     blocking(move || {
+        crate::cache::cached("overview", &root, || {
         let r = &s.repo;
         let st = Store::open(r).ok();
         let branches = r.branches().unwrap_or_default();
@@ -356,6 +370,7 @@ async fn overview(State(s): State<AppState>) -> ApiResult {
             "recent": r.log(8, Some("HEAD")).unwrap_or_default(),
             "changes": r.status().map(|f| f.len()).unwrap_or(0),
         }))
+        })
     })
     .await
 }
@@ -516,7 +531,12 @@ async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(
 /// Everything agents are told and allowed: guard rules and the files they fence,
 /// the task, memories (stale first), and whether MCP and the hook are wired up.
 async fn agents_info(State(s): State<AppState>) -> ApiResult {
+    // P1: mtime-keyed cache – skills, research json, kula.toml, connections and
+    // memories are only rescanned when one of the files behind them moves.
+    // Every agents_action writes to watched paths, so the key moves itself.
     blocking(move || {
+        let root = s.repo.root.clone();
+        crate::cache::cached("agents", &root, move || {
         let r = &s.repo;
         let cfg = crate::config::Config::load(&r.root)?;
         let g = crate::guard::Guards::load(r)?;
@@ -575,6 +595,7 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "git_hooks": crate::project::hooks_status(r).unwrap_or_default(),
             "ci": ci,
         }))
+        })
     })
     .await
 }
@@ -791,7 +812,10 @@ async fn kg_examples() -> ApiResult {
 // ---------------------------------------------------------------- meta
 
 async fn meta_all(State(s): State<AppState>) -> ApiResult {
-    blocking(move || Ok(json!(meta::load(&s.repo)?))).await
+    // P1: issues/proposals/notes live in refs/kula/meta – reload only when the
+    // ref, .kula or the git state moves (fingerprinted by cache::cached).
+    let root = s.repo.root.clone();
+    blocking(move || crate::cache::cached("meta", &root, || Ok(json!(meta::load(&s.repo)?)))).await
 }
 
 #[derive(Deserialize)]

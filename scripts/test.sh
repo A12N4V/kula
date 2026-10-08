@@ -95,6 +95,15 @@ if want e2e; then
     curl -s "${H[@]}" "$U/api/agents" | grep -q '"secrets_hidden":true' && ok "GET /api/agents (guards, task, memory)" || bad "GET /api/agents"
     curl -s "${H[@]}" -H 'content-type: application/json' -d '{"target":"b","text":"b returns one"}' "$U/api/agents/remember" | grep -q '"kind":"memory"' && ok "POST remember" || bad "POST remember"
     curl -s "${H[@]}" -H 'content-type: application/json' -d '{"query":"SELECT ?n WHERE { ?s a kula:Function ; kula:name ?n } ORDER BY ?n"}' "$U/api/kg/sparql" | grep -q '"n":"a"' && ok "POST /api/kg/sparql" || bad "POST /api/kg/sparql"
+    # P1: mtime-keyed response cache – repeated polls are byte-stable, and a
+    # write to the watched paths (refs/kula/meta, .kula, kula.toml) shows up on
+    # the very next poll instead of after a rebuild delay.
+    A1=$(curl -s "${H[@]}" "$U/api/agents"); A2=$(curl -s "${H[@]}" "$U/api/agents")
+    [ "$A1" = "$A2" ] && ok "P1: /api/agents poll is stable when nothing changed" || bad "P1: /api/agents poll is stable when nothing changed"
+    curl -s "${H[@]}" -H 'content-type: application/json' -d '{"body":"p1-cache-freshness"}' "$U/api/meta/notes/new" >/dev/null
+    curl -s "${H[@]}" "$U/api/meta" | grep -q 'p1-cache-freshness' && ok "P1: /api/meta shows a fresh note right after write" || bad "P1: /api/meta shows a fresh note right after write"
+    SH() { node -e 'const o=JSON.parse(require("fs").readFileSync(0));const k=x=>typeof x==="object"&&x!==null?Array.isArray(x)?x.map(k):Object.keys(x).sort().join(","):typeof x;console.log(k(o))'; }
+    [ "$(echo "$A1" | SH)" = "$(echo "$A2" | SH)" ] && ok "P1: /api/agents response shape unchanged (e2e)" || bad "P1: /api/agents response shape unchanged (e2e)"
   fi
   kill $SRV 2>/dev/null; wait $SRV 2>/dev/null
 fi

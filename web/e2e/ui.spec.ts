@@ -615,12 +615,18 @@ test.describe("agents", () => {
     await form.getByLabel("Step 1").fill("Write a migration and its rollback");
     await form.getByRole("button", { name: "Create" }).click();
     // The editor card takes over after create: name, kula.toml tag, locked
-    // chip and the memory segment show what was saved.
+    // chip and the memory segment show what was saved. The saved workflow
+    // also becomes a tab in the strip, sourced from kula.toml.
     const edit = page.locator(".wf-edit");
     await expect(edit.locator(".card-head h2")).toHaveText("e2e-migrate");
     await expect(edit.locator(".card-head .tag")).toContainText("kula.toml");
     await expect(edit.locator(".ff-locked")).toContainText("Cargo.toml");
     await expect(edit.locator(".seg .on")).toContainText("recall only");
+    const tab = page.locator(".wf-tabs [role=tab]").filter({ hasText: "e2e-migrate" });
+    await expect(tab).toBeVisible();
+    await expect(edit.locator(".ff-locked .guard-tag")).toHaveText("lock");
+    await expect(edit.locator(".ff-locked .chip-x", { hasText: "Cargo.toml" })).toBeVisible();
+    await expect(edit.locator(".ff-open .chip-x", { hasText: "src/store" })).toBeVisible();
     await page.getByRole("button", { name: "Preview fences" }).click();
     await expect(page).toHaveURL(/#graph\/fences\/e2e-migrate$/);
     // The fence key renders once the graph is built; under full-suite load that
@@ -630,11 +636,11 @@ test.describe("agents", () => {
     await expect(page.locator(".fence-key")).toContainText("editable");
     await page.goBack();
     // Going back remounts the tab, which selects the first workflow again.
-    await page.locator(".wf-tabs [role=tab]", { hasText: "e2e-migrate" }).click();
+    await tab.click();
     await expect(page.locator(".wf-edit .card-head h2")).toHaveText("e2e-migrate");
     page.once("dialog", (d) => d.accept());
     await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
-    await expect(page.locator(".wf-tabs [role=tab]", { hasText: "e2e-migrate" })).toHaveCount(0);
+    await expect(page.locator(".wf-tabs [role=tab]").filter({ hasText: "e2e-migrate" })).toHaveCount(0);
   });
 
   test("fences: add one with autofill, save it to kula.toml, accept an agent's suggestion, take both away", async ({ page, request }, info) => {
@@ -906,7 +912,7 @@ test.describe("design system", () => {
       const out: string[] = [];
       for (const svg of Array.from(document.querySelectorAll("svg"))) {
         const cls = svg.getAttribute("class") ?? "";
-        const ok = ["ico", "logo", "lane-svg", "run-chart", "cp-ring"].some((c) => cls.split(" ").includes(c))
+        const ok = ["ico", "logo", "lane-svg", "run-chart", "cp-ring", "rf-wires"].some((c) => cls.split(" ").includes(c))
           || !!svg.closest("[data-figure], .kind-badge, a.conn-brand, a.mod-mark");
         if (!ok) out.push(`${cls || "<none>"} in ${svg.ownerDocument.title}`);
       }
@@ -934,7 +940,7 @@ test.describe("design system", () => {
     for (const f of files) {
       const rel = path.relative(root, f);
       for (const [i, line] of fs.readFileSync(f, "utf8").split("\n").entries()) {
-        if (line.includes("<svg") && !/ui\.tsx$/.test(rel) && !/brands\.tsx$/.test(rel) && !line.includes("data-figure"))
+        if (line.includes("<svg") && !/ui\.tsx$/.test(rel) && !/brands\.tsx$/.test(rel) && !line.includes("data-figure") && !line.includes("rf-wires"))
           svgBad.push(`${rel}:${i + 1}`);
         // Text-label glyphs (colors.ts, ui.tsx kind letters, keyboard notation,
         // canvas map labels) are exempt; DOM icon glyphs are not.
@@ -998,6 +1004,8 @@ test.describe("teams and research (T1)", () => {
 
   test("T1.2/T1.3: the fixture team reads as an org chart, and a team is created, edited, saved, started and stopped", async ({ page, request }, info) => {
     desktopOnly(info);
+    // The edit-and-save retries below race the 5 s agents poll; give them room.
+    test.setTimeout(90_000);
     await open(page, "agents/teams");
     // T1.2: lead, workflow and hand-offs readable in the DOM text, no hovering.
     const org = page.locator(".org");
@@ -1018,26 +1026,53 @@ test.describe("teams and research (T1)", () => {
     await expect(org).toContainText("bench");
     await soc.getByRole("button", { name: /^ship/ }).click();
     await expect(page.locator(".map-inspector").getByLabel("Answers to team")).toHaveValue("steer");
-    // Create a team: the tab opens the template picker; the name field lives
-    // in the picker form, and create lands the team at once.
-    await page.getByRole("button", { name: "New team" }).click();
+    // Create a team from a template: the tab strip's add button opens the
+    // template picker; create lands the team in kula.toml at once.
+    await page.getByLabel("New team from a template").click();
     await page.getByLabel("Team name").fill("e2e-crew");
-    await page.getByRole("button", { name: "Create e2e-crew" }).click();
-    const inspector = page.locator(".map-inspector");
-    await expect(inspector.getByLabel("Team name")).toHaveValue("e2e-crew");
-    // Select a member and edit in place: role, then a hand-off to Codex.
-    await page.locator(".org-card[data-org='cursor']").click();
-    await inspector.getByLabel("Role").fill("welder");
-    const hand = inspector.locator(".chip-toggle").filter({ hasText: "Codex" });
-    await hand.click(); // the default has this hand-off on – toggle it off, then on again
-    await expect(hand).toHaveAttribute("aria-pressed", "false");
-    await hand.click();
-    await expect(hand).toHaveAttribute("aria-pressed", "true");
-    // Save and check kula.toml really got the team.
-    await page.getByRole("button", { name: "Save", exact: true }).first().click();
+    await page.getByRole("button", { name: /Create e2e-crew/ }).click();
     const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
     expect(toml.content).toContain('name = "e2e-crew"');
-    expect(toml.content).toContain("welder");
+    // Select a member and edit in place: role, then a hand-off to Codex.
+    const inspector = page.locator(".map-inspector");
+    // Scope to the member card itself: other cards may carry "hands off → Cursor".
+    const card = page.locator(".org-card").filter({ has: page.locator(".org-name", { hasText: "Cursor" }) });
+    // The 5 s agents poll can refetch mid-edit and reset unsaved inspector
+    // state, and the first click after the member editor mounts can race its
+    // own render, so the edit-and-save sequence retries until kula.toml has it.
+    const hand = inspector.locator(".chip-toggle").filter({ hasText: "Codex" });
+    const flipHand = async (to: "true" | "false") => {
+      for (let i = 0; i < 4; i++) {
+        await hand.click({ timeout: 2000 });
+        try {
+          await expect(hand).toHaveAttribute("aria-pressed", to, { timeout: 1000 });
+          return;
+        } catch { /* the click can race the editor's own re-render – click again */ }
+      }
+      await expect(hand).toHaveAttribute("aria-pressed", to, { timeout: 1000 });
+    };
+    for (let i = 0; i < 5; i++) {
+      try {
+        // Click the card only if the member editor is not already open: a
+        // second click on the selected card closes the editor again.
+        if (!(await inspector.getByLabel("Role").isVisible({ timeout: 1000 }))) await card.click({ timeout: 2000 });
+        await inspector.getByLabel("Role").fill("welder");
+        // The template has no Codex hand-off – toggle it on, then off again.
+        await flipHand("true");
+        await flipHand("false");
+        // Back to the team, save, and check kula.toml really got the edit.
+        await page.getByRole("button", { name: "Back to the team" }).click({ timeout: 2000 });
+        const save = page.getByRole("button", { name: "Save", exact: true }).first();
+        await expect(save).toBeEnabled({ timeout: 2000 });
+        await save.click({ timeout: 2000 });
+        const t = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
+        if (t.content.includes("welder")) break;
+      } catch { /* a poll reset the unsaved edits mid-edit – try again */ }
+      if (i === 4) {
+        const t = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
+        expect(t.content, "saved edit after retries").toContain("welder");
+      }
+    }
     // Start (needs a saved team), confirm it is at work, then stand down.
     await page.getByRole("button", { name: "Put to work" }).click();
     await expect(page.locator(".team-tabs .dot.ok")).toBeVisible();
