@@ -82,7 +82,9 @@ pub fn run(repo: &Repo, age: Duration, dry_run: bool) -> Result<Report> {
     // Leftovers from interrupted writes.
     for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
         let name = e.file_name().to_string_lossy().to_string();
-        if (name.ends_with(".tmp") || name.ends_with("-journal") || name.ends_with(".db-shm")) && older_than(&e.path(), Duration::from_secs(60)) {
+        if (name.ends_with(".tmp") || name.ends_with("-journal") || name.ends_with(".db-shm"))
+            && older_than(&e.path(), Duration::from_secs(60))
+        {
             r.temp_removed += 1;
             if !dry_run {
                 let _ = std::fs::remove_file(e.path());

@@ -1,6 +1,7 @@
 //! kula – git, with a map.
 
 mod agent;
+mod agent_config;
 mod agents;
 mod clean;
 mod config;
@@ -15,8 +16,8 @@ mod meta;
 mod project;
 mod research;
 mod run;
-mod skills;
 mod server;
+mod skills;
 mod store;
 mod term;
 mod workflow;
@@ -275,7 +276,9 @@ enum Cmd {
     #[command(subcommand)]
     Research(ResearchCmd),
     /// One set of skills for every agent: .agents/skills, synced to each agent's own place.
-    #[command(after_help = "Examples:\n  kula skill list  ·  kula skill new release-notes -d \"Write release notes from merged PRs\"  ·  kula skill sync  ·  kula skill adopt claude triage")]
+    #[command(
+        after_help = "Examples:\n  kula skill list  ·  kula skill new release-notes -d \"Write release notes from merged PRs\"  ·  kula skill sync  ·  kula skill adopt claude triage"
+    )]
     #[command(subcommand)]
     Skill(SkillCmd),
     /// Run any agent harness held to kula's fences: `kula run -w fix -- aider`.
@@ -319,7 +322,9 @@ enum Cmd {
     Doctor,
     /// Free disk space: old `kula run` snapshots, temp files, a compacted store.
     /// `kula view` does this by itself after the idle timer (Settings → Disk).
-    #[command(after_help = "Examples:\n  kula clean   ·  kula clean --all   ·  kula clean --after 30   ·  kula clean --after 0 (timer off)")]
+    #[command(
+        after_help = "Examples:\n  kula clean   ·  kula clean --all   ·  kula clean --after 30   ·  kula clean --after 0 (timer off)"
+    )]
     Clean {
         /// Remove every kept run, not only those older than the timer
         #[arg(long)]
@@ -563,6 +568,9 @@ enum AgentsCmd {
     Accept { id: u64 },
     /// Dismiss a suggestion.
     Dismiss { id: u64 },
+    /// The agent config matrix: MCP servers and rules files per agent, against
+    /// the shared source. With a NAME, sync that server from .agents/mcp.json to all.
+    Mcp { name: Option<String> },
 }
 
 #[derive(Subcommand)]
@@ -966,7 +974,13 @@ fn run(cli: Cli) -> Result<()> {
                 println!("{}", serde_json::to_string(&r)?);
             } else {
                 let verb = if dry_run { "would remove" } else { "removed" };
-                println!("{verb} {} kept run(s), {} temp file(s); freed {} · .kula is {}", r.runs_removed, r.temp_removed, clean::human(r.freed_bytes), clean::human(r.size_bytes));
+                println!(
+                    "{verb} {} kept run(s), {} temp file(s); freed {} · .kula is {}",
+                    r.runs_removed,
+                    r.temp_removed,
+                    clean::human(r.freed_bytes),
+                    clean::human(r.size_bytes)
+                );
             }
         }
         Cmd::Status => status(&repo, json)?,
@@ -1953,6 +1967,45 @@ fn agents_cmd(repo: &Repo, c: AgentsCmd, json: bool) -> Result<()> {
             }
         }
         AgentsCmd::Brief => print!("{}", agents::brief(&config::Config::load(&repo.root)?)),
+        AgentsCmd::Mcp { name } => match name {
+            Some(name) => {
+                let w = agent_config::mcp_sync(&repo.root, &name)?;
+                for f in w {
+                    println!("  {} {}", green("✓"), f);
+                }
+            }
+            None => {
+                let m = agent_config::matrix(&repo.root)?;
+                if json {
+                    println!("{}", serde_json::to_string(&m)?);
+                    return Ok(());
+                }
+                header("mcp");
+                let src = if m.source.exists {
+                    format!("{} · {}", accent(&m.source.path), m.source.servers.join(", "))
+                } else {
+                    dim(&format!("{} – none yet", m.source.path))
+                };
+                println!("  source  {src}");
+                for a in &m.agents {
+                    let state = if !a.exists {
+                        yellow("missing")
+                    } else if a.missing.is_empty() && a.differs.is_empty() {
+                        green("in sync")
+                    } else {
+                        yellow(&format!("differs: {}", a.differs.iter().chain(a.missing.iter()).cloned().collect::<Vec<_>>().join(", ")))
+                    };
+                    println!("  {:<8} {:<28} {}", a.agent, dim(&a.path), state);
+                    println!("    servers: {}", if a.servers.is_empty() { dim("none") } else { a.servers.join(", ") });
+                }
+                header("rules");
+                for r in &m.rules {
+                    let state = if r.exists { green("✓") } else { dim("·") };
+                    println!("  {:<8} {:<32} {}", r.agent, r.path, state);
+                }
+                println!("\n  {}", dim("sync one: `kula agents mcp <server-name>`"));
+            }
+        },
         AgentsCmd::Suggestions => {
             let all = agents::suggestions(repo);
             if json {
