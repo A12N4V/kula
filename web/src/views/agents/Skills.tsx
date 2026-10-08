@@ -9,15 +9,15 @@
 // shows each skill against each agent's copy; skills only one agent has can be
 // adopted into the set; the editor writes .agents/skills and syncs at once.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { AgentsInfo, Skill, SkillState } from "../../api";
 import { Icon } from "../../ui";
 import { AGENT_NAME, type Act } from "./data";
 import { AgentMark, Card, TabStrip } from "./parts";
 
 const WHERE: Record<string, string> = { claude: ".claude/skills/", gemini: ".gemini/skills/", cursor: ".cursor/rules/*.mdc", codex: "reads .agents/skills" };
-const STATE: Record<SkillState, [string, string]> = {
-  synced: ["✓", "has the current copy"], native: ["◎", "reads the shared copy itself"], differs: ["≠", "its copy was edited – sync overwrites it"], missing: ["–", "does not have it yet"],
+const STATE: Record<SkillState, [ReactNode, string]> = {
+  synced: [<Icon.check key="s" />, "has the current copy"], native: [<Icon.box key="n" />, "reads the shared copy itself"], differs: ["≠", "its copy was edited – sync overwrites it"], missing: ["–", "does not have it yet"],
 };
 
 const SKILL_TEMPLATES: { name: string; description: string; body: string }[] = [
