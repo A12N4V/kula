@@ -2,9 +2,10 @@
 //! listings, Ghidra dumps).
 //!
 //! Labels (`name:` at line start, allowing leading whitespace, plus MASM
-//! `name PROC` / `ENDP` blocks and objdump `00000000 <name>:` headers) open a
-//! function that spans to the next label or EOF. Directives, local `.L*`
-//! labels, numeric labels and ARM `$a`/`$d` mapping symbols are skipped.
+//! `name PROC` / `ENDP` blocks, objdump `00000000 <name>:` headers and
+//! Ghidra/IDA `* FUNCTION <name>` banners) open a function that spans to the
+//! next label or EOF. Directives, local `.L*` labels, bare `LAB_...` address
+//! lines, numeric labels and ARM `$a`/`$d` mapping symbols are skipped.
 //!
 //! `call` / `callq` / `bl` / `blx` / `bls` (case-insensitive) record a call to
 //! the target symbol with the byte offset of the target token, so the caller
@@ -127,6 +128,10 @@ fn is_register(name: &str) -> bool {
             | "pc"
             | "cpsr"
             | "spsr"
+            | "gp"
+            | "tp"
+            | "fp"
+            | "ip"
             | "xzr"
             | "wzr"
             | "st"
@@ -135,15 +140,30 @@ fn is_register(name: &str) -> bool {
         return true;
     }
     let b = l.as_bytes();
-    // r0..r15, w0..w30, x0..x30, d/s/q/v/h/b/p/z + digits, cr/dr + digit,
-    // mm/xmm/ymm/zmm + digits, st(0..7).
+    // x86/ARM/RISC-V registers: r + digits with an optional w/d/b size suffix
+    // (r0..r15, r10d, r8w), w/x + digits, s/d/q/v/h/b/p/z + digits,
+    // RISC-V a0-a7/t0-t6, cr/dr + digits, mm/xmm/ymm/zmm + digits, st(0..7).
     let digits = |bs: &[u8]| !bs.is_empty() && bs.iter().all(|c| c.is_ascii_digit());
     if b.len() >= 2 {
+        if b[0] == b'r' {
+            let mut core = &b[1..];
+            if core.len() >= 2 {
+                if let Some(&last) = core.last() {
+                    if matches!(last, b'w' | b'd' | b'b') {
+                        core = &core[..core.len() - 1];
+                    }
+                }
+            }
+            if digits(core) {
+                return true;
+            }
+        }
         match b[0] {
-            b'r' if digits(&b[1..]) => return true,
             b'w' | b'x' if digits(&b[1..]) => return true,
             b'd' | b's' | b'q' | b'v' | b'h' | b'p' if digits(&b[1..]) => return true,
-            b'c' if b[1] == b'r' && digits(&b[2..]) => return true,
+            b'a' if digits(&b[1..]) => return true, // RISC-V a0-a7
+            b't' if digits(&b[1..]) => return true, // RISC-V t0-t6
+            b'c' | b'd' if b.len() >= 3 && b[1] == b'r' && digits(&b[2..]) => return true, // cr/dr
             b'z' if digits(&b[1..]) => return true,
             _ => {}
         }
@@ -156,25 +176,6 @@ fn is_register(name: &str) -> bool {
         if l.starts_with("st") && (l.len() == 2 || digits(&b[2..])) {
             return true;
         }
-        if l.starts_with("r8") || l.starts_with("r9") {
-            // r8..r15 with optional w/d/b suffix (r8d, r15w, r9b, ...).
-            let rest = &b[2..];
-            if rest.is_empty() || digits(rest) {
-                return true;
-            }
-            if rest.len() == 2 && rest[0].is_ascii_digit() && matches!(rest[1], b'w' | b'd' | b'b') {
-                return true;
-            }
-            if rest.len() == 1 && matches!(rest[0], b'w' | b'd' | b'b') {
-                return true;
-            }
-        }
-        if l.starts_with('r') && b.len() == 3 && b[1].is_ascii_digit() && matches!(b[2], b'w' | b'd' | b'b') {
-            return true; // r10w-style handled above; r8d-style two-digit covered too
-        }
-    }
-    if b.len() == 3 && b[0] == b'r' && b[1].is_ascii_digit() && b[1] <= b'9' && digits(&b[1..2]) && b[2].is_ascii_digit() {
-        return true; // r10..r15 plain
     }
     false
 }
@@ -230,6 +231,20 @@ fn objdump_label(line: &str) -> Option<&str> {
         return Some(base);
     }
     None
+}
+
+/// Ghidra/IDA `* FUNCTION <name> [@ <addr>]` banner. Returns the name.
+/// Bare `LAB_...` address lines are *not* defs: one address is not a function.
+fn function_header(line: &str) -> Option<String> {
+    let code = strip_comment(line);
+    let toks: Vec<&str> = code.split_whitespace().map(clean_token).filter(|t| !t.is_empty()).collect();
+    let pos = toks.iter().position(|t| t.eq_ignore_ascii_case("function"))?;
+    let raw = toks.get(pos + 1).copied()?;
+    if raw.starts_with('@') {
+        return None;
+    }
+    let name = raw.split('@').next().unwrap_or(raw);
+    valid_sym(name).then(|| name.to_string())
 }
 
 /// A label that opens a function, or `None` for directives/locals/headers.
@@ -297,7 +312,9 @@ fn is_call_mnemonic(tok: &str) -> bool {
         || t.eq_ignore_ascii_case("callq")
         || t.eq_ignore_ascii_case("bl")
         || t.eq_ignore_ascii_case("blx")
-        || t.eq_ignore_ascii_case("bls")
+        || t.eq_ignore_ascii_case("blr")
+        || t.eq_ignore_ascii_case("jal")
+        || t.eq_ignore_ascii_case("jalr")
 }
 
 /// Normalize a raw call operand to a symbol, or `None` for registers/junk.
@@ -361,10 +378,23 @@ fn call_target(line: &str) -> Option<(String, usize)> {
             return None;
         }
     }
-    let (t_start, raw) = toks.get(pos + 1).copied()?;
-    let norm = normalize_target(raw)?;
-    let inner = raw.find(norm).unwrap_or(0);
-    Some((norm.to_string(), t_start + inner))
+    // Skip size/pointer keywords and indirect memory operands:
+    // `call dword ptr [rax]` targets no symbol.
+    let mut ti = pos + 1;
+    loop {
+        let (t_start, raw) = toks.get(ti).copied()?;
+        if matches!(clean_token(raw).to_ascii_lowercase().as_str(), "dword" | "qword" | "word" | "byte" | "ptr") {
+            ti += 1;
+            continue;
+        }
+        let operand = raw.trim_start();
+        if operand.starts_with('[') || operand.starts_with('(') {
+            return None;
+        }
+        let norm = normalize_target(raw)?;
+        let inner = raw.find(norm).unwrap_or(0);
+        return Some((norm.to_string(), t_start + inner));
+    }
 }
 
 /// Parse disassembly text into function defs and call sites.
@@ -377,6 +407,10 @@ pub fn parse_asm(rel: &str, src: &str) -> (Vec<AsmDef>, Vec<(String, usize)>) {
     if src.is_empty() {
         return (Vec::new(), Vec::new());
     }
+    // Normalize CRLF so byte offsets and hashes are stable across checkouts.
+    let normalized: std::borrow::Cow<str> =
+        if src.contains('\r') { std::borrow::Cow::Owned(src.replace("\r\n", "\n").replace('\r', "\n")) } else { std::borrow::Cow::Borrowed(src) };
+    let src: &str = &normalized;
     // Lines with 1-based numbers and absolute byte offsets.
     let mut lines: Vec<(u32, usize, usize, &str)> = Vec::new(); // (no, start, raw_len, text)
     let mut off = 0usize;
@@ -412,7 +446,7 @@ pub fn parse_asm(rel: &str, src: &str) -> (Vec<AsmDef>, Vec<(String, usize)>) {
             close_open(*lineno, end_byte, &mut opens, &mut spans);
             continue;
         }
-        let def = proc_start(text).or_else(|| label_def(text));
+        let def = proc_start(text).or_else(|| function_header(text)).or_else(|| label_def(text));
         if let Some(name) = def {
             if opens.last().is_some() {
                 close_open(lineno - 1, *start, &mut opens, &mut spans);
@@ -542,5 +576,49 @@ mod tests {
         let src = "f:\n    CALL g\n    BL h\ng:\n    ret\nh:\n    ret\n";
         let (_, calls) = parse_asm("a.s", src);
         assert_eq!(targets(&calls), vec!["g", "h"]);
+    }
+
+    #[test]
+    fn ghidra_function_banners_are_defs() {
+        let src = "************************************************************\n* FUNCTION login_main @ 00101020\n************************************************************\nLAB_00101020  push rbp\nLAB_0010102b  call hash_token        ; CALL hash_token\nLAB_0010103a  ret\n************************************************************\n* FUNCTION hash_token @ 00101040\n************************************************************\nLAB_00101040  push rbp\nLAB_0010104c  add eax,0x9e3779b9    ; CALL auth_check (resolved import comment)\nLAB_00101052  ret\n";
+        let (defs, calls) = parse_asm("ghidra.asm", src);
+        // Bare LAB_ address lines are not defs; banners are.
+        assert_eq!(names(&defs), vec!["login_main", "hash_token"]);
+        // The real `call hash_token` counts; the `; CALL auth_check` comment does not.
+        assert_eq!(targets(&calls), vec!["hash_token"]);
+    }
+
+    #[test]
+    fn indirect_memory_calls_have_no_target() {
+        let src = "f:\n    call dword ptr [eax]\n    call qword ptr [rip+0x10]\n    call [rbx]\n    call g\ng:\n    ret\n";
+        let (defs, calls) = parse_asm("a.asm", src);
+        assert_eq!(names(&defs), vec!["f", "g"]);
+        assert_eq!(targets(&calls), vec!["g"]);
+    }
+
+    #[test]
+    fn blr_jal_jalr_are_calls() {
+        let src = "f:\n    blr x8\n    jal target\n    jalr t1\ndone:\n    ret\ntarget:\n    ret\n";
+        let (_, calls) = parse_asm("a.s", src);
+        // `blr x8` / `jalr t1` target registers: dropped. `jal target`: kept.
+        assert_eq!(targets(&calls), vec!["target"]);
+    }
+
+    #[test]
+    fn registers_are_never_callees() {
+        let src = "f:\n    call r10d\n    call a0\n    call dr0\n    call ip\n    call real\nreal:\n    ret\n";
+        let (_, calls) = parse_asm("a.s", src);
+        assert_eq!(targets(&calls), vec!["real"]);
+    }
+
+    #[test]
+    fn crlf_matches_lf() {
+        let lf = "main:\n    call helper\n    ret\nhelper:\n    ret\n";
+        let crlf = "main:\r\n    call helper\r\n    ret\r\nhelper:\r\n    ret\r\n";
+        let (defs_lf, calls_lf) = parse_asm("a.s", lf);
+        let (defs_crlf, calls_crlf) = parse_asm("a.s", crlf);
+        assert_eq!(names(&defs_lf), names(&defs_crlf));
+        assert_eq!(defs_lf[0].hash, defs_crlf[0].hash);
+        assert_eq!(targets(&calls_lf), targets(&calls_crlf));
     }
 }
