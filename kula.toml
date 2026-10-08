@@ -19,6 +19,19 @@ max_risk = "medium"   # CI gate: none | low | medium | high
 hide_secrets = true   # keep .env, keys and certificates out of every agent answer
 memory = true         # let agents remember facts about the code (`kula memory`)
 
+# Fence code off from AI agents. locked: read, never edit · hidden: never shown ·
+# review: editable, flagged in `kula check`. Paths are globs; symbols are names.
+# [[guard]]
+# paths = ["migrations/**"]
+# level = "locked"
+# reason = "schema changes go through the DBA"
+
+[[workflow]]
+name = "polish"
+about = "Small cleanups"
+scope = ["src/**"]
+steps = ["Tidy", "verify"]
+
 [[team]]
 name = "ship"
 about = "demo team"
@@ -30,17 +43,3 @@ metric = "wc -l src/app.rs"
 goal = "min"
 scope = ["src/**"]
 budget = 5
-
-[[workflow]]
-name = "polish"
-about = "Small cleanups"
-scope = ["src/**"]
-steps = ["Tidy", "verify"]
-
-[[workflow]]
-name = "e2e-migrate"
-about = "Schema changes, nothing else"
-scope = ["src/store"]
-lock = ["Cargo.toml"]
-memory = "read"
-steps = ["Write a migration and its rollback"]
