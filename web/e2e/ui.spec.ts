@@ -71,7 +71,7 @@ test.describe("shell", () => {
     // The title is the repository's directory name, whatever the checkout is called.
     const repo = await page.evaluate(() => fetch("/api/repo", { headers: { "x-kula-token": document.querySelector('meta[name="kula-token"]')?.content ?? "" } }).then((r) => r.json()));
     await expect(page.locator(".ov-title h1")).toHaveText(new RegExp(`\\b${repo.name}\\b`));
-    await expect(page.locator(".kpi-strip")).toBeVisible();
+    await expect(page.locator(".stat-table.ov-stats")).toBeVisible();
   });
 
   test("top bar carries only navigation, search and settings", async ({ page }) => {
@@ -146,7 +146,7 @@ test.describe("shell", () => {
 test.describe("design language", () => {
   test("one typeface: JetBrains Mono everywhere", async ({ page }) => {
     await open(page);
-    for (const sel of ["body", ".ov-title h1", ".kpi-cell b", ".card-head h2", ".section-title, .kpi-label"]) {
+    for (const sel of ["body", ".ov-title h1", ".stat-table th", ".card-head h2", ".stat-table .st-note"]) {
       const ff = await page.locator(sel).first().evaluate((el) => getComputedStyle(el).fontFamily);
       expect(ff, sel).toMatch(/^"?JetBrains Mono/);
     }
@@ -165,7 +165,7 @@ test.describe("design language", () => {
 
   test("sharp: framed surfaces and controls have square corners", async ({ page }) => {
     await open(page);
-    for (const sel of [".card", ".kpi-strip", ".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("0px");
+    for (const sel of [".card", ".stat-table", ".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("0px");
   });
 
   test("errors get a thin even border, not an accent bar", async ({ page }) => {
@@ -593,10 +593,11 @@ test.describe("agents", () => {
     await form.getByRole("button", { name: "Add step" }).click();
     await form.getByLabel("Step 1").fill("Write a migration and its rollback");
     await form.getByRole("button", { name: "Create" }).click();
-    const tile = page.locator(".wf-tile").filter({ hasText: "e2e-migrate" });
-    await expect(tile).toContainText("kula.toml");
-    await expect(tile.locator(".guard-tag.locked")).toContainText("Cargo.toml");
-    await expect(tile).toContainText("memory read");
+    const tab = page.locator(".wf-tabs [role=tab]", { hasText: "e2e-migrate" });
+    await expect(tab).toBeVisible();
+    // the editor carries the fences it will write to kula.toml, and the memory mode
+    await expect(page.locator(".ff-locked")).toContainText("Cargo.toml");
+    await expect(page.locator(".wf-edit")).toContainText("recall only");
     await page.getByRole("button", { name: "Preview fences" }).click();
     await expect(page).toHaveURL(/#graph\/fences\/e2e-migrate$/);
     // The fence key renders once the graph is built; under full-suite load that
@@ -605,10 +606,10 @@ test.describe("agents", () => {
     await expect(page.locator(".fence-key select")).toHaveValue("e2e-migrate", { timeout: 10_000 });
     await expect(page.locator(".fence-key")).toContainText("editable");
     await page.goBack();
-    await page.locator(".wf-tile").filter({ hasText: "e2e-migrate" }).click();
+    await tab.click();
     page.once("dialog", (d) => d.accept());
     await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
-    await expect(page.locator(".wf-tile").filter({ hasText: "e2e-migrate" })).toHaveCount(0);
+    await expect(page.locator(".wf-tabs [role=tab]", { hasText: "e2e-migrate" })).toHaveCount(0);
   });
 
   test("fences: add one with autofill, save it to kula.toml, accept an agent's suggestion, take both away", async ({ page, request }, info) => {
@@ -992,12 +993,13 @@ test.describe("teams and research (T1)", () => {
     await expect(org).toContainText("bench");
     await soc.getByRole("button", { name: /^ship/ }).click();
     await expect(page.locator(".map-inspector").getByLabel("Answers to team")).toHaveValue("steer");
-    // Create a team.
-    await page.getByRole("button", { name: "New team" }).click();
+    // Create a team: the tab strip's picker, then the template form names it.
+    await page.getByRole("button", { name: "New team from a template" }).click();
+    await page.locator(".tpl-form").getByLabel("Team name").fill("e2e-crew");
+    await page.locator(".tpl-form").getByRole("button", { name: "Create e2e-crew" }).click();
     const inspector = page.locator(".map-inspector");
-    await inspector.getByLabel("Team name").fill("e2e-crew");
     // Select a member and edit in place: role, then a hand-off to Codex.
-    await page.locator(".org-card").filter({ hasText: "Cursor" }).click();
+    await page.locator('.org-card[data-org="cursor"]').click();
     await inspector.getByLabel("Role").fill("welder");
     const hand = inspector.locator(".chip-toggle").filter({ hasText: "Codex" });
     await hand.click(); // the default has this hand-off on – toggle it off, then on again
