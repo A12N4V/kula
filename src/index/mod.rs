@@ -196,6 +196,7 @@ const COMMON: &[&str] = &[
     "trim_end_matches",
     "handle",
     "main",
+    "_start",
     "test",
     "string",
     "list",
@@ -779,11 +780,15 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
             if cands.is_empty() {
                 continue;
             }
-            let common = COMMON.contains(&name.as_str());
+            let common = COMMON.contains(&name.as_str()) || (fam == "asm" && asm::is_generated_name(name));
             let local: Vec<usize> = cands.iter().copied().filter(|c| nodes[*c].path == pf.path).collect();
             let targets: Vec<usize> = if !local.is_empty() {
                 local
             } else if common {
+                continue;
+            } else if fam == "asm" {
+                // Dumps carry no import tables: a call to a name defined only in
+                // another dump is an external reference, never a guess.
                 continue;
             } else {
                 let via_import: Vec<usize> = cands
@@ -876,7 +881,11 @@ pub fn snapshot_any(repo: &Repo, rev: &str) -> Result<Built> {
 /// Build the graph of any revision straight from git objects – no checkout.
 pub fn snapshot(repo: &Repo, rev: &str) -> Result<Built> {
     crate::git::validate_rev(rev)?;
-    let asm_on = crate::config::Config::load(&repo.root).map(|c| c.index.disassembly).unwrap_or(true);
+    // Same ceilings as walk(): config max_file_kb, not the bare constant, so a
+    // revision graph never drops a file the working-tree graph keeps.
+    let cfg = crate::config::Config::load(&repo.root).unwrap_or_default();
+    let asm_on = cfg.index.disassembly;
+    let max_bytes = if cfg.index.max_file_kb > 0 { cfg.index.max_file_kb * 1024 } else { MAX_FILE_BYTES };
     let listing = repo.run(&["ls-tree", "-r", "-l", "-z", "--full-tree", rev])?;
     let mut files: Vec<(String, Option<&'static str>)> = Vec::new();
     for entry in listing.split('\0').filter(|e| !e.is_empty()) {
@@ -884,7 +893,7 @@ pub fn snapshot(repo: &Repo, rev: &str) -> Result<Built> {
         let Some((meta, path)) = entry.split_once('\t') else { continue };
         let mut it = meta.split_whitespace();
         let (_mode, kind, _sha, size) = (it.next(), it.next(), it.next(), it.next());
-        if kind != Some("blob") || size.and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(u64::MAX) > MAX_FILE_BYTES {
+        if kind != Some("blob") || size.and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(u64::MAX) > max_bytes {
             continue;
         }
         if path.split('/').any(|seg| SKIP_DIRS.contains(&seg)) {

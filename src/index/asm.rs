@@ -397,6 +397,12 @@ fn call_target(line: &str) -> Option<(String, usize)> {
     }
 }
 
+/// Names that repeat across dumps of one binary (`_start`, Ghidra/IDA
+/// `LAB_`/`FUN_`/`DAT_` addresses): never link these across files by name.
+pub fn is_generated_name(name: &str) -> bool {
+    name == "_start" || name.starts_with("LAB_") || name.starts_with("FUN_") || name.starts_with("DAT_")
+}
+
 /// Parse disassembly text into function defs and call sites.
 ///
 /// `rel` is accepted for API symmetry and currently unused. Defs span from

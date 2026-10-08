@@ -865,3 +865,50 @@ fn asm_disassembly_opt_out() {
     let hits = kula_json(d, &["query", "auth_check"]);
     assert!(hits.as_array().unwrap().is_empty(), "{hits}");
 }
+
+#[test]
+fn asm_calls_never_link_across_files() {
+    // Dumps carry no import tables: a call to a name defined only in another
+    // dump is an external reference, not an edge (no guessing across files).
+    let t = tempfile::tempdir().unwrap();
+    let d = t.path();
+    git(d, &["init", "-q", "-b", "main"]);
+    write(d, "asm/a.s", "caller:\n    call shared_sym\n    ret\n");
+    write(d, "asm/b.s", "shared_sym:\n    ret\n");
+    git(d, &["config", "user.name", "Tester"]);
+    git(d, &["config", "user.email", "t@example.com"]);
+    git(d, &["config", "commit.gpgsign", "false"]);
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "initial"]);
+    kula(d, &["index"]);
+    let ctx = kula_json(d, &["context", "caller"]);
+    assert!(ctx["callees"].as_array().unwrap().is_empty(), "{ctx}");
+}
+
+#[test]
+fn index_and_snapshot_agree_on_size_ceiling() {
+    // walk() uses config max_file_kb (default 1024 KiB) while snapshot() used
+    // a 1_000_000-byte constant: a source file in between appeared in the
+    // worktree graph but not in HEAD's, so verify_edit reported phantom
+    // dangling callers on a clean tree.
+    let t = tempfile::tempdir().unwrap();
+    let d = t.path();
+    git(d, &["init", "-q", "-b", "main"]);
+    let mut big = String::from("pub fn big_callee() -> u8 { 1 }\n");
+    while big.len() < 1_020_000 {
+        big.push_str("// padding to sit between the old snapshot ceiling and max_file_kb\n");
+    }
+    write(d, "src/big.rs", &big);
+    write(d, "src/main.rs", "mod big;\npub fn caller() -> u8 { big::big_callee() }\n");
+    git(d, &["config", "user.name", "Tester"]);
+    git(d, &["config", "user.email", "t@example.com"]);
+    git(d, &["config", "commit.gpgsign", "false"]);
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "initial"]);
+    // Clean tree: nothing may show as changed. Pre-fix the 1.02MB file was
+    // in the worktree graph but missing from HEAD's snapshot, so its
+    // symbols came back as phantom "added" nodes here.
+    let v = kula_json(d, &["verify"]);
+    assert!(v["changed"].as_array().unwrap().is_empty(), "{v}");
+    assert_eq!(v["ok"], true, "{v}");
+}
