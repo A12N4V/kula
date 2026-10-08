@@ -188,12 +188,17 @@ pub fn for_path(path: &str) -> Option<&'static str> {
         "cs" => "csharp",
         "rb" | "rake" | "gemspec" => "ruby",
         "php" => "php",
+        "s" | "S" | "asm" | "nasm" | "objdump" => "asm",
         _ => return None,
     })
 }
 
 /// Every language kula parses.
 pub const IDS: [&str; 12] = ["rust", "python", "javascript", "typescript", "tsx", "go", "java", "c", "cpp", "csharp", "ruby", "php"];
+
+/// Language ids `for_path` can return that have no tree-sitter grammar and are
+/// parsed by hand instead (`index::asm`). They never appear in `IDS`/`get()`.
+pub const HAND_PARSED: [&str; 1] = ["asm"];
 
 /// A language's grammar and compiled queries, built once per process and shared
 /// by every parser thread (query compilation dominates small indexes otherwise).

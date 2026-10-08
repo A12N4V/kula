@@ -1,5 +1,6 @@
 //! The indexer: files → tree-sitter → symbols, calls, imports → knowledge graph.
 
+pub mod asm;
 pub mod langs;
 
 use crate::git::Repo;
@@ -195,6 +196,7 @@ const COMMON: &[&str] = &[
     "trim_end_matches",
     "handle",
     "main",
+    "_start",
     "test",
     "string",
     "list",
@@ -271,6 +273,8 @@ fn walk(root: &Path) -> Vec<(String, Option<&'static str>)> {
             Err(_) => continue,
         };
         let lang = langs::for_path(&rel);
+        // `[index] disassembly = false`: dumps stay file nodes without symbols.
+        let lang = if lang.is_some_and(|l| langs::HAND_PARSED.contains(&l)) && !cfg.index.disassembly { None } else { lang };
         out.push((rel, lang));
     }
     out.sort();
@@ -576,6 +580,42 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                     let mut parser = Parser::new();
                     let mut out = Vec::new();
                     for (path, lid) in batch {
+                        // Disassembly text: hand-rolled line parser, no tree-sitter.
+                        // `langs::get("asm")` is None by design (see HAND_PARSED).
+                        if langs::HAND_PARSED.contains(lid) {
+                            let Some(src) = read(path) else { continue };
+                            if src.contains('\0') {
+                                if let Some(p) = progress {
+                                    p.done.fetch_add(1, Relaxed);
+                                }
+                                continue;
+                            }
+                            let (defs, calls) = asm::parse_asm(path, &src);
+                            out.push(ParsedFile {
+                                path: path.clone(),
+                                lang: "asm",
+                                loc: src.lines().count() as u32,
+                                defs: defs
+                                    .into_iter()
+                                    .map(|d| Def {
+                                        name: d.name,
+                                        kind: "function",
+                                        start_line: d.start_line,
+                                        end_line: d.end_line,
+                                        start_byte: d.start_byte,
+                                        end_byte: d.end_byte,
+                                        parent_name: None,
+                                        hash: d.hash,
+                                    })
+                                    .collect(),
+                                calls,
+                                imports: Vec::new(),
+                            });
+                            if let Some(p) = progress {
+                                p.done.fetch_add(1, Relaxed);
+                            }
+                            continue;
+                        }
                         let Some(lang) = langs::get(lid) else { continue };
                         if parser.set_language(&lang.language).is_err() {
                             continue;
@@ -740,11 +780,15 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
             if cands.is_empty() {
                 continue;
             }
-            let common = COMMON.contains(&name.as_str());
+            let common = COMMON.contains(&name.as_str()) || (fam == "asm" && asm::is_generated_name(name));
             let local: Vec<usize> = cands.iter().copied().filter(|c| nodes[*c].path == pf.path).collect();
             let targets: Vec<usize> = if !local.is_empty() {
                 local
             } else if common {
+                continue;
+            } else if fam == "asm" {
+                // Dumps carry no import tables: a call to a name defined only in
+                // another dump is an external reference, never a guess.
                 continue;
             } else {
                 let via_import: Vec<usize> = cands
@@ -837,6 +881,11 @@ pub fn snapshot_any(repo: &Repo, rev: &str) -> Result<Built> {
 /// Build the graph of any revision straight from git objects – no checkout.
 pub fn snapshot(repo: &Repo, rev: &str) -> Result<Built> {
     crate::git::validate_rev(rev)?;
+    // Same ceilings as walk(): config max_file_kb, not the bare constant, so a
+    // revision graph never drops a file the working-tree graph keeps.
+    let cfg = crate::config::Config::load(&repo.root).unwrap_or_default();
+    let asm_on = cfg.index.disassembly;
+    let max_bytes = if cfg.index.max_file_kb > 0 { cfg.index.max_file_kb * 1024 } else { MAX_FILE_BYTES };
     let listing = repo.run(&["ls-tree", "-r", "-l", "-z", "--full-tree", rev])?;
     let mut files: Vec<(String, Option<&'static str>)> = Vec::new();
     for entry in listing.split('\0').filter(|e| !e.is_empty()) {
@@ -844,13 +893,15 @@ pub fn snapshot(repo: &Repo, rev: &str) -> Result<Built> {
         let Some((meta, path)) = entry.split_once('\t') else { continue };
         let mut it = meta.split_whitespace();
         let (_mode, kind, _sha, size) = (it.next(), it.next(), it.next(), it.next());
-        if kind != Some("blob") || size.and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(u64::MAX) > MAX_FILE_BYTES {
+        if kind != Some("blob") || size.and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(u64::MAX) > max_bytes {
             continue;
         }
         if path.split('/').any(|seg| SKIP_DIRS.contains(&seg)) {
             continue;
         }
-        files.push((path.to_string(), langs::for_path(path)));
+        let lang = langs::for_path(path);
+        let lang = if lang.is_some_and(|l| langs::HAND_PARSED.contains(&l)) && !asm_on { None } else { lang };
+        files.push((path.to_string(), lang));
     }
     files.sort();
     let wanted: Vec<&str> = files.iter().filter(|(_, l)| l.is_some()).map(|(p, _)| p.as_str()).collect();

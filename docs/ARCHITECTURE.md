@@ -11,7 +11,7 @@ flowchart LR
         TOML[kula.toml<br/>fences · workflows · agents]
     end
     subgraph kula[kula – one binary]
-        IDX[indexer<br/>tree-sitter × 11 languages]
+        IDX[indexer<br/>tree-sitter × 11 languages + asm dumps]
         DB[(.kula/graph.db<br/>SQLite + FTS5)]
         G[graph algorithms<br/>impact · trace · flows · clusters · compare]
         GU[guard<br/>one verdict per path]
@@ -72,7 +72,7 @@ flowchart LR
 ```
 
 - **Walk.** Files are walked with the `ignore` crate (respecting `.gitignore` and `kula.toml`'s `index.exclude`), skipping anything over `index.max_file_kb` (1024 by default).
-- **Parse.** Each language is a tree-sitter grammar plus three pattern sets: definitions, calls and imports (`src/index/langs.rs`). TypeScript/TSX, JavaScript/JSX, Python, Rust, Go, Java, C, C++, C#, Ruby and PHP today. A unit test compiles every pattern against its grammar. Files in other languages are still walked, so kula works on any git repository.
+- **Parse.** Each language is a tree-sitter grammar plus three pattern sets: definitions, calls and imports (`src/index/langs.rs`). TypeScript/TSX, JavaScript/JSX, Python, Rust, Go, Java, C, C++, C#, Ruby and PHP today, plus hand-parsed disassembly text (`src/index/asm.rs`: `.s`, `.asm`, `.objdump` → labels as functions, `call`/`bl` as calls, no imports; asm calls resolve within the same dump only, never by name across files; off with `[index] disassembly = false`). A unit test compiles every pattern against its grammar. Files in other languages are still walked, so kula works on any git repository.
 - **Resolve.** A call resolves to a definition in the same file first, then in a file it imports, then to a unique definition of that name in the same **language family** (`js/ts/tsx`, `c/cpp`, or the language itself) – a TypeScript `confirm()` never lands on a Rust `confirm`. A stoplist of generic method names (`get`, `map`, `push`, `as_str`, `unwrap`, …) keeps `.get()` from wiring everything to everything. Rust macro invocations are not calls.
 - **Cluster.** Weighted label propagation over calls, containment and imports, deterministic (stable order, ties broken by id). Each cluster is labelled by its dominant directory and its most central class or file.
 - **Store.** The graph is written to `graph.db.tmp` and swapped in with one `rename`. A running `kula view` keeps reading the old file until the swap, so it never sees a half-built graph. Journal mode is `DELETE`, so there are no `-wal`/`-shm` files to truncate under open readers.

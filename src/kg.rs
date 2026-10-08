@@ -47,7 +47,7 @@ pub const SCHEMA: &[(&str, &str, &str)] = &[
     ("Guard", "class", "A rule from kula.toml that fences code off from agents."),
     ("name", "property", "The symbol, file or package name."),
     ("path", "property", "Repository-relative path of the file that defines it."),
-    ("language", "property", "rust, python, javascript, typescript, tsx, go, java, c, cpp, csharp, ruby or php."),
+    ("language", "property", "rust, python, javascript, typescript, tsx, go, java, c, cpp, csharp, ruby, php or asm (hand-parsed disassembly text)."),
     ("startLine", "property", "First line of the definition (1-based)."),
     ("endLine", "property", "Last line of the definition."),
     ("definedIn", "property", "Symbol → the File that defines it."),
