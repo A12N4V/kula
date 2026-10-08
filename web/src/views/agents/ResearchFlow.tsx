@@ -90,7 +90,7 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
       </div>
 
       <div className="rf-stage" style={{ height: H }}>
-        <svg className="rf-wires" viewBox={`0 0 100 ${H}`} preserveAspectRatio="none" aria-hidden="true">
+        <svg className="rf-wires" viewBox={`0 0 100 ${H}`} preserveAspectRatio="none" aria-hidden="true" data-figure>
           {/* build on the best: the frontier feeds the next attempt */}
           <path d={`M${X.rec + 1},2 L${X.rec + 1},0.5 L1,0.5 L1,2`} className="rf-back" />
           {shown.map((e, i) => {

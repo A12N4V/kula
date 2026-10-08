@@ -581,16 +581,23 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
 
 /// What the repository is built with, so templates can offer commands that run here.
 fn stack(root: &std::path::Path) -> Vec<&'static str> {
-    [("Cargo.toml", "rust"), ("package.json", "node"), ("pyproject.toml", "python"), ("requirements.txt", "python"), ("go.mod", "go"), ("Makefile", "make")]
-        .into_iter()
-        .filter(|(f, _)| root.join(f).exists())
-        .map(|(_, s)| s)
-        .fold(vec![], |mut v, s| {
-            if !v.contains(&s) {
-                v.push(s);
-            }
-            v
-        })
+    [
+        ("Cargo.toml", "rust"),
+        ("package.json", "node"),
+        ("pyproject.toml", "python"),
+        ("requirements.txt", "python"),
+        ("go.mod", "go"),
+        ("Makefile", "make"),
+    ]
+    .into_iter()
+    .filter(|(f, _)| root.join(f).exists())
+    .map(|(_, s)| s)
+    .fold(vec![], |mut v, s| {
+        if !v.contains(&s) {
+            v.push(s);
+        }
+        v
+    })
 }
 
 /// For each research loop: the files its agents may change (the rest is fenced).
@@ -906,7 +913,12 @@ fn spawn_idle_clean(state: AppState) {
 }
 
 pub fn router(repo: Repo, token: String) -> Router {
-    let state = AppState { repo, token: Arc::new(token), snapshots: Default::default(), used: Arc::new(meta::now().max(0).try_into().unwrap_or(0).into()) };
+    let state = AppState {
+        repo,
+        token: Arc::new(token),
+        snapshots: Default::default(),
+        used: Arc::new(meta::now().max(0).try_into().unwrap_or(0).into()),
+    };
     spawn_idle_clean(state.clone());
     Router::new()
         .route("/api/clean", get(clean_get).post(clean_set))

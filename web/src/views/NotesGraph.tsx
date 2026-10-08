@@ -5,7 +5,7 @@
 // symbols they name. Click a target to see only its notes in the sidebar.
 import type { Note } from "../api";
 import { MiniGraph, type MiniEdge, type MiniNode } from "./MiniGraph";
-import { cssVar } from "./GraphView";
+import { cssVar } from "../graphfx";
 
 const KIND = (t: string) => (t === "repo" ? "repo" : t.split(":")[0]);
 const KCOLOR: Record<string, string> = { repo: "--accent", file: "--blue", symbol: "--violet", commit: "--yellow", cluster: "--green" };

@@ -51,9 +51,12 @@ toml_edit = { version = "0.23", default-features = false, features = ["parse", "
 tempfile = "3"
 
 [profile.release]
-lto = "thin"
+lto = "fat"
 codegen-units = 1
 strip = true
+# No catch_unwind or unwinding worker recovery anywhere (checked k1): a panic
+# aborts, which drops the landing pad tables and shrinks the binary.
+panic = "abort"
 
 [package.metadata.deb]
 maintainer = "Arnav Sharma <arnavs15@uci.edu>"

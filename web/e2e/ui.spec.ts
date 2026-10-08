@@ -18,7 +18,15 @@ function fixtureScript(): string {
 const test = base.extend({
   fx: [
     async ({ }, use, workerInfo) => {
-      const port = Number(process.env.KULA_PW_PORT ?? 7431) + 10 + workerInfo.workerIndex;
+      // KULA_PW_PORT + 10 + workerIndex collides when another checkout's dev
+      // server already owns that port: any 200 would pass the wait loop and
+      // the tests would read a foreign repo. Scan for a port where nothing
+      // answers before spawning the fixture on it.
+      let port = Number(process.env.KULA_PW_PORT ?? 7431) + 10 + workerInfo.workerIndex;
+      const taken = async (p: number) => {
+        try { await fetch(`http://localhost:${p}/`, { signal: AbortSignal.timeout(300) }); return true; } catch { return false; }
+      };
+      for (let p = port + 1; p < port + 12 && (await taken(port)); p++) port = p;
       // TMPDIR=/tmp: mktemp in /var/folders is denied in this worktree, so the
       // fixture repo must live somewhere we can actually write. The log is kept
       // and printed on failure – a fixture that dies silently is unfixable.
@@ -71,7 +79,8 @@ test.describe("shell", () => {
     // The title is the repository's directory name, whatever the checkout is called.
     const repo = await page.evaluate(() => fetch("/api/repo", { headers: { "x-kula-token": document.querySelector('meta[name="kula-token"]')?.content ?? "" } }).then((r) => r.json()));
     await expect(page.locator(".ov-title h1")).toHaveText(new RegExp(`\\b${repo.name}\\b`));
-    await expect(page.locator(".kpi-strip")).toBeVisible();
+    // Numbers live in the stat table now, not KPI tiles.
+    await expect(page.locator(".stat-table.ov-stats")).toBeVisible();
   });
 
   test("top bar carries only navigation, search and settings", async ({ page }) => {
@@ -146,7 +155,7 @@ test.describe("shell", () => {
 test.describe("design language", () => {
   test("one typeface: JetBrains Mono everywhere", async ({ page }) => {
     await open(page);
-    for (const sel of ["body", ".ov-title h1", ".kpi-cell b", ".card-head h2", ".section-title, .kpi-label"]) {
+    for (const sel of ["body", ".ov-title h1", ".stat-table td", ".card-head h2", ".section-title, .stat-table th"]) {
       const ff = await page.locator(sel).first().evaluate((el) => getComputedStyle(el).fontFamily);
       expect(ff, sel).toMatch(/^"?JetBrains Mono/);
     }
@@ -165,7 +174,7 @@ test.describe("design language", () => {
 
   test("sharp: framed surfaces and controls have square corners", async ({ page }) => {
     await open(page);
-    for (const sel of [".card", ".kpi-strip", ".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("0px");
+    for (const sel of [".card", ".stat-table.ov-stats", ".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("0px");
   });
 
   test("errors get a thin even border, not an accent bar", async ({ page }) => {
@@ -490,16 +499,28 @@ test.describe("graph interactions", () => {
     const { a, b } = await nodeAt(page, "edge");
     await page.mouse.click(a.x, a.y);
     await expect(page.locator(".inspector h2")).toHaveText(a.label);
-    // The camera flies to the selection: find the other end again once it lands.
-    await page.waitForTimeout(900);
-    const to = await page.evaluate((id) => {
+    // The camera flies to the selection: let the flight start and land (a short
+    // sleep alone loses under load), then wait until the other end stops moving.
+    await page.waitForTimeout(600);
+    const to = await expect.poll(async () => {
+      const read = () => page.evaluate((id) => {
+        const { sigma } = (window as any).__kula;
+        const p = sigma.framedGraphToViewport(sigma.getNodeDisplayData(id));
+        return `${Math.round(p.x)},${Math.round(p.y)}`;
+      }, b.id);
+      const first = await read();
+      await page.waitForTimeout(200);
+      return (await read()) === first ? first : "moving";
+    });
+    expect(to).not.toBe("moving");
+    const spot = await page.evaluate((id) => {
       const { sigma } = (window as any).__kula;
       const box = sigma.getContainer().getBoundingClientRect();
       const p = sigma.framedGraphToViewport(sigma.getNodeDisplayData(id));
       return { x: box.left + p.x, y: box.top + p.y };
     }, b.id);
     await page.keyboard.down("Shift");
-    await page.mouse.click(to.x, to.y);
+    await page.mouse.click(spot.x, spot.y);
     await page.keyboard.up("Shift");
     const chip = page.locator(".trace-chip");
     await expect(chip).toBeVisible();
@@ -593,10 +614,13 @@ test.describe("agents", () => {
     await form.getByRole("button", { name: "Add step" }).click();
     await form.getByLabel("Step 1").fill("Write a migration and its rollback");
     await form.getByRole("button", { name: "Create" }).click();
-    const tile = page.locator(".wf-tile").filter({ hasText: "e2e-migrate" });
-    await expect(tile).toContainText("kula.toml");
-    await expect(tile.locator(".guard-tag.locked")).toContainText("Cargo.toml");
-    await expect(tile).toContainText("memory read");
+    // The editor card takes over after create: name, kula.toml tag, locked
+    // chip and the memory segment show what was saved.
+    const edit = page.locator(".wf-edit");
+    await expect(edit.locator(".card-head h2")).toHaveText("e2e-migrate");
+    await expect(edit.locator(".card-head .tag")).toContainText("kula.toml");
+    await expect(edit.locator(".ff-locked")).toContainText("Cargo.toml");
+    await expect(edit.locator(".seg .on")).toContainText("recall only");
     await page.getByRole("button", { name: "Preview fences" }).click();
     await expect(page).toHaveURL(/#graph\/fences\/e2e-migrate$/);
     // The fence key renders once the graph is built; under full-suite load that
@@ -605,10 +629,12 @@ test.describe("agents", () => {
     await expect(page.locator(".fence-key select")).toHaveValue("e2e-migrate", { timeout: 10_000 });
     await expect(page.locator(".fence-key")).toContainText("editable");
     await page.goBack();
-    await page.locator(".wf-tile").filter({ hasText: "e2e-migrate" }).click();
+    // Going back remounts the tab, which selects the first workflow again.
+    await page.locator(".wf-tabs [role=tab]", { hasText: "e2e-migrate" }).click();
+    await expect(page.locator(".wf-edit .card-head h2")).toHaveText("e2e-migrate");
     page.once("dialog", (d) => d.accept());
     await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
-    await expect(page.locator(".wf-tile").filter({ hasText: "e2e-migrate" })).toHaveCount(0);
+    await expect(page.locator(".wf-tabs [role=tab]", { hasText: "e2e-migrate" })).toHaveCount(0);
   });
 
   test("fences: add one with autofill, save it to kula.toml, accept an agent's suggestion, take both away", async ({ page, request }, info) => {
@@ -992,12 +1018,15 @@ test.describe("teams and research (T1)", () => {
     await expect(org).toContainText("bench");
     await soc.getByRole("button", { name: /^ship/ }).click();
     await expect(page.locator(".map-inspector").getByLabel("Answers to team")).toHaveValue("steer");
-    // Create a team.
+    // Create a team: the tab opens the template picker; the name field lives
+    // in the picker form, and create lands the team at once.
     await page.getByRole("button", { name: "New team" }).click();
+    await page.getByLabel("Team name").fill("e2e-crew");
+    await page.getByRole("button", { name: "Create e2e-crew" }).click();
     const inspector = page.locator(".map-inspector");
-    await inspector.getByLabel("Team name").fill("e2e-crew");
+    await expect(inspector.getByLabel("Team name")).toHaveValue("e2e-crew");
     // Select a member and edit in place: role, then a hand-off to Codex.
-    await page.locator(".org-card").filter({ hasText: "Cursor" }).click();
+    await page.locator(".org-card[data-org='cursor']").click();
     await inspector.getByLabel("Role").fill("welder");
     const hand = inspector.locator(".chip-toggle").filter({ hasText: "Codex" });
     await hand.click(); // the default has this hand-off on – toggle it off, then on again
@@ -1024,11 +1053,12 @@ test.describe("teams and research (T1)", () => {
     desktopOnly(info);
     await open(page, "agents/research");
     // The fixture has no loop yet: the new-loop form shows the loop steps.
-    await page.getByRole("button", { name: "loop", exact: true }).click();
-    const form = page.locator(".map-inspector");
-    await form.getByLabel("Workflow name").fill("e2e-loop");
+    const form = page.locator(".tpl-form");
+    await expect(form).toBeVisible();
+    await expect(page.locator(".loop-step")).not.toHaveCount(0);
+    await form.getByLabel("Loop name").fill("e2e-loop");
     await form.getByLabel("Metric command").fill("sh -c 'echo 41'");
-    await form.getByRole("button", { name: "Save loop" }).click();
+    await form.getByRole("button", { name: "Create e2e-loop" }).click();
     await expect(page.locator(".research")).toContainText("e2e-loop");
     await expect(page.locator(".research")).toContainText("may edit");
     // Research keeps and reverts experiments with git, so it refuses a dirty
