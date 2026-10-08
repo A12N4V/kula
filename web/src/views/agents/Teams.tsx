@@ -23,7 +23,10 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   const [view, setView] = useState<"boxes" | "graph">(() => { try { return localStorage.getItem("kula.teams.view") === "boxes" ? "boxes" : "graph"; } catch { return "graph"; } });
   const pickView = (v: "boxes" | "graph") => { setView(v); try { localStorage.setItem("kula.teams.view", v); } catch { /* */ } };
   const [cur, setCur] = useState(() => Math.max(0, info.teams.findIndex((t) => t.name === info.team?.name)));
-  useEffect(() => setTeams(info.teams), [info]);
+  // Follow the server only when its teams change: the 5 s agents poll hands
+  // back a new `info` every time, and must not wipe edits not saved yet.
+  const serverTeams = JSON.stringify(info.teams);
+  useEffect(() => setTeams(info.teams), [serverTeams]);
   const dirty = JSON.stringify(teams) !== JSON.stringify(info.teams);
   const t = teams[cur];
   // renaming a team carries the teams under it along
