@@ -1010,20 +1010,34 @@ test.describe("teams and research (T1)", () => {
     const card = page.locator(".org-card").filter({ has: page.locator(".org-name", { hasText: "Cursor" }) });
     // The 5 s agents poll can refetch mid-edit and reset unsaved inspector
     // state, so the edit-and-save sequence retries until kula.toml carries it.
+    // The 5 s agents poll can refetch mid-edit and reset unsaved inspector
+    // state, and the first click after the member editor mounts can race its
+    // own render, so the edit-and-save sequence retries until kula.toml has it.
+    const hand = inspector.locator(".chip-toggle").filter({ hasText: "Codex" });
+    const flipHand = async (to: "true" | "false") => {
+      for (let i = 0; i < 4; i++) {
+        await hand.click({ timeout: 2000 });
+        try {
+          await expect(hand).toHaveAttribute("aria-pressed", to, { timeout: 1000 });
+          return;
+        } catch { /* the click can race the editor's own re-render – click again */ }
+      }
+      await expect(hand).toHaveAttribute("aria-pressed", to, { timeout: 1000 });
+    };
     for (let i = 0; i < 5; i++) {
       try {
-        await card.click({ timeout: 1500 });
+        // Click the card only if the member editor is not already open: a
+        // second click on the selected card closes the editor again.
+        if (!(await inspector.getByLabel("Role").isVisible({ timeout: 1000 }))) await card.click({ timeout: 2000 });
         await inspector.getByLabel("Role").fill("welder");
-        const hand = inspector.locator(".chip-toggle").filter({ hasText: "Codex" });
-        await hand.click({ timeout: 1500 }); // the template has no Codex hand-off – toggle it on
-        await expect(hand).toHaveAttribute("aria-pressed", "true", { timeout: 1500 });
-        await hand.click({ timeout: 1500 });
-        await expect(hand).toHaveAttribute("aria-pressed", "false", { timeout: 1500 });
+        // The template has no Codex hand-off – toggle it on, then off again.
+        await flipHand("true");
+        await flipHand("false");
         // Back to the team, save, and check kula.toml really got the edit.
-        await page.getByRole("button", { name: "Back to the team" }).click({ timeout: 1500 });
+        await page.getByRole("button", { name: "Back to the team" }).click({ timeout: 2000 });
         const save = page.getByRole("button", { name: "Save", exact: true }).first();
-        await expect(save).toBeEnabled({ timeout: 1500 });
-        await save.click({ timeout: 1500 });
+        await expect(save).toBeEnabled({ timeout: 2000 });
+        await save.click({ timeout: 2000 });
         const t = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
         if (t.content.includes("welder")) break;
       } catch { /* a poll reset the unsaved edits mid-edit – try again */ }
