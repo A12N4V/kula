@@ -155,7 +155,7 @@ test.describe("shell", () => {
 test.describe("design language", () => {
   test("one typeface: JetBrains Mono everywhere", async ({ page }) => {
     await open(page);
-    for (const sel of ["body", ".ov-title h1", ".stat-table td", ".card-head h2", ".section-title, .stat-table th"]) {
+    for (const sel of ["body", ".ov-title h1", ".stat-table td", ".stat-table .st-note", ".card-head h2", ".section-title, .stat-table th"]) {
       const ff = await page.locator(sel).first().evaluate((el) => getComputedStyle(el).fontFamily);
       expect(ff, sel).toMatch(/^"?JetBrains Mono/);
     }
@@ -1026,11 +1026,10 @@ test.describe("teams and research (T1)", () => {
     await expect(org).toContainText("bench");
     await soc.getByRole("button", { name: /^ship/ }).click();
     await expect(page.locator(".map-inspector").getByLabel("Answers to team")).toHaveValue("steer");
-    // Create a team from a template: the tab strip's add button opens the
-    // template picker; create lands the team in kula.toml at once.
-    await page.getByLabel("New team from a template").click();
-    await page.getByLabel("Team name").fill("e2e-crew");
-    await page.getByRole("button", { name: /Create e2e-crew/ }).click();
+    // Create a team: the tab strip's picker, then the template form names it.
+    await page.getByRole("button", { name: "New team from a template" }).click();
+    await page.locator(".tpl-form").getByLabel("Team name").fill("e2e-crew");
+    await page.locator(".tpl-form").getByRole("button", { name: "Create e2e-crew" }).click();
     const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
     expect(toml.content).toContain('name = "e2e-crew"');
     // Select a member and edit in place: role, then a hand-off to Codex.
@@ -1325,5 +1324,100 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
     // The next poll recovers and the banner clears by itself; the view never remounted.
     await expect(note).toHaveCount(0, { timeout: 10_000 });
     await expect(page.locator(".ov-title h1")).toBeVisible();
+  });
+});
+
+// ------------------------------------------------------------------ K2 · unified agent config
+// The skills tab carries the whole config picture: the skill matrix with a diff
+// before a sync overwrites an edited copy, every agent's MCP servers and rules
+// files against the shared source, and the memory layers (scope + provenance).
+test.describe("agents config K2", () => {
+  test.use({ baseURL: ({ fx }, use) => use(fx) });
+  test.describe.configure({ mode: "serial" });
+  const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
+
+  /** This worker's fixture repo on disk (fixture.sh writes the path file). */
+  function fixtureRepo(page: Page): string {
+    const port = new URL(page.url()).port ?? String(Number(process.env.KULA_PW_PORT ?? 7431) + 1);
+    return fs.readFileSync(`/tmp/kula-fixture-${port}.path`, "utf8").trim();
+  }
+
+  test("the config matrix shows every agent's MCP servers and rules, and syncs one from the source", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents/skills");
+    const repo = fixtureRepo(page);
+    // a shared source with one server; cursor holds an edited copy of it
+    fs.mkdirSync(path.join(repo, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(repo, ".cursor"), { recursive: true });
+    fs.writeFileSync(path.join(repo, ".agents/mcp.json"), JSON.stringify({ mcpServers: { kula: { command: "kula", args: ["mcp"] } } }, null, 2));
+    fs.writeFileSync(path.join(repo, ".cursor/mcp.json"), JSON.stringify({ mcpServers: { kula: { command: "kula", args: ["serve", "--edited"] } } }));
+    await page.reload();
+    const panel = page.locator(".k2-config");
+    await expect(panel).toContainText("mcp servers");
+    // every agent has a row with its config path
+    for (const a of ["Claude Code", "Cursor", "Codex", "Gemini CLI"]) await expect(panel).toContainText(a);
+    await expect(panel).toContainText(".mcp.json");
+    await expect(panel).toContainText(".codex/config.toml");
+    // rules files are listed with what exists (AGENTS.md is in the fixture, GEMINI.md is not)
+    await expect(panel).toContainText("AGENTS.md");
+    await expect(panel).toContainText("GEMINI.md");
+    // cursor differs from the source; sync it from the matrix
+    const cursorRow = panel.locator("tr", { hasText: "Cursor" }).filter({ hasText: ".cursor/mcp.json" });
+    await expect(cursorRow).toContainText("differs");
+    await cursorRow.locator("button", { hasText: "sync" }).first().click();
+    await expect(cursorRow).toContainText("in sync");
+    // the merge kept the agent's file structure and wrote the source definition
+    const cur = JSON.parse(fs.readFileSync(path.join(repo, ".cursor/mcp.json"), "utf8"));
+    expect(cur.mcpServers.kula.args).toEqual(["mcp"]);
+  });
+
+  test("a skill whose copy was edited shows the diff before a sync overwrites it", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents/skills");
+    const repo = fixtureRepo(page);
+    // a shared skill, and an edited copy in Claude Code's own folder
+    fs.mkdirSync(path.join(repo, ".agents/skills/triage"), { recursive: true });
+    fs.mkdirSync(path.join(repo, ".claude/skills/triage"), { recursive: true });
+    fs.writeFileSync(path.join(repo, ".agents/skills/triage/SKILL.md"),
+      "---\nname: triage\ndescription: Sort a new issue: reproduce, label, find the owning code\n---\n\n1. Reproduce with the smallest input.\n2. Label.\n");
+    fs.writeFileSync(path.join(repo, ".claude/skills/triage/SKILL.md"),
+      "---\nname: triage\ndescription: Sort a new issue: reproduce, label, find the owning code\n---\n\n1. Reproduce with the smallest input.\n2. Label the severity first.\n");
+    await page.reload();
+    const matrix = page.locator(".sk-matrix");
+    await expect(matrix).toContainText("triage");
+    // the matrix marks Claude Code's copy as edited
+    const row = matrix.locator("tr", { hasText: "triage" });
+    await expect(row.locator(".sk-st.differs")).toHaveCount(1);
+    // picking the skill opens the diff of source vs agent copy
+    await row.click();
+    const diff = page.locator(".sk-diff");
+    await expect(diff).toContainText("sync overwrites these");
+    await expect(diff.locator("pre")).toContainText("-2. Label the severity first.");
+    await expect(diff.locator("pre")).toContainText("+2. Label.");
+    // the sync that the diff warns about: overwrite, and the copy matches again
+    await diff.locator("button", { hasText: "overwrite with sync" }).click();
+    const copy = fs.readFileSync(path.join(repo, ".claude/skills/triage/SKILL.md"), "utf8");
+    expect(copy).toContain("2. Label.\n");
+    expect(copy).not.toContain("severity first");
+    await expect(page.locator(".sk-diff")).toHaveCount(0);
+  });
+
+  test("memory layers label each memory with scope and provenance", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents/skills");
+    const panel = page.locator(".k2-layers");
+    await expect(panel).toContainText("Memory layers");
+    // the fixture ships two memories, both anchored to a symbol or file
+    const rows = panel.locator(".k2-layers-t tbody tr");
+    await expect(rows).toHaveCount(2);
+    // provenance: an agent and the commit that introduced the memory
+    await expect(rows.first().locator("td").nth(3)).toContainText("e2e");
+    await expect(rows.first().locator("td").nth(4)).toHaveText(/[0-9a-f]{7}/);
+    // symbol targets are shown and the scope filter narrows the table
+    await expect(panel).toContainText("symbol:src/store.rs:publish");
+    await panel.locator(".chip-toggle", { hasText: "task" }).click();
+    await expect(rows).toHaveCount(0);
+    await panel.locator(".chip-toggle", { hasText: "repo" }).click();
+    await expect(rows).toHaveCount(2);
   });
 });

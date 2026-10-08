@@ -12,3 +12,37 @@
 @import "./styles/settings.css";
 @import "./styles/type.css";
 @import "./styles/sweep.css";
+
+/* ------------------------------------------------------------------ K2 · unified agent config (skills, rules, MCP, memory layers) */
+.sk-diff { margin-top: var(--gap); border-top: 1px solid var(--line); padding-top: var(--gap); }
+.sk-diff h3, .k2-matrix h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin: 0 0 8px; }
+.sk-diff-row { margin-bottom: var(--gap); }
+.sk-diff-row .row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.k2-diff { background: var(--bg2, #0a0908); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; font-size: 11px; line-height: 1.55; overflow-x: auto; max-height: 260px; white-space: pre; color: var(--text); }
+.sk-usage { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: var(--gap); }
+.k2-cfg-t { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 14px; }
+.k2-cfg-t th, .k2-cfg-t td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.k2-cfg-t thead th { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.k2-src th, .k2-src td { color: var(--muted); }
+.k2-mcp-state { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.k2-layers-t { width: 100%; border-collapse: collapse; font-size: 12px; }
+.k2-layers-t th, .k2-layers-t td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.k2-layers-t thead th { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.k2-mem-body { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k2-scope-task { border-color: var(--accent); color: var(--accent); }
+.k2-scope-workflow { border-color: var(--line2, #24201d); color: var(--text); }
+.k2-scope-repo { color: var(--muted); }
+.k2-layers-t tr.is-stale td { color: var(--muted); }
+/* the memory target is a link inside a compact row: give it a real hit target */
+.k2-layers-t .linkish { display: inline-block; padding: 4px 6px; min-height: 28px; }
+.k2-scope-pick { margin-bottom: var(--gap); }
+@media (max-width: 720px) {
+  .k2-mem-body { max-width: 180px; }
+  .k2-diff { max-height: 180px; }
+  /* the phone floor is a 40 px hit target: the skill TabStrip add button and
+     the template chips in the editor were 28–32 px */
+  .sk .team-tab-add { min-width: 40px; min-height: 40px; }
+  .sk .chip-toggle { min-height: 40px; }
+  .k2-layers .chip-toggle { min-height: 40px; }
+  .k2-layers-t .linkish { min-height: 40px; padding: 8px 6px; }
+}

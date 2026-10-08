@@ -974,6 +974,14 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/meta", get(meta_all))
         .route("/api/agents", get(agents_info))
         .route("/api/agents/{action}", post(agents_action))
+        // K2: unified agent config (see the K2 block at the end of this file).
+        // under /api/agent/ (GET namespace): axum merges a static path into the
+        // sibling /api/agents/{action} MethodRouter, so a GET there answers 405
+        .route("/api/agent/config_matrix", get(k2_config_matrix))
+        .route("/api/agent/skill_detail", get(k2_skill_detail))
+        .route("/api/agent/skill_diff", get(k2_skill_diff))
+        .route("/api/agent/memory_layers", get(k2_memory_layers))
+        .route("/api/agent/mcp_sync", post(k2_mcp_sync))
         .route("/api/kg/sparql", post(kg_sparql))
         .route("/api/kg/export", get(kg_export))
         .route("/api/kg/examples", get(kg_examples))
@@ -1035,3 +1043,59 @@ pub fn serve(repo: Repo, port: u16, open_browser: bool) -> anyhow::Result<()> {
         Ok(())
     })
 }
+
+// ============================================================ K2 · unified agent
+// config: skills, rules, MCP, memory layers. Everything below this marker calls
+// into src/agent_config.rs and src/skills.rs; no caching changes here (P1 owns
+// those). Routes are registered in `router` under the same K2 marker.
+
+/// GET /api/agents/config_matrix – what each agent has for MCP servers and
+/// rules files, against the shared source in .agents/mcp.json.
+async fn k2_config_matrix(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!(crate::agent_config::matrix(&s.repo.root)?))).await
+}
+
+/// GET /api/agents/skill_detail?name= – one skill: per-agent copy states, its
+/// files, and which workflows and teams mention it.
+async fn k2_skill_detail(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let name = q.get("name").cloned().unwrap_or_default();
+        anyhow::ensure!(!name.is_empty(), "send ?name=");
+        let s0 = crate::skills::list(&s.repo.root).into_iter().find(|x| x.name == name).ok_or_else(|| anyhow!("no skill {name:?}"))?;
+        Ok(json!({ "skill": s0, "usage": crate::agent_config::skill_usage(&s.repo.root, &name) }))
+    })
+    .await
+}
+
+/// GET /api/agents/skill_diff?name=&agent= – the unified diff a sync would
+/// apply: the agent's copy against the source. None when there is no copy.
+async fn k2_skill_diff(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let name = q.get("name").cloned().unwrap_or_default();
+        let agent = q.get("agent").cloned().unwrap_or_default();
+        anyhow::ensure!(!name.is_empty() && !agent.is_empty(), "send ?name=&agent=");
+        let diff = crate::skills::diff(&s.repo.root, &agent, &name);
+        Ok(json!({ "name": name, "agent": agent, "diff": diff }))
+    })
+    .await
+}
+
+/// GET /api/agents/memory_layers – every memory with its layer derived from
+/// what exists: scope (task / workflow / repo) and provenance (agent, commit,
+/// symbol). No new storage.
+async fn k2_memory_layers(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!(crate::agent_config::memory_layers(&s.repo)?))).await
+}
+
+#[derive(Deserialize)]
+struct McpSyncReq {
+    name: String,
+}
+
+/// POST /api/agents/mcp_sync – sync one MCP server definition from
+/// .agents/mcp.json into every agent's own config (merge, never clobber).
+async fn k2_mcp_sync(State(s): State<AppState>, Json(a): Json<McpSyncReq>) -> ApiResult {
+    blocking(move || Ok(json!({ "written": crate::agent_config::mcp_sync(&s.repo.root, &a.name)? }))).await
+}
+
+// K2 route lines live in `router`, marked with the same K2 comment.
