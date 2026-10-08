@@ -115,7 +115,12 @@ async fn guard(State(s): State<AppState>, req: Request, next: Next) -> Response 
             return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "missing or bad session token" }))).into_response();
         }
     }
-    next.run(req).await
+    let write = req.method() != axum::http::Method::GET && req.method() != axum::http::Method::HEAD;
+    let res = next.run(req).await;
+    if write {
+        crate::cache::clear();
+    }
+    res
 }
 
 async fn static_file(State(s): State<AppState>, req: Request) -> Response {
@@ -324,7 +329,7 @@ async fn overview(State(s): State<AppState>) -> ApiResult {
     // pure functions of git + store state – rebuild only when that moves.
     let root = s.repo.root.clone();
     blocking(move || {
-        crate::cache::cached("overview", &root, || {
+        let mut out = crate::cache::cached("overview", &root, || {
         let r = &s.repo;
         let st = Store::open(r).ok();
         let branches = r.branches().unwrap_or_default();
@@ -368,9 +373,11 @@ async fn overview(State(s): State<AppState>) -> ApiResult {
             "notes": m.notes.len(),
             "hotspots": hot,
             "recent": r.log(8, Some("HEAD")).unwrap_or_default(),
-            "changes": r.status().map(|f| f.len()).unwrap_or(0),
         }))
-        })
+        })?;
+        // Uncommitted edits move no watched file, so the count is never cached.
+        out["changes"] = json!(s.repo.status().map(|f| f.len()).unwrap_or(0));
+        Ok(out)
     })
     .await
 }

@@ -22,7 +22,22 @@ struct Cached {
 
 /// Directories we fingerprint recursively (capped), each with its own depth cap.
 const DIRS: &[&str] = &[".kula", ".agents", ".claude", ".cursor", ".gemini", ".codex", ".github/workflows"];
-const FILES: &[&str] = &["kula.toml", ".mcp.json", ".kula-ci.yml"];
+const FILES: &[&str] = &[
+    "kula.toml",
+    ".mcp.json",
+    ".kula-ci.yml",
+    // agent docs at the root (the Docs tab edits these)
+    "AGENTS.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+    // what `stack` reads
+    "Cargo.toml",
+    "package.json",
+    "pyproject.toml",
+    "requirements.txt",
+    "go.mod",
+    "Makefile",
+];
 
 /// `(mtime micros, content hash, size)` of one path; missing files as (0, 0, 0).
 ///
@@ -95,6 +110,8 @@ fn fingerprint(root: &Path) -> Vec<(PathBuf, u64, u64, i64)> {
             out.push((p, mtime, hash, size));
         }
         walk(&g.join("refs"), &mut out, 0);
+        // `kula hook install` writes here; agents_info reports it
+        walk(&g.join("hooks"), &mut out, 0);
     }
     out
 }
@@ -120,6 +137,14 @@ fn walk(dir: &Path, out: &mut Vec<(PathBuf, u64, u64, i64)>, depth: u8) {
         if out.len() >= MAX_ENTRIES {
             return;
         }
+    }
+}
+
+/// Forget everything. The server calls this on every write request, so a
+/// change made through the UI never waits on a file stamp to show up.
+pub fn clear() {
+    if let Some(map) = CACHE.lock().unwrap().as_mut() {
+        map.clear();
     }
 }
 
