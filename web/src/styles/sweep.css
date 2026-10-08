@@ -39,3 +39,9 @@
    pushing past the viewport; the tag ellipsises, the row keeps its lane. */
 .refs { min-width: 0; max-width: 100%; }
 .refs .tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+/* ================================================================ integration: phone floors that must win the cascade (imported last) */
+@media (max-width: 760px) {
+  .stat-table th, .stat-table td { padding-top: 11px; padding-bottom: 11px; }
+}
+.verify-head { min-height: 40px; }

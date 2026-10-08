@@ -339,3 +339,8 @@
 .wf-tabs { display: grid; gap: 10px; min-width: 0; }
 .wf-tabs .need.sugg { padding: 10px 12px; border: 1px dashed var(--accent); background: var(--bg-2); }
 .wf-from { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; }
+
+/* ================================================================ integration: 40px phone hit targets in the agents tabs */
+@media (max-width: 760px) {
+  .team-tabs button, .team-tabs .team-tab-add, .tpl-card, .chip-toggle, .org-card { min-height: 40px; min-width: 40px; }
+}
