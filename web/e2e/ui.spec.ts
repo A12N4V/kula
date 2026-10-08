@@ -1010,6 +1010,7 @@ test.describe("teams and research (T1)", () => {
     await page.getByRole("button", { name: "Save", exact: true }).first().click();
     const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
     expect(toml.content).toContain('name = "e2e-crew"');
+
     expect(toml.content).toContain("welder");
     // Start (needs a saved team), confirm it is at work, then stand down.
     await page.getByRole("button", { name: "Put to work" }).click();

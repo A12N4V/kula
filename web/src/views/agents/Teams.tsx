@@ -23,8 +23,16 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   const [view, setView] = useState<"boxes" | "graph">(() => { try { return localStorage.getItem("kula.teams.view") === "boxes" ? "boxes" : "graph"; } catch { return "graph"; } });
   const pickView = (v: "boxes" | "graph") => { setView(v); try { localStorage.setItem("kula.teams.view", v); } catch { /* */ } };
   const [cur, setCur] = useState(() => Math.max(0, info.teams.findIndex((t) => t.name === info.team?.name)));
-  useEffect(() => setTeams(info.teams), [info]);
-  const dirty = JSON.stringify(teams) !== JSON.stringify(info.teams);
+  useEffect(() => { if (!dirty) setTeams(info.teams); }, [info]); // an info refresh must not clobber unsaved edits
+  // an empty string and a missing key are the same thing to the server (serde
+  // skips empty fields), and key order means nothing – so the dirty check
+  // compares a normalised form: sorted keys, empty strings dropped
+  const norm = (v: unknown): string =>
+    Array.isArray(v) ? `[${v.map(norm).join(",")}]`
+      : v !== null && typeof v === "object"
+        ? `{${Object.entries(v as object).filter(([, x]) => x !== "").sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, x]) => `${JSON.stringify(k)}:${norm(x)}`).join(",")}}`
+        : JSON.stringify(v ?? null);
+  const dirty = norm(teams) !== norm(info.teams);
   const t = teams[cur];
   // renaming a team carries the teams under it along
   const set = (x: Partial<Team>) => {
@@ -34,7 +42,7 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   // a new team is saved at once, so its tab is real; edits after that wait for Save
   const create = (t: Team) => {
     const next = [...info.teams, t];
-    act("teams_save", { teams: next }, `${t.name} created`).then(() => { setCur(next.length - 1); setPicking(false); }).catch(() => {});
+    act("teams_save", { teams: next }, `${t.name} created`).then(() => { setTeams(next); setCur(next.length - 1); setPicking(false); }).catch(() => {});
   };
   const rename = (from: string, to: string) => {
     if (teams.some((x) => x.name === to)) return;
