@@ -272,6 +272,8 @@ fn walk(root: &Path) -> Vec<(String, Option<&'static str>)> {
             Err(_) => continue,
         };
         let lang = langs::for_path(&rel);
+        // `[index] disassembly = false`: dumps stay file nodes without symbols.
+        let lang = if lang.is_some_and(|l| langs::HAND_PARSED.contains(&l)) && !cfg.index.disassembly { None } else { lang };
         out.push((rel, lang));
     }
     out.sort();
@@ -578,8 +580,8 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                     let mut out = Vec::new();
                     for (path, lid) in batch {
                         // Disassembly text: hand-rolled line parser, no tree-sitter.
-                        // `langs::get("asm")` is None by design (not in IDS).
-                        if *lid == "asm" {
+                        // `langs::get("asm")` is None by design (see HAND_PARSED).
+                        if langs::HAND_PARSED.contains(lid) {
                             let Some(src) = read(path) else { continue };
                             if src.contains('\0') {
                                 if let Some(p) = progress {
@@ -874,6 +876,7 @@ pub fn snapshot_any(repo: &Repo, rev: &str) -> Result<Built> {
 /// Build the graph of any revision straight from git objects – no checkout.
 pub fn snapshot(repo: &Repo, rev: &str) -> Result<Built> {
     crate::git::validate_rev(rev)?;
+    let asm_on = crate::config::Config::load(&repo.root).map(|c| c.index.disassembly).unwrap_or(true);
     let listing = repo.run(&["ls-tree", "-r", "-l", "-z", "--full-tree", rev])?;
     let mut files: Vec<(String, Option<&'static str>)> = Vec::new();
     for entry in listing.split('\0').filter(|e| !e.is_empty()) {
@@ -887,7 +890,9 @@ pub fn snapshot(repo: &Repo, rev: &str) -> Result<Built> {
         if path.split('/').any(|seg| SKIP_DIRS.contains(&seg)) {
             continue;
         }
-        files.push((path.to_string(), langs::for_path(path)));
+        let lang = langs::for_path(path);
+        let lang = if lang.is_some_and(|l| langs::HAND_PARSED.contains(&l)) && !asm_on { None } else { lang };
+        files.push((path.to_string(), lang));
     }
     files.sort();
     let wanted: Vec<&str> = files.iter().filter(|(_, l)| l.is_some()).map(|(p, _)| p.as_str()).collect();

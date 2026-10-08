@@ -78,7 +78,7 @@ classDiagram
 
 | property | from → to |
 |---|---|
-| `kula:name` · `kula:path` · `kula:language` | names, repository-relative paths, and one of rust, python, javascript, typescript, tsx, go, java, c, cpp, csharp, ruby, php |
+| `kula:name` · `kula:path` · `kula:language` | names, repository-relative paths, and one of rust, python, javascript, typescript, tsx, go, java, c, cpp, csharp, ruby, php, asm (`asm` = hand-parsed disassembly text: labels as functions, `call`/`bl` as calls, no imports) |
 | `kula:startLine` · `kula:endLine` | a definition's lines, 1-based |
 | `kula:definedIn` | Symbol → its File |
 | `kula:memberOf` | Method or nested symbol → its enclosing Class |

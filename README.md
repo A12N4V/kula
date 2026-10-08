@@ -9,7 +9,7 @@
   <img alt="rust" src="https://img.shields.io/badge/core-rust-e8e2d9?style=flat-square&labelColor=000000&logo=rust&logoColor=e8e2d9">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-21%20tools-8fd694?style=flat-square&labelColor=000000">
   <img alt="agents" src="https://img.shields.io/badge/agents-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20Gemini-8fd694?style=flat-square&labelColor=000000">
-  <img alt="languages" src="https://img.shields.io/badge/parses-11%20languages-7cb7ff?style=flat-square&labelColor=000000">
+  <img alt="languages" src="https://img.shields.io/badge/parses-11%20languages%20%2B%20asm-7cb7ff?style=flat-square&labelColor=000000">
   <img alt="rdf" src="https://img.shields.io/badge/graph-RDF%20·%20SPARQL%201.1-d49cf0?style=flat-square&labelColor=000000">
   <img alt="platforms" src="https://img.shields.io/badge/macOS%20·%20Linux%20·%20Windows-x64%20·%20arm64-e8e2d9?style=flat-square&labelColor=000000">
   <img alt="local-first" src="https://img.shields.io/badge/local--first-no%20account%20·%20no%20telemetry-e8e2d9?style=flat-square&labelColor=000000">
@@ -383,7 +383,7 @@ flowchart LR
         TOML[kula.toml]
     end
     subgraph kula[kula]
-        IDX[tree-sitter indexer<br/>11 languages]
+        IDX[tree-sitter indexer<br/>11 languages + asm dumps]
         DB[(graph.db<br/>SQLite · FTS5)]
         G[impact · trace · flows<br/>clusters · compare]
         GU[guard: one verdict]
@@ -401,7 +401,7 @@ flowchart LR
     CLI -->|everything else| GITBIN[git]
 ```
 
-- **Indexing.** Files are walked in parallel (respecting `.gitignore`) and parsed with tree-sitter: TypeScript/TSX, JavaScript/JSX, Python, Rust, Go, Java, C, C++, C#, Ruby and PHP. Calls resolve to the same file, then imported files, then a unique match in the same language family; a stoplist keeps `.get()` and `.map()` from wiring everything together. Clusters come from weighted label propagation.
+- **Indexing.** Files are walked in parallel (respecting `.gitignore`) and parsed with tree-sitter: TypeScript/TSX, JavaScript/JSX, Python, Rust, Go, Java, C, C++, C#, Ruby and PHP. Disassembly text (`.s`, `.asm`, `.objdump`) is parsed with a hand-rolled parser instead: labels as functions, `call`/`bl` as calls, no imports. Calls resolve to the same file, then imported files, then a unique match in the same language family; a stoplist keeps `.get()` and `.map()` from wiring everything together. Clusters come from weighted label propagation.
 - **Any revision, without a checkout.** A revision's graph is built from git objects (`git ls-tree` and one `git cat-file --batch`) and cached per commit. Symbols match across revisions by kind, path, container and name, and compare by a hash of their source.
 - **Storage.** `.kula/graph.db` (SQLite and FTS5) is git-ignored, built beside the live file and swapped in with one rename, so a running `kula view` never reads a half-built graph. It reindexes in the background whenever `HEAD` moves.
 - **Cleans up after itself.** Once `kula view` sits idle (15 min by default), it drops old `kula run` copies, temp files and cached graphs, and compacts the store. Change the timer in Settings → Disk or with `kula clean --after 30` (`0` turns it off); `kula clean` runs a pass now.

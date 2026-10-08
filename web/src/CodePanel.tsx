@@ -36,6 +36,11 @@ const KW = new Set(("fn pub let mut const static struct enum impl trait use mod 
   "def lambda pass with elif None True False and or not is func package go defer chan select range map struct").split(" "));
 const TOKEN = /(\/\/.*$|#(?![[!]).*$|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\b\d[\d_.]*\b|\b[A-Za-z_]\w*\b)/g;
 function paint(line: string, lang: string): ReactNode[] {
+  // `;` comments only exist in assembly; cutting here would eat real code elsewhere.
+  if (lang === "asm") {
+    const i = line.indexOf(";");
+    if (i >= 0) return [...paint(line.slice(0, i), ""), <span key="c" className="c-cm">{line.slice(i)}</span>];
+  }
   const out: ReactNode[] = [];
   let last = 0, k = 0;
   for (const m of line.matchAll(TOKEN)) {
@@ -50,7 +55,7 @@ function paint(line: string, lang: string): ReactNode[] {
   return out;
 }
 
-const LANG: Record<string, string> = { rs: "rust", py: "python", ts: "ts", tsx: "ts", js: "js", jsx: "js", mjs: "js", go: "go" };
+const LANG: Record<string, string> = { rs: "rust", py: "python", ts: "ts", tsx: "ts", js: "js", jsx: "js", mjs: "js", go: "go", s: "asm", S: "asm", asm: "asm", nasm: "asm", objdump: "asm" };
 
 function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => void; onLocate?: (id: number) => void }) {
   const [src, setSrc] = useState<string | null>(null);

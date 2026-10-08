@@ -843,3 +843,25 @@ fn asm_text_parses_across_dialects() {
     let imp = kula_json(d, &["impact", "auth_check"]);
     assert!(imp["hits"].as_array().unwrap().iter().any(|h| h["node"]["name"] == "login_main"), "{imp}");
 }
+
+#[test]
+fn asm_disassembly_opt_out() {
+    let t = tempfile::tempdir().unwrap();
+    let d = t.path();
+    git(d, &["init", "-q", "-b", "main"]);
+    write(d, "asm/a.s", include_str!("fixtures/asm/intel_nasm.s"));
+    git(d, &["config", "user.name", "Tester"]);
+    git(d, &["config", "user.email", "t@example.com"]);
+    git(d, &["config", "commit.gpgsign", "false"]);
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "initial"]);
+    // Default (no kula.toml): dumps are parsed.
+    let out = kula(d, &["index"]);
+    assert!(out.contains("1 parsed"), "{out}");
+    // Opt-out: dumps stay file nodes without symbols.
+    write(d, "kula.toml", "[index]\ndisassembly = false\n");
+    let out = kula(d, &["index"]);
+    assert!(out.contains("0 parsed"), "{out}");
+    let hits = kula_json(d, &["query", "auth_check"]);
+    assert!(hits.as_array().unwrap().is_empty(), "{hits}");
+}
