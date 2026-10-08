@@ -24,13 +24,14 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   const pickView = (v: "boxes" | "graph") => { setView(v); try { localStorage.setItem("kula.teams.view", v); } catch { /* */ } };
   const [cur, setCur] = useState(() => Math.max(0, info.teams.findIndex((t) => t.name === info.team?.name)));
   useEffect(() => { if (!dirty) setTeams(info.teams); }, [info]); // an info refresh must not clobber unsaved edits
-  // an empty string and a missing key are the same thing to the server (serde
-  // skips empty fields), and key order means nothing – so the dirty check
-  // compares a normalised form: sorted keys, empty strings dropped
+  // an empty string, an empty array and a missing key are the same thing to
+  // the server (serde skips empty fields), and key order means nothing – so
+  // the dirty check compares a normalised form: sorted keys, empties dropped
+  const empty = (x: unknown): boolean => x === "" || (Array.isArray(x) && x.length === 0) || (x !== null && typeof x === "object" && !Array.isArray(x) && Object.keys(x).length === 0);
   const norm = (v: unknown): string =>
     Array.isArray(v) ? `[${v.map(norm).join(",")}]`
       : v !== null && typeof v === "object"
-        ? `{${Object.entries(v as object).filter(([, x]) => x !== "").sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, x]) => `${JSON.stringify(k)}:${norm(x)}`).join(",")}}`
+        ? `{${Object.entries(v as object).filter(([, x]) => !empty(x)).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, x]) => `${JSON.stringify(k)}:${norm(x)}`).join(",")}}`
         : JSON.stringify(v ?? null);
   const dirty = norm(teams) !== norm(info.teams);
   const t = teams[cur];

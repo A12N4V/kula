@@ -1026,10 +1026,9 @@ test.describe("teams and research (T1)", () => {
   test("T1.3b: research loop – create it, start it with confirmation, stop it with confirmation", async ({ page, request }, info) => {
     desktopOnly(info);
     await open(page, "agents/research");
-    // The fixture has no loop yet: the new-loop form shows the loop steps.
-    await page.getByRole("button", { name: "loop", exact: true }).click();
+    // The fixture has no loop yet: the new-loop form is already open.
     const form = page.locator(".map-inspector");
-    await form.getByLabel("Workflow name").fill("e2e-loop");
+    await form.getByLabel("Loop name").fill("e2e-loop");
     await form.getByLabel("Metric command").fill("sh -c 'echo 41'");
     await form.getByRole("button", { name: "Save loop" }).click();
     await expect(page.locator(".research")).toContainText("e2e-loop");
