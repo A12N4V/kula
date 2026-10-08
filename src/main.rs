@@ -15,8 +15,8 @@ mod meta;
 mod project;
 mod research;
 mod run;
-mod skills;
 mod server;
+mod skills;
 mod store;
 mod term;
 mod workflow;
@@ -275,7 +275,9 @@ enum Cmd {
     #[command(subcommand)]
     Research(ResearchCmd),
     /// One set of skills for every agent: .agents/skills, synced to each agent's own place.
-    #[command(after_help = "Examples:\n  kula skill list  ·  kula skill new release-notes -d \"Write release notes from merged PRs\"  ·  kula skill sync  ·  kula skill adopt claude triage")]
+    #[command(
+        after_help = "Examples:\n  kula skill list  ·  kula skill new release-notes -d \"Write release notes from merged PRs\"  ·  kula skill sync  ·  kula skill adopt claude triage"
+    )]
     #[command(subcommand)]
     Skill(SkillCmd),
     /// Run any agent harness held to kula's fences: `kula run -w fix -- aider`.
@@ -319,7 +321,9 @@ enum Cmd {
     Doctor,
     /// Free disk space: old `kula run` snapshots, temp files, a compacted store.
     /// `kula view` does this by itself after the idle timer (Settings → Disk).
-    #[command(after_help = "Examples:\n  kula clean   ·  kula clean --all   ·  kula clean --after 30   ·  kula clean --after 0 (timer off)")]
+    #[command(
+        after_help = "Examples:\n  kula clean   ·  kula clean --all   ·  kula clean --after 30   ·  kula clean --after 0 (timer off)"
+    )]
     Clean {
         /// Remove every kept run, not only those older than the timer
         #[arg(long)]
@@ -966,7 +970,13 @@ fn run(cli: Cli) -> Result<()> {
                 println!("{}", serde_json::to_string(&r)?);
             } else {
                 let verb = if dry_run { "would remove" } else { "removed" };
-                println!("{verb} {} kept run(s), {} temp file(s); freed {} · .kula is {}", r.runs_removed, r.temp_removed, clean::human(r.freed_bytes), clean::human(r.size_bytes));
+                println!(
+                    "{verb} {} kept run(s), {} temp file(s); freed {} · .kula is {}",
+                    r.runs_removed,
+                    r.temp_removed,
+                    clean::human(r.freed_bytes),
+                    clean::human(r.size_bytes)
+                );
             }
         }
         Cmd::Status => status(&repo, json)?,
