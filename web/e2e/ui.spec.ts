@@ -499,16 +499,28 @@ test.describe("graph interactions", () => {
     const { a, b } = await nodeAt(page, "edge");
     await page.mouse.click(a.x, a.y);
     await expect(page.locator(".inspector h2")).toHaveText(a.label);
-    // The camera flies to the selection: find the other end again once it lands.
-    await page.waitForTimeout(900);
-    const to = await page.evaluate((id) => {
+    // The camera flies to the selection: let the flight start and land (a short
+    // sleep alone loses under load), then wait until the other end stops moving.
+    await page.waitForTimeout(600);
+    const to = await expect.poll(async () => {
+      const read = () => page.evaluate((id) => {
+        const { sigma } = (window as any).__kula;
+        const p = sigma.framedGraphToViewport(sigma.getNodeDisplayData(id));
+        return `${Math.round(p.x)},${Math.round(p.y)}`;
+      }, b.id);
+      const first = await read();
+      await page.waitForTimeout(200);
+      return (await read()) === first ? first : "moving";
+    });
+    expect(to).not.toBe("moving");
+    const spot = await page.evaluate((id) => {
       const { sigma } = (window as any).__kula;
       const box = sigma.getContainer().getBoundingClientRect();
       const p = sigma.framedGraphToViewport(sigma.getNodeDisplayData(id));
       return { x: box.left + p.x, y: box.top + p.y };
     }, b.id);
     await page.keyboard.down("Shift");
-    await page.mouse.click(to.x, to.y);
+    await page.mouse.click(spot.x, spot.y);
     await page.keyboard.up("Shift");
     const chip = page.locator(".trace-chip");
     await expect(chip).toBeVisible();
@@ -1041,11 +1053,12 @@ test.describe("teams and research (T1)", () => {
     desktopOnly(info);
     await open(page, "agents/research");
     // The fixture has no loop yet: the new-loop form shows the loop steps.
-    await page.getByRole("button", { name: "loop", exact: true }).click();
-    const form = page.locator(".map-inspector");
-    await form.getByLabel("Workflow name").fill("e2e-loop");
+    const form = page.locator(".tpl-form");
+    await expect(form).toBeVisible();
+    await expect(page.locator(".loop-step")).not.toHaveCount(0);
+    await form.getByLabel("Loop name").fill("e2e-loop");
     await form.getByLabel("Metric command").fill("sh -c 'echo 41'");
-    await form.getByRole("button", { name: "Save loop" }).click();
+    await form.getByRole("button", { name: "Create e2e-loop" }).click();
     await expect(page.locator(".research")).toContainText("e2e-loop");
     await expect(page.locator(".research")).toContainText("may edit");
     // Research keeps and reverts experiments with git, so it refuses a dirty
