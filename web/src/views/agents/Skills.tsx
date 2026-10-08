@@ -16,9 +16,7 @@ import { AGENT_NAME, type Act } from "./data";
 import { AgentMark, Card, TabStrip } from "./parts";
 
 const WHERE: Record<string, string> = { claude: ".claude/skills/", gemini: ".gemini/skills/", cursor: ".cursor/rules/*.mdc", codex: "reads .agents/skills" };
-const STATE: Record<SkillState, [string, string]> = {
-  synced: ["✓", "has the current copy"], native: ["◎", "reads the shared copy itself"], differs: ["≠", "its copy was edited – sync overwrites it"], missing: ["–", "does not have it yet"],
-};
+const STATE: Record<SkillState, [string, string]> = { synced: ["+", "has the current copy"], native: ["o", "reads the shared copy itself"], differs: ["≠", "its copy was edited – sync overwrites it"], missing: ["–", "does not have it yet"] };
 
 const SKILL_TEMPLATES: { name: string; description: string; body: string }[] = [
   { name: "code-review", description: "Review a change before it merges: correctness, tests, fences, naming", body: "1. Read the diff and the task.\n2. Run `kula check` and the tests.\n3. Report problems by severity with file:line; suggest, do not rewrite." },

@@ -14,14 +14,14 @@ async function open(page: Page, hash = "overview") {
 }
 
 test.describe("s1 agents split", () => {
-  test("the eight agents tabs all render after the split", async ({ page }) => {
+  test("the nine agents tabs all render after the split", async ({ page }) => {
     test.skip(test.info().project.name !== "desktop");
     await open(page);
     await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
     await expect(page.locator(".page-head h1")).toHaveText("Agents");
     const tabs = page.locator(".ag-tabs [role=tab]");
-    await expect(tabs).toHaveCount(8);
-    for (const name of ["Overview", "Workflows", "Research", "Teams", "Fences", "Memory", "Docs", "Connect"]) {
+    await expect(tabs).toHaveCount(9);
+    for (const name of ["Overview", "Workflows", "Research", "Teams", "Skills", "Fences", "Memory", "Docs", "Connect"]) {
       await expect(tabs.filter({ hasText: name })).toBeVisible();
     }
   });
@@ -30,8 +30,8 @@ test.describe("s1 agents split", () => {
     test.skip(test.info().project.name !== "desktop");
     await open(page, "agents");
     await page.locator(".ag-tabs [role=tab]", { hasText: "Workflows" }).click();
-    await expect(page.locator(".wf-split")).toBeVisible();
-    await expect(page.locator(".wf-tile").first()).toBeVisible();
+    await expect(page.locator(".wf-tabs")).toBeVisible();
+    await expect(page.locator(".wf-edit")).toBeVisible();
     await page.locator(".ag-tabs [role=tab]", { hasText: "Memory" }).click();
     await expect(page.locator(".ag-remember")).toBeVisible();
     await page.locator(".ag-tabs [role=tab]", { hasText: "Connect" }).click();
