@@ -178,7 +178,27 @@ export const api = {
   kgExamples: () => get<{ examples: { title: string; query: string }[]; vocabulary: { term: string; kind: string; doc: string }[]; prefixes: { prefix: string; iri: string }[] }>("/api/kg/examples"),
   metaAction: <T = unknown>(kind: "issues" | "proposals" | "notes", action: string | number, body: Record<string, unknown>) =>
     post<T>(`/api/meta/${kind}/${action}`, body),
+
+  // K2 · unified agent config: skills, rules, MCP, memory layers
+  configMatrix: () => get<ConfigMatrix>("/api/agent/config_matrix"),
+  skillDetail: (name: string) => get<SkillDetail>(`/api/agent/skill_detail?${q({ name })}`),
+  skillDiff: (name: string, agent: string) => get<SkillDiff>(`/api/agent/skill_diff?${q({ name, agent })}`),
+  memoryLayers: () => get<MemoryLayer[]>("/api/agent/memory_layers"),
+  mcpSync: (name: string) => post<{ written: string[] }>("/api/agent/mcp_sync", { name }),
 };
+
+// K2 types, derived from what each agent already reads (src/agent_config.rs).
+/** One agent's MCP config file against the shared source in .agents/mcp.json. */
+export interface McpAgentRow { agent: string; path: string; exists: boolean; servers: string[]; differs: string[]; missing: string[] }
+/** A rules file one agent reads: CLAUDE.md, GEMINI.md, AGENTS.md or .cursor/rules. */
+export interface RuleFile { agent: string; path: string; exists: boolean; bytes: number }
+export interface ConfigMatrix { source: { path: string; exists: boolean; servers: string[] }; agents: McpAgentRow[]; rules: RuleFile[] }
+/** Which workflows and teams mention a skill, from the text they already carry. */
+export interface SkillUsage { workflows: string[]; teams: string[]; seats: string[] }
+export interface SkillDetail { skill: Skill; usage: SkillUsage }
+export interface SkillDiff { name: string; agent: string; diff: string | null }
+/** A memory with its layer derived at read time: scope and provenance. */
+export interface MemoryLayer extends Memory { scope: "task" | "workflow" | "repo"; scope_name: string; agent: string; commit: string; symbol: string | null }
 
 export function relTime(ts: number) {
   const d = Math.max(0, Date.now() / 1000 - ts);
