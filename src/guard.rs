@@ -234,7 +234,7 @@ pub fn team_start(repo: &Repo, name: &str, by: &str) -> Result<ActiveTeam> {
     };
     for m in &t.members {
         if !m.workflow.is_empty() && workflow::find(&cfg, &m.workflow).is_none() {
-            bail!("team {name}: {} works in {}, which is not a workflow", m.agent, m.workflow);
+            bail!("team {name}: {} works in {}, which is not a workflow", m.key(), m.workflow);
         }
     }
     let a = ActiveTeam { name: name.into(), started: crate::meta::now(), by: by.into() };
@@ -253,8 +253,16 @@ pub fn team_stop(repo: &Repo) -> Result<Option<ActiveTeam>> {
 pub fn member(repo: &Repo, cfg: &Config, agent: &str) -> Option<(String, crate::config::Member)> {
     let active = team(repo)?;
     let t = cfg.teams.iter().find(|t| t.name == active.name)?;
+    // by seat name (`KULA_AGENT=atlas`), then by the agent that runs it, then
+    // the first seat any connected agent may take
     let id = crate::agents::agent_id(agent);
-    t.members.iter().find(|m| crate::agents::agent_id(&m.agent) == id).map(|m| (t.name.clone(), m.clone()))
+    let pick = t
+        .members
+        .iter()
+        .find(|m| !m.name.is_empty() && m.name.to_lowercase() == id)
+        .or_else(|| t.members.iter().find(|m| !m.agent.is_empty() && crate::agents::agent_id(&m.agent) == id))
+        .or_else(|| t.members.iter().find(|m| m.agent.is_empty() || m.agent == "any"));
+    pick.map(|m| (t.name.clone(), m.clone()))
 }
 
 impl Guards {

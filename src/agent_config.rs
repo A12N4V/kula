@@ -345,7 +345,7 @@ pub fn skill_usage(root: &Path, name: &str) -> SkillUsage {
         if hay.contains(name) {
             usage.teams.push(t.name.clone());
             for m in &t.members {
-                usage.seats.push(format!("{}/{}", t.name, crate::agents::agent_id(&m.agent)));
+                usage.seats.push(format!("{}/{}", t.name, m.key()));
             }
         }
     }

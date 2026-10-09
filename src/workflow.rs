@@ -78,6 +78,9 @@ pub struct Research {
     pub budget: u32,
     #[serde(skip_serializing_if = "is_zero_u64")]
     pub timeout: u64,
+    /// The loop's mark in the UI: a template glyph, or `sigil:<n>`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub icon: String,
 }
 
 fn is_zero(n: &u32) -> bool {

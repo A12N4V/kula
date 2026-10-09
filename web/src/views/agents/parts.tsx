@@ -13,7 +13,9 @@ import { relTime, type AgentsInfo, type GuardLevel, type ResearchRun, type Sugge
 import { BRANDS, Mark } from "../../brands";
 import { Chips } from "../../Autofill";
 import { Icon, StatTable } from "../../ui";
-import type { Act } from "./data";
+import { AGENT_NAME, type Act } from "./data";
+import { Sigil } from "../../sigil";
+import { seatKey } from "../../roster";
 
 export const LEVEL_TEXT: Record<GuardLevel, string> = {
   open: "open",
@@ -42,6 +44,11 @@ export function Card({ title, sub, right, children, className = "" }: { title: s
     </section>
   );
 }
+/** A seat's mark: its generated sigil, with what runs it as a tooltip. */
+export function SeatMark({ m, size = 16 }: { m: { name?: string; agent: string }; size?: number }) {
+  return <Sigil seed={seatKey(m)} size={size} title={`${seatKey(m)} · ${m.agent ? AGENT_NAME[m.agent] ?? m.agent : "any connected agent"}`} />;
+}
+
 export function AgentMark({ id, size = 16 }: { id: string; size?: number }) {
   return BRANDS[id] ? <Mark id={id} size={size} /> : <span className="agent-glyph" style={{ width: size, height: size }}>{id.slice(0, 1).toUpperCase()}</span>;
 }
@@ -267,7 +274,7 @@ export function Snippet({ text }: { text: string }) {
  * The tab strip Workflows, Research, Teams and Skills share: one tab per item,
  * a + right after the newest, double-click (or F2) to rename in place.
  */
-export type TabItem = { key: string; label: string; dot?: boolean; depth?: number; title?: string; fixed?: boolean };
+export type TabItem = { key: string; label: string; dot?: boolean; depth?: number; title?: string; fixed?: boolean; icon?: ReactNode };
 export function TabStrip({ items, cur, onPick, onAdd, onRename, label, addLabel }: {
   items: TabItem[]; cur: string; onPick: (k: string) => void; onAdd?: () => void; onRename?: (k: string, to: string) => void; label: string; addLabel: string;
 }) {
@@ -289,7 +296,7 @@ export function TabStrip({ items, cur, onPick, onAdd, onRename, label, addLabel 
         <button key={it.key} role="tab" aria-selected={it.key === cur} className={it.key === cur ? "on" : ""} data-depth={it.depth ? Math.min(it.depth, 3) : undefined}
           title={it.title ?? (onRename && !it.fixed ? "double-click to rename" : undefined)}
           onClick={() => onPick(it.key)} onDoubleClick={() => begin(it)} onKeyDown={(e) => { if (e.key === "F2") begin(it); }}>
-          {!!it.depth && <span className="tab-up" aria-hidden="true">└</span>}{it.label}{it.dot && <i className="dot ok" title="running" />}
+          {!!it.depth && <span className="tab-up" aria-hidden="true">└</span>}{it.icon}{it.label}{it.dot && <i className="dot ok" title="running" />}
         </button>
       ))}
       {onAdd && <button className={`team-tab-add ${cur === "" ? "on" : ""}`} onClick={onAdd} aria-label={addLabel} title={addLabel}><Icon.plus /></button>}

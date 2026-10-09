@@ -3,8 +3,8 @@
 // is built with); a team template names seats, and the agents connected here
 // fill them in order.
 
+import { namesFor } from "../../roster";
 import type { Team } from "../../api";
-import { AGENT_IDS } from "./data";
 
 export type Stack = "rust" | "node" | "python" | "go" | "make";
 
@@ -128,14 +128,15 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
   },
 ];
 
-/** A team from a template: connected agents first, then the rest, one per seat. */
-export function teamFrom(t: TeamTemplate, name: string, connected: string[], loop: string): Team {
-  const pool = [...connected.filter((a) => AGENT_IDS.includes(a)), ...AGENT_IDS.filter((a) => !connected.includes(a))];
-  const agent = (i: number) => pool[i] ?? `agent-${i + 1}`;
+/** A team from a template: one named generic agent per seat, run by whichever
+ * agent is connected (`connected` is kept for callers; seats are not pinned). */
+export function teamFrom(t: TeamTemplate, name: string, _connected: string[], loop: string): Team {
+  const names = namesFor(name, t.seats.length);
+  const agent = (i: number) => names[i]; // seats point at each other by name
   return {
     name, about: t.about, prompt: t.prompt,
     members: t.seats.map((s, i) => ({
-      agent: agent(i), role: s.role, workflow: s.workflow === "@loop" ? loop : s.workflow,
+      name: names[i], agent: "", role: s.role, workflow: s.workflow === "@loop" ? loop : s.workflow,
       reports_to: s.reports_to !== undefined ? agent(s.reports_to) : "", hands_off: (s.hands_off ?? []).map(agent), prompt: s.prompt ?? "",
     })),
   };

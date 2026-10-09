@@ -59,7 +59,7 @@ export interface AgentsInfo {
   skills?: Skill[]; skill_strays?: SkillStray[]; stack?: string[];
 }
 /** An autoresearch loop's settings ([workflow.research]). */
-export interface Research { metric: string; goal: "min" | "max" | ""; budget?: number; timeout?: number }
+export interface Research { metric: string; goal: "min" | "max" | ""; budget?: number; timeout?: number; icon?: string }
 export interface Experiment { n: number; hypothesis: string; value: number | null; best_before: number | null; kept: boolean; commit?: string; files: string[]; by: string; at: number; note?: string }
 /** A run of an autoresearch workflow (src/research.rs). */
 export interface ResearchRun {
@@ -69,7 +69,7 @@ export interface ResearchRun {
 /** A team (kula.toml [[team]]): each agent in its own workflow. */
 export interface Team {
   name: string; about?: string; prompt?: string; under?: string;
-  members: { agent: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
+  members: { name?: string; agent: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
 }
 /** A work mode (src/workflow.rs): its own fences, scope, steps, docs and memory policy. */
 export interface Workflow {

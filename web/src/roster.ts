@@ -42,3 +42,11 @@ export function namesFor(team: string, seats: number): string[] {
   }
   return out;
 }
+
+/** How teammates point at a seat: its name, else (older teams) its agent. */
+export const seatKey = (m: { name?: string; agent: string }) => m.name || m.agent;
+
+/** A fresh name for a team that already has `taken`. */
+export function freeName(team: string, taken: string[]): string {
+  return namesFor(team, taken.length + NAMES.length).find((n) => !taken.includes(n)) ?? `Agent ${taken.length + 1}`;
+}

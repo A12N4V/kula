@@ -1845,16 +1845,16 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 let on = active.as_ref().is_some_and(|a| a.name == t.name);
                 let under = if t.under.is_empty() { String::new() } else { format!("  {}", dim(&format!("under {}", t.under))) };
                 println!("  {} {}  {}{under}", if on { green("●") } else { dim("○") }, accent(&t.name), dim(&t.about));
-                let lead = t.members.iter().find(|m| m.reports_to.is_empty()).map(|m| m.agent.clone());
-                let w = t.members.iter().map(|m| m.agent.chars().count()).max().unwrap_or(5).max(5);
+                let lead = t.members.iter().find(|m| m.reports_to.is_empty()).map(|m| m.key().to_string());
+                let w = t.members.iter().map(|m| m.key().chars().count()).max().unwrap_or(5).max(5);
                 let r = t.members.iter().map(|m| m.workflow.chars().count()).max().unwrap_or(8).max(8);
                 for m in &t.members {
-                    let tag = if lead.as_deref() == Some(m.agent.as_str()) && m.role.is_empty() { green("lead") } else { String::new() };
+                    let tag = if lead.as_deref() == Some(m.key()) && m.role.is_empty() { green("lead") } else { String::new() };
                     let tag = if tag.is_empty() { String::new() } else { format!(" {tag}") };
                     let wf = if m.workflow.is_empty() { dim("none") } else { bold(&m.workflow) };
                     println!(
                         "      {:<w$}  {:<r$}  {}{}",
-                        m.agent,
+                        m.key(),
                         wf,
                         if m.role.is_empty() { dim("member") } else { dim(&m.role) },
                         tag,
@@ -1874,7 +1874,7 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 }
                 // re-saving keeps what the UI set: prompts, hand-offs
                 let old =
-                    cfg.teams.iter().find(|t| t.name == name).and_then(|t| t.members.iter().find(|x| x.agent == agent.trim())).cloned();
+                    cfg.teams.iter().find(|t| t.name == name).and_then(|t| t.members.iter().find(|x| x.key() == agent.trim())).cloned();
                 members.push(config::Member {
                     agent: agent.trim().into(),
                     workflow: wf.trim().into(),
@@ -1883,10 +1883,10 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 });
             }
             // `-m gemini=fix:lead` names the lead as well as --lead does
-            let lead = lead.or_else(|| members.iter().find(|m| m.role == "lead").map(|m| m.agent.clone()));
+            let lead = lead.or_else(|| members.iter().find(|m| m.role == "lead").map(|m| m.key().to_string()));
             if let Some(lead) = &lead {
                 for m in members.iter_mut() {
-                    m.reports_to = if &m.agent == lead { String::new() } else { lead.clone() };
+                    m.reports_to = if m.key() == lead { String::new() } else { lead.clone() };
                 }
             }
             let mut teams = cfg.teams.clone();
@@ -1907,7 +1907,9 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
         TeamCmd::Prompt { name, agent } => {
             let Some(t) = cfg.teams.iter().find(|t| t.name == name) else { bail!("no team called {name}") };
             let id = agents::agent_id(&agent);
-            let Some(m) = t.members.iter().find(|m| agents::agent_id(&m.agent) == id) else { bail!("{agent} is not in team {name}") };
+            let Some(m) = t.members.iter().find(|m| m.name.eq_ignore_ascii_case(agent.trim()) || agents::agent_id(&m.agent) == id) else {
+                bail!("{agent} is not in team {name}")
+            };
             print!("{}", agents::team_prompt(&cfg, t, m));
         }
         TeamCmd::Stop => match guard::team_stop(repo)? {
@@ -1947,7 +1949,7 @@ fn research_cmd(repo: &Repo, c: ResearchCmd, json: bool) -> Result<()> {
     };
     match c {
         ResearchCmd::Init { metric, goal, scope, budget, timeout, name } => {
-            let w = research::init(repo, &name, workflow::Research { metric, goal, budget, timeout }, scope)?;
+            let w = research::init(repo, &name, workflow::Research { metric, goal, budget, timeout, ..Default::default() }, scope)?;
             println!("  {} {} is a research loop in kula.toml", green("✓"), accent(&w.name));
             println!("  {}", dim(&format!("next: kula research start {}  (measures the baseline on a research/ branch)", w.name)));
         }

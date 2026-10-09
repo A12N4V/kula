@@ -17,6 +17,7 @@ import { Icon, StatTable } from "../../ui";
 import { blank, type Act } from "./data";
 import { Card, num, pct, RunChart, TabStrip } from "./parts";
 import { LOOP_TEMPLATES, metricFor, type LoopTemplate } from "./templates";
+import { GLYPHS, IconPicker, LoopIcon } from "./loopicon";
 import ResearchFlow from "./ResearchFlow";
 import type { Go } from "../../nav";
 import { workflowColor } from "./TeamOrg";
@@ -41,7 +42,7 @@ export default function ResearchTab({ info, act, open, go }: { info: AgentsInfo;
     <Card title="Research" sub={w ? `${loops.length} loop${loops.length > 1 ? "s" : ""}` : undefined} className="ag-wide team-card"
       right={info.research.some((r) => r.active) ? <span className="tag accent">a loop is running</span> : undefined}>
       <TabStrip label="Loops" addLabel="New loop from a template" cur={adding || !w ? "" : w.name}
-        items={loops.map((x) => ({ key: x.name, label: x.name, dot: info.research.some((r) => r.workflow === x.name && r.active), fixed: x.builtin, title: x.builtin ? "built in – double-click makes a renamed copy" : undefined }))}
+        items={loops.map((x) => ({ key: x.name, label: x.name, icon: <LoopIcon icon={x.research?.icon} name={x.name} />, dot: info.research.some((r) => r.workflow === x.name && r.active), fixed: x.builtin, title: x.builtin ? "built in – double-click makes a renamed copy" : undefined }))}
         onPick={(k) => { setCur(k); setAdding(false); }} onAdd={() => setAdding(true)}
         onRename={(from, to) => act("workflow_rename", { workflow: from, name: to }, `${from} renamed to ${to}`).then(() => setCur(to)).catch(() => {})} />
       {adding || !w ? <NewLoop info={info} act={act} done={(n) => { setCur(n); setAdding(false); }} cancel={loops.length ? () => setAdding(false) : undefined} />
@@ -116,15 +117,17 @@ function LoopPanel({ w, info, act, open, go }: { w: Workflow; info: AgentsInfo; 
 function LoopSettings({ w, save }: { w: Workflow; save: (x: Partial<Workflow>) => Promise<unknown> }) {
   const [prompt, setPrompt] = useState(w.prompt ?? "");
   const [scope, setScope] = useState<string[]>(w.scope ?? []);
-  const dirty = prompt !== (w.prompt ?? "") || JSON.stringify(scope) !== JSON.stringify(w.scope ?? []);
+  const [icon, setIcon] = useState(w.research?.icon ?? "");
+  const dirty = prompt !== (w.prompt ?? "") || JSON.stringify(scope) !== JSON.stringify(w.scope ?? []) || icon !== (w.research?.icon ?? "");
   return (
     <>
       <div className="mi-kind">loop</div>
       <div className="mi-title mono">{w.name}</div>
+      <div className="mi-field"><span>icon</span><IconPicker value={icon} name={w.name} onChange={setIcon} /></div>
       <label className="mi-field"><span>system prompt</span><textarea className="input" rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label="System prompt" /></label>
       <div className="mi-field"><span>may edit</span><Chips values={scope} onChange={setScope} placeholder="src/index/**, tokenize" label="Scope" /></div>
       {w.steps?.length ? <ol className="ag-steps">{w.steps.map((x, i) => <li key={i}>{x}</li>)}</ol> : null}
-      <div className="row"><span className="spacer" /><button className="btn sm primary" disabled={!dirty} onClick={() => save({ prompt, scope })}>Save</button></div>
+      <div className="row"><span className="spacer" /><button className="btn sm primary" disabled={!dirty} onClick={() => save({ prompt, scope, ...(w.research ? { research: { ...w.research, icon: icon || undefined } } : {}) })}>Save</button></div>
     </>
   );
 }
@@ -156,11 +159,12 @@ function NewLoop({ info, act, done, cancel }: { info: AgentsInfo; act: Act; done
   const [budget, setBudget] = useState(tpl.budget);
   const [scope, setScope] = useState<string[]>(tpl.scope);
   const [prompt, setPrompt] = useState(tpl.prompt);
-  const use = (t: LoopTemplate) => { setTpl(t); setName(free(t.id)); setMetric(metricFor(t, stack).cmd); setGoal(t.goal); setBudget(t.budget); setScope(t.scope); setPrompt(t.prompt); };
+  const [icon, setIcon] = useState(GLYPHS[tpl.id] ? tpl.id : "");
+  const use = (t: LoopTemplate) => { setTpl(t); setName(free(t.id)); setMetric(metricFor(t, stack).cmd); setGoal(t.goal); setBudget(t.budget); setScope(t.scope); setPrompt(t.prompt); setIcon(GLYPHS[t.id] ? t.id : ""); };
   const auto = info.workflows.find((w) => w.name === "autoresearch");
   const save = () => {
     const b = info.workflows.find((w) => w.name === name) ?? { ...blank(), name, about: tpl.about || auto?.about || "" };
-    const w: Workflow = { ...blank(), ...b, builtin: undefined, scope, prompt, steps: b.steps?.length ? b.steps : auto?.steps ?? [], research: { metric, goal, budget } };
+    const w: Workflow = { ...blank(), ...b, builtin: undefined, scope, prompt, steps: b.steps?.length ? b.steps : auto?.steps ?? [], research: { metric, goal, budget, ...(icon ? { icon } : {}) } };
     act("workflows_save", { workflows: [...own.filter((x) => x.name !== name), w] }, `${name} saved`).then(() => done(name)).catch(() => {});
   };
   return (
@@ -172,7 +176,7 @@ function NewLoop({ info, act, done, cancel }: { info: AgentsInfo; act: Act; done
             return (
               <button key={t.id} role="radio" aria-checked={tpl.id === t.id} className={`tpl-card ${tpl.id === t.id ? "on" : ""} ${m.fits ? "" : "off"}`} onClick={() => use(t)}
                 title={m.fits ? undefined : `no command for ${stack.join(", ") || "this stack"} – edit the metric`}>
-                <b>{t.title} <span className="muted">{t.goal === "min" ? "↓ lower" : "↑ higher"}</span></b>
+                <b><LoopIcon icon={t.id} name={t.id} size={18} />{t.title} <span className="muted">{t.goal === "min" ? "↓ lower" : "↑ higher"}</span></b>
                 <span className="tpl-about">{t.about}</span>
                 <span className="tpl-metric">{m.cmd || "your command"}</span>
               </button>
@@ -189,7 +193,8 @@ function NewLoop({ info, act, done, cancel }: { info: AgentsInfo; act: Act; done
         </div>
       </div>
       <form className="tpl-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
-        <div className="mi-kind">new loop{stack.length > 0 && <span className="muted"> · {stack.join(" + ")} repo</span>}{cancel && <><span className="spacer" /><button type="button" className="btn sm ghost icon-only" onClick={cancel} aria-label="Cancel"><Icon.close /></button></>}</div>
+        <div className="mi-kind">new loop{cancel && <><span className="spacer" /><button type="button" className="btn sm ghost icon-only" onClick={cancel} aria-label="Cancel"><Icon.close /></button></>}</div>
+        <div className="mi-field"><span>icon</span><IconPicker value={icon} name={name} onChange={setIcon} /></div>
         <input className="input mono mi-title" value={name} onChange={(e) => setName(e.target.value.replace(/[^\w-]/g, ""))} aria-label="Loop name" />
         <label className="mi-field"><span>metric – the last number it prints</span><textarea className="input mono" rows={3} value={metric} onChange={(e) => setMetric(e.target.value)} placeholder="cmd whose last number is the score" aria-label="Metric command" /></label>
         <div className="row"><div className="seg">{(["min", "max"] as const).map((g) => <button key={g} type="button" className={goal === g ? "on" : ""} onClick={() => setGoal(g)}>{g === "min" ? "lower" : "higher"}</button>)}</div>

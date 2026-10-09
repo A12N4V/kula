@@ -60,7 +60,13 @@ pub struct Team {
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(default)]
 pub struct Member {
-    /// claude · cursor · codex · gemini, or any MCP client name.
+    /// The seat's own name ("Atlas"): how teammates point at it. Optional –
+    /// without one, the agent below is the name, as before.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// What runs this seat: claude · cursor · codex · gemini, any MCP client
+    /// name, or `any` (empty) for whichever agent is connected.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub agent: String,
     /// The workflow this agent works in while the team is active.
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -80,6 +86,25 @@ pub struct Member {
     /// Who it hands its work to when it is done (agent names).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hands_off: Vec<String>,
+}
+
+impl Member {
+    /// How the team refers to this seat: its name, else its agent.
+    pub fn key(&self) -> &str {
+        if self.name.is_empty() {
+            &self.agent
+        } else {
+            &self.name
+        }
+    }
+    /// The agent that runs it, for people: `any` when unset.
+    pub fn runner(&self) -> &str {
+        if self.agent.is_empty() {
+            "any"
+        } else {
+            &self.agent
+        }
+    }
 }
 
 /// What kula tells and allows AI agents (MCP, hooks).
@@ -326,14 +351,17 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
         if !seen.insert(&t.name) {
             anyhow::bail!("two teams are called {}", t.name);
         }
-        if t.members.iter().any(|m| m.agent.trim().is_empty()) {
-            anyhow::bail!("team {}: every member names an agent", t.name);
+        if t.members.iter().any(|m| m.key().trim().is_empty()) {
+            anyhow::bail!("team {}: every member has a name or an agent", t.name);
         }
-        let names: Vec<&str> = t.members.iter().map(|m| m.agent.as_str()).collect();
+        let names: Vec<&str> = t.members.iter().map(|m| m.key()).collect();
+        if let Some(d) = names.iter().enumerate().find(|(i, n)| names[..*i].contains(n)).map(|x| x.1) {
+            anyhow::bail!("team {}: two members are called {d}", t.name);
+        }
         for m in &t.members {
             for other in std::iter::once(&m.reports_to).filter(|r| !r.is_empty()).chain(m.hands_off.iter()) {
-                if !names.contains(&other.as_str()) || other == &m.agent {
-                    anyhow::bail!("team {}: {} points at {other:?}, which is not another member", t.name, m.agent);
+                if !names.contains(&other.as_str()) || other == m.key() {
+                    anyhow::bail!("team {}: {} points at {other:?}, which is not another member", t.name, m.key());
                 }
             }
         }
@@ -345,7 +373,7 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
                 if seen > t.members.len() {
                     anyhow::bail!("team {}: who reports to whom goes round in a circle", t.name);
                 }
-                cur = t.members.iter().find(|x| x.agent == cur).map(|x| x.reports_to.clone()).unwrap_or_default();
+                cur = t.members.iter().find(|x| x.key() == cur).map(|x| x.reports_to.clone()).unwrap_or_default();
             }
         }
     }

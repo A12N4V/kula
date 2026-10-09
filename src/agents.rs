@@ -298,7 +298,7 @@ pub fn workflow_prompt(w: &Workflow) -> String {
 /// One member's full instructions in a team: the team's prompt, its own, where it
 /// sits (who it answers to, who answers to it, who it hands off to), then its workflow.
 pub fn team_prompt(cfg: &Config, team: &crate::config::Team, m: &crate::config::Member) -> String {
-    let mut s = format!("# {} in team {}\n\n", m.agent, team.name);
+    let mut s = format!("# {} in team {}\n\n", m.key(), team.name);
     if !team.about.is_empty() {
         s.push_str(&format!("{}\n\n", team.about));
     }
@@ -311,9 +311,10 @@ pub fn team_prompt(cfg: &Config, team: &crate::config::Team, m: &crate::config::
     if !m.prompt.trim().is_empty() {
         s.push_str(&format!("{}\n\n", m.prompt.trim()));
     }
-    let reports: Vec<&str> = team.members.iter().filter(|x| x.reports_to == m.agent).map(|x| x.agent.as_str()).collect();
+    let reports: Vec<&str> = team.members.iter().filter(|x| x.reports_to == m.key()).map(|x| x.key()).collect();
     let mut place = vec![];
-    let lead = |t: &crate::config::Team| t.members.iter().find(|x| x.reports_to.is_empty()).map(|x| x.agent.clone()).unwrap_or_default();
+    let lead =
+        |t: &crate::config::Team| t.members.iter().find(|x| x.reports_to.is_empty()).map(|x| x.key().to_string()).unwrap_or_default();
     if m.reports_to.is_empty() {
         place.push("You lead this team.".to_string());
         if let Some(up) = cfg.teams.iter().find(|x| !team.under.is_empty() && x.name == team.under) {
@@ -342,7 +343,7 @@ pub fn team_prompt(cfg: &Config, team: &crate::config::Team, m: &crate::config::
     if !m.hands_off.is_empty() {
         place.push(format!("When your part is done, hand it to {} – say what changed and what to check.", m.hands_off.join(" and ")));
     }
-    let from: Vec<&str> = team.members.iter().filter(|x| x.hands_off.contains(&m.agent)).map(|x| x.agent.as_str()).collect();
+    let from: Vec<&str> = team.members.iter().filter(|x| x.hands_off.iter().any(|h| h == m.key())).map(|x| x.key()).collect();
     if !from.is_empty() {
         place.push(format!("{} hand{} work to you.", from.join(" and "), if from.len() == 1 { "s" } else { "" }));
     }
@@ -846,7 +847,7 @@ pub fn brief(cfg: &Config) -> String {
                 s.push_str(&format!(
                     "| `{}` | {} | {} | {} |\n",
                     t.name,
-                    m.agent,
+                    if m.name.is_empty() { m.runner().to_string() } else { format!("{} ({})", m.name, m.runner()) },
                     if m.workflow.is_empty() { "–" } else { &m.workflow },
                     m.role.replace('|', "/")
                 ));

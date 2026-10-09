@@ -741,7 +741,7 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
                 // previewed from the editor: the team as it is on screen, saved or not
                 let cfg = crate::config::Config::load(&r.root)?;
                 let t = a.teams.first().ok_or_else(|| anyhow!("send the team"))?;
-                let m = t.members.iter().find(|m| m.agent == a.agent).ok_or_else(|| anyhow!("{} is not in the team", a.agent))?;
+                let m = t.members.iter().find(|m| m.key() == a.agent).ok_or_else(|| anyhow!("{} is not in the team", a.agent))?;
                 json!({ "text": crate::agents::team_prompt(&cfg, t, m) })
             }
             "research_start" => json!(crate::research::start(r, &a.workflow, &format!("user:{}", r.user()), true)?),

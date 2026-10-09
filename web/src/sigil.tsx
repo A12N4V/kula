@@ -5,8 +5,8 @@ import type { ReactElement } from "react";
 // A sigil is decoded from one integer in mixed radix, so every index below
 // SIGILS is a distinct combination (not a random draw that might repeat):
 //   frame (6) × motif (8) × symmetry (4) × core (2) = 384 marks.
-// `sigilFor(name)` hashes a name onto that space with a stride coprime to it,
-// so a team's agents spread out instead of clustering on similar marks.
+// `sigilFor(name)` hashes a name onto that space (with an avalanche step, so
+// near-identical names such as Quill and Quinn land far apart).
 // Everything is drawn in currentColor plus --accent, so it follows the theme.
 
 const FRAMES = 6, MOTIFS = 8, SYMS = [3, 4, 5, 6], CORES = 2;
@@ -21,12 +21,14 @@ const poly = (n: number, r: number, rot = 0) =>
 function hash(s: string) {
   let h = 2166136261;
   for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  // FNV alone leaves similar names on similar numbers: finish with an avalanche
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
   return h >>> 0;
 }
 
 /** The sigil index for a name: stable, spread evenly over all SIGILS. */
 export function sigilFor(name: string) {
-  return (hash(name.toLowerCase()) * 101) % SIGILS; // 101 is coprime to 384
+  return hash(name.toLowerCase()) % SIGILS;
 }
 
 function frame(k: number) {

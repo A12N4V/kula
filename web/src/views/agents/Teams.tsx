@@ -13,7 +13,9 @@ import { api, type AgentsInfo, type Team } from "../../api";
 import { Icon, useToast } from "../../ui";
 import { AGENT_IDS, AGENT_NAME, type Act, type Tab } from "./data";
 import { TEAM_TEMPLATES, teamFrom, type TeamTemplate } from "./templates";
-import { AgentMark, Card, TabStrip, fenceSummary } from "./parts";
+import { Card, SeatMark, TabStrip, fenceSummary } from "./parts";
+import { Sigil } from "../../sigil";
+import { freeName, seatKey, titleFor } from "../../roster";
 import { Society, SocietyGraph, societyOrder } from "./Society";
 import { TeamOrg, teamProblems, workflowColor } from "./TeamOrg";
 
@@ -101,13 +103,15 @@ function TeamEditor({ team: t, all, info, on, saved, dirty, set, remove, act }: 
     const who = /(^| )(\S+?):/.exec(p)?.[2];
     if (who) (perMember[who] ??= []).push(p);
   }
-  const k = t.members.findIndex((m) => m.agent === sel);
+  const k = t.members.findIndex((m) => seatKey(m) === sel);
   const setM = (i: number, m: Partial<Team["members"][number]>) => {
-    const before = t.members[i].agent;
+    // a seat is pointed at by its key (name, else agent): renaming carries the pointers along
+    const before = seatKey(t.members[i]);
     let members = t.members.map((x, j) => (j === i ? { ...x, ...m } : x));
-    if (m.agent !== undefined && m.agent !== before) {
-      members = members.map((x) => ({ ...x, reports_to: x.reports_to === before ? m.agent : x.reports_to, hands_off: x.hands_off?.map((h) => (h === before ? m.agent! : h)) }));
-      setSel(m.agent);
+    const after = seatKey(members[i]);
+    if (after !== before) {
+      members = members.map((x) => ({ ...x, reports_to: x.reports_to === before ? after : x.reports_to, hands_off: x.hands_off?.map((h) => (h === before ? after : h)) }));
+      setSel(after);
     }
     set({ members });
   };
@@ -119,14 +123,16 @@ function TeamEditor({ team: t, all, info, on, saved, dirty, set, remove, act }: 
     set({ members });
   };
   const drop = (i: number) => {
-    const gone = t.members[i].agent;
+    const gone = seatKey(t.members[i]);
     set({ members: t.members.filter((_, j) => j !== i).map((x) => ({ ...x, reports_to: x.reports_to === gone ? "" : x.reports_to, hands_off: x.hands_off?.filter((h) => h !== gone) })) });
     setSel(null);
   };
   const addAgent = () => {
-    const agent = AGENT_IDS.find((a) => !t.members.some((m) => m.agent === a)) ?? `agent-${t.members.length + 1}`;
-    set({ members: [...t.members, { agent, workflow: "", reports_to: t.members.find((m) => !m.reports_to)?.agent ?? "" }] });
-    setSel(agent);
+    // a new seat is a named generic agent; any connected agent can take it
+    const name = freeName(t.name, t.members.map(seatKey));
+    const lead = t.members.find((m) => !m.reports_to);
+    set({ members: [...t.members, { name, agent: "", workflow: "", reports_to: lead ? seatKey(lead) : "" }] });
+    setSel(name);
   };
   const saveTeams = () => {
     setErr(null);
@@ -139,8 +145,8 @@ function TeamEditor({ team: t, all, info, on, saved, dirty, set, remove, act }: 
     <div className="team-stage">
       <div className="team-graph">
         <TeamOrg team={t} info={info} selected={sel} onSelect={setSel} problems={perMember}
-          onReport={(a, to) => setM(t.members.findIndex((m) => m.agent === a), { reports_to: to })}
-          onHand={(a, to) => { const m = t.members.find((x) => x.agent === a)!; const h = m.hands_off ?? []; setM(t.members.indexOf(m), { hands_off: h.includes(to) ? h.filter((x) => x !== to) : [...h, to] }); }} />
+          onReport={(a, to) => setM(t.members.findIndex((m) => seatKey(m) === a), { reports_to: to })}
+          onHand={(a, to) => { const m = t.members.find((x) => seatKey(x) === a)!; const h = m.hands_off ?? []; setM(t.members.indexOf(m), { hands_off: h.includes(to) ? h.filter((x) => x !== to) : [...h, to] }); }} />
         <div className="map-legend">
           {used.map((w) => <span key={w}><i style={{ background: workflowColor(info.workflows, w) }} />{w || "no workflow"}</span>)}
           <span><i className="k-line" />answers to</span><span><i className="k-dash" />hands off</span>
@@ -182,18 +188,22 @@ function TeamEditor({ team: t, all, info, on, saved, dirty, set, remove, act }: 
 /** An agent's place and prompt, with the instructions kula will hand it. */
 function MemberDetail({ team, k, info, setM, drop, move, close }: { team: Team; k: number; info: AgentsInfo; setM: (m: Partial<Team["members"][number]>) => void; drop: () => void; move: (dir: 1 | -1) => void; close: () => void }) {
   const m = team.members[k];
-  const others = team.members.filter((_, j) => j !== k).map((x) => x.agent).filter(Boolean);
-  const known = AGENT_IDS.includes(m.agent);
+  const others = team.members.filter((_, j) => j !== k).map(seatKey).filter(Boolean);
+  const known = !m.agent || m.agent === "any" || AGENT_IDS.includes(m.agent);
   const [preview, setPreview] = useState<string | null>(null);
   const toast = useToast();
-  const show = () => api.agentAction<{ text: string }>("team_prompt", { teams: [team], agent: m.agent }).then((r) => setPreview(r.text)).catch((e) => toast(e.message, "err"));
+  const show = () => api.agentAction<{ text: string }>("team_prompt", { teams: [team], agent: seatKey(m) }).then((r) => setPreview(r.text)).catch((e) => toast(e.message, "err"));
   useEffect(() => { if (preview !== null) show(); }, [JSON.stringify(team)]); // keep an open preview current
   return (
     <>
-      <div className="mi-kind"><AgentMark id={m.agent} size={13} /> agent<span className="spacer" /><button className="btn sm ghost icon-only" onClick={close} aria-label="Back to the team"><Icon.close /></button></div>
-      <div className="mi-row">
-        <select className="input" value={known ? m.agent : "other"} onChange={(e) => setM({ agent: e.target.value === "other" ? "aider" : e.target.value })} aria-label="Agent">
-          {AGENT_IDS.map((a) => <option key={a} value={a}>{AGENT_NAME[a]}</option>)}<option value="other">other…</option>
+      <div className="mi-kind"><SeatMark m={m} size={14} /> {titleFor(m.role || (m.reports_to ? "member" : "lead"))}<span className="spacer" /><button className="btn sm ghost icon-only" onClick={close} aria-label="Back to the team"><Icon.close /></button></div>
+      <label className="mi-field"><span>name</span>
+        <input className="input mono" value={m.name ?? ""} placeholder={m.agent} onChange={(e) => setM({ name: e.target.value.replace(/[^\w -]/g, "") })} aria-label="Seat name" />
+      </label>
+      <div className="mi-row" title="which agent runs this seat – any connected agent unless you pin one">
+        <select className="input" value={known ? (m.agent === "any" ? "" : m.agent) : "other"} onChange={(e) => setM({ agent: e.target.value === "other" ? "aider" : e.target.value })} aria-label="Runs on">
+          <option value="">runs on any connected agent</option>
+          {AGENT_IDS.map((a) => <option key={a} value={a}>runs on {AGENT_NAME[a]}</option>)}<option value="other">runs on another…</option>
         </select>
         {!known && <input className="input mono" value={m.agent} onChange={(e) => setM({ agent: e.target.value })} aria-label="Agent name" />}
       </div>
@@ -205,14 +215,14 @@ function MemberDetail({ team, k, info, setM, drop, move, close }: { team: Team; 
       <label className="mi-field"><span>role</span><input className="input" value={m.role ?? ""} onChange={(e) => setM({ role: e.target.value })} aria-label="Role" /></label>
       <label className="mi-field"><span>answers to</span>
         <select className="input" value={m.reports_to ?? ""} onChange={(e) => setM({ reports_to: e.target.value })} aria-label="Answers to">
-          <option value="">nobody – leads</option>{others.map((o) => <option key={o} value={o}>{AGENT_NAME[o] ?? o}</option>)}
+          <option value="">nobody – leads</option>{others.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       </label>
       <div className="mi-field"><span>hands off to</span>
         <div className="team-hands">
           {others.map((o) => {
             const on = (m.hands_off ?? []).includes(o);
-            return <button key={o} className={`chip-toggle ${on ? "on" : ""}`} aria-pressed={on} onClick={() => setM({ hands_off: on ? (m.hands_off ?? []).filter((h) => h !== o) : [...(m.hands_off ?? []), o] })}><AgentMark id={o} size={12} /> {AGENT_NAME[o] ?? o}</button>;
+            return <button key={o} className={`chip-toggle ${on ? "on" : ""}`} aria-pressed={on} onClick={() => setM({ hands_off: on ? (m.hands_off ?? []).filter((h) => h !== o) : [...(m.hands_off ?? []), o] })}><Sigil seed={o} size={12} /> {o}</button>;
           })}
         </div>
       </div>
@@ -264,7 +274,7 @@ function TeamPicker({ info, create, cancel, setTab }: { info: AgentsInfo; create
               <span className="tpl-seats">
                 {preview.members.map((m, i) => (
                   <span key={i} className="tpl-seat" style={{ marginLeft: m.reports_to ? 14 : 0, borderLeftColor: workflowColor(info.workflows, m.workflow) }}>
-                    <AgentMark id={m.agent} size={11} /> {m.role} <i className="mono">{m.workflow}</i>
+                    <SeatMark m={m} size={12} /> {seatKey(m)} <span className="muted">{titleFor(m.role)}</span> <i className="mono">{m.workflow}</i>
                   </span>
                 ))}
               </span>
@@ -282,7 +292,7 @@ function TeamPicker({ info, create, cancel, setTab }: { info: AgentsInfo; create
           </label>
         )}
         <div className="tpl-note muted">
-          Seats are filled by {connected.length ? `the agents connected here (${connected.map((c) => AGENT_NAME[c] ?? c).join(", ")})` : "Claude, Cursor, Codex and Gemini in turn – connect agents in Connect"}; change any seat after.
+          Each seat is a named agent that any connected agent can take; pin one to a specific agent in the seat after.
           {missing.length > 0 && <> Needs the workflow {missing.join(", ")}.</>}
         </div>
         <div className="row">
