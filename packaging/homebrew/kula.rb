@@ -5,7 +5,9 @@
 class Kula < Formula
   desc "Git, with a map: local-first git client with a knowledge-graph view"
   homepage "https://github.com/A12N4V/kula"
-  version "1.0.2"
+  version "0.3.0"
+  # 0.3 follows the 1.0.x tags: a fresh scheme so brew upgrades past them
+  version_scheme 1
   license "GPL-3.0-only"
 
   on_macos do

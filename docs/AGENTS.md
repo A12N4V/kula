@@ -181,7 +181,7 @@ kula memory confirm 12                   # still true: re-anchor to the code as 
 kula memory rm 12
 ```
 
-A memory is a note with `kind: "memory"` on `refs/kula/meta`: in git, auditable, shared with `kula sync`. When it is written kula stores an **anchor**: a 64-bit FNV-1a hash of its target's source (the symbol's lines, or the whole file). Every recall recomputes the hash; if it differs, or the target is gone from the graph, the memory comes back with `stale: true`. Agents are told to verify a stale memory before relying on it.
+A memory is a note with `kind: "memory"` on `refs/kula/meta`: in git, auditable, published with `kula share`, pulled with `kula sync`. When it is written kula stores an **anchor**: a 64-bit FNV-1a hash of its target's source (the symbol's lines, or the whole file). Every recall recomputes the hash; if it differs, or the target is gone from the graph, the memory comes back with `stale: true`. Agents are told to verify a stale memory before relying on it.
 
 ```mermaid
 stateDiagram-v2
@@ -306,6 +306,7 @@ echo '{"tool_name":"Edit","tool_input":{"file_path":"migrations/004.sql"}}' | ku
 | `start_task` | `title`, `workflow?`, `scope?` | the task and its workflow; refused when a task is active |
 | `finish_task` | – | the finished task; only one an agent started |
 | `guards` | `paths?` | kula.toml's rules, the active workflow's rules, the task, whether secrets are hidden, a verdict per path |
+| `isolate` | `select[]`, `hops?` (1), `limit?` (200) | a slice of the graph – path glob, `cluster:<id\|label>`, `symbol:<name>[~N]`, `diff:<base>[..head]`, `@<scope>` – its nodes, internal edges, inbound and outbound peers with edge counts; hidden code left out |
 | `context_pack` | `targets[]`, `budget?` (6000) | definitions plus what they use, who uses them, containers and tests, ranked by graph distance, big bodies cut to signatures |
 | `pre_edit` | `symbol` | callers, total dependents, risk, tests that reach it, co-changing files, notes, the verdict, memories, advice |
 | `verify_edit` | – | working tree vs `HEAD`: added, removed, modified symbols, dangling callers, callers to re-check, `guard_violations`, `ok` |

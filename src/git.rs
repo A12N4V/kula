@@ -290,9 +290,19 @@ impl Repo {
     pub fn changed_ranges(&self, base: &str, head: &str) -> Result<Vec<ChangedFile>> {
         validate_rev(base)?;
         validate_rev(head)?;
-        let range = format!("{base}...{head}");
-        let ns = self.run(&["diff", "--name-status", "--no-renames", &range])?;
-        let patch = self.run(&["diff", "-U0", "--no-color", "--no-renames", &range])?;
+        // A three-dot range needs a merge base; unrelated histories (an orphan
+        // main beside a team branch) have none – fall back to the two-dot diff
+        // rather than failing the whole comparison.
+        let range3 = format!("{base}...{head}");
+        let range2 = format!("{base}..{head}");
+        let ns = match self.run(&["diff", "--name-status", "--no-renames", &range3]) {
+            Ok(ns) => ns,
+            Err(_) => self.run(&["diff", "--name-status", "--no-renames", &range2])?,
+        };
+        let patch = match self.run(&["diff", "-U0", "--no-color", "--no-renames", &range3]) {
+            Ok(p) => p,
+            Err(_) => self.run(&["diff", "-U0", "--no-color", "--no-renames", &range2])?,
+        };
         let mut ranges: std::collections::HashMap<String, Vec<(u32, u32)>> = Default::default();
         let mut cur = String::new();
         for line in patch.lines() {

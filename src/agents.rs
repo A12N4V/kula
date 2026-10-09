@@ -145,6 +145,12 @@ fn mcp_server(m: &mut serde_json::Map<String, Value>) -> Result<()> {
 
 /// Wire an agent up to kula; returns the files written.
 pub fn connect(root: &Path, id: &str) -> Result<Vec<&'static str>> {
+    let files = connect_files(root, id)?;
+    crate::config::default_agent_if_unset(root, id)?;
+    Ok(files)
+}
+
+fn connect_files(root: &Path, id: &str) -> Result<Vec<&'static str>> {
     let p = |f: &str| root.join(f);
     match id {
         // Claude Code: .mcp.json, and a PreToolUse hook (exit 2 blocks, stderr goes to the agent).
@@ -298,7 +304,7 @@ pub fn workflow_prompt(w: &Workflow) -> String {
 /// One member's full instructions in a team: the team's prompt, its own, where it
 /// sits (who it answers to, who answers to it, who it hands off to), then its workflow.
 pub fn team_prompt(cfg: &Config, team: &crate::config::Team, m: &crate::config::Member) -> String {
-    let mut s = format!("# {} in team {}\n\n", m.agent, team.name);
+    let mut s = format!("# {} in team {}\n\n", m.key(), team.name);
     if !team.about.is_empty() {
         s.push_str(&format!("{}\n\n", team.about));
     }
@@ -311,9 +317,10 @@ pub fn team_prompt(cfg: &Config, team: &crate::config::Team, m: &crate::config::
     if !m.prompt.trim().is_empty() {
         s.push_str(&format!("{}\n\n", m.prompt.trim()));
     }
-    let reports: Vec<&str> = team.members.iter().filter(|x| x.reports_to == m.agent).map(|x| x.agent.as_str()).collect();
+    let reports: Vec<&str> = team.members.iter().filter(|x| x.reports_to == m.key()).map(|x| x.key()).collect();
     let mut place = vec![];
-    let lead = |t: &crate::config::Team| t.members.iter().find(|x| x.reports_to.is_empty()).map(|x| x.agent.clone()).unwrap_or_default();
+    let lead =
+        |t: &crate::config::Team| t.members.iter().find(|x| x.reports_to.is_empty()).map(|x| x.key().to_string()).unwrap_or_default();
     if m.reports_to.is_empty() {
         place.push("You lead this team.".to_string());
         if let Some(up) = cfg.teams.iter().find(|x| !team.under.is_empty() && x.name == team.under) {
@@ -342,7 +349,7 @@ pub fn team_prompt(cfg: &Config, team: &crate::config::Team, m: &crate::config::
     if !m.hands_off.is_empty() {
         place.push(format!("When your part is done, hand it to {} – say what changed and what to check.", m.hands_off.join(" and ")));
     }
-    let from: Vec<&str> = team.members.iter().filter(|x| x.hands_off.contains(&m.agent)).map(|x| x.agent.as_str()).collect();
+    let from: Vec<&str> = team.members.iter().filter(|x| x.hands_off.iter().any(|h| h == m.key())).map(|x| x.key()).collect();
     if !from.is_empty() {
         place.push(format!("{} hand{} work to you.", from.join(" and "), if from.len() == 1 { "s" } else { "" }));
     }
@@ -661,7 +668,11 @@ pub fn shell_targets(cmd: &str) -> (Vec<Target>, Option<String>) {
                 args.windows(2)
                     .filter(|w| matches!(w[0], "-c" | "-e" | "--eval" | "-r"))
                     .flat_map(|w| w[1].split(|c: char| !(c.is_ascii_alphanumeric() || "_./-".contains(c))))
-                    .filter(|a| looks_like_path(a) && a.chars().any(|c| c.is_ascii_alphabetic()) && (!a.starts_with('.') || a.starts_with("./") || a.starts_with("../")))
+                    .filter(|a| {
+                        looks_like_path(a)
+                            && a.chars().any(|c| c.is_ascii_alphabetic())
+                            && (!a.starts_with('.') || a.starts_with("./") || a.starts_with("../"))
+                    })
                     .for_each(|a| write(a, &mut out));
             }
             _ => plain.iter().filter(|a| looks_like_path(a)).for_each(|a| out.push(Target { path: a.to_string(), write: false })),
@@ -842,7 +853,13 @@ pub fn brief(cfg: &Config) -> String {
                 s.push_str(&format!(
                     "| `{}` | {} | {} | {} |\n",
                     t.name,
-                    m.agent,
+                    {
+                        let on = match (m.provider(&cfg.agents.default), m.model.as_str()) {
+                            (p, "") => p.to_string(),
+                            (p, model) => format!("{p}, {model}"),
+                        };
+                        if m.name.is_empty() { on } else { format!("{} ({on})", m.name) }
+                    },
                     if m.workflow.is_empty() { "–" } else { &m.workflow },
                     m.role.replace('|', "/")
                 ));

@@ -33,6 +33,15 @@ export interface Node {
   community: number;
 }
 export interface Edge { src: number; dst: number; kind: string; weight: number }
+/** A node outside an isolated slice that touches it (src/isolate.rs). */
+export interface Peer { node: Node; kinds: string[]; edges: number; inside: number[] }
+/** A slice of the graph and its boundary: `kula graph isolate`. */
+export interface Slice {
+  selectors: string[]; nodes: Node[]; edges: Edge[]; boundary: Edge[]; inbound: Peer[]; outbound: Peer[]; files: string[]; clusters: string[];
+  counts: { nodes: number; files: number; internal: number; inbound_edges: number; inbound: number; outbound_edges: number; outbound: number };
+}
+/** A named scope in kula.toml ([[scope]]); workflows use it as `@name`. */
+export interface Scope { name: string; about?: string; select: string[]; hops?: number; paths: string[] }
 export interface Community { id: number; label: string; size: number }
 export interface GraphData { nodes: Node[]; edges: Edge[]; communities: Community[]; truncated: boolean; churn?: Record<string, number> }
 export interface RepoInfo {
@@ -50,7 +59,7 @@ export interface Task { title: string; scope: string[]; started: number; by: str
 export interface GuardRule { level: GuardLevel; paths: string[]; symbols: string[]; reason: string }
 export interface AgentsInfo {
   rules: GuardRule[]; task: Task | null; files: { path: string; verdict: Verdict }[]; levels: Record<string, GuardLevel>;
-  memories: Memory[]; secrets_hidden: boolean; memory_enabled: boolean; mcp_registered: boolean; hook_installed: boolean; kula_toml: boolean;
+  memories: Memory[]; secrets_hidden: boolean; memory_enabled: boolean; default_agent?: string; mcp_registered: boolean; hook_installed: boolean; kula_toml: boolean;
   workflows: Workflow[]; workflow: Workflow | null; workflow_rules: GuardRule[]; raw_rules: RawRule[]; docs_list: string[];
   connections: Connection[]; docs: AgentDoc[]; suggestions: Suggestion[];
   teams: Team[]; team: { name: string; started: number; by: string } | null; research: ResearchRun[];
@@ -59,7 +68,7 @@ export interface AgentsInfo {
   skills?: Skill[]; skill_strays?: SkillStray[]; stack?: string[];
 }
 /** An autoresearch loop's settings ([workflow.research]). */
-export interface Research { metric: string; goal: "min" | "max" | ""; budget?: number; timeout?: number }
+export interface Research { metric: string; goal: "min" | "max" | ""; budget?: number; timeout?: number; icon?: string }
 export interface Experiment { n: number; hypothesis: string; value: number | null; best_before: number | null; kept: boolean; commit?: string; files: string[]; by: string; at: number; note?: string }
 /** A run of an autoresearch workflow (src/research.rs). */
 export interface ResearchRun {
@@ -69,7 +78,7 @@ export interface ResearchRun {
 /** A team (kula.toml [[team]]): each agent in its own workflow. */
 export interface Team {
   name: string; about?: string; prompt?: string; under?: string;
-  members: { agent: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
+  members: { name?: string; agent: string; model?: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
 }
 /** A work mode (src/workflow.rs): its own fences, scope, steps, docs and memory policy. */
 export interface Workflow {
@@ -153,6 +162,10 @@ export const api = {
   symbol: (id: number) => get<Context>(`/api/symbol/${id}`),
   impact: (id: number, dir = "up", depth = 3) => get<Impact>(`/api/impact/${id}?${q({ dir, depth })}`),
   flows: () => get<Flow[]>("/api/flows"),
+  isolate: (select: string[], hops = 1) => post<Slice>("/api/isolate", { select, hops }),
+  scopes: () => get<Scope[]>("/api/scopes"),
+  scopeSave: (name: string, select: string[], hops = 1, about = "") => post<Scope>("/api/scopes/save", { name, select, hops, about }),
+  scopeForget: (name: string) => post<{ removed: boolean }>("/api/scopes/forget", { name }),
   file: (path: string) => get<{ path: string; content: string }>(`/api/file?${q({ path })}`),
   compare: (base: string, head?: string) => get<Compare>(`/api/compare?${q({ base, head })}`),
   status: () => get<{ branch: string; files: FileStatus[] }>("/api/git/status"),
@@ -178,7 +191,27 @@ export const api = {
   kgExamples: () => get<{ examples: { title: string; query: string }[]; vocabulary: { term: string; kind: string; doc: string }[]; prefixes: { prefix: string; iri: string }[] }>("/api/kg/examples"),
   metaAction: <T = unknown>(kind: "issues" | "proposals" | "notes", action: string | number, body: Record<string, unknown>) =>
     post<T>(`/api/meta/${kind}/${action}`, body),
+
+  // K2 · unified agent config: skills, rules, MCP, memory layers
+  configMatrix: () => get<ConfigMatrix>("/api/agent/config_matrix"),
+  skillDetail: (name: string) => get<SkillDetail>(`/api/agent/skill_detail?${q({ name })}`),
+  skillDiff: (name: string, agent: string) => get<SkillDiff>(`/api/agent/skill_diff?${q({ name, agent })}`),
+  memoryLayers: () => get<MemoryLayer[]>("/api/agent/memory_layers"),
+  mcpSync: (name: string) => post<{ written: string[] }>("/api/agent/mcp_sync", { name }),
 };
+
+// K2 types, derived from what each agent already reads (src/agent_config.rs).
+/** One agent's MCP config file against the shared source in .agents/mcp.json. */
+export interface McpAgentRow { agent: string; path: string; exists: boolean; servers: string[]; differs: string[]; missing: string[] }
+/** A rules file one agent reads: CLAUDE.md, GEMINI.md, AGENTS.md or .cursor/rules. */
+export interface RuleFile { agent: string; path: string; exists: boolean; bytes: number }
+export interface ConfigMatrix { source: { path: string; exists: boolean; servers: string[] }; agents: McpAgentRow[]; rules: RuleFile[] }
+/** Which workflows and teams mention a skill, from the text they already carry. */
+export interface SkillUsage { workflows: string[]; teams: string[]; seats: string[] }
+export interface SkillDetail { skill: Skill; usage: SkillUsage }
+export interface SkillDiff { name: string; agent: string; diff: string | null }
+/** A memory with its layer derived at read time: scope and provenance. */
+export interface MemoryLayer extends Memory { scope: "task" | "workflow" | "repo"; scope_name: string; agent: string; commit: string; symbol: string | null }
 
 export function relTime(ts: number) {
   const d = Math.max(0, Date.now() / 1000 - ts);

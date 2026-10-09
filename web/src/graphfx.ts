@@ -7,6 +7,20 @@
 
 import type Sigma from "sigma";
 import type Graph from "graphology";
+import { blend } from "./colors";
+
+// Shared by the graph surface and its smaller cousins (MiniGraph, NotesGraph,
+// Society): kept here so importing them does not pull all of GraphView into
+// the first-paint chunk.
+export function cssVar(name: string) {
+  // Sigma's colour parser rejects "rgba(1, 2, 3, 0.4)" with spaces; normalise.
+  return getComputedStyle(document.documentElement).getPropertyValue(name).replace(/\s+/g, "") || "#888";
+}
+
+/** `c` at opacity `a`, pre-blended onto the page background (edge shaders ignore alpha). */
+export const withAlpha = (c: string, a: number) => blend(c, a, cssVar("--bg"));
+
+export const CURVATURE = 0.25; // @sigma/edge-curve default
 
 export interface OverlayOptions {
   /** Territory key for a node (a directory), or null for none. */

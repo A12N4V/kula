@@ -1,0 +1,29 @@
+/* ================================================================ agents · memory graph (module M1) */
+/* The graph above the list: MiniGraph on the codebase-map ground, the exact
+   numbers and the per-memory node inventory under it. */
+.m1-graph { margin: 2px 0 12px; border: 1px solid var(--line); background: var(--bg); }
+.m1-graph .mini-graph { height: 320px; min-height: 320px; }
+.m1-under { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: start; padding: 8px 10px; border-top: 1px solid var(--line); }
+.m1-legend-t { border-collapse: collapse; font-size: 12px; }
+.m1-legend-t th, .m1-legend-t td { padding: 2px 0 2px 14px; text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
+.m1-legend-t thead th { padding-bottom: 4px; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.m1-legend-t tbody th, .m1-legend-t tfoot th { text-align: left; color: var(--text-2); }
+.m1-legend-t tfoot th, .m1-legend-t tfoot td { border-top: 1px solid var(--line); }
+.m1-inventory { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.m1-node { min-height: 28px; min-width: 36px; padding: 0 10px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent); color: var(--bg); font: 600 11px var(--mono); cursor: pointer; }
+.m1-node:hover { border-color: var(--text-2); }
+.m1-node.sel { border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); }
+.m1-node.stale { border: 1px dashed var(--yellow); background: transparent; color: var(--yellow); }
+.m1-node.stale.sel { border-style: solid; border-color: var(--text); color: var(--text); }
+.m1-empty-cli { font-size: 12px; }
+/* Short windows (≤960px tall, most laptops): the 320px graph would push the
+   last list row under the fixed statusbar – measured 14px of overlap at
+   1440x900 – so the graph collapses to 240px there too, not just on phones. */
+@media (max-width: 900px), (max-height: 960px) {
+  .m1-graph .mini-graph { height: 240px; min-height: 240px; }
+}
+/* phone floor: every hit target is at least 40 px */
+@media (max-width: 900px) {
+  .m1-node { min-height: 40px; min-width: 40px; }
+  .m1-under { gap: 10px 16px; }
+}

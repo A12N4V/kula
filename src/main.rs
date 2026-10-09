@@ -1,13 +1,16 @@
 //! kula – git, with a map.
 
 mod agent;
+mod agent_config;
 mod agents;
+mod cache;
 mod clean;
 mod config;
 mod git;
 mod graph;
 mod guard;
 mod index;
+mod isolate;
 mod kg;
 mod mcp;
 mod memory;
@@ -15,8 +18,9 @@ mod meta;
 mod project;
 mod research;
 mod run;
-mod skills;
 mod server;
+mod setup;
+mod skills;
 mod store;
 mod term;
 mod workflow;
@@ -242,6 +246,10 @@ enum Cmd {
         #[arg(long)]
         all: bool,
     },
+    /// Isolate part of the graph: a path, a cluster, a symbol's neighbourhood or a branch's diff, with its boundary.
+    #[command(after_help = "Examples:\n  kula graph isolate src/auth/**\n  kula graph isolate symbol:login~2 cluster:worker\n  kula graph isolate diff:main --save review\n  kula graph scopes")]
+    #[command(subcommand)]
+    Graph(GraphCmd),
     /// Local issues stored in git.
     #[command(after_help = "Examples:\n  kula issue new \"login fails on empty token\" --label bug --anchor src/auth.rs:login")]
     #[command(subcommand)]
@@ -275,7 +283,9 @@ enum Cmd {
     #[command(subcommand)]
     Research(ResearchCmd),
     /// One set of skills for every agent: .agents/skills, synced to each agent's own place.
-    #[command(after_help = "Examples:\n  kula skill list  ·  kula skill new release-notes -d \"Write release notes from merged PRs\"  ·  kula skill sync  ·  kula skill adopt claude triage")]
+    #[command(
+        after_help = "Examples:\n  kula skill list  ·  kula skill new release-notes -d \"Write release notes from merged PRs\"  ·  kula skill sync  ·  kula skill adopt claude triage"
+    )]
     #[command(subcommand)]
     Skill(SkillCmd),
     /// Run any agent harness held to kula's fences: `kula run -w fix -- aider`.
@@ -305,9 +315,21 @@ enum Cmd {
     #[command(after_help = "Examples:\n  kula kg export -f ttl -o graph.ttl   ·  kula kg examples")]
     #[command(subcommand)]
     Kg(KgCmd),
-    /// Push/pull issues, proposals and notes with a remote.
-    #[command(after_help = "Examples:\n  kula sync   ·  kula sync upstream")]
+    /// Pull what others shared: issues, memories and the agent setup (skills,
+    /// MCP servers, instruction files), then regenerate every agent's copy.
+    /// Never pushes. After a fork: `kula sync upstream`.
+    #[command(after_help = "Examples:\n  kula sync   ·  kula sync upstream   ·  kula sync --overwrite")]
     Sync {
+        #[arg(default_value = "origin")]
+        remote: String,
+        /// Replace setup files you changed locally with the shared versions.
+        #[arg(long)]
+        overwrite: bool,
+    },
+    /// Publish this repo's agent setup, issues and memories to a remote, so
+    /// anyone who clones or forks gets them with `kula sync`. Private until you do.
+    #[command(after_help = "Examples:\n  kula share   ·  kula share upstream")]
+    Share {
         #[arg(default_value = "origin")]
         remote: String,
     },
@@ -319,7 +341,9 @@ enum Cmd {
     Doctor,
     /// Free disk space: old `kula run` snapshots, temp files, a compacted store.
     /// `kula view` does this by itself after the idle timer (Settings → Disk).
-    #[command(after_help = "Examples:\n  kula clean   ·  kula clean --all   ·  kula clean --after 30   ·  kula clean --after 0 (timer off)")]
+    #[command(
+        after_help = "Examples:\n  kula clean   ·  kula clean --all   ·  kula clean --after 30   ·  kula clean --after 0 (timer off)"
+    )]
     Clean {
         /// Remove every kept run, not only those older than the timer
         #[arg(long)]
@@ -327,6 +351,16 @@ enum Cmd {
         /// Set the idle timer in minutes (0 turns auto-clean off) and exit
         #[arg(long, value_name = "MIN")]
         after: Option<u32>,
+        /// Show what would go without removing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Deep compaction: prune superseded research experiments from finished
+    /// runs, dedupe exact-duplicate memories, compact the graph store.
+    /// Nothing user-made goes that a live run still references, and every
+    /// removal is reported (memory dedupe is its own commit on refs/kula/meta).
+    #[command(after_help = "Examples:\n  kula gc   ·  kula gc --dry-run")]
+    Gc {
         /// Show what would go without removing anything
         #[arg(long)]
         dry_run: bool,
@@ -563,6 +597,35 @@ enum AgentsCmd {
     Accept { id: u64 },
     /// Dismiss a suggestion.
     Dismiss { id: u64 },
+    /// The agent config matrix: MCP servers and rules files per agent, against
+    /// the shared source. With a NAME, sync that server from .agents/mcp.json to all.
+    Mcp { name: Option<String> },
+}
+
+#[derive(Subcommand)]
+enum GraphCmd {
+    /// Show only a slice of the graph and what crosses its edge. Selectors are unioned:
+    /// a path glob, cluster:<id|label>, symbol:<name>[~hops], diff:<base>[..head], @<scope>.
+    Isolate {
+        #[arg(required = true)]
+        selectors: Vec<String>,
+        /// Neighbourhood for symbol selectors without ~N.
+        #[arg(long, default_value_t = 1)]
+        hops: usize,
+        /// Save it in kula.toml as a named [[scope]]; workflows reuse it as `scope = ["@name"]`.
+        #[arg(long, value_name = "NAME")]
+        save: Option<String>,
+        /// One line about the saved scope.
+        #[arg(long, requires = "save")]
+        about: Option<String>,
+        /// Rows per boundary list.
+        #[arg(short, long, default_value_t = 12)]
+        limit: usize,
+    },
+    /// The saved scopes.
+    Scopes,
+    /// Forget a saved scope.
+    Forget { name: String },
 }
 
 #[derive(Subcommand)]
@@ -695,6 +758,105 @@ fn next_step(msg: &str) -> Option<&'static str> {
 fn passthrough(dir: &std::path::Path, args: &[String]) -> Result<()> {
     let status = std::process::Command::new("git").arg("-C").arg(dir).args(args).status()?;
     std::process::exit(status.code().unwrap_or(1));
+}
+
+fn graph_cmd(repo: &Repo, gc: GraphCmd, json: bool) -> Result<()> {
+    let out = |v: &dyn erased::Json| println!("{}", v.to_json());
+    match gc {
+        GraphCmd::Isolate { selectors, hops, save, about, limit } => {
+            let st = Store::open(repo)?;
+            let (saved, s) = match save {
+                Some(name) => {
+                    let (sc, s) = isolate::save(repo, &st, &name, about.as_deref().unwrap_or(""), &selectors, hops)?;
+                    (Some(sc), s)
+                }
+                None => (None, isolate::isolate(repo, &st, &selectors, hops)?),
+            };
+            if json {
+                let mut v = serde_json::to_value(&s)?;
+                if let Some(sc) = &saved {
+                    v["saved"] = serde_json::to_value(sc)?;
+                }
+                out(&v);
+                return Ok(());
+            }
+            let c = &s.counts;
+            header(&format!("isolate {}", bold(&s.selectors.join(" + "))));
+            println!(
+                "  {} symbols · {} files · {} internal edges · {}",
+                c.nodes,
+                c.files,
+                c.internal,
+                dim(&s.clusters.iter().take(4).cloned().collect::<Vec<_>>().join(", "))
+            );
+            println!(
+                "  {} {} from {} outside   {} {} to {} outside\n",
+                accent("in"),
+                c.inbound_edges,
+                c.inbound,
+                accent("out"),
+                c.outbound_edges,
+                c.outbound
+            );
+            let by_id: std::collections::HashMap<i64, &store::Node> = s.nodes.iter().map(|n| (n.id, n)).collect();
+            for (title, list) in [("inbound – who uses it", &s.inbound), ("outbound – what it uses", &s.outbound)] {
+                if list.is_empty() {
+                    continue;
+                }
+                println!("  {}", bold(title));
+                for p in list.iter().take(limit) {
+                    let via: Vec<&str> = p.inside.iter().filter_map(|i| by_id.get(i)).map(|n| n.name.as_str()).take(3).collect();
+                    println!(
+                        "  {} {}  {}  {} {}",
+                        community(p.node.community, kind_glyph(&p.node.kind)),
+                        bold(&p.node.name),
+                        dim(&format!("{}:{}", p.node.path, p.node.start_line)),
+                        dim(&format!("×{} {}", p.edges, if title.starts_with("in") { "→" } else { "←" })),
+                        via.join(", ")
+                    );
+                }
+                if list.len() > limit {
+                    println!("  {}", dim(&format!("… {} more", list.len() - limit)));
+                }
+                println!();
+            }
+            println!("  {}", bold("files"));
+            for f in s.files.iter().take(limit) {
+                println!("  {f}");
+            }
+            if s.files.len() > limit {
+                println!("  {}", dim(&format!("… {} more", s.files.len() - limit)));
+            }
+            if let Some(sc) = saved {
+                println!("\n  saved as {} in kula.toml – use it in a workflow as {}", bold(&format!("@{}", sc.name)), dim(&format!("scope = [\"@{}\"]", sc.name)));
+            }
+        }
+        GraphCmd::Scopes => {
+            let cfg = config::Config::load(&repo.root)?;
+            if json {
+                out(&cfg.scopes);
+                return Ok(());
+            }
+            header("scopes");
+            if cfg.scopes.is_empty() {
+                println!("  {}", dim("none yet – kula graph isolate <selector> --save <name>"));
+            }
+            for s in &cfg.scopes {
+                println!("  {} {:<20} {}  {}", accent("@"), s.name, s.select.join(" + "), dim(&format!("{} files{}", s.paths.len(), if s.about.is_empty() { String::new() } else { format!(" – {}", s.about) })));
+            }
+        }
+        GraphCmd::Forget { name } => {
+            if !isolate::remove(repo, &name)? {
+                bail!("no saved scope {name:?}");
+            }
+            if json {
+                out(&serde_json::json!({ "removed": name }));
+            } else {
+                println!("  forgot @{name}");
+            }
+        }
+    }
+    Ok(())
 }
 
 fn print_node(n: &store::Node) {
@@ -966,7 +1128,29 @@ fn run(cli: Cli) -> Result<()> {
                 println!("{}", serde_json::to_string(&r)?);
             } else {
                 let verb = if dry_run { "would remove" } else { "removed" };
-                println!("{verb} {} kept run(s), {} temp file(s); freed {} · .kula is {}", r.runs_removed, r.temp_removed, clean::human(r.freed_bytes), clean::human(r.size_bytes));
+                println!(
+                    "{verb} {} kept run(s), {} temp file(s); freed {} · .kula is {}",
+                    r.runs_removed,
+                    r.temp_removed,
+                    clean::human(r.freed_bytes),
+                    clean::human(r.size_bytes)
+                );
+            }
+        }
+        Cmd::Gc { dry_run } => {
+            let r = clean::gc(&repo, dry_run)?;
+            if json {
+                println!("{}", serde_json::to_string(&r)?);
+            } else {
+                let verb = if dry_run { "would prune" } else { "pruned" };
+                println!(
+                    "{verb} {} superseded research experiment(s), {} duplicate memor{}; freed {} · .kula is {}",
+                    r.research_pruned,
+                    r.memories_deduped,
+                    if r.memories_deduped == 1 { "y" } else { "ies" },
+                    clean::human(r.freed_bytes),
+                    clean::human(r.size_bytes)
+                );
             }
         }
         Cmd::Status => status(&repo, json)?,
@@ -1149,6 +1333,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Note(nc) => note_cmd(&repo, nc, json)?,
         Cmd::Guard(gc) => guard_cmd(&repo, gc, json)?,
         Cmd::Task(tc) => task_cmd(&repo, tc, json)?,
+        Cmd::Graph(gc) => graph_cmd(&repo, gc, json)?,
         Cmd::Workflow(wc) => workflow_cmd(&repo, wc, json)?,
         Cmd::Agents(ac) => agents_cmd(&repo, ac, json)?,
         Cmd::Team(tc) => team_cmd(&repo, tc, json)?,
@@ -1173,7 +1358,35 @@ fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Memory(mc) => memory_cmd(&repo, mc, json)?,
         Cmd::Kg(kc) => kg_cmd(&repo, kc, json)?,
-        Cmd::Sync { remote } => print!("{}", meta::sync(&repo, &remote)?),
+        Cmd::Sync { remote, overwrite } => {
+            print!("{}", meta::sync(&repo, &remote, false)?);
+            match setup::pull(&repo, &remote, overwrite)? {
+                None => println!("remote has no shared agent setup"),
+                Some(r) => {
+                    for f in &r.written {
+                        println!("  {} {f}", green("+"));
+                    }
+                    for f in &r.kept {
+                        println!("  {} {f}  {}", yellow("="), dim("changed here, kept yours (--overwrite takes theirs)"));
+                    }
+                    let skills = skills::sync(&repo.root)?;
+                    let docs = agents::sync(&repo, &[])?;
+                    println!(
+                        "agent setup: {} files restored, {} kept, {} agent copies regenerated",
+                        r.written.len(),
+                        r.kept.len(),
+                        skills.len() + docs.len()
+                    );
+                }
+            }
+        }
+        Cmd::Share { remote } => {
+            let shared = setup::snapshot(&repo)?;
+            print!("{}", meta::sync(&repo, &remote, true)?);
+            setup::push(&repo, &remote)?;
+            println!("shared the agent setup ({} files) on {}", shared.len(), setup::REF);
+            println!("{}", dim("anyone who clones gets it with `kula sync` (a fork: `kula sync upstream`)"));
+        }
         Cmd::Mcp => mcp::run(repo)?,
         Cmd::Doctor | Cmd::Init { .. } | Cmd::Git { .. } | Cmd::External(_) => unreachable!(),
     }
@@ -1763,16 +1976,16 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 let on = active.as_ref().is_some_and(|a| a.name == t.name);
                 let under = if t.under.is_empty() { String::new() } else { format!("  {}", dim(&format!("under {}", t.under))) };
                 println!("  {} {}  {}{under}", if on { green("●") } else { dim("○") }, accent(&t.name), dim(&t.about));
-                let lead = t.members.iter().find(|m| m.reports_to.is_empty()).map(|m| m.agent.clone());
-                let w = t.members.iter().map(|m| m.agent.chars().count()).max().unwrap_or(5).max(5);
+                let lead = t.members.iter().find(|m| m.reports_to.is_empty()).map(|m| m.key().to_string());
+                let w = t.members.iter().map(|m| m.key().chars().count()).max().unwrap_or(5).max(5);
                 let r = t.members.iter().map(|m| m.workflow.chars().count()).max().unwrap_or(8).max(8);
                 for m in &t.members {
-                    let tag = if lead.as_deref() == Some(m.agent.as_str()) && m.role.is_empty() { green("lead") } else { String::new() };
+                    let tag = if lead.as_deref() == Some(m.key()) && m.role.is_empty() { green("lead") } else { String::new() };
                     let tag = if tag.is_empty() { String::new() } else { format!(" {tag}") };
                     let wf = if m.workflow.is_empty() { dim("none") } else { bold(&m.workflow) };
                     println!(
                         "      {:<w$}  {:<r$}  {}{}",
-                        m.agent,
+                        m.key(),
                         wf,
                         if m.role.is_empty() { dim("member") } else { dim(&m.role) },
                         tag,
@@ -1792,7 +2005,7 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 }
                 // re-saving keeps what the UI set: prompts, hand-offs
                 let old =
-                    cfg.teams.iter().find(|t| t.name == name).and_then(|t| t.members.iter().find(|x| x.agent == agent.trim())).cloned();
+                    cfg.teams.iter().find(|t| t.name == name).and_then(|t| t.members.iter().find(|x| x.key() == agent.trim())).cloned();
                 members.push(config::Member {
                     agent: agent.trim().into(),
                     workflow: wf.trim().into(),
@@ -1801,10 +2014,10 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 });
             }
             // `-m gemini=fix:lead` names the lead as well as --lead does
-            let lead = lead.or_else(|| members.iter().find(|m| m.role == "lead").map(|m| m.agent.clone()));
+            let lead = lead.or_else(|| members.iter().find(|m| m.role == "lead").map(|m| m.key().to_string()));
             if let Some(lead) = &lead {
                 for m in members.iter_mut() {
-                    m.reports_to = if &m.agent == lead { String::new() } else { lead.clone() };
+                    m.reports_to = if m.key() == lead { String::new() } else { lead.clone() };
                 }
             }
             let mut teams = cfg.teams.clone();
@@ -1825,7 +2038,9 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
         TeamCmd::Prompt { name, agent } => {
             let Some(t) = cfg.teams.iter().find(|t| t.name == name) else { bail!("no team called {name}") };
             let id = agents::agent_id(&agent);
-            let Some(m) = t.members.iter().find(|m| agents::agent_id(&m.agent) == id) else { bail!("{agent} is not in team {name}") };
+            let Some(m) = t.members.iter().find(|m| m.name.eq_ignore_ascii_case(agent.trim()) || agents::agent_id(&m.agent) == id) else {
+                bail!("{agent} is not in team {name}")
+            };
             print!("{}", agents::team_prompt(&cfg, t, m));
         }
         TeamCmd::Stop => match guard::team_stop(repo)? {
@@ -1865,7 +2080,7 @@ fn research_cmd(repo: &Repo, c: ResearchCmd, json: bool) -> Result<()> {
     };
     match c {
         ResearchCmd::Init { metric, goal, scope, budget, timeout, name } => {
-            let w = research::init(repo, &name, workflow::Research { metric, goal, budget, timeout }, scope)?;
+            let w = research::init(repo, &name, workflow::Research { metric, goal, budget, timeout, ..Default::default() }, scope)?;
             println!("  {} {} is a research loop in kula.toml", green("✓"), accent(&w.name));
             println!("  {}", dim(&format!("next: kula research start {}  (measures the baseline on a research/ branch)", w.name)));
         }
@@ -1942,6 +2157,9 @@ fn agents_cmd(repo: &Repo, c: AgentsCmd, json: bool) -> Result<()> {
                 let files = agents::connect(&repo.root, &id)?;
                 println!("  {} {:<8} {}", green("✓"), id, dim(&files.join(", ")));
             }
+            for f in agents::sync(repo, &[])? {
+                println!("  {} {:<8} {}", green("✓"), "brief", dim(&f));
+            }
         }
         AgentsCmd::Sync { files } => {
             let done = agents::sync(repo, &files)?;
@@ -1953,6 +2171,45 @@ fn agents_cmd(repo: &Repo, c: AgentsCmd, json: bool) -> Result<()> {
             }
         }
         AgentsCmd::Brief => print!("{}", agents::brief(&config::Config::load(&repo.root)?)),
+        AgentsCmd::Mcp { name } => match name {
+            Some(name) => {
+                let w = agent_config::mcp_sync(&repo.root, &name)?;
+                for f in w {
+                    println!("  {} {}", green("✓"), f);
+                }
+            }
+            None => {
+                let m = agent_config::matrix(&repo.root)?;
+                if json {
+                    println!("{}", serde_json::to_string(&m)?);
+                    return Ok(());
+                }
+                header("mcp");
+                let src = if m.source.exists {
+                    format!("{} · {}", accent(&m.source.path), m.source.servers.join(", "))
+                } else {
+                    dim(&format!("{} – none yet", m.source.path))
+                };
+                println!("  source  {src}");
+                for a in &m.agents {
+                    let state = if !a.exists {
+                        yellow("missing")
+                    } else if a.missing.is_empty() && a.differs.is_empty() {
+                        green("in sync")
+                    } else {
+                        yellow(&format!("differs: {}", a.differs.iter().chain(a.missing.iter()).cloned().collect::<Vec<_>>().join(", ")))
+                    };
+                    println!("  {:<8} {:<28} {}", a.agent, dim(&a.path), state);
+                    println!("    servers: {}", if a.servers.is_empty() { dim("none") } else { a.servers.join(", ") });
+                }
+                header("rules");
+                for r in &m.rules {
+                    let state = if r.exists { green("✓") } else { dim("·") };
+                    println!("  {:<8} {:<32} {}", r.agent, r.path, state);
+                }
+                println!("\n  {}", dim("sync one: `kula agents mcp <server-name>`"));
+            }
+        },
         AgentsCmd::Suggestions => {
             let all = agents::suggestions(repo);
             if json {

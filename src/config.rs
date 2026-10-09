@@ -27,6 +27,51 @@ pub struct Config {
     /// `[[team]]` agent teams: each agent in its own workflow.
     #[serde(rename = "team")]
     pub teams: Vec<Team>,
+    /// `[[scope]]` named slices of the graph (`kula graph isolate --save`);
+    /// a workflow or task reuses one as `scope = ["@name"]`.
+    #[serde(rename = "scope")]
+    pub scopes: Vec<Scope>,
+}
+
+/// A named part of the codebase.
+///
+/// ```toml
+/// [[scope]]
+/// name = "auth"
+/// select = ["src/auth/**", "symbol:hashToken~1"]
+/// paths = ["src/auth/session.ts", "src/util/crypto.ts"]
+/// ```
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Scope {
+    pub name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub about: String,
+    /// Selectors, re-run by `kula graph isolate @name` (see `isolate.rs`).
+    pub select: Vec<String>,
+    /// Default hops for symbol selectors.
+    #[serde(skip_serializing_if = "is_zero_usize")]
+    pub hops: usize,
+    /// The files the selectors picked when saved: what `@name` means in a workflow scope.
+    pub paths: Vec<String>,
+}
+
+fn is_zero_usize(n: &usize) -> bool {
+    *n == 0
+}
+
+impl Config {
+    /// Replace `@name` entries with the saved scope's files; anything else stays.
+    pub fn expand_scope(&self, entries: &[String]) -> Vec<String> {
+        let mut out = Vec::new();
+        for e in entries {
+            match e.strip_prefix('@').and_then(|n| self.scopes.iter().find(|s| s.name == n)) {
+                Some(s) => out.extend(s.paths.iter().cloned()),
+                None => out.push(e.clone()),
+            }
+        }
+        out
+    }
 }
 
 /// A team of agents, each working in its own workflow.
@@ -60,8 +105,18 @@ pub struct Team {
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(default)]
 pub struct Member {
-    /// claude · cursor · codex · gemini, or any MCP client name.
+    /// The seat's own name ("Atlas"): how teammates point at it. Optional –
+    /// without one, the agent below is the name, as before.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// What runs this seat: claude · cursor · codex · gemini, any MCP client
+    /// name, or `any` (empty) for whichever agent is connected.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub agent: String,
+    /// The model it should use ("claude-opus-5-5", "gpt-5"); empty for the
+    /// agent's own default.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub model: String,
     /// The workflow this agent works in while the team is active.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub workflow: String,
@@ -82,6 +137,32 @@ pub struct Member {
     pub hands_off: Vec<String>,
 }
 
+impl Member {
+    /// How the team refers to this seat: its name, else its agent.
+    pub fn key(&self) -> &str {
+        if self.name.is_empty() {
+            &self.agent
+        } else {
+            &self.name
+        }
+    }
+    /// The provider that actually runs it: its own, else the repo default.
+    pub fn provider<'a>(&'a self, default: &'a str) -> &'a str {
+        match self.runner() {
+            "any" if !default.is_empty() => default,
+            r => r,
+        }
+    }
+    /// The agent that runs it, for people: `any` when unset.
+    pub fn runner(&self) -> &str {
+        if self.agent.is_empty() {
+            "any"
+        } else {
+            &self.agent
+        }
+    }
+}
+
 /// What kula tells and allows AI agents (MCP, hooks).
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -92,11 +173,15 @@ pub struct Agents {
     pub memory: bool,
     /// Docs every agent should read first; AGENTS.md and friends are found on their own.
     pub docs: Vec<String>,
+    /// The provider a seat set to `any` runs on: the first agent connected,
+    /// until someone picks another.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub default: String,
 }
 
 impl Default for Agents {
     fn default() -> Self {
-        Agents { hide_secrets: true, memory: true, docs: vec![] }
+        Agents { hide_secrets: true, memory: true, docs: vec![], default: String::new() }
     }
 }
 
@@ -317,6 +402,19 @@ pub fn set_workflows(root: &Path, wfs: &[crate::workflow::Workflow]) -> Result<C
     edit(root, |d| set_tables(d, "workflow", &wfs))
 }
 
+pub fn set_scopes(root: &Path, scopes: &[Scope]) -> Result<Config> {
+    let mut seen = std::collections::HashSet::new();
+    for s in scopes {
+        if !crate::workflow::valid_name(&s.name) {
+            anyhow::bail!("scope names are letters, digits, - and _: {:?}", s.name);
+        }
+        if !seen.insert(&s.name) {
+            anyhow::bail!("two scopes are called {}", s.name);
+        }
+    }
+    edit(root, |d| set_tables(d, "scope", scopes))
+}
+
 pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
     let mut seen = std::collections::HashSet::new();
     for t in teams {
@@ -326,14 +424,17 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
         if !seen.insert(&t.name) {
             anyhow::bail!("two teams are called {}", t.name);
         }
-        if t.members.iter().any(|m| m.agent.trim().is_empty()) {
-            anyhow::bail!("team {}: every member names an agent", t.name);
+        if t.members.iter().any(|m| m.key().trim().is_empty()) {
+            anyhow::bail!("team {}: every member has a name or an agent", t.name);
         }
-        let names: Vec<&str> = t.members.iter().map(|m| m.agent.as_str()).collect();
+        let names: Vec<&str> = t.members.iter().map(|m| m.key()).collect();
+        if let Some(d) = names.iter().enumerate().find(|(i, n)| names[..*i].contains(n)).map(|x| x.1) {
+            anyhow::bail!("team {}: two members are called {d}", t.name);
+        }
         for m in &t.members {
             for other in std::iter::once(&m.reports_to).filter(|r| !r.is_empty()).chain(m.hands_off.iter()) {
-                if !names.contains(&other.as_str()) || other == &m.agent {
-                    anyhow::bail!("team {}: {} points at {other:?}, which is not another member", t.name, m.agent);
+                if !names.contains(&other.as_str()) || other == m.key() {
+                    anyhow::bail!("team {}: {} points at {other:?}, which is not another member", t.name, m.key());
                 }
             }
         }
@@ -345,7 +446,7 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
                 if seen > t.members.len() {
                     anyhow::bail!("team {}: who reports to whom goes round in a circle", t.name);
                 }
-                cur = t.members.iter().find(|x| x.agent == cur).map(|x| x.reports_to.clone()).unwrap_or_default();
+                cur = t.members.iter().find(|x| x.key() == cur).map(|x| x.reports_to.clone()).unwrap_or_default();
             }
         }
     }
@@ -376,8 +477,21 @@ pub fn set_agents(root: &Path, a: &Agents) -> Result<Config> {
         } else {
             t["docs"] = toml_edit::value(a.docs.iter().collect::<toml_edit::Array>());
         }
+        // left out means unchanged: settings saves that predate it keep the default
+        if !a.default.is_empty() {
+            t["default"] = toml_edit::value(&a.default);
+        }
         Ok(())
     })
+}
+
+/// Make `id` the default provider if none is set yet (the first connect wins).
+pub fn default_agent_if_unset(root: &Path, id: &str) -> Result<()> {
+    let cfg = Config::load(root)?;
+    if cfg.agents.default.is_empty() {
+        set_agents(root, &Agents { default: id.to_string(), ..cfg.agents })?;
+    }
+    Ok(())
 }
 
 pub fn risk_rank(r: &str) -> u8 {
@@ -387,5 +501,30 @@ pub fn risk_rank(r: &str) -> u8 {
         "medium" => 2,
         "high" => 3,
         _ => 4,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_connect_sets_the_default_and_later_ones_keep_it() {
+        let dir = std::env::temp_dir().join(format!("kula-default-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("kula.toml"), "[agents]\nmemory = true\n").unwrap();
+        default_agent_if_unset(&dir, "codex").unwrap();
+        default_agent_if_unset(&dir, "claude").unwrap();
+        let cfg = Config::load(&dir).unwrap();
+        assert_eq!(cfg.agents.default, "codex");
+        // a settings save that predates the field leaves it alone
+        set_agents(&dir, &Agents { default: String::new(), ..cfg.agents.clone() }).unwrap();
+        assert_eq!(Config::load(&dir).unwrap().agents.default, "codex");
+        let any = Member { name: "Quill".into(), ..Default::default() };
+        let pinned = Member { agent: "gemini".into(), ..Default::default() };
+        assert_eq!(any.provider("codex"), "codex");
+        assert_eq!(pinned.provider("codex"), "gemini");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

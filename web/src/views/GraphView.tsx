@@ -6,8 +6,8 @@ import forceAtlas2 from "graphology-layout-forceatlas2";
 import noverlap from "graphology-layout-noverlap";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import EdgeCurveProgram from "@sigma/edge-curve";
-import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../graphfx";
-import { api, colorFor, relTime, type Context, type GraphData, type GuardLevel, type Impact, type Node, type RawRule, type SymbolHistory } from "../api";
+import { attachOverlay, CURVATURE, cssVar, drawHover, drawOutlinedLabel, withAlpha, type Overlay } from "../graphfx";
+import { api, colorFor, relTime, type Context, type GraphData, type GuardLevel, type Impact, type Node, type Peer, type RawRule, type Scope, type Slice, type SymbolHistory } from "../api";
 import { GuardTag, LEVEL_MEANS } from "./Agents";
 import { visit } from "../near";
 import { LinkArea } from "../Autofill";
@@ -56,15 +56,6 @@ export function layoutSettings(g: Graph) {
   return { ...forceAtlas2.inferSettings(g), linLogMode: true, outboundAttractionDistribution: true, edgeWeightInfluence: 1, gravity: 1.1, scalingRatio: 7, slowDown: 3, barnesHutOptimize: g.order > 600 };
 }
 
-export function cssVar(name: string) {
-  // Sigma's colour parser rejects "rgba(1, 2, 3, 0.4)" with spaces; normalise.
-  return getComputedStyle(document.documentElement).getPropertyValue(name).replace(/\s+/g, "") || "#888";
-}
-
-/** `c` at opacity `a`, pre-blended onto the page background (edge shaders ignore alpha). */
-export const withAlpha = (c: string, a: number) => blend(c, a, cssVar("--bg"));
-
-export const CURVATURE = 0.25; // @sigma/edge-curve default
 const LABELS = { few: [0.35, 9], normal: [0.8, 6], many: [1.8, 3] } as const;
 const TRANSPARENT = "rgba(0,0,0,0)";
 
@@ -142,7 +133,14 @@ function MapView(props: Props) {
   const state = useRef({
     hover: null as string | null, focus: null as number | null, filter: null as Filter, impact: null as Map<string, number> | null, neigh: new Set<string>(),
     fences: null as Map<string, GuardLevel> | null, fenceTask: false, path: null as Map<string, number> | null,
+    iso: null as { inside: Set<string>; inb: Set<string>; outb: Set<string> } | null,
   });
+  // Isolate: only a slice of the graph (a path, cluster, neighbourhood or diff), with its boundary.
+  const [iso, setIso] = useState<{ slice: Slice; hops: number } | null>(null);
+  const [isoAsk, setIsoAsk] = useState<string | null>(null);
+  const isolate = (select: string[], hops = 1) =>
+    api.isolate(select, hops).then((slice) => { setIso({ slice, hops }); setIsoAsk(null); setFilter(null); setImpact(null); setTrace(null); setFencesOn(false); })
+      .catch((e) => toastRef.current(e.message, "err"));
   // Fences overlay: what agents may not touch, from kula.toml and the task.
   const [fences, setFences] = useState<Map<string, GuardLevel> | null>(null);
   const [fenceTask, setFenceTask] = useState<string | null>(null);
@@ -325,6 +323,15 @@ function MapView(props: Props) {
       const st = state.current, c = cfg.current, { colorer, groups } = look.current, theme = tok.current;
       if (attr.virtual) return { ...attr, hidden: true };
       if (attr.dir === PKG && !c.packages) return { ...attr, hidden: true };
+      if (st.iso && !st.iso.inside.has(id)) {
+        // Outside the slice: only what crosses its edge stays, as a small stub in the direction's colour.
+        const side = st.iso.inb.has(id) ? theme.in : st.iso.outb.has(id) ? theme.out : null;
+        if (!side) return { ...attr, hidden: true };
+        const tint = blend(side, 0.6, theme.bg);
+        const near = id === st.hover;
+        if (attr.dir === PKG) return { ...attr, pkg: tint, color: TRANSPARENT, label: near ? attr.label : "", dimmed: true, zIndex: 1 };
+        return { ...attr, color: tint, size: Math.max(1.6, attr.size * 0.55), label: near ? attr.label : "", forceLabel: near, dimmed: true, zIndex: near ? 3 : 1 };
+      }
       const res: any = { ...attr, color: colorer.node(attr.node) };
       const hub = c.hubIcons && isHub(attr);
       if (hub) res.forceLabel = true;
@@ -365,6 +372,17 @@ function MapView(props: Props) {
       if (!c.imports && attr.kind === "IMPORTS") { res.hidden = true; return res; }
       const [a, b] = graph.extremities(id);
       const na = graph.getNodeAttributes(a), nb = graph.getNodeAttributes(b);
+      if (st.iso) {
+        const ia = st.iso.inside.has(a), ib = st.iso.inside.has(b);
+        if (!ia && !ib) { res.hidden = true; return res; }
+        if (ia !== ib) {
+          // A boundary stub: blue comes in, orange goes out.
+          const active = st.hover ?? (st.focus != null ? String(st.focus) : null);
+          if (active && a !== active && b !== active && (st.iso.inside.has(active))) { res.hidden = true; return res; }
+          res.color = blend(ib ? theme.in : theme.out, 0.55, theme.bg); res.size = 0.8; res.zIndex = 1;
+          return res;
+        }
+      }
       if (st.path) {
         const i = st.path.get(a), j = st.path.get(b);
         if (i !== undefined && j !== undefined && Math.abs(i - j) === 1) { res.color = theme.accent; res.size = 2; res.zIndex = 3; } else res.hidden = true;
@@ -427,7 +445,7 @@ function MapView(props: Props) {
       group: (a) => (a.virtual || a.dir === PKG ? null : look.current.groups.of(a.node.path)),
       groupLabel: (k) => look.current.groups.label(k),
       groupColor: (k) => (look.current.colorer.mode === "directory" ? dirColor(k, look.current.groups, cfg.current) : null),
-      hub: (_id, a) => cfg.current.hubIcons && isHub(a),
+      hub: (id, a) => cfg.current.hubIcons && isHub(a) && !(state.current.iso && !state.current.iso.inside.has(id)),
       glyph: (a) => (a.node.kind === "file" ? LANG_GLYPH[a.node.lang] ?? "·" : GLYPH[a.node.kind] ?? "·"),
       reducedMotion: reduced,
     });
@@ -490,6 +508,11 @@ function MapView(props: Props) {
     st.fences = fences;
     st.fenceTask = !!fenceTask;
     st.path = trace?.path ? new Map(trace.path.map((id, i) => [id, i])) : null;
+    st.iso = iso ? {
+      inside: new Set(iso.slice.nodes.map((n) => String(n.id))),
+      inb: new Set(iso.slice.inbound.map((p) => String(p.node.id))),
+      outb: new Set(iso.slice.outbound.map((p) => String(p.node.id))),
+    } : null;
     const active = hover ?? (focus != null ? String(focus) : null);
     st.neigh = new Set(active && graph?.hasNode(active) ? graph.neighbors(active).filter((n) => !n.startsWith("__dir:")) : []);
     sigma.current?.refresh({ skipIndexation: true });
@@ -504,11 +527,29 @@ function MapView(props: Props) {
     overlay.current.set({
       focus: f,
       flows,
-      quiet: !!active || !!st.impact || !!filter || !!st.path || !!st.fences,
+      quiet: !!active || !!st.impact || !!filter || !!st.path || !!st.fences || !!st.iso,
       focusMode: !!active || !!st.impact || !!st.path,
       activeGroup: peek ?? (filter?.type === "dir" ? filter.key : activeNode ? groups.of(activeNode.node.path) : null),
     });
-  }, [hover, focus, filter, impact, graph, s.flow, peek, groups, s.packages, fences, fenceTask, trace]);
+  }, [hover, focus, filter, impact, graph, s.flow, peek, groups, s.packages, fences, fenceTask, trace, iso]);
+
+  // Frame the slice when it changes.
+  useEffect(() => {
+    const r = sigma.current;
+    if (!iso || !r || !graph) return;
+    // The slice and the stubs at its edge.
+    const pts = [...iso.slice.nodes, ...iso.slice.inbound.map((p) => p.node), ...iso.slice.outbound.map((p) => p.node)].map((n) => r.getNodeDisplayData(String(n.id))).filter((d): d is NonNullable<typeof d> => !!d);
+    if (!pts.length) return;
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const target = { x: (x0 + x1) / 2, y: (y0 + y1) / 2, angle: 0, ratio: Math.min(1.2, Math.max(0.08, Math.max(x1 - x0, y1 - y0) * 1.25)) };
+    // Centre it in the space right of the slice panel.
+    const { width, height } = r.getDimensions();
+    const shift = width > 760 ? 160 : 0;
+    const at = r.viewportToFramedGraph({ x: width / 2, y: height / 2 }, { cameraState: target });
+    const off = r.viewportToFramedGraph({ x: width / 2 + shift, y: height / 2 }, { cameraState: target });
+    r.getCamera().animate({ ...target, x: target.x + at.x - off.x }, { duration: 500 });
+  }, [iso, graph, settling]);
 
   // Fly to the focused node.
   useEffect(() => {
@@ -524,7 +565,8 @@ function MapView(props: Props) {
     const k = (e: KeyboardEvent) => {
       if (/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "f") setFencesOn((x) => !x);
-      if (e.key === "Escape") { setMenu(null); setTrace(null); armed.current = false; setTraceArmed(false); }
+      if (e.key === "i") { e.preventDefault(); setIsoAsk((x) => (x == null ? "" : null)); }
+      if (e.key === "Escape") { setIsoAsk(null); setMenu(null); setTrace(null); armed.current = false; setTraceArmed(false); }
       if (e.key === "t" && focusRef.current != null) {
         armed.current = true;
         setTraceArmed(true);
@@ -586,6 +628,9 @@ function MapView(props: Props) {
           <Icon.box /> Packages{pkgCount ? <span className="muted"> {pkgCount}</span> : null}
         </button>
         <button className="btn sm hud-btn" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs"><Icon.compare /> Contrast</button>
+        <button className={`btn sm hud-btn ${iso || isoAsk != null ? "on" : ""}`} aria-pressed={!!iso} onClick={() => setIsoAsk(isoAsk == null ? (iso ? iso.slice.selectors.join(" ") : "") : null)} title="Show only part of the codebase, with its boundary  (i)">
+          <Icon.isolate /> Isolate{iso ? <span className="muted"> {iso.slice.counts.nodes}</span> : null}
+        </button>
         <button className={`btn sm hud-btn ${fencesOn ? "on" : ""}`} aria-pressed={fencesOn} onClick={() => setFencesOn(!fencesOn)} title="Show what agents may not touch  (f)">
           <Icon.lock /> Fences{fences ? <span className="muted"> {[...fences.values()].filter((v) => v !== "scope").length}</span> : null}
         </button>
@@ -634,10 +679,16 @@ function MapView(props: Props) {
           <button className="btn ghost sm" onClick={() => setFencesOn(false)} aria-label="Hide fences"><Icon.close /></button>
         </div>
       )}
+      {isoAsk != null && <IsolateAsk initial={isoAsk} hops={iso?.hops ?? 1} onRun={isolate} onClose={() => setIsoAsk(null)} />}
+      {iso && graph && (
+        <IsolatePanel iso={iso} inGraph={(id) => graph.hasNode(String(id))} focus={(id) => setFocus(id)} onExit={() => setIso(null)}
+          onEdit={() => setIsoAsk(iso.slice.selectors.join(" "))} />
+      )}
       {menu && graph?.hasNode(menu.id) && (
         <NodeMenu x={menu.x} y={menu.y} n={graph.getNodeAttribute(menu.id, "node")} onClose={() => setMenu(null)}
           inspect={(tab) => { setFocus(Number(menu.id)); if (tab) setTabReq({ tab, n: Date.now() }); }}
           source={(n) => code.open({ path: n.path, line: n.kind === "file" ? undefined : n.start_line })}
+          isolate={(n) => isolate([n.kind === "file" ? `path:${n.path}` : n.kind === "package" ? `symbol:${n.id}` : `symbol:${n.path}:${n.name}`], 1)}
           traceFrom={() => { if (focus != null && String(focus) !== menu.id) setTrace({ from: String(focus), to: menu.id, path: shortest(graph, String(focus), menu.id) }); else { setFocus(Number(menu.id)); toast("Shift-click another symbol to trace a path to it"); } }}
           copied={(what) => toast(`Copied ${what}`)}
         />
@@ -645,10 +696,11 @@ function MapView(props: Props) {
 
       {hovered && cardOn && hover !== String(focus) && <HoverCard n={hovered.node} dir={groups.label(groups.of(hovered.node.path))} deg={[hovered.din, hovered.dout]} churn={churn[hovered.node.path] ?? 0} hub={isHub(hovered)} fence={hover != null ? fences?.get(hover) ?? null : null} />}
 
-      {data && (
+      {data && !iso && (
         <Legend
           open={legendOpen} setOpen={setLegendOpen} mode={s.colorBy} groups={groups} settings={s} data={data} churn={churn}
           filter={filter} setFilter={setFilter} setPeek={setPeek}
+          isolate={(f) => isolate([f.type === "dir" ? `path:${f.key || "."}/**` : f.type === "cluster" ? `cluster:${f.key}` : ""].filter(Boolean))}
         />
       )}
 
@@ -688,8 +740,9 @@ function HoverCard({ n, dir, deg, churn, hub, fence }: { n: Node; dir: string; d
 }
 
 /** Right-click on a node: everything you can do with it, without hunting through tabs. */
-function NodeMenu({ x, y, n, onClose, inspect, source, traceFrom, copied }: {
+function NodeMenu({ x, y, n, onClose, inspect, source, traceFrom, copied, isolate }: {
   x: number; y: number; n: Node; onClose: () => void; inspect: (tab?: InspectorTab) => void; source: (n: Node) => void; traceFrom: () => void; copied: (what: string) => void;
+  isolate: (n: Node) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -706,6 +759,7 @@ function NodeMenu({ x, y, n, onClose, inspect, source, traceFrom, copied }: {
     ...(n.kind !== "package" ? [["Open source", "", () => { source(n); onClose(); }] as [string, string, () => void]] : []),
     ["Impact", "", () => { inspect("impact"); onClose(); }],
     ...(n.kind !== "file" && n.kind !== "package" ? [["Pre-edit check", "", () => { inspect("edit"); onClose(); }] as [string, string, () => void]] : []),
+    [n.kind === "file" ? "Isolate file" : "Isolate neighbourhood", "1 hop", () => { isolate(n); onClose(); }],
     ["Path from selection", "⇧ click", () => { traceFrom(); onClose(); }],
     ["Notes & memory", "", () => { inspect("notes"); onClose(); }],
     ["Copy location", loc.length > 28 ? "" : loc, () => copy(loc, loc)],
@@ -729,9 +783,10 @@ function NodeMenu({ x, y, n, onClose, inspect, source, traceFrom, copied }: {
   );
 }
 
-function Legend({ open, setOpen, mode, groups, settings: s, data, churn, filter, setFilter, setPeek }: {
+function Legend({ open, setOpen, mode, groups, settings: s, data, churn, filter, setFilter, setPeek, isolate }: {
   open: boolean; setOpen: (o: boolean) => void; mode: Settings["colorBy"]; groups: ReturnType<typeof groupDirs>; settings: Settings;
   data: GraphData; churn: Record<string, number>; filter: Filter; setFilter: (f: Filter) => void; setPeek: (k: string | null) => void;
+  isolate: (f: NonNullable<Filter>) => void;
 }) {
   const total = data.nodes.length || 1;
   let rows: { key: string; label: string; n: number; color: string; type: "dir" | "cluster" | "kind" }[] = [];
@@ -794,7 +849,12 @@ function Legend({ open, setOpen, mode, groups, settings: s, data, churn, filter,
           {!hottest.length && <div className="muted" style={{ padding: "4px 6px" }}>No commits in 90 days.</div>}
         </div>
       )}
-      {filter && <button className="legend-clear" onClick={() => setFilter(null)}>Showing {filter.type === "dir" ? groups.label(filter.key) : rows.find((r) => r.key === filter.key)?.label} only · clear</button>}
+      {filter && (
+        <div className="legend-clear-row">
+          <button className="legend-clear" onClick={() => setFilter(null)}>Showing {filter.type === "dir" ? groups.label(filter.key) : rows.find((r) => r.key === filter.key)?.label} only · clear</button>
+          {filter.type !== "kind" && <button className="legend-clear iso" onClick={() => isolate(filter)} title="Show only this, with what crosses its edge"><Icon.isolate /> Isolate</button>}
+        </div>
+      )}
     </div>
   );
 }
@@ -1049,5 +1109,93 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
         )}
       </div>
     </aside>
+  );
+}
+
+/** Pick a slice: selectors, unioned, as on the CLI (`kula graph isolate`). */
+function IsolateAsk({ initial, hops: hops0, onRun, onClose }: { initial: string; hops: number; onRun: (select: string[], hops: number) => Promise<void> | void; onClose: () => void }) {
+  const [text, setText] = useState(initial);
+  const [hops, setHops] = useState(hops0);
+  const [scopes, setScopes] = useState<Scope[]>([]);
+  useEffect(() => { api.scopes().then(setScopes).catch(() => {}); }, []);
+  const [busy, setBusy] = useState(false);
+  const run = (t = text) => { const sel = t.split(/\s+/).filter(Boolean); if (sel.length) { setBusy(true); Promise.resolve(onRun(sel, hops)).finally(() => setBusy(false)); } };
+  const examples: [string, string][] = [["src/auth/**", "path glob"], ["cluster:3", "cluster id or label"], ["symbol:login~2", "symbol and N hops"], ["diff:main", "what a branch touches"]];
+  return (
+    <div className="graph-overlay iso-ask" role="dialog" aria-label="Isolate part of the graph" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
+      <form onSubmit={(e) => { e.preventDefault(); run(); }}>
+        <span className="eyebrow">isolate</span>
+        <input className="mono" autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="src/auth/**  cluster:3  symbol:login~2  diff:main  @scope" aria-label="Selectors" />
+        <label className="iso-hops" title="Hops for symbol selectors without ~N">hops <input type="number" min={0} max={6} value={hops} onChange={(e) => setHops(Math.max(0, Math.min(6, Number(e.target.value) || 0)))} aria-label="Hops" /></label>
+        <button className="btn sm primary" type="submit" disabled={!text.trim() || busy}>{busy ? "Isolating…" : "Isolate"}</button>
+        <button className="btn ghost sm" type="button" onClick={onClose} aria-label="Close"><Icon.close /></button>
+      </form>
+      <div className="iso-help">
+        {examples.map(([ex, what]) => <button key={ex} type="button" className="iso-chip" onClick={() => setText((t) => (t.trim() ? `${t.trim()} ${ex}` : ex))}><span className="mono">{ex}</span> <span className="muted">{what}</span></button>)}
+      </div>
+      {scopes.length > 0 && (
+        <div className="iso-help">
+          <span className="muted">saved</span>
+          {scopes.map((sc) => <button key={sc.name} type="button" className="iso-chip" title={`${sc.select.join(" + ")} · ${sc.paths.length} files${sc.about ? ` – ${sc.about}` : ""}`} onClick={() => run(`@${sc.name}`)}><span className="mono">@{sc.name}</span> <span className="muted">{sc.paths.length}</span></button>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The isolated slice: counts, what crosses its edge each way, and saving it as a named scope. */
+function IsolatePanel({ iso, inGraph, focus, onExit, onEdit }: {
+  iso: { slice: Slice; hops: number }; inGraph: (id: number) => boolean; focus: (id: number) => void; onExit: () => void; onEdit: () => void;
+}) {
+  const { slice, hops } = iso;
+  const c = slice.counts;
+  const [side, setSide] = useState<"in" | "out" | "files">("in");
+  const [name, setName] = useState("");
+  const [saved, setSaved] = useState<string | null>(null);
+  const toast = useToast();
+  useEffect(() => { setSaved(null); setName(""); }, [slice]);
+  const byId = useMemo(() => new Map(slice.nodes.map((n) => [n.id, n])), [slice]);
+  const absent = slice.nodes.filter((n) => !inGraph(n.id)).length;
+  const save = () => api.scopeSave(name.trim(), slice.selectors, hops).then((sc) => { setSaved(sc.name); toast(`Saved @${sc.name} in kula.toml – ${sc.paths.length} files`); }).catch((e) => toast(e.message, "err"));
+  const list: Peer[] = side === "in" ? slice.inbound : side === "out" ? slice.outbound : [];
+  return (
+    <div className="graph-overlay iso-panel" role="region" aria-label="Isolated slice">
+      <div className="iso-head">
+        <span className="eyebrow">isolated</span>
+        <button className="iso-sel mono" onClick={onEdit} title="Change the selectors">{slice.selectors.join(" + ")}</button>
+        <button className="btn ghost sm" onClick={onExit} aria-label="Exit isolate"><Icon.close /></button>
+      </div>
+      <div className="iso-counts">
+        <span><b>{c.nodes}</b> symbols</span><span><b>{c.files}</b> files</span><span><b>{c.internal}</b> internal</span>
+      </div>
+      <div className="seg iso-tabs" role="tablist">
+        <button role="tab" aria-selected={side === "in"} className={side === "in" ? "on" : ""} onClick={() => setSide("in")}><b className="in">{c.inbound_edges}</b> in · {c.inbound}</button>
+        <button role="tab" aria-selected={side === "out"} className={side === "out" ? "on" : ""} onClick={() => setSide("out")}><b className="out">{c.outbound_edges}</b> out · {c.outbound}</button>
+        <button role="tab" aria-selected={side === "files"} className={side === "files" ? "on" : ""} onClick={() => setSide("files")}>files</button>
+      </div>
+      <div className="iso-list">
+        {side === "files" ? slice.files.map((f) => <div key={f} className="iso-row mono"><span className="iso-path">{f}</span></div>) :
+          list.slice(0, 80).map((p) => {
+            const via = p.inside.map((i) => byId.get(i)?.name).filter(Boolean).slice(0, 2).join(", ");
+            return (
+              <button key={p.node.id} className="iso-row" disabled={!inGraph(p.node.id)} onClick={() => focus(p.node.id)} title={`${p.node.path}:${p.node.start_line} · ${p.kinds.join(", ")}`}>
+                <Kind kind={p.node.kind} size={12} />
+                <span className="mono iso-name">{p.node.name}</span>
+                <span className="muted mono iso-via">{side === "in" ? "→" : "←"} {via}</span>
+                <span className={`iso-n ${side}`}>×{p.edges}</span>
+              </button>
+            );
+          })}
+        {side !== "files" && !list.length && <div className="muted iso-row">{side === "in" ? "Nothing outside uses it." : "It uses nothing outside itself."}</div>}
+        {side !== "files" && list.length > 80 && <div className="muted iso-row">… {list.length - 80} more</div>}
+      </div>
+      {absent > 0 && <div className="muted iso-note">{absent} not drawn – the map shows the most connected symbols</div>}
+      <form className="iso-save" onSubmit={(e) => { e.preventDefault(); if (name.trim()) save(); }}>
+        {saved ? <span className="muted">saved as <span className="mono">@{saved}</span> – use it in a workflow as <span className="mono">scope = ["@{saved}"]</span></span> : <>
+          <input className="mono" value={name} onChange={(e) => setName(e.target.value)} placeholder="scope name" aria-label="Scope name" pattern="[A-Za-z0-9_-]+" />
+          <button className="btn sm" type="submit" disabled={!name.trim()}>Save scope</button>
+        </>}
+      </form>
+    </div>
   );
 }

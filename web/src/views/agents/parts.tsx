@@ -13,7 +13,9 @@ import { relTime, type AgentsInfo, type GuardLevel, type ResearchRun, type Sugge
 import { BRANDS, Mark } from "../../brands";
 import { Chips } from "../../Autofill";
 import { Icon, StatTable } from "../../ui";
-import type { Act } from "./data";
+import { AGENT_NAME, type Act } from "./data";
+import { Harmonograph } from "../../harmonograph";
+import { seatKey } from "../../roster";
 
 export const LEVEL_TEXT: Record<GuardLevel, string> = {
   open: "open",
@@ -42,6 +44,20 @@ export function Card({ title, sub, right, children, className = "" }: { title: s
     </section>
   );
 }
+/** What a seat is called on screen: its name, else (teams made before names) the agent's. */
+export const seatName = (m: { name?: string; agent: string }) => m.name || AGENT_NAME[m.agent] || m.agent;
+/** The display name for a key a teammate points at (reports_to, hands_off). */
+export const keyName = (members: { name?: string; agent: string }[], key: string) => {
+  const m = members.find((x) => seatKey(x) === key);
+  return m ? seatName(m) : key;
+};
+
+/** A seat's mark: the harmonograph of its name; `live` while it works. */
+export function SeatMark({ m, size = 16, live }: { m: { name?: string; agent: string }; size?: number; live?: boolean }) {
+  // decorative: the seat's name always sits beside it, and the runner is written out where it matters
+  return <Harmonograph seed={seatKey(m)} size={size} live={live} />;
+}
+
 export function AgentMark({ id, size = 16 }: { id: string; size?: number }) {
   return BRANDS[id] ? <Mark id={id} size={size} /> : <span className="agent-glyph" style={{ width: size, height: size }}>{id.slice(0, 1).toUpperCase()}</span>;
 }
@@ -82,6 +98,45 @@ export function useListNav(count: number, onEnter?: (i: number) => void, reset?:
       },
     },
   };
+}
+
+/**
+ * Keyboard navigation plus a `/` filter for one list (module A2): j/k/enter/esc
+ * as in useListNav, and `/` moves focus to the filter input (scoped to this
+ * list's container, so the global ⌘K palette is never in the way). Typing in
+ * the filter narrows the list; Escape clears it and returns to the list.
+ */
+export function useFilterList(count: number, onEnter?: (i: number) => void, reset?: unknown) {
+  const nav = useListNav(count, onEnter, reset);
+  const [filter, setFilter] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const base = nav.props.onKeyDown;
+  useEffect(() => { if (count === 0) nav.setSel(-1); }, [filter, count]);
+  return {
+    filter, setFilter, inputRef,
+    props: {
+      ...nav.props,
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === "/" && !((e.target as HTMLElement).closest("input, textarea, select"))) {
+          e.preventDefault(); e.stopPropagation(); inputRef.current?.focus();
+          return;
+        }
+        base(e);
+      },
+    },
+    sel: nav.sel, setSel: nav.setSel,
+  };
+}
+
+/** The filter field that goes with useFilterList: one input, `/` opens it. */
+export function ListFilter({ inputRef, value, onChange, label, placeholder }: {
+  inputRef: React.Ref<HTMLInputElement>; value: string; onChange: (v: string) => void; label: string; placeholder?: string;
+}) {
+  return (
+    <input ref={inputRef} className="input ag-list-filter" value={value} size={10}
+      onChange={(e) => onChange(e.target.value)} placeholder={placeholder ?? "/ filter"} aria-label={label}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onChange(""); (e.target as HTMLInputElement).blur(); } }} />
+  );
 }
 
 export const pct = (r: ResearchRun) => {
@@ -169,7 +224,8 @@ export function WorkflowTile({ w, active, onPreview, onClick, on, idx, sel }: { 
   );
 }
 
-function fenceSummary(w: Workflow): { t: string; l: GuardLevel }[] {
+/** One workflow's fences as short tags, reused by the roster and seat inspector. */
+export function fenceSummary(w: Workflow): { t: string; l: GuardLevel }[] {
   const out: { t: string; l: GuardLevel }[] = [];
   const name = (v: string[]) => (v.length === 1 && v[0] === "**" ? "everything" : v.some((x) => x.includes("test") || x.includes("spec")) && v.length > 4 ? "tests" : v.some((x) => x.endsWith(".md")) && v.length > 3 ? "docs" : v.length === 1 ? v[0] : `${v.length} patterns`);
   if (w.scope?.length) out.push({ t: `only ${name(w.scope)}`, l: "open" });
@@ -227,7 +283,7 @@ export function Snippet({ text }: { text: string }) {
  * The tab strip Workflows, Research, Teams and Skills share: one tab per item,
  * a + right after the newest, double-click (or F2) to rename in place.
  */
-export type TabItem = { key: string; label: string; dot?: boolean; depth?: number; title?: string; fixed?: boolean };
+export type TabItem = { key: string; label: string; dot?: boolean; depth?: number; title?: string; fixed?: boolean; icon?: ReactNode };
 export function TabStrip({ items, cur, onPick, onAdd, onRename, label, addLabel }: {
   items: TabItem[]; cur: string; onPick: (k: string) => void; onAdd?: () => void; onRename?: (k: string, to: string) => void; label: string; addLabel: string;
 }) {
@@ -249,7 +305,7 @@ export function TabStrip({ items, cur, onPick, onAdd, onRename, label, addLabel 
         <button key={it.key} role="tab" aria-selected={it.key === cur} className={it.key === cur ? "on" : ""} data-depth={it.depth ? Math.min(it.depth, 3) : undefined}
           title={it.title ?? (onRename && !it.fixed ? "double-click to rename" : undefined)}
           onClick={() => onPick(it.key)} onDoubleClick={() => begin(it)} onKeyDown={(e) => { if (e.key === "F2") begin(it); }}>
-          {!!it.depth && <span className="tab-up" aria-hidden="true">└</span>}{it.label}{it.dot && <i className="dot ok" title="running" />}
+          {!!it.depth && <span className="tab-up" aria-hidden="true">└</span>}{it.icon}{it.label}{it.dot && <i className="dot ok" title="running" />}
         </button>
       ))}
       {onAdd && <button className={`team-tab-add ${cur === "" ? "on" : ""}`} onClick={onAdd} aria-label={addLabel} title={addLabel}><Icon.plus /></button>}

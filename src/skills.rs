@@ -118,7 +118,13 @@ pub fn list(root: &Path) -> Vec<Skill> {
         let mut files = vec![];
         files_in(&dir, &dir, &mut files);
         files.sort();
-        let mut s = Skill { name: name.clone(), description: fm.get("description").cloned().unwrap_or_default(), body, files, targets: BTreeMap::new() };
+        let mut s = Skill {
+            name: name.clone(),
+            description: fm.get("description").cloned().unwrap_or_default(),
+            body,
+            files,
+            targets: BTreeMap::new(),
+        };
         for a in &ags {
             let state = match target(a, &name) {
                 None => "native",
@@ -145,7 +151,12 @@ pub fn strays(root: &Path) -> Vec<Stray> {
             let name = e.file_name().to_string_lossy().to_string();
             let p = e.path().join("SKILL.md");
             if let (false, Ok(text)) = (have.contains(&name), std::fs::read_to_string(&p)) {
-                out.push(Stray { agent: agent.into(), path: format!("{dir}/{name}/SKILL.md"), description: parse(&text).0.get("description").cloned().unwrap_or_default(), name });
+                out.push(Stray {
+                    agent: agent.into(),
+                    path: format!("{dir}/{name}/SKILL.md"),
+                    description: parse(&text).0.get("description").cloned().unwrap_or_default(),
+                    name,
+                });
             }
         }
     }
@@ -156,7 +167,12 @@ pub fn strays(root: &Path) -> Vec<Stray> {
             continue;
         }
         if let Ok(text) = std::fs::read_to_string(e.path()) {
-            out.push(Stray { agent: "cursor".into(), path: format!(".cursor/rules/{f}"), description: parse(&text).0.get("description").cloned().unwrap_or_default(), name: name.into() });
+            out.push(Stray {
+                agent: "cursor".into(),
+                path: format!(".cursor/rules/{f}"),
+                description: parse(&text).0.get("description").cloned().unwrap_or_default(),
+                name: name.into(),
+            });
         }
     }
     out
@@ -225,17 +241,108 @@ pub fn sync(root: &Path) -> Result<Vec<String>> {
     Ok(written)
 }
 
+/// What a sync would overwrite: a unified diff of the agent's copy against the
+/// source, shown before `skills_sync` replaces it. None when there is nothing to compare.
+pub fn diff(root: &Path, agent: &str, name: &str) -> Option<String> {
+    let s = list(root).into_iter().find(|s| s.name == name)?;
+    let t = target(agent, name)?;
+    let have = std::fs::read_to_string(root.join(&t)).ok()?;
+    Some(unified_diff(&format!("{t} (agent copy)"), &have, &format!(".agents/skills/{name} (source)"), &expected(agent, &s)))
+}
+
+/// A small unified diff – line based, LCS, three lines of context. Enough to
+/// read what a sync would change, without pulling in a diff crate.
+fn unified_diff(a_name: &str, a: &str, b_name: &str, b: &str) -> String {
+    let (x, y): (Vec<&str>, Vec<&str>) = (a.lines().collect(), b.lines().collect());
+    let n = x.len();
+    let m = y.len();
+    // LCS table, row by row.
+    let mut lcs = vec![vec![0usize; m + 1]; n + 1];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            lcs[i][j] = if x[i] == y[j] { lcs[i + 1][j + 1] + 1 } else { lcs[i + 1][j].max(lcs[i][j + 1]) };
+        }
+    }
+    // Walk it into change hunks: runs of (same | old-only | new-only).
+    #[derive(PartialEq, Clone, Copy)]
+    enum Op {
+        Same,
+        Del,
+        Add,
+    }
+    let mut ops: Vec<(Op, usize)> = vec![];
+    let (mut i, mut j) = (0, 0);
+    while i < n && j < m {
+        if x[i] == y[j] {
+            ops.push((Op::Same, i));
+            i += 1;
+            j += 1;
+        } else if lcs[i + 1][j] >= lcs[i][j + 1] {
+            ops.push((Op::Del, i));
+            i += 1;
+        } else {
+            ops.push((Op::Add, j));
+            j += 1;
+        }
+    }
+    for k in i..n {
+        ops.push((Op::Del, k));
+    }
+    for k in j..m {
+        ops.push((Op::Add, k));
+    }
+    if ops.iter().all(|(op, _)| *op == Op::Same) {
+        return String::new();
+    }
+    // One hunk from three lines before the first change to three after the
+    // last – skills are short, so one hunk is always readable.
+    let changed: Vec<usize> = ops.iter().enumerate().filter(|(_, (op, _))| *op != Op::Same).map(|(i, _)| i).collect();
+    let first = changed[0].saturating_sub(3);
+    let last = (changed[changed.len() - 1] + 4).min(ops.len());
+    let mut out = format!("--- {a_name}\n+++ {b_name}\n");
+    let hunk = &ops[first..last];
+    let (mut a_no, mut b_no) = (1usize, 1usize);
+    for (op, _) in ops[..first].iter() {
+        match op {
+            Op::Add => b_no += 1,
+            _ => {
+                a_no += 1;
+                b_no += 1;
+            }
+        }
+    }
+    let (astart, bstart) = (a_no, b_no);
+    let same = hunk.iter().filter(|(op, _)| *op == Op::Same).count();
+    let del = hunk.iter().filter(|(op, _)| *op == Op::Del).count() + same;
+    let add = hunk.iter().filter(|(op, _)| *op == Op::Add).count() + same;
+    out.push_str(&format!("@@ -{},{} +{},{} @@\n", astart, del, bstart, add));
+    for (op, k) in hunk {
+        match op {
+            Op::Same => {
+                out.push_str(&format!(" {}\n", x[*k]));
+            }
+            Op::Del => out.push_str(&format!("-{}\n", x[*k])),
+            Op::Add => out.push_str(&format!("+{}\n", y[*k])),
+        }
+    }
+    out
+}
+
 /// Take a skill one agent has into the source, then share it with the rest.
 pub fn adopt(root: &Path, agent: &str, name: &str) -> Result<Vec<String>> {
-    let s = strays(root).into_iter().find(|s| s.agent == agent && s.name == name).ok_or_else(|| anyhow::anyhow!("{agent} has no skill {name} to adopt"))?;
-    let slug: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect();
+    let s = strays(root)
+        .into_iter()
+        .find(|s| s.agent == agent && s.name == name)
+        .ok_or_else(|| anyhow::anyhow!("{agent} has no skill {name} to adopt"))?;
+    let slug: String =
+        name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect();
     let text = std::fs::read_to_string(root.join(&s.path))?;
     let (fm, body) = parse(&text);
     let description = fm.get("description").cloned().filter(|d| !d.is_empty()).unwrap_or_else(|| format!("{name}, adopted from {agent}"));
     if agent == "cursor" {
         save(root, &slug, &description, &body)?;
     } else {
-        copy_dir(&root.join(&s.path).parent().unwrap().to_path_buf(), &root.join(SOURCE).join(&slug))?;
+        copy_dir(root.join(&s.path).parent().unwrap(), &root.join(SOURCE).join(&slug))?;
         save(root, &slug, &description, &body)?;
     }
     sync(root)
@@ -271,5 +378,47 @@ mod tests {
         remove(&root, "triage").unwrap();
         assert!(!root.join(".claude/skills/triage").exists());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn diff_shows_what_a_sync_would_overwrite() {
+        let root = std::env::temp_dir().join(format!("kula-skilldiff-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(".cursor")).unwrap();
+        save(&root, "triage", "Sort new issues", "1. Reproduce.\n2. Label.").unwrap();
+        assert_eq!(diff(&root, "claude", "triage"), None, "nothing to compare while the copy is missing");
+        sync(&root).unwrap();
+        assert_eq!(diff(&root, "claude", "triage").unwrap_or_default(), "", "a synced copy has no diff");
+        // the agent's copy was edited: the diff says what a sync would replace
+        std::fs::write(
+            root.join(".claude/skills/triage/SKILL.md"),
+            skill_md("triage", "Sort new issues", "1. Reproduce.\n2. Label the severity.\n3. Assign."),
+        )
+        .unwrap();
+        let d = diff(&root, "claude", "triage").unwrap();
+        assert!(d.contains("--- .claude/skills/triage/SKILL.md (agent copy)"), "{d}");
+        assert!(d.contains("+++ .agents/skills/triage (source)"), "{d}");
+        assert!(d.contains("@@"), "{d}");
+        assert!(d.contains("-2. Label the severity."), "{d}");
+        assert!(d.contains("+2. Label."), "{d}");
+        // sync makes them equal again and the diff empties
+        sync(&root).unwrap();
+        assert_eq!(diff(&root, "claude", "triage").unwrap_or_default(), "");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn diff_hunks_carry_honest_line_numbers() {
+        let a = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten";
+        let b = "one\ntwo\nTHREE\nfour\nfive\nsix\nseven\neight\nNINE\nten";
+        let d = unified_diff("a", a, "b", b);
+        // two edits, one hunk: starts at line 1 in both files (3 lines of
+        // context), covering the whole file – 10 lines on each side
+        assert!(d.contains("@@ -1,10 +1,10 @@"), "{d}");
+        assert!(d.contains("-three\n+THREE\n"), "{d}");
+        assert!(d.contains("-nine\n+NINE\n"), "{d}");
+        // leading and trailing context are the unchanged lines
+        assert!(d.contains("\n two\n"), "{d}");
+        assert!(d.contains("\n ten"), "{d}");
     }
 }

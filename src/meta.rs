@@ -272,8 +272,9 @@ pub fn note_rm(repo: &Repo, id: u64) -> Result<()> {
     save(repo, &m, &format!("remove note #{id}"))
 }
 
-/// Share metadata with a remote (fetch + push the meta ref).
-pub fn sync(repo: &Repo, remote: &str) -> Result<String> {
+/// Fetch the remote's metadata and merge it in; push ours back only when
+/// `share` is set (`kula share`) – by default nothing leaves the machine.
+pub fn sync(repo: &Repo, remote: &str, share: bool) -> Result<String> {
     validate_rev(remote)?;
     let mut log = String::new();
     // Fetch theirs into a side ref and fast-forward if we have nothing local.
@@ -294,8 +295,10 @@ pub fn sync(repo: &Repo, remote: &str) -> Result<String> {
         }
         Err(_) => log.push_str("remote has no kula metadata yet\n"),
     }
-    repo.run(&["push", remote, &format!("{REF}:{REF}")])?;
-    log.push_str("pushed refs/kula/meta\n");
+    if share && repo.run(&["rev-parse", "--verify", "--quiet", REF]).is_ok() {
+        repo.run(&["push", remote, &format!("{REF}:{REF}")])?;
+        log.push_str("pushed refs/kula/meta\n");
+    }
     Ok(log)
 }
 

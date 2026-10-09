@@ -10,6 +10,15 @@ import { markPath, N } from "./mark";
 // "you are here". Mirrors the graph, where hubs are square tiles.
 const P = { className: "ico", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 export const Icon = {
+  // research templates: one glyph each, the moving part in the accent
+  stopwatch: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="12" cy="13.5" r="7.5" /><path d="M10 3h4M12 3v3" /><path d="M12 13.5 15.5 10" stroke="var(--accent)" /></svg>),
+  passing: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 6l5 5M9 6l-5 5" /><path d="M12.5 15.5l3 3 5.5-7" stroke="var(--accent)" /><path d="M10 13.5H4" strokeDasharray="1.5 2" /></svg>),
+  sweep: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 7h11M4 12h8M4 17h5" /><path d="M14 19l6-9M17 19h4" stroke="var(--accent)" /></svg>),
+  types: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M8 4c-2 0-3 1-3 3v2.5c0 1-1 2.5-2 2.5 1 0 2 1.5 2 2.5V17c0 2 1 3 3 3M16 4c2 0 3 1 3 3v2.5c0 1 1 2.5 2 2.5-1 0-2 1.5-2 2.5V17c0 2-1 3-3 3" /><path d="M9.5 9h5M12 9v7" stroke="var(--accent)" /></svg>),
+  coverage: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 8 8h-8z" fill="var(--accent)" stroke="none" /></svg>),
+  package: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" /><path d="M4 7.5l8 4.5 8-4.5M12 12v9" /><path d="M8 5.25l8 4.5" stroke="var(--accent)" /></svg>),
+  gauge: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 17a8 8 0 1 1 16 0" /><path d="M12 17l4-6" stroke="var(--accent)" /><circle cx="12" cy="17" r="1.4" fill="currentColor" /></svg>),
+  isolate: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4" /><circle cx="12" cy="12" r="3" stroke="var(--accent)" /></svg>),
   box: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="7" width="17" height="10" /><path d="M7 7v10" /></svg>),
   home: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="4" y="4" width="7" height="7" fill="currentColor" /><rect x="13" y="4" width="7" height="7" /><rect x="4" y="13" width="7" height="7" /><rect x="13" y="13" width="7" height="7" /></svg>),
   graph: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 12 5.5 6.5M12 12l6.5-5.5M12 12v7" /><rect x="9.5" y="9.5" width="5" height="5" fill="currentColor" /><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="20" r="2" /></svg>),

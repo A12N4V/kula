@@ -812,3 +812,89 @@ fn fences_hold_for_shells_commits_teams_research_and_any_harness() {
     let prompt = std::fs::read_to_string(d.join(".claude/agents/kula-tests.md")).unwrap();
     assert!(prompt.starts_with("---\nname: kula-tests") && prompt.contains("enforced"), "{prompt}");
 }
+
+#[test]
+fn graph_isolate_slices_the_graph_and_saves_a_scope() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+    let names = |v: &Value, k: &str| -> Vec<String> {
+        v[k].as_array().unwrap().iter().map(|p| p["node"]["name"].as_str().unwrap().to_string()).collect()
+    };
+
+    // A path: auth is called from the API and calls into util.
+    let v = kula_json(d, &["graph", "isolate", "src/auth/**"]);
+    assert_eq!(v["files"], serde_json::json!(["src/auth/session.ts"]));
+    assert!(names(&v, "inbound").contains(&"handleLogin".to_string()), "{v}");
+    assert!(names(&v, "outbound").contains(&"hashToken".to_string()), "{v}");
+    assert!(v["counts"]["internal"].as_u64().unwrap() > 0);
+    assert_eq!(v["counts"]["inbound"].as_u64().unwrap() as usize, v["inbound"].as_array().unwrap().len());
+    // Boundary edges have exactly one end inside.
+    let inside: Vec<i64> = v["nodes"].as_array().unwrap().iter().map(|n| n["id"].as_i64().unwrap()).collect();
+    for e in v["boundary"].as_array().unwrap() {
+        assert!(inside.contains(&e["src"].as_i64().unwrap()) != inside.contains(&e["dst"].as_i64().unwrap()), "{e}");
+    }
+
+    // A symbol and its neighbourhood: 0 hops is the symbol alone, 1 reaches its caller and callee.
+    let v = kula_json(d, &["graph", "isolate", "symbol:hashToken~0"]);
+    assert_eq!(v["counts"]["nodes"], 1);
+    assert_eq!(names(&v, "outbound"), vec!["salt"]);
+    let v = kula_json(d, &["graph", "isolate", "hashToken", "--hops", "1"]);
+    let picked: Vec<&str> = v["nodes"].as_array().unwrap().iter().map(|n| n["name"].as_str().unwrap()).collect();
+    assert!(picked.contains(&"salt") && picked.contains(&"validate"), "{picked:?}");
+
+    // Selectors union; a cluster by id.
+    let both = kula_json(d, &["graph", "isolate", "src/auth/**", "worker/**"]);
+    assert_eq!(both["files"].as_array().unwrap().len(), 3);
+    let cl = kula_json(d, &["graph", "isolate", &format!("cluster:{}", v["nodes"][0]["community"])]);
+    assert!(cl["counts"]["nodes"].as_u64().unwrap() > 0);
+
+    // What a branch touches.
+    git(d, &["checkout", "-qb", "feat"]);
+    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return salt(t) + t + \"!\"; }\nfunction salt(t: string) { return t.slice(0, 2); }\n");
+    git(d, &["commit", "-qam", "change hash"]);
+    let v = kula_json(d, &["graph", "isolate", "diff:main"]);
+    assert_eq!(v["files"], serde_json::json!(["src/util/crypto.ts"]));
+    let picked: Vec<&str> = v["nodes"].as_array().unwrap().iter().map(|n| n["name"].as_str().unwrap()).collect();
+    assert!(picked.contains(&"hashToken") && !picked.contains(&"salt"), "{picked:?}");
+
+    // Saved as a scope: kula.toml keeps it, @name re-isolates it, and a workflow's scope can use it.
+    let v = kula_json(d, &["graph", "isolate", "src/auth/**", "--save", "auth", "--about", "login and sessions"]);
+    assert_eq!(v["saved"]["name"], "auth");
+    let toml = std::fs::read_to_string(d.join("kula.toml")).unwrap();
+    assert!(toml.contains("[[scope]]") && toml.contains("src/auth/session.ts"), "{toml}");
+    assert_eq!(kula_json(d, &["graph", "isolate", "@auth"])["files"], serde_json::json!(["src/auth/session.ts"]));
+    assert_eq!(kula_json(d, &["graph", "scopes"])[0]["select"], serde_json::json!(["src/auth/**"]));
+    let mut toml = toml;
+    toml.push_str("\n[[workflow]]\nname = \"authwork\"\nscope = [\"@auth\"]\n");
+    std::fs::write(d.join("kula.toml"), toml).unwrap();
+    kula(d, &["task", "start", "tidy auth", "-w", "authwork"]);
+    let hook = |path: &str| format!(r#"{{"tool_name":"Edit","tool_input":{{"file_path":"{path}"}}}}"#);
+    kula_code(d, &["guard", "hook"], Some(&hook("src/auth/session.ts")), 0);
+    kula_code(d, &["guard", "hook"], Some(&hook("src/api/routes.ts")), 2);
+    kula(d, &["task", "done"]);
+    kula(d, &["graph", "forget", "auth"]);
+    assert!(kula_json(d, &["graph", "scopes"]).as_array().unwrap().is_empty());
+
+    // Unknown things say so.
+    kula_code(d, &["graph", "isolate", "cluster:nope"], None, 1);
+    kula_code(d, &["graph", "isolate", "@missing"], None, 1);
+}
+
+#[test]
+fn mcp_isolate_returns_a_slice() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+    let mut child = Command::new(KULA).arg("-C").arg(d).arg("mcp").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    writeln!(
+        child.stdin.as_mut().unwrap(),
+        r#"{{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{{"name":"isolate","arguments":{{"select":["src/auth/**"]}}}}}}"#
+    )
+    .unwrap();
+    drop(child.stdin.take());
+    let out = child.wait_with_output().unwrap();
+    let line: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).lines().next().unwrap()).unwrap();
+    let v: Value = serde_json::from_str(line["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(v["inbound"].as_array().unwrap().iter().any(|p| p["node"]["name"] == "handleLogin"), "{v}");
+}

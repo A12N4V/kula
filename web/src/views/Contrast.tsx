@@ -9,10 +9,10 @@ import type { ContrastMode } from "../nav";
 import { Empty, Icon, Kind, useToast } from "../ui";
 import EdgeCurveProgram from "@sigma/edge-curve";
 import { EdgeRectangleProgram } from "sigma/rendering";
-import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../graphfx";
+import { attachOverlay, CURVATURE, cssVar, drawHover, drawOutlinedLabel, withAlpha, type Overlay } from "../graphfx";
 import { groupDirs } from "../colors";
 import { useSettings } from "../settings";
-import { CURVATURE, cssVar, withAlpha } from "./GraphView";
+
 import { Grip } from "../resize";
 import AsciiMark from "../AsciiMark";
 

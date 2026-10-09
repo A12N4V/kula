@@ -52,7 +52,12 @@ impl AppState {
         let built = Arc::new(index::snapshot(&self.repo, &sha)?);
         let mut cache = self.snapshots.lock().unwrap();
         if cache.len() >= 8 {
-            cache.clear();
+            // Evict one entry, not the whole cache – clearing threw away the
+            // hot HEAD snapshot every time a contrast touched a ninth commit.
+            let oldest = cache.keys().next().cloned();
+            if let Some(k) = oldest {
+                cache.remove(&k);
+            }
         }
         cache.insert(sha.clone(), built.clone());
         Ok((sha, built))
@@ -110,7 +115,12 @@ async fn guard(State(s): State<AppState>, req: Request, next: Next) -> Response 
             return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "missing or bad session token" }))).into_response();
         }
     }
-    next.run(req).await
+    let write = req.method() != axum::http::Method::GET && req.method() != axum::http::Method::HEAD;
+    let res = next.run(req).await;
+    if write {
+        crate::cache::clear();
+    }
+    res
 }
 
 async fn static_file(State(s): State<AppState>, req: Request) -> Response {
@@ -186,12 +196,17 @@ async fn index_progress() -> Json<Value> {
 
 async fn graph_data(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
-        let st = Store::open(&s.repo)?;
+        let root = s.repo.root.clone();
         let level = q.get("level").map(String::as_str).unwrap_or("symbol").to_string();
         let limit = q.get("limit").and_then(|l| l.parse().ok()).unwrap_or(4000);
-        let mut out = json!(graph::export(&st, &level, limit)?);
-        out["churn"] = json!(graph::churn(&s.repo, 90));
-        Ok(out)
+        // P1: the exported graph only changes when the store or HEAD does –
+        // cache it per (level, limit) instead of re-exporting every poll.
+        crate::cache::cached(&format!("graph:{level}:{limit}"), &root, move || {
+            let st = Store::open(&s.repo)?;
+            let mut out = json!(graph::export(&st, &level, limit)?);
+            out["churn"] = json!(graph::churn(&s.repo, 90));
+            Ok(out)
+        })
     })
     .await
 }
@@ -261,6 +276,39 @@ async fn impact(State(s): State<AppState>, Path(id): Path<i64>, Query(q): Query<
     .await
 }
 
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct IsolateReq {
+    select: Vec<String>,
+    hops: Option<usize>,
+    name: String,
+    about: String,
+}
+
+/// POST /api/isolate {select, hops} – a slice of the graph and its boundary.
+async fn isolate(State(s): State<AppState>, Json(a): Json<IsolateReq>) -> ApiResult {
+    blocking(move || Ok(json!(crate::isolate::isolate(&s.repo, &Store::open(&s.repo)?, &a.select, a.hops.unwrap_or(1))?))).await
+}
+
+async fn scopes(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!(crate::config::Config::load(&s.repo.root)?.scopes))).await
+}
+
+/// POST /api/scopes/{save|forget} – named scopes in kula.toml.
+async fn scopes_action(State(s): State<AppState>, Path(action): Path<String>, Json(a): Json<IsolateReq>) -> ApiResult {
+    blocking(move || {
+        Ok(match action.as_str() {
+            "save" => {
+                let (sc, _) = crate::isolate::save(&s.repo, &Store::open(&s.repo)?, &a.name, &a.about, &a.select, a.hops.unwrap_or(1))?;
+                json!(sc)
+            }
+            "forget" => json!({ "removed": crate::isolate::remove(&s.repo, &a.name)? }),
+            _ => return Err(anyhow!("unknown scopes action {action}")),
+        })
+    })
+    .await
+}
+
 async fn flows(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(graph::flows(&Store::open(&s.repo)?, 25)?))).await
 }
@@ -310,7 +358,11 @@ async fn history(State(s): State<AppState>, Path(id): Path<i64>) -> ApiResult {
 
 /// Everything that needs a human's attention, in one payload.
 async fn overview(State(s): State<AppState>) -> ApiResult {
+    // P1: branches, proposals (each a graph::compare), hotspots and log are
+    // pure functions of git + store state – rebuild only when that moves.
+    let root = s.repo.root.clone();
     blocking(move || {
+        let mut out = crate::cache::cached("overview", &root, || {
         let r = &s.repo;
         let st = Store::open(r).ok();
         let branches = r.branches().unwrap_or_default();
@@ -354,8 +406,11 @@ async fn overview(State(s): State<AppState>) -> ApiResult {
             "notes": m.notes.len(),
             "hotspots": hot,
             "recent": r.log(8, Some("HEAD")).unwrap_or_default(),
-            "changes": r.status().map(|f| f.len()).unwrap_or(0),
         }))
+        })?;
+        // Uncommitted edits move no watched file, so the count is never cached.
+        out["changes"] = json!(s.repo.status().map(|f| f.len()).unwrap_or(0));
+        Ok(out)
     })
     .await
 }
@@ -516,7 +571,12 @@ async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(
 /// Everything agents are told and allowed: guard rules and the files they fence,
 /// the task, memories (stale first), and whether MCP and the hook are wired up.
 async fn agents_info(State(s): State<AppState>) -> ApiResult {
+    // P1: mtime-keyed cache – skills, research json, kula.toml, connections and
+    // memories are only rescanned when one of the files behind them moves.
+    // Every agents_action writes to watched paths, so the key moves itself.
     blocking(move || {
+        let root = s.repo.root.clone();
+        crate::cache::cached("agents", &root, move || {
         let r = &s.repo;
         let cfg = crate::config::Config::load(&r.root)?;
         let g = crate::guard::Guards::load(r)?;
@@ -554,6 +614,7 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "memories": memories,
             "secrets_hidden": cfg.agents.hide_secrets,
             "memory_enabled": cfg.agents.memory,
+            "default_agent": cfg.agents.default,
             "mcp_registered": read(".mcp.json").contains("\"kula\""),
             "hook_installed": read(".claude/settings.json").contains("kula guard hook"),
             "kula_toml": crate::config::Config::exists(&r.root),
@@ -575,22 +636,30 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "git_hooks": crate::project::hooks_status(r).unwrap_or_default(),
             "ci": ci,
         }))
+        })
     })
     .await
 }
 
 /// What the repository is built with, so templates can offer commands that run here.
 fn stack(root: &std::path::Path) -> Vec<&'static str> {
-    [("Cargo.toml", "rust"), ("package.json", "node"), ("pyproject.toml", "python"), ("requirements.txt", "python"), ("go.mod", "go"), ("Makefile", "make")]
-        .into_iter()
-        .filter(|(f, _)| root.join(f).exists())
-        .map(|(_, s)| s)
-        .fold(vec![], |mut v, s| {
-            if !v.contains(&s) {
-                v.push(s);
-            }
-            v
-        })
+    [
+        ("Cargo.toml", "rust"),
+        ("package.json", "node"),
+        ("pyproject.toml", "python"),
+        ("requirements.txt", "python"),
+        ("go.mod", "go"),
+        ("Makefile", "make"),
+    ]
+    .into_iter()
+    .filter(|(f, _)| root.join(f).exists())
+    .map(|(_, s)| s)
+    .fold(vec![], |mut v, s| {
+        if !v.contains(&s) {
+            v.push(s);
+        }
+        v
+    })
 }
 
 /// For each research loop: the files its agents may change (the rest is fenced).
@@ -670,7 +739,12 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
             }
             "docs_sync" => json!({ "written": crate::agents::sync(r, &[])? }),
             "brief" => json!({ "text": crate::agents::brief(&crate::config::Config::load(&r.root)?) }),
-            "connect" => json!({ "files": crate::agents::connect(&r.root, &a.agent)? }),
+            "connect" => {
+                // connecting also writes the brief, so the agent reads the fences and workflows on its first turn
+                let mut files: Vec<String> = crate::agents::connect(&r.root, &a.agent)?.into_iter().map(String::from).collect();
+                files.extend(crate::agents::sync(r, &[])?);
+                json!({ "files": files })
+            }
             "suggestion_accept" => json!(crate::agents::accept(r, a.id)?),
             "suggestion_dismiss" => {
                 crate::agents::dismiss(r, a.id)?;
@@ -706,7 +780,7 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
                 // previewed from the editor: the team as it is on screen, saved or not
                 let cfg = crate::config::Config::load(&r.root)?;
                 let t = a.teams.first().ok_or_else(|| anyhow!("send the team"))?;
-                let m = t.members.iter().find(|m| m.agent == a.agent).ok_or_else(|| anyhow!("{} is not in the team", a.agent))?;
+                let m = t.members.iter().find(|m| m.key() == a.agent).ok_or_else(|| anyhow!("{} is not in the team", a.agent))?;
                 json!({ "text": crate::agents::team_prompt(&cfg, t, m) })
             }
             "research_start" => json!(crate::research::start(r, &a.workflow, &format!("user:{}", r.user()), true)?),
@@ -784,7 +858,10 @@ async fn kg_examples() -> ApiResult {
 // ---------------------------------------------------------------- meta
 
 async fn meta_all(State(s): State<AppState>) -> ApiResult {
-    blocking(move || Ok(json!(meta::load(&s.repo)?))).await
+    // P1: issues/proposals/notes live in refs/kula/meta – reload only when the
+    // ref, .kula or the git state moves (fingerprinted by cache::cached).
+    let root = s.repo.root.clone();
+    blocking(move || crate::cache::cached("meta", &root, || Ok(json!(meta::load(&s.repo)?)))).await
 }
 
 #[derive(Deserialize)]
@@ -906,7 +983,12 @@ fn spawn_idle_clean(state: AppState) {
 }
 
 pub fn router(repo: Repo, token: String) -> Router {
-    let state = AppState { repo, token: Arc::new(token), snapshots: Default::default(), used: Arc::new(meta::now().max(0).try_into().unwrap_or(0).into()) };
+    let state = AppState {
+        repo,
+        token: Arc::new(token),
+        snapshots: Default::default(),
+        used: Arc::new(meta::now().max(0).try_into().unwrap_or(0).into()),
+    };
     spawn_idle_clean(state.clone());
     Router::new()
         .route("/api/clean", get(clean_get).post(clean_set))
@@ -927,6 +1009,9 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/symbol/{id}", get(symbol))
         .route("/api/impact/{id}", get(impact))
         .route("/api/flows", get(flows))
+        .route("/api/isolate", post(isolate))
+        .route("/api/scopes", get(scopes))
+        .route("/api/scopes/{action}", post(scopes_action))
         .route("/api/file", get(file))
         .route("/api/compare", get(compare))
         .route("/api/git/status", get(git_status))
@@ -938,6 +1023,14 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/meta", get(meta_all))
         .route("/api/agents", get(agents_info))
         .route("/api/agents/{action}", post(agents_action))
+        // K2: unified agent config (see the K2 block at the end of this file).
+        // under /api/agent/ (GET namespace): axum merges a static path into the
+        // sibling /api/agents/{action} MethodRouter, so a GET there answers 405
+        .route("/api/agent/config_matrix", get(k2_config_matrix))
+        .route("/api/agent/skill_detail", get(k2_skill_detail))
+        .route("/api/agent/skill_diff", get(k2_skill_diff))
+        .route("/api/agent/memory_layers", get(k2_memory_layers))
+        .route("/api/agent/mcp_sync", post(k2_mcp_sync))
         .route("/api/kg/sparql", post(kg_sparql))
         .route("/api/kg/export", get(kg_export))
         .route("/api/kg/examples", get(kg_examples))
@@ -999,3 +1092,59 @@ pub fn serve(repo: Repo, port: u16, open_browser: bool) -> anyhow::Result<()> {
         Ok(())
     })
 }
+
+// ============================================================ K2 · unified agent
+// config: skills, rules, MCP, memory layers. Everything below this marker calls
+// into src/agent_config.rs and src/skills.rs; no caching changes here (P1 owns
+// those). Routes are registered in `router` under the same K2 marker.
+
+/// GET /api/agents/config_matrix – what each agent has for MCP servers and
+/// rules files, against the shared source in .agents/mcp.json.
+async fn k2_config_matrix(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!(crate::agent_config::matrix(&s.repo.root)?))).await
+}
+
+/// GET /api/agents/skill_detail?name= – one skill: per-agent copy states, its
+/// files, and which workflows and teams mention it.
+async fn k2_skill_detail(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let name = q.get("name").cloned().unwrap_or_default();
+        anyhow::ensure!(!name.is_empty(), "send ?name=");
+        let s0 = crate::skills::list(&s.repo.root).into_iter().find(|x| x.name == name).ok_or_else(|| anyhow!("no skill {name:?}"))?;
+        Ok(json!({ "skill": s0, "usage": crate::agent_config::skill_usage(&s.repo.root, &name) }))
+    })
+    .await
+}
+
+/// GET /api/agents/skill_diff?name=&agent= – the unified diff a sync would
+/// apply: the agent's copy against the source. None when there is no copy.
+async fn k2_skill_diff(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let name = q.get("name").cloned().unwrap_or_default();
+        let agent = q.get("agent").cloned().unwrap_or_default();
+        anyhow::ensure!(!name.is_empty() && !agent.is_empty(), "send ?name=&agent=");
+        let diff = crate::skills::diff(&s.repo.root, &agent, &name);
+        Ok(json!({ "name": name, "agent": agent, "diff": diff }))
+    })
+    .await
+}
+
+/// GET /api/agents/memory_layers – every memory with its layer derived from
+/// what exists: scope (task / workflow / repo) and provenance (agent, commit,
+/// symbol). No new storage.
+async fn k2_memory_layers(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!(crate::agent_config::memory_layers(&s.repo)?))).await
+}
+
+#[derive(Deserialize)]
+struct McpSyncReq {
+    name: String,
+}
+
+/// POST /api/agents/mcp_sync – sync one MCP server definition from
+/// .agents/mcp.json into every agent's own config (merge, never clobber).
+async fn k2_mcp_sync(State(s): State<AppState>, Json(a): Json<McpSyncReq>) -> ApiResult {
+    blocking(move || Ok(json!({ "written": crate::agent_config::mcp_sync(&s.repo.root, &a.name)? }))).await
+}
+
+// K2 route lines live in `router`, marked with the same K2 comment.

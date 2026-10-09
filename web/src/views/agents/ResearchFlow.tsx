@@ -8,7 +8,7 @@
 import { useMemo, useState } from "react";
 import { relTime, type Experiment, type ResearchRun } from "../../api";
 import { BRANDS } from "../../brands";
-import { AgentMark, num } from "./parts";
+import { AgentMark, ListFilter, num, useFilterList } from "./parts";
 import { AGENT_NAME } from "./data";
 
 type Verdict = "kept" | "reverted" | "failed" | "fenced";
@@ -39,6 +39,9 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
   const exps = run.experiments;
   const shown = all ? exps : exps.slice(-SHOW);
   const total = Math.abs(run.best - run.baseline) || 1;
+  // j/k walk the attempts; enter pins one to the detail panel; / filters them.
+  const tries = useFilterList(shown.length, (i) => { const e = vis[i]; if (e) toggleFocus(e.n); }, `${run.workflow}:${run.started}:${all}`);
+  function toggleFocus(n: number) { setFocus((f) => (f.n === n ? {} : { n })); }
 
   const solvers = useMemo(() => {
     const m = new Map<string, { id: string; tries: number; kept: number; fenced: number; gain: number; last: number }>();
@@ -52,6 +55,7 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
   }, [exps, run]);
 
   const records = shown.filter((e) => e.kept);
+  const vis = tries.filter ? shown.filter((e) => (`#${e.n} ${e.hypothesis} ${e.files.join(" ")} ${solverName(solverId(e.by))}`).toLowerCase().includes(tries.filter.toLowerCase())) : shown;
   const files = useMemo(() => {
     const m = new Map<string, { path: string; v: Record<Verdict, number>; by: Set<string> }>();
     for (const p of scopeFiles) m.set(p, { path: p, v: { kept: 0, reverted: 0, failed: 0, fenced: 0 }, by: new Set() });
@@ -73,7 +77,7 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
 
   // The flow is laid out on fixed rows, so the wires need no measuring: x in
   // percent of the width, y in pixels, strokes kept crisp by non-scaling-stroke.
-  const H = Math.max(solvers.length, shown.length, records.length + 1) * ROW + 8;
+  const H = Math.max(solvers.length, vis.length, records.length + 1) * ROW + 8;
   const yOf = (i: number) => 4 + i * ROW + ROW / 2;
   const X = { solver: 19, tryIn: 25, tryOut: 61, gate: 66.5, rec: 72 };
   const sIdx = new Map(solvers.map((s, i) => [s.id, i]));
@@ -82,6 +86,8 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
 
   return (
     <div className={`rf ${anyFocus ? "focused" : ""}`}>
+      <div className="rf-filter"><ListFilter inputRef={tries.inputRef} value={tries.filter} onChange={tries.setFilter} label="Filter attempts" placeholder="/ filter attempts" /></div>
+      <RunTimeline run={run} onPick={(n) => toggleFocus(n)} picked={focus.n} />
       <div className="rf-cols mono" aria-hidden="true">
         <span style={{ left: 0 }}>solvers · {solvers.length}</span>
         <span style={{ left: `${X.tryIn}%` }}>attempts · {exps.length}{exps.length > SHOW && <button className="rf-more" onClick={() => setAll(!all)}>{all ? `last ${SHOW}` : "all"}</button>}</span>
@@ -90,10 +96,10 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
       </div>
 
       <div className="rf-stage" style={{ height: H }}>
-        <svg className="rf-wires" viewBox={`0 0 100 ${H}`} preserveAspectRatio="none" aria-hidden="true">
+        <svg className="rf-wires" viewBox={`0 0 100 ${H}`} preserveAspectRatio="none" aria-hidden="true" data-figure>
           {/* build on the best: the frontier feeds the next attempt */}
           <path d={`M${X.rec + 1},2 L${X.rec + 1},0.5 L1,0.5 L1,2`} className="rf-back" />
-          {shown.map((e, i) => {
+          {vis.map((e, i) => {
             const v = verdict(e), lit = on(e);
             const s = sIdx.get(solverId(e.by)) ?? 0;
             const cls = `rf-w ${v} ${anyFocus ? (lit ? "lit" : "dim") : ""}`;
@@ -120,12 +126,12 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
           ))}
         </div>
 
-        <div className="rf-col rf-tries" style={{ left: `${X.tryIn}%`, width: `${X.tryOut - X.tryIn}%` }}>
-          {shown.map((e) => {
+        <div className="rf-col rf-tries" style={{ left: `${X.tryIn}%`, width: `${X.tryOut - X.tryIn}%` }} {...tries.props}>
+          {vis.map((e, i) => {
             const v = verdict(e);
             return (
-              <button key={e.n} className={`rf-try ${v} ${anyFocus ? (on(e) ? "lit" : "dim") : ""} ${focus.n === e.n ? "sel" : ""}`} style={{ height: ROW }}
-                onClick={() => setFocus(focus.n === e.n ? {} : { n: e.n })} aria-pressed={focus.n === e.n}>
+              <button key={e.n} className={`rf-try ${v} ${anyFocus ? (on(e) ? "lit" : "dim") : ""} ${focus.n === e.n ? "sel" : ""} ${tries.sel === i ? "kb-sel" : ""}`} style={{ height: ROW }} data-idx={i} id={`list-item-${i}`}
+                onClick={() => setFocus(focus.n === e.n ? {} : { n: e.n })} aria-pressed={focus.n === e.n} tabIndex={-1}>
                 <span className="mono rf-n">{e.n}</span>
                 <AgentMark id={mark(solverId(e.by))} size={12} />
                 <span className="rf-hyp">{e.hypothesis}</span>
@@ -136,7 +142,7 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
         </div>
 
         <div className="rf-gate" style={{ left: `${X.gate - 1}%` }} title={`fences, then \`${run.metric}\` – ${run.goal === "max" ? "higher" : "lower"} is better`}>
-          {shown.map((e, i) => {
+          {vis.map((e, i) => {
             const v = verdict(e);
             return <span key={e.n} className={`rf-pin ${v} ${anyFocus && !on(e) ? "dim" : ""}`} style={{ top: yOf(i) - 5 }} title={`#${e.n} ${VERDICT_TEXT[v]}${e.value !== null ? ` – ${num(e.value)}` : ""}`} />;
           })}
@@ -160,11 +166,27 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
         </div>
       </div>
 
+      <table className="rf-legend-table" aria-label="Run legend">
+        <thead><tr><th scope="col">state</th><th scope="col" className="num">attempts</th><th scope="col" className="num">{run.metric}</th><th scope="col">meaning</th></tr></thead>
+        <tbody>
+          {(["kept", "reverted", "fenced", "failed"] as Verdict[]).map((v) => {
+            const vs = exps.filter((e) => verdict(e) === v);
+            return (
+              <tr key={v} className={`rf-lg-${v}`}>
+                <th scope="row"><i className={v} />{VERDICT_TEXT[v]}</th>
+                <td className="num mono">{vs.length}</td>
+                <td className="num mono">{vs.length ? vs.map((e) => (e.value === null ? "–" : num(e.value))).join(" · ") : "–"}</td>
+                <td>{v === "kept" ? "the new frontier – the next attempt starts from it"
+                  : v === "reverted" ? "measured, not better – reverted"
+                  : v === "fenced" ? "touched a fence – reverted unrun"
+                  : "the metric did not run"}</td>
+              </tr>
+            );
+          })}
+          <tr className="rf-lg-base"><th scope="row"><i className="base" />baseline</th><td className="num mono">–</td><td className="num mono">{num(run.baseline)}</td><td>measured on {run.base?.slice(0, 7) || run.branch} before any attempt</td></tr>
+        </tbody>
+      </table>
       <div className="rf-legend">
-        <span><i className="kept" />kept – the new frontier</span>
-        <span><i className="reverted" />measured, not better – reverted</span>
-        <span><i className="fenced" />touched a fence – reverted unrun</span>
-        <span><i className="failed" />metric failed</span>
         <span className="rf-back-key">every attempt starts from the frontier</span>
         {anyFocus && <button className="btn sm ghost" onClick={() => setFocus({})}>Clear</button>}
       </div>
@@ -240,6 +262,61 @@ function Summary({ run, solvers, files }: { run: ResearchRun; solvers: number; f
         <dt>verifier</dt><dd className="mono">{run.metric}</dd>
       </dl>
       <p className="muted rf-hint">Pick a solver, attempt or file to trace it through the loop.</p>
+    </div>
+  );
+}
+
+/**
+ * The run on a time axis (module A2): every attempt as a mark at the moment it
+ * was measured, its metric value as an exact number on a value scale, kept
+ * attempts joined into the frontier step line, baseline dashed. Clicking a
+ * mark pins the attempt in the detail panel.
+ */
+function RunTimeline({ run, onPick, picked }: { run: ResearchRun; onPick: (n: number) => void; picked?: number }) {
+  const W = 1200, H = 130, padX = 46, padT = 16, padB = 26;
+  const timed = run.experiments.filter((e) => e.at > 0);
+  const t0 = Math.min(run.started, ...timed.map((e) => e.at));
+  const t1 = Math.max(...timed.map((e) => e.at), run.started + 1);
+  const vals = [run.baseline, ...run.experiments.map((e) => e.value).filter((v): v is number => v !== null)];
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = hi - lo || Math.abs(hi) || 1;
+  const x = (t: number) => padX + ((t - t0) / (t1 - t0)) * (W - 2 * padX);
+  const y = (v: number) => padT + (1 - (v - lo) / span) * (H - padT - padB);
+  const lab = (v: number) => (padT + (1 - (v - lo) / span) * (H - padT - padB));
+  const tick = (v: number) => ({ v, at: y(v) });
+  const ticks = [hi, lo].map(tick);
+  return (
+    <div className="rf-time">
+      <svg className="rf-time-svg" data-figure viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`${run.workflow} run timeline: ${run.experiments.length} attempts from ${t0 ? new Date(t0).toISOString().slice(0, 16).replace("T", " ") : "start"} to ${new Date(t1).toISOString().slice(0, 16).replace("T", " ")}, metric ${run.metric} from ${num(lo)} to ${num(hi)}`}>
+        {/* value scale: exact numbers, Grafana style */}
+        {ticks.map(({ v, at }) => (
+          <g key={v}>
+            <line x1={padX} x2={W - padX} y1={at} y2={at} className="rf-t-grid" />
+            <text x={padX - 6} y={at + 3} className="rf-t-val" textAnchor="end">{num(v)}</text>
+          </g>
+        ))}
+        <line x1={padX} x2={W - padX} y1={y(run.baseline)} y2={y(run.baseline)} className="rf-t-base" />
+        {run.experiments.filter((e) => e.at > 0).map((e) => {
+          const v = verdict(e), lit = picked === e.n;
+          return e.value === null ? (
+            <rect key={e.n} className={`rf-t-mark ${v} ${lit ? "lit" : ""}`} x={x(e.at) - 4} y={H - padB - 8} width={8} height={8}
+              onClick={() => onPick(e.n)} tabIndex={-1}><title>#{e.n} {e.hypothesis} – {VERDICT_TEXT[v]}{e.note ? ` – ${e.note}` : ""}</title></rect>
+          ) : (
+            <g key={e.n} className={`rf-t-mark ${v} ${lit ? "lit" : ""}`} onClick={() => onPick(e.n)}>
+              <title>#{e.n} {e.hypothesis} – {VERDICT_TEXT[v]} – {num(e.value)} at {new Date(e.at).toISOString().slice(11, 16).replace("T", " ")}</title>
+              {v === "kept" && <path className="rf-t-step" d={`M${x(e.at)},${y(e.best_before ?? e.value)} L${x(e.at)},${y(e.value)}`} />}
+              <circle cx={x(e.at)} cy={y(e.value)} r={4} />
+              <text x={x(e.at)} y={y(e.value) - 7} className="rf-t-val" textAnchor="middle">{num(e.value)}</text>
+            </g>
+          );
+        })}
+        {run.experiments.filter((e) => e.at > 0 && verdict(e) === "kept").map((e, i, kept) => {
+          const prev = kept[i - 1];
+          return prev ? <line key={e.n} className="rf-t-front" x1={x(prev.at)} x2={x(e.at)} y1={y(prev.value!)} y2={y(e.value!)} /> : null;
+        })}
+        <text x={padX} y={H - 8} className="rf-t-when" textAnchor="start">{new Date(t0).toISOString().slice(0, 16).replace("T", " ")}</text>
+        <text x={W - padX} y={H - 8} className="rf-t-when" textAnchor="end">{new Date(t1).toISOString().slice(0, 16).replace("T", " ")}</text>
+      </svg>
     </div>
   );
 }

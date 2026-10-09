@@ -1,13 +1,13 @@
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="kula 1.0: git, with a map, for you and your agents" width="100%">
+  <img src="docs/assets/hero.svg" alt="kula 0.3: git, with a map, for you and your agents" width="100%">
 </p>
 
 <p align="center">
   <a href="https://github.com/A12N4V/kula/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/A12N4V/kula/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="../../releases"><img alt="version" src="https://img.shields.io/badge/version-1.0.2-f97f3a?style=flat-square&labelColor=000000"></a>
+  <a href="../../releases"><img alt="version" src="https://img.shields.io/badge/version-0.3.0-f97f3a?style=flat-square&labelColor=000000"></a>
   <a href="LICENSE"><img alt="license GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-f97f3a?style=flat-square&labelColor=000000"></a>
   <img alt="rust" src="https://img.shields.io/badge/core-rust-e8e2d9?style=flat-square&labelColor=000000&logo=rust&logoColor=e8e2d9">
-  <img alt="mcp" src="https://img.shields.io/badge/MCP-21%20tools-8fd694?style=flat-square&labelColor=000000">
+  <img alt="mcp" src="https://img.shields.io/badge/MCP-24%20tools-8fd694?style=flat-square&labelColor=000000">
   <img alt="agents" src="https://img.shields.io/badge/agents-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20Gemini-8fd694?style=flat-square&labelColor=000000">
   <img alt="languages" src="https://img.shields.io/badge/parses-11%20languages-7cb7ff?style=flat-square&labelColor=000000">
   <img alt="rdf" src="https://img.shields.io/badge/graph-RDF%20·%20SPARQL%201.1-d49cf0?style=flat-square&labelColor=000000">
@@ -68,19 +68,19 @@ Kula is the one place where those meet, because they all need the same thing: a 
 
 ## Install
 
-One static binary with the web UI embedded. The only runtime dependency is `git`.
+One binary with the web UI embedded. The only runtime dependency is `git`.
 
-| | command |
-|---|---|
-| **curl** (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh \| sh` |
-| **Homebrew** | `brew install kula`, after a one-time `brew tap a12n4v/tap` |
-| **apt** (Debian, Ubuntu) | `sudo apt install kula`, after adding the signed repository (below) |
-| **npm · pnpm · bun** | `npm i -g kula-cli` · `pnpm add -g kula-cli` · `bunx kula-cli` |
-| **pip · uv · pipx** | `pip install kula` · `uv tool install kula` · `pipx install kula` |
-| **cargo** | `cargo install kula` |
-| **nix** | `nix run github:A12N4V/kula` · `nix profile install github:A12N4V/kula` |
-| **binaries** | macOS (arm64, x64), Linux (x64, arm64), Windows (x64) and `.deb` on [Releases](../../releases) |
-| **source** | `pnpm -C web install && pnpm -C web build && cargo install --path .` |
+| | command | status |
+|---|---|---|
+| **curl** (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh \| sh` | live – installs the binary only; no hooks until you run `kula agents connect` |
+| **Homebrew** | `brew tap a12n4v/tap && brew install kula` | live |
+| **apt** (Debian, Ubuntu) | `sudo apt install kula`, after adding the signed repository (below) | live |
+| **nix** | `nix run github:A12N4V/kula` · `nix profile install github:A12N4V/kula` | live |
+| **binaries** | macOS (arm64, x64), Linux (x64, arm64), Windows (x64) and `.deb` on [Releases](../../releases) | live |
+| **source** | `git clone https://github.com/A12N4V/kula && cd kula && pnpm -C web install && pnpm -C web build && cargo install --path .` | live |
+| **npm · pnpm · bun** | `npm i -g kula-cli` · `pnpm add -g kula-cli` · `bunx kula-cli` | coming with 0.3 |
+| **pip · uv · pipx** | `pip install kula` · `uv tool install kula` · `pipx install kula` | coming with 0.3 |
+| **cargo** | `cargo install kula` | coming with 0.3 – build from source until then |
 
 <details>
 <summary><b>The apt repository</b>: add it once, then <code>apt install</code> and <code>apt upgrade</code> as usual</summary>
@@ -101,6 +101,7 @@ kula init                          # kula.toml · git hooks · agents connected 
 kula view                          # graph + git UI → http://localhost:7420
 kula impact parseConfig            # what breaks if I change this?
 kula graph-diff main WORKTREE      # what my uncommitted work does to the architecture
+kula graph isolate src/auth/** --save auth   # one part of the code, who calls in, what it calls out
 kula task start "split auth" -w refactor   # agents may restructure; tests are locked
 kula commit -am "ship it"          # …and it's still just git
 ```
@@ -213,8 +214,21 @@ One set of skills for every agent, kept in git. Each lives in `.agents/skills/<n
 kula skill new release-notes -d "Write release notes from the commits since the last tag"
 kula skill list                 # each skill, and whether each agent has the current copy
 kula skill adopt claude triage  # take an agent's own skill into the shared set
-kula skill sync
+kula skill sync                 # write every skill where each agent reads it
 ```
+
+When an agent's copy of a skill was edited locally, `kula skill list` shows it as `differs`; Agents › Skills shows the diff – the agent's copy against the source – before a sync overwrites it. The tab also shows which workflows and teams mention a skill, and the skill's own files.
+
+### Agent config: MCP and rules
+
+TeamAI-CLI-style parity beyond skills: every agent's MCP servers (`.mcp.json` for Claude Code, `.cursor/mcp.json` for Cursor, `.gemini/settings.json` for Gemini CLI, `.codex/config.toml` for Codex) and rules files (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, `.cursor/rules/`) are read where each one lies, and shown against the shared source in `.agents/mcp.json`. Syncing writes one server definition out to every agent and never clobbers the rest of their config.
+
+```sh
+kula agents mcp          # the matrix: MCP servers and rules per agent vs the source
+kula agents mcp kula     # sync the kula server from .agents/mcp.json to every agent
+```
+
+Agent memories carry layers derived at read time, no new storage: each memory is labelled with its scope – `task` when its target is inside the active task's scope, else `workflow` when inside a workflow's scope, else `repo` – and its provenance: the agent that wrote it, the commit on `refs/kula/meta` that introduced it, and the symbol or file it is anchored to. Agents › Skills shows the table.
 
 ### Fences
 
@@ -280,6 +294,7 @@ A memory is one fact pinned to a symbol, a file or the repo, stored with the not
 | `remember` · `recall` · `update_memory` | facts about the code that go stale when it changes |
 | `suggest` | propose a fence or a workflow; a person decides |
 | `sparql` | any structural question over the whole graph |
+| `isolate` | one part of the codebase (a path, cluster, symbol neighbourhood, a branch's diff or a saved `@scope`) and what crosses its edge |
 | `query` · `context` · `impact` · `trace` · `compare` · `graph_diff` · `flows` · `notes` · `issues` | the graph itself |
 
 The full model (levels, the hook protocol per agent, recall ranking, the brief) is in [docs/AGENTS.md](docs/AGENTS.md).
@@ -353,7 +368,7 @@ Kula is a **superset of git**: anything it doesn't know goes straight to `git`, 
 | | |
 |---|---|
 | **start** | `init` · `index` · `view` · `status` · `hooks install\|uninstall\|status` · `doctor` |
-| **explore** | `query` · `context` · `impact [--down]` · `trace` · `flows` · `clusters` · `deps` · `kg export\|sparql\|examples` |
+| **explore** | `query` · `context` · `impact [--down]` · `trace` · `flows` · `clusters` · `graph isolate\|scopes\|forget` · `deps` · `kg export\|sparql\|examples` |
 | **review** | `lg` · `compare` · `graph-diff` · `check [--md]` |
 | **agents** | `agents status\|connect\|sync\|brief\|suggestions\|accept\|dismiss` · `workflow list\|show\|install\|prompt` · `task start [-w]\|show\|done` · `guard list\|check\|hook\|commit` · `memory add\|recall\|edit\|stale\|confirm\|rm` · `pack` · `before` · `verify` · `mcp` |
 | **enforce & research** | `run -w <workflow> -- <agent>` · `team save\|start\|stop\|list` · `research init\|start\|try\|status\|stop` |
@@ -405,7 +420,7 @@ flowchart LR
 - **Any revision, without a checkout.** A revision's graph is built from git objects (`git ls-tree` and one `git cat-file --batch`) and cached per commit. Symbols match across revisions by kind, path, container and name, and compare by a hash of their source.
 - **Storage.** `.kula/graph.db` (SQLite and FTS5) is git-ignored, built beside the live file and swapped in with one rename, so a running `kula view` never reads a half-built graph. It reindexes in the background whenever `HEAD` moves.
 - **Cleans up after itself.** Once `kula view` sits idle (15 min by default), it drops old `kula run` copies, temp files and cached graphs, and compacts the store. Change the timer in Settings → Disk or with `kula clean --after 30` (`0` turns it off); `kula clean` runs a pass now.
-- **Metadata in git.** Issues, proposals, notes and memories are one JSON document committed onto `refs/kula/meta`: full history, nothing touches your branches, `kula sync` shares it through any remote.
+- **Metadata in git.** Issues, proposals, notes and memories are one JSON document committed onto `refs/kula/meta`: full history, nothing touches your branches, `kula share` publishes it (with the agent setup on `refs/kula/setup`) and `kula sync` pulls it; nothing is pushed until you share.
 - **Git itself** is never reimplemented: kula shells out to `git`, so hooks, signing, credential helpers and LFS keep working.
 - **Security.** The UI listens on `127.0.0.1`, rejects foreign `Host` headers (DNS rebinding), requires a per-session token on every call, and validates revisions so they can't be read as options.
 

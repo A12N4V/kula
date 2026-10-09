@@ -64,9 +64,9 @@ pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-
 .ch-text b { color: var(--text); font-family: var(--mono); font-weight: 500; font-size: 12px; }
 @media (max-width: 760px) { .console-hero { grid-template-columns: 1fr; } .ch-dither { height: 180px; } .ch-life { height: 120px; } }
 
-/* g1: split grips – a real grab strip, not a 7px hairline. */
-.split > .grip { width: 28px; left: calc(var(--list-w, 340px) - 15px); }
-.split > .grip::after { left: 14px; }
+/* g1: split grips – a real grab strip, not a 7px hairline. Geometry now lives
+   once, in settings.css (integration: strip moved right of the boundary so it
+   covers no list controls). */
 
 /* g1: the history filter input meets the hit-target floor. */
 .list-head .input { height: 28px; }
