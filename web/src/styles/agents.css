@@ -425,3 +425,7 @@
   .org-card { min-height: 40px; }
   .tpl-card { min-height: 40px; }
 }
+/* A2: keep the last fold of controls clear of the fixed status-bar band –
+   content that scrolls beneath the bar is clipped by .main, but its layout
+   rect still crosses the bar, so every view starts one clear band down. */
+.page.agents .ag-grid { padding-top: 36px; }
