@@ -1,0 +1,39 @@
+# Build every language pack on each release platform without publishing
+# anything; release.yml repeats this job on tags. Runs on changes to the pack
+# list or build script, and by hand.
+name: langpacks
+on:
+  push:
+    branches: ["team/**"]
+    paths: ["scripts/build-langpacks.sh", "src/lang*.rs", "langpacks*.toml", ".github/workflows/langpacks.yml"]
+  pull_request:
+    paths: ["scripts/build-langpacks.sh", "src/lang*.rs", "langpacks*.toml", ".github/workflows/langpacks.yml"]
+  workflow_dispatch:
+permissions: { contents: read }
+
+jobs:
+  langpacks:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macos-latest, cc: "cc", cxx: "c++" }
+          - { target: x86_64-apple-darwin, os: macos-latest, cc: "cc -arch x86_64", cxx: "c++ -arch x86_64" }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04, cc: "cc", cxx: "c++" }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm, cc: "cc", cxx: "c++" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.target }}" }
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: build packs
+        env: { CC: "${{ matrix.cc }}", CXX: "${{ matrix.cxx }}", KULA_BIN: "target/${{ matrix.target }}/release/kula" }
+        run: scripts/build-langpacks.sh dist/langpacks
+      - uses: actions/upload-artifact@v4
+        with:
+          name: langpacks-${{ matrix.target }}
+          path: |
+            dist/langpacks/langpack-*
+            dist/langpacks/langpacks-*.json
+
