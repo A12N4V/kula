@@ -248,7 +248,9 @@ enum Cmd {
         all: bool,
     },
     /// Isolate part of the graph: a path, a cluster, a symbol's neighbourhood or a branch's diff, with its boundary.
-    #[command(after_help = "Examples:\n  kula graph isolate src/auth/**\n  kula graph isolate symbol:login~2 cluster:worker\n  kula graph isolate diff:main --save review\n  kula graph scopes")]
+    #[command(
+        after_help = "Examples:\n  kula graph isolate src/auth/**\n  kula graph isolate symbol:login~2 cluster:worker\n  kula graph isolate diff:main --save review\n  kula graph scopes"
+    )]
     #[command(subcommand)]
     Graph(GraphCmd),
     /// Local issues stored in git.
@@ -832,7 +834,11 @@ fn graph_cmd(repo: &Repo, gc: GraphCmd, json: bool) -> Result<()> {
                 println!("  {}", dim(&format!("… {} more", s.files.len() - limit)));
             }
             if let Some(sc) = saved {
-                println!("\n  saved as {} in kula.toml – use it in a workflow as {}", bold(&format!("@{}", sc.name)), dim(&format!("scope = [\"@{}\"]", sc.name)));
+                println!(
+                    "\n  saved as {} in kula.toml – use it in a workflow as {}",
+                    bold(&format!("@{}", sc.name)),
+                    dim(&format!("scope = [\"@{}\"]", sc.name))
+                );
             }
         }
         GraphCmd::Scopes => {
@@ -846,7 +852,13 @@ fn graph_cmd(repo: &Repo, gc: GraphCmd, json: bool) -> Result<()> {
                 println!("  {}", dim("none yet – kula graph isolate <selector> --save <name>"));
             }
             for s in &cfg.scopes {
-                println!("  {} {:<20} {}  {}", accent("@"), s.name, s.select.join(" + "), dim(&format!("{} files{}", s.paths.len(), if s.about.is_empty() { String::new() } else { format!(" – {}", s.about) })));
+                println!(
+                    "  {} {:<20} {}  {}",
+                    accent("@"),
+                    s.name,
+                    s.select.join(" + "),
+                    dim(&format!("{} files{}", s.paths.len(), if s.about.is_empty() { String::new() } else { format!(" – {}", s.about) }))
+                );
             }
         }
         GraphCmd::Forget { name } => {

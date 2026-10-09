@@ -2,7 +2,7 @@
 
 use crate::index::{self, langs, packs};
 use crate::term::{bold, dim, green};
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use clap::Subcommand;
 use std::path::{Path, PathBuf};
 
@@ -215,13 +215,11 @@ fn build(ids: &[String], all: bool, out: &Path, jobs: usize) -> Result<()> {
     let results = std::sync::Mutex::new(Vec::new());
     std::thread::scope(|s| {
         for _ in 0..jobs.max(1) {
-            s.spawn(|| {
-                loop {
-                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    let Some(p) = list.get(i) else { break };
-                    let r = build_one(p, out);
-                    results.lock().unwrap().push((p.id.clone(), r));
-                }
+            s.spawn(|| loop {
+                let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let Some(p) = list.get(i) else { break };
+                let r = build_one(p, out);
+                results.lock().unwrap().push((p.id.clone(), r));
             });
         }
     });

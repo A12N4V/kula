@@ -951,7 +951,8 @@ async fn langs_get(State(s): State<AppState>) -> ApiResult {
                 })
             })
             .collect();
-        let installed: Vec<&str> = index::packs::all().iter().filter(|p| index::packs::is_installed(&p.id)).map(|p| p.id.as_str()).collect();
+        let installed: Vec<&str> =
+            index::packs::all().iter().filter(|p| index::packs::is_installed(&p.id)).map(|p| p.id.as_str()).collect();
         Ok(json!({ "detected": detected, "installed": installed, "available": index::packs::all().len() }))
     })
     .await

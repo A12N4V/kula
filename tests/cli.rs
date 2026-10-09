@@ -851,7 +851,11 @@ fn graph_isolate_slices_the_graph_and_saves_a_scope() {
 
     // What a branch touches.
     git(d, &["checkout", "-qb", "feat"]);
-    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return salt(t) + t + \"!\"; }\nfunction salt(t: string) { return t.slice(0, 2); }\n");
+    write(
+        d,
+        "src/util/crypto.ts",
+        "export function hashToken(t: string) { return salt(t) + t + \"!\"; }\nfunction salt(t: string) { return t.slice(0, 2); }\n",
+    );
     git(d, &["commit", "-qam", "change hash"]);
     let v = kula_json(d, &["graph", "isolate", "diff:main"]);
     assert_eq!(v["files"], serde_json::json!(["src/util/crypto.ts"]));

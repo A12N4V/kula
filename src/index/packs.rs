@@ -17,7 +17,7 @@
 //! compiles one locally from the pinned grammar source with the system C
 //! compiler instead.
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -85,10 +85,18 @@ impl Pack {
         }
     }
     pub fn symbol(&self) -> &str {
-        if self.symbol.is_empty() { &self.id } else { &self.symbol }
+        if self.symbol.is_empty() {
+            &self.id
+        } else {
+            &self.symbol
+        }
     }
     pub fn family(&self) -> &str {
-        if self.family.is_empty() { &self.id } else { &self.family }
+        if self.family.is_empty() {
+            &self.id
+        } else {
+            &self.family
+        }
     }
     pub fn query(&self) -> Option<&'static str> {
         QUERIES.iter().find(|(id, _)| *id == self.id).map(|(_, q)| *q)

@@ -8,7 +8,7 @@ use crate::store::{Edge, Node, Store};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Parser, QueryCursor};
@@ -494,7 +494,11 @@ pub(crate) fn package_name(raw: &str, lang: &str) -> Option<String> {
             let s = s.strip_prefix("node:").map(|b| format!("node:{}", b.split('/').next().unwrap_or(b))).unwrap_or_else(|| s.to_string());
             let mut it = s.split('/');
             let first = it.next()?;
-            if first.starts_with('@') { format!("{first}/{}", it.next()?) } else { first.to_string() }
+            if first.starts_with('@') {
+                format!("{first}/{}", it.next()?)
+            } else {
+                first.to_string()
+            }
         }
         "python" => {
             if s.starts_with('.') {
@@ -511,7 +515,11 @@ pub(crate) fn package_name(raw: &str, lang: &str) -> Option<String> {
         }
         "go" => {
             let segs: Vec<&str> = s.split('/').collect();
-            if segs[0].contains('.') { segs.iter().take(3).copied().collect::<Vec<_>>().join("/") } else { segs[0].to_string() }
+            if segs[0].contains('.') {
+                segs.iter().take(3).copied().collect::<Vec<_>>().join("/")
+            } else {
+                segs[0].to_string()
+            }
         }
         _ => return None,
     };
@@ -997,7 +1005,11 @@ pub fn worktree(repo: &Repo) -> Built {
 
 /// `WORKTREE` (uncommitted state) or any revision.
 pub fn snapshot_any(repo: &Repo, rev: &str) -> Result<Built> {
-    if rev.eq_ignore_ascii_case("worktree") { Ok(worktree(repo)) } else { snapshot(repo, rev) }
+    if rev.eq_ignore_ascii_case("worktree") {
+        Ok(worktree(repo))
+    } else {
+        snapshot(repo, rev)
+    }
 }
 
 /// Build the graph of any revision straight from git objects – no checkout.
