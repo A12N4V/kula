@@ -1542,3 +1542,54 @@ test.describe("agents config K2", () => {
   });
 });
 
+
+// M1 · memory graph: the fixture's memories as graph nodes, layer legend,
+// stale hollow, click → list selection, filter reaching the graph. Read-only.
+test.describe("memory graph M1", () => {
+  test.use({ baseURL: ({ fx }, use) => use(fx) });
+
+  test("fixture memories are graph nodes with the right count; click selects the list row", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
+    await open(page, "agents/memory");
+    // two fixture memories, each with a DOM node counterpart on the graph
+    const nodes = page.locator(".m1-node");
+    await expect(nodes).toHaveCount(2);
+    // anchors covered, exact numbers: legend rows per layer plus the totals
+    const legend = page.locator(".m1-legend-t");
+    await expect(legend).toContainText("repo");
+    await expect(legend.locator("tfoot")).toContainText("anchors covered");
+    await expect(legend.locator("tfoot")).toContainText("2");
+    await expect(legend.locator("tfoot")).toContainText("1 hollow");
+    // clicking a node selects and scrolls the list row
+    const mem4 = nodes.filter({ hasText: "#4" });
+    await mem4.click();
+    await expect(page.locator(".ag-mem.kb-sel")).toHaveCount(1);
+    await expect(page.locator(".ag-mem.kb-sel")).toContainText("Unlink, never truncate");
+    // the graph canvas shows the selection ring on the picked node
+    await expect(page.locator(".m1-node.sel")).toHaveCount(1);
+  });
+
+  test("stale memory renders hollow (DOM class), fresh one does not", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
+    await open(page, "agents/memory");
+    const stale = page.locator(".m1-node.stale");
+    await expect(stale).toHaveCount(1);
+    await expect(stale).toHaveText("#5");
+    await expect(page.locator(".m1-node:not(.stale)")).toHaveCount(1);
+    // the list row for the same memory is stale too – one truth, two views
+    const row = page.locator(".ag-mem").filter({ hasText: "SPARQL is read-only" });
+    await expect(row).toHaveClass(/stale/);
+  });
+
+  test("the list filter (`/`) narrows the graph too", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
+    await open(page, "agents/memory");
+    const input = page.getByLabel("Filter memories");
+    await input.fill("SPARQL");
+    await expect(page.locator(".m1-node")).toHaveCount(1);
+    await expect(page.locator(".ag-mem")).toHaveCount(1);
+    await input.fill("walrus");
+    await expect(page.locator(".m1-node")).toHaveCount(0);
+    await expect(page.locator(".ag-empty")).toContainText("Nothing matches");
+  });
+});
