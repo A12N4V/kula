@@ -183,7 +183,7 @@
 @media (max-width: 760px) { .kq-editor { padding: 12px 14px 8px; } .kq-prefixes { display: none; } .kq-table td { max-width: 220px; } }
 @media (max-width: 760px) {
   .split.kq { display: flex; flex-direction: column; }
-  .split.kq > .list { max-height: 30vh; flex: none; border-right: 0; border-bottom: 1px solid var(--line); }
+  .split.kq > .list { max-height: 60vh; flex: none; border-right: 0; border-bottom: 1px solid var(--line); }
   .split.kq > .detail { display: flex; flex: 1; min-height: 0; }
   .kq-bar .btn.sm { min-height: 40px; min-width: 40px; }
 }

@@ -9,7 +9,7 @@ import { AGENT_NAME } from "./data";
 import { AgentMark } from "./parts";
 import { workflowColor } from "./TeamOrg";
 import { MiniGraph, type MiniEdge, type MiniNode } from "../MiniGraph";
-import { cssVar } from "../GraphView";
+import { cssVar } from "../../graphfx";
 
 /** Teams under each team, in kula.toml order; a team under a missing one is a root. */
 export function nesting(teams: Team[]) {

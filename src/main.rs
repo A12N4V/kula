@@ -1,7 +1,9 @@
 //! kula – git, with a map.
 
 mod agent;
+mod agent_config;
 mod agents;
+mod cache;
 mod clean;
 mod config;
 mod git;
@@ -335,6 +337,16 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Deep compaction: prune superseded research experiments from finished
+    /// runs, dedupe exact-duplicate memories, compact the graph store.
+    /// Nothing user-made goes that a live run still references, and every
+    /// removal is reported (memory dedupe is its own commit on refs/kula/meta).
+    #[command(after_help = "Examples:\n  kula gc   ·  kula gc --dry-run")]
+    Gc {
+        /// Show what would go without removing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Explicit git passthrough: `kula git <args>`.
     #[command(after_help = "Examples:\n  kula git stash list")]
     Git {
@@ -567,6 +579,9 @@ enum AgentsCmd {
     Accept { id: u64 },
     /// Dismiss a suggestion.
     Dismiss { id: u64 },
+    /// The agent config matrix: MCP servers and rules files per agent, against
+    /// the shared source. With a NAME, sync that server from .agents/mcp.json to all.
+    Mcp { name: Option<String> },
 }
 
 #[derive(Subcommand)]
@@ -974,6 +989,22 @@ fn run(cli: Cli) -> Result<()> {
                     "{verb} {} kept run(s), {} temp file(s); freed {} · .kula is {}",
                     r.runs_removed,
                     r.temp_removed,
+                    clean::human(r.freed_bytes),
+                    clean::human(r.size_bytes)
+                );
+            }
+        }
+        Cmd::Gc { dry_run } => {
+            let r = clean::gc(&repo, dry_run)?;
+            if json {
+                println!("{}", serde_json::to_string(&r)?);
+            } else {
+                let verb = if dry_run { "would prune" } else { "pruned" };
+                println!(
+                    "{verb} {} superseded research experiment(s), {} duplicate memor{}; freed {} · .kula is {}",
+                    r.research_pruned,
+                    r.memories_deduped,
+                    if r.memories_deduped == 1 { "y" } else { "ies" },
                     clean::human(r.freed_bytes),
                     clean::human(r.size_bytes)
                 );
@@ -1963,6 +1994,45 @@ fn agents_cmd(repo: &Repo, c: AgentsCmd, json: bool) -> Result<()> {
             }
         }
         AgentsCmd::Brief => print!("{}", agents::brief(&config::Config::load(&repo.root)?)),
+        AgentsCmd::Mcp { name } => match name {
+            Some(name) => {
+                let w = agent_config::mcp_sync(&repo.root, &name)?;
+                for f in w {
+                    println!("  {} {}", green("✓"), f);
+                }
+            }
+            None => {
+                let m = agent_config::matrix(&repo.root)?;
+                if json {
+                    println!("{}", serde_json::to_string(&m)?);
+                    return Ok(());
+                }
+                header("mcp");
+                let src = if m.source.exists {
+                    format!("{} · {}", accent(&m.source.path), m.source.servers.join(", "))
+                } else {
+                    dim(&format!("{} – none yet", m.source.path))
+                };
+                println!("  source  {src}");
+                for a in &m.agents {
+                    let state = if !a.exists {
+                        yellow("missing")
+                    } else if a.missing.is_empty() && a.differs.is_empty() {
+                        green("in sync")
+                    } else {
+                        yellow(&format!("differs: {}", a.differs.iter().chain(a.missing.iter()).cloned().collect::<Vec<_>>().join(", ")))
+                    };
+                    println!("  {:<8} {:<28} {}", a.agent, dim(&a.path), state);
+                    println!("    servers: {}", if a.servers.is_empty() { dim("none") } else { a.servers.join(", ") });
+                }
+                header("rules");
+                for r in &m.rules {
+                    let state = if r.exists { green("✓") } else { dim("·") };
+                    println!("  {:<8} {:<32} {}", r.agent, r.path, state);
+                }
+                println!("\n  {}", dim("sync one: `kula agents mcp <server-name>`"));
+            }
+        },
         AgentsCmd::Suggestions => {
             let all = agents::suggestions(repo);
             if json {

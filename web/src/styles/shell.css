@@ -170,7 +170,8 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .rail-toggle, .rail-label, .rail-scrim { display: none; }
 @media (max-width: 760px) {
   html, body { overflow-x: hidden; }
-  .shell { grid-template-columns: minmax(0, 1fr); }
+  .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px 1fr 40px; }
+  /* the statusbar row grows to the 40px control floor so .sb-help cannot poke into the view above */
   .main { min-width: 0; grid-column: 1; }
   .statusbar { grid-column: 1; min-width: 0; overflow: hidden; }
   .topbar { gap: 4px; padding: 0 6px 0 8px; }
@@ -180,7 +181,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
   .rail-toggle { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; }
   .rail-toggle:hover, .rail-open .rail-toggle { color: var(--text); background: var(--panel-2); }
   .topbar .search-trigger, .topbar .btn.sm.ghost { width: 34px; height: 34px; min-width: 0; padding: 0; display: grid; place-items: center; border: 0; background: none; }
-  .rail { position: fixed; z-index: 60; top: 48px; bottom: 26px; left: 0; width: min(240px, 78vw); align-items: stretch; padding: 6px 0; overflow-y: auto;
+  .rail { position: fixed; z-index: 60; top: 48px; bottom: 40px; left: 0; width: min(240px, 78vw); align-items: stretch; padding: 6px 0; overflow-y: auto;
     border-right: 1px solid var(--line-2); transform: translateX(-100%); visibility: hidden; transition: transform .22s var(--ease), visibility 0s .22s; }
   .rail-open .rail { transform: none; visibility: visible; transition: transform .22s var(--ease); }
   .rail-group { align-items: stretch; }
@@ -189,7 +190,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
   .rail [data-tip]:hover::after { display: none; }
   .rail .badge { position: static; margin-left: auto; }
   .rail-label { display: inline; font: 500 12.5px var(--mono); }
-  .rail-scrim { display: block; position: fixed; z-index: 59; inset: 48px 0 26px; background: rgba(0, 0, 0, .55); }
+  .rail-scrim { display: block; position: fixed; z-index: 59; inset: 48px 0 40px; background: rgba(0, 0, 0, .55); }
 }
 
 /* ---------- topbar actions: back, search, settings ---------- */
@@ -247,4 +248,5 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 /* ================================================================ integration: 40px phone hit targets in the chrome */
 @media (max-width: 760px) {
   .brand, .rail-toggle, .topbar .btn.sm, .sb-help { min-width: 40px; min-height: 40px; }
+  /* stat rows are navigable targets – keep them at the floor on phones */
 }

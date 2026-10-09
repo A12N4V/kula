@@ -1,16 +1,42 @@
 import { CodeProvider } from "./CodePanel";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
 import type { ContrastMode, Go, Target, View } from "./nav";
 import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, fuzzyScore } from "./nav";
-import GraphView from "./views/GraphView";
+// Heavy views load on demand: the first paint ships the shell + Overview only,
+// the rest arrive as their own chunks (prefetched on idle – see PREFETCH below).
+const GraphView = lazy(() => import("./views/GraphView"));
+const Agents = lazy(() => import("./views/Agents"));
+const Query = lazy(() => import("./views/Query"));
+const Changes = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Changes })));
+const History = lazy(() => import("./views/GitViews").then((m) => ({ default: m.History })));
+const Branches = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Branches })));
+const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
+const Flows = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Flows })));
+const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
+const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
+const Proposals = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Proposals })));
 import Overview from "./views/Overview";
-import { Branches, Changes, Console, History } from "./views/GitViews";
-import { Flows, Issues, Notes, Proposals } from "./views/MetaViews";
-import Agents from "./views/Agents";
-import Query from "./views/Query";
 import SettingsPanel from "./SettingsPanel";
+
+// Warm the lazy chunks once the shell is up, so the first click on a rail item
+// does not wait on the network (local disk, but still a visible flash).
+const PREFETCH: Array<() => Promise<unknown>> = [
+  () => import("./views/GraphView"),
+  () => import("./views/Agents"),
+  () => import("./views/Query"),
+  () => import("./views/GitViews"),
+  () => import("./views/MetaViews"),
+];
+let prefetched = false;
+function prefetchViews() {
+  if (prefetched) return;
+  prefetched = true;
+  const idle = (window as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback;
+  if (idle) idle(() => PREFETCH.forEach((f) => void f().catch(() => {})));
+  else setTimeout(() => PREFETCH.forEach((f) => void f().catch(() => {})), 1500);
+}
 import { settings } from "./settings";
 import Opening from "./Opening";
 
@@ -99,6 +125,7 @@ export default function App() {
   const onChanged = useCallback(() => { refresh(); setVersion((v) => v + 1); }, [refresh]);
 
   useEffect(() => { refresh(); const t = setInterval(refresh, 5000); return () => clearInterval(t); }, [refresh]);
+  useEffect(() => { prefetchViews(); }, []);
 
   // Keep the URL shareable, and make back/forward walk through where you have been:
   // each new place is a history entry; popping one restores it.
@@ -226,18 +253,20 @@ export default function App() {
         )}
         {/* Keyed so each view change plays a short enter transition. */}
         <div className="view-enter" key={view + (contrast ? ":c" : "")}>
-          {view === "overview" && <Overview repo={repo} version={version} go={go} />}
-          {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
-          {view === "changes" && <Changes {...nav} />}
-          {view === "history" && <History {...nav} />}
-          {view === "branches" && <Branches {...nav} />}
-          {view === "proposals" && <Proposals {...nav} />}
-          {view === "issues" && <Issues {...nav} />}
-          {view === "notes" && <Notes {...nav} />}
-          {view === "flows" && <Flows {...nav} />}
-          {view === "agents" && <Agents {...nav} />}
-          {view === "query" && <Query {...nav} />}
-          {view === "console" && <Console {...nav} />}
+          <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
+            {view === "overview" && <Overview repo={repo} version={version} go={go} />}
+            {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
+            {view === "changes" && <Changes {...nav} />}
+            {view === "history" && <History {...nav} />}
+            {view === "branches" && <Branches {...nav} />}
+            {view === "proposals" && <Proposals {...nav} />}
+            {view === "issues" && <Issues {...nav} />}
+            {view === "notes" && <Notes {...nav} />}
+            {view === "flows" && <Flows {...nav} />}
+            {view === "agents" && <Agents {...nav} />}
+            {view === "query" && <Query {...nav} />}
+            {view === "console" && <Console {...nav} />}
+          </Suspense>
         </div>
         </>
         )}

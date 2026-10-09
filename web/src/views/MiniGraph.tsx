@@ -10,8 +10,7 @@ import { EdgeRectangleProgram } from "sigma/rendering";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import noverlap from "graphology-layout-noverlap";
 import EdgeCurveProgram from "@sigma/edge-curve";
-import { attachOverlay, drawHover, drawOutlinedLabel, type Overlay } from "../graphfx";
-import { CURVATURE, cssVar } from "./GraphView";
+import { attachOverlay, CURVATURE, cssVar, drawHover, drawOutlinedLabel, type Overlay } from "../graphfx";
 import { useSettings } from "../settings";
 
 export interface MiniNode { id: string; label: string; color: string; size: number; group?: string; hub?: boolean; glyph?: string; x?: number; y?: number }
