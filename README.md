@@ -68,11 +68,11 @@ Kula is the one place where those meet, because they all need the same thing: a 
 
 ## Install
 
-One static binary with the web UI embedded. The only runtime dependency is `git`.
+One binary with the web UI embedded. The only runtime dependency is `git`.
 
 | | command | status |
 |---|---|---|
-| **curl** (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh \| sh` | live – installs the binary only; no hooks until you run `kula connect` |
+| **curl** (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh \| sh` | live – installs the binary only; no hooks until you run `kula agents connect` |
 | **Homebrew** | `brew tap a12n4v/tap && brew install kula` | live |
 | **apt** (Debian, Ubuntu) | `sudo apt install kula`, after adding the signed repository (below) | live |
 | **nix** | `nix run github:A12N4V/kula` · `nix profile install github:A12N4V/kula` | live |
