@@ -1,3 +1,4 @@
+
 // Agents: how AI agents work in this repository, and everything you can change
 // about it. Workflows (work modes with their own fences, scope, steps, docs and
 // memory policy), the fences in kula.toml, the memories agents keep, the docs
