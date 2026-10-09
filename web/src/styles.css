@@ -8,6 +8,7 @@
 @import "./styles/graph.css";
 @import "./styles/code.css";
 @import "./styles/agents.css";
+@import "./styles/agents-memory.css";
 @import "./styles/agents-teams.css";
 @import "./styles/settings.css";
 @import "./styles/type.css";
