@@ -449,7 +449,7 @@ fn kula_code(dir: &Path, args: &[&str], stdin: Option<&str>, code: i32) -> (Stri
     drop(c.stdin.take());
     let out = c.wait_with_output().unwrap();
     let (so, se) = (String::from_utf8_lossy(&out.stdout).to_string(), String::from_utf8_lossy(&out.stderr).to_string());
-    assert_eq!(out.status.code(), Some(code), "kula {args:?}\n{so}{se}");
+    assert_eq!(out.status.code(), Some(code), "kula {args:?} stdin {stdin:?}\n{so}{se}");
     (so, se)
 }
 
@@ -729,6 +729,13 @@ fn fences_hold_for_shells_commits_teams_research_and_any_harness() {
     git(d, &["add", "-A"]);
     let (_, why) = kula_env(d, &["guard", "commit"], &[("KULA_AGENT", "aider")], 1);
     assert!(why.contains("src/util/crypto.ts"), "{why}");
+    // codex's hook call above stamped .git/kula/session: until it expires,
+    // identity is codex's even with no agent env (B3) – a fresh marker holds.
+    let (_, why) = kula_env(d, &["guard", "commit"], &[], 1);
+    assert!(why.contains("session marker"), "{why}");
+    // A person is one with neither: the marker gone (expired or removed), the
+    // commit is theirs.
+    std::fs::remove_file(d.join(".git/kula/session")).ok();
     kula_env(d, &["guard", "commit"], &[], 0);
     git(d, &["reset", "-q", "--hard"]);
 
@@ -851,7 +858,11 @@ fn graph_isolate_slices_the_graph_and_saves_a_scope() {
 
     // What a branch touches.
     git(d, &["checkout", "-qb", "feat"]);
-    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return salt(t) + t + \"!\"; }\nfunction salt(t: string) { return t.slice(0, 2); }\n");
+    write(
+        d,
+        "src/util/crypto.ts",
+        "export function hashToken(t: string) { return salt(t) + t + \"!\"; }\nfunction salt(t: string) { return t.slice(0, 2); }\n",
+    );
     git(d, &["commit", "-qam", "change hash"]);
     let v = kula_json(d, &["graph", "isolate", "diff:main"]);
     assert_eq!(v["files"], serde_json::json!(["src/util/crypto.ts"]));
@@ -897,4 +908,199 @@ fn mcp_isolate_returns_a_slice() {
     let line: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).lines().next().unwrap()).unwrap();
     let v: Value = serde_json::from_str(line["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert!(v["inbound"].as_array().unwrap().iter().any(|p| p["node"]["name"] == "handleLogin"), "{v}");
+}
+
+// ------------------------------------------------------------------ fences that hold (F1 regressions)
+
+#[test]
+fn symbol_fences_are_enforced_at_commit_verify_and_check() {
+    let t = fixture();
+    let d = t.path();
+    write(d, "kula.toml", "[[guard]]\nsymbols = [\"salt\"]\nlevel = \"locked\"\nreason = \"salt is audited\"\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "fences"]);
+    kula(d, &["index"]);
+
+    // B1: an edit inside a locked symbol is refused at commit, verify and check –
+    // all three used to pass an agent through.
+    write(
+        d,
+        "src/util/crypto.ts",
+        "export function hashToken(t: string) { return salt(t) + t; }\nfunction salt(t: string) { return t.slice(0, 6); }\n",
+    );
+    git(d, &["add", "-A"]);
+    let (_, why) = kula_env(d, &["guard", "commit"], &[("KULA_AGENT", "aider")], 1);
+    assert!(why.contains("salt is audited"), "{why}");
+    let (out, _) = kula_env(d, &["verify"], &[], 2);
+    assert!(out.contains("salt is audited"), "{out}");
+    git(d, &["commit", "-qam", "widen the salt"]);
+    let out = kula_env(d, &["--json", "check", "--base", "HEAD~1", "--max-risk", "high"], &[], 2).0;
+    let r: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(r["guarded"][0][1], "locked", "{r}");
+
+    // Exact, not coarse: an edit to another symbol in the same file passes.
+    write(
+        d,
+        "src/util/crypto.ts",
+        "export function hashToken(t: string) { return salt(t) + t + \"!\"; }\nfunction salt(t: string) { return t.slice(0, 6); }\n",
+    );
+    git(d, &["add", "-A"]);
+    kula_env(d, &["guard", "commit"], &[("KULA_AGENT", "aider")], 0);
+    kula_env(d, &["verify"], &[], 0);
+    git(d, &["commit", "-qam", "hashToken is not locked"]);
+    git(d, &["reset", "-q", "--hard", "HEAD~1"]);
+
+    // A bare name with several definitions fences all of them, and says so.
+    write(d, "src/dup/a.ts", "export function same() { return 1; }\n");
+    write(d, "src/dup/b.ts", "export function same() { return 2; }\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "dups"]);
+    kula(d, &["index"]);
+    write(d, "kula.toml", "[[guard]]\nsymbols = [\"same\"]\nlevel = \"locked\"\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "dup fences"]);
+    write(d, "src/dup/a.ts", "export function same() { return 3; }\n");
+    git(d, &["add", "-A"]);
+    let (_, why) = kula_env(d, &["guard", "commit"], &[("KULA_AGENT", "aider")], 1);
+    assert!(why.contains("fences all 2 definitions"), "{why}");
+    git(d, &["reset", "-q", "--hard"]);
+
+    // The hook knows nothing of hunks, so a file holding a locked symbol is fenced whole there.
+    let hook = |path: &str| format!(r#"{{"tool_name":"Edit","tool_input":{{"file_path":"{path}"}}}}"#);
+    let (_, why) = kula_code(d, &["guard", "hook"], Some(&hook("src/dup/a.ts")), 2);
+    assert!(why.contains("locked"), "{why}");
+}
+
+#[test]
+fn pre_commit_fails_closed_and_the_hook_catches_tampering() {
+    let t = fixture();
+    let d = t.path();
+    write(d, "kula.toml", "[[guard]]\npaths = [\"src/util/**\"]\nlevel = \"locked\"\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "fences"]);
+    kula(d, &["index"]);
+    kula(d, &["hooks", "install"]);
+    write(d, "x.txt", "x\n");
+    git(d, &["add", "-A"]);
+
+    // B2: kula missing from PATH must refuse the commit, with the escape spelled out.
+    let hook = std::fs::read_to_string(d.join(".git/hooks/pre-commit")).unwrap();
+    assert!(hook.contains("command -v kula") && hook.contains("--no-verify") && hook.contains("hooks uninstall"), "{hook}");
+    let out = Command::new("git").arg("-C").arg(d).args(["commit", "-qm", "no kula"]).env("PATH", "/usr/bin:/bin").output().unwrap();
+    assert!(!out.status.success(), "commit with kula off PATH must fail closed");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("not on PATH"), "{}", String::from_utf8_lossy(&out.stderr));
+    // With kula on PATH the hook runs and lets the person through.
+    let exe_dir = std::path::Path::new(KULA).parent().unwrap().display().to_string();
+    let path = std::env::var("PATH").unwrap_or_default();
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(d)
+        .args(["commit", "-qm", "with kula present"])
+        .env("PATH", format!("{exe_dir}:{path}"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "with kula on PATH the fence check runs: {}", String::from_utf8_lossy(&out.stderr));
+
+    // B2/B3: the agent hook refuses the shell spellings of switching the fences off.
+    let bash = |cmd: &str| serde_json::json!({ "tool_name": "Bash", "tool_input": { "command": cmd } }).to_string();
+    for cmd in [
+        "git commit -am x --no-verif",
+        "git commit -am x --no-v",
+        "git -c core.hooksPath=/dev/null commit -am x",
+        "chmod -x .git/hooks/pre-commit",
+        "chmod 777 .git/hooks/pre-commit",
+        "env -u CLAUDECODE git commit -am x",
+        "unset KULA_AGENT; git commit -am x",
+        "KULA_AGENT=person git commit -am x",
+    ] {
+        kula_code(d, &["guard", "hook"], Some(&bash(cmd)), 2);
+    }
+    // Identity also comes from the session marker: scrub the env, keep the stamp.
+    kula_code(d, &["guard", "hook"], Some("{}"), 0); // stamps .git/kula/session as claude
+    assert!(d.join(".git/kula/session").exists());
+    write(d, "src/util/crypto.ts", "export function hashToken(t: string) { return t; }\n");
+    git(d, &["add", "-A"]);
+    // No agent env at all, but the marker is fresh: still held.
+    let (_, why) = kula_env(d, &["guard", "commit"], &[], 1);
+    assert!(why.contains("fenced changes") || why.contains("locked"), "{why}");
+    git(d, &["reset", "-q", "--hard"]);
+}
+
+#[test]
+fn shell_bypasses_are_refused_in_a_fenced_repo() {
+    let t = fixture();
+    let d = t.path();
+    write(d, ".env", "SECRET=1\n");
+    write(d, "tests/login.test.ts", "test('login', () => {});\n");
+    write(d, "kula.toml", "[[guard]]\npaths = [\"tests/**\"]\nlevel = \"locked\"\nreason = \"tests are the contract\"\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "fences"]);
+    kula(d, &["index"]);
+    let bash = |cmd: &str| serde_json::json!({ "tool_name": "Bash", "tool_input": { "command": cmd } }).to_string();
+
+    // B4: every one-liner from the critique refuses with a reason.
+    for cmd in [
+        "python3 - <<EOF\nopen('tests/test_pay.py','w')\nEOF",
+        "awk -i inplace '{print}' tests/login.test.ts",
+        "git checkout HEAD -- tests",
+        "git restore --source=HEAD -- tests",
+        "git stash",
+        "git reset --hard HEAD~1",
+        "cd tests && echo x > test_pay.py",
+        "eval \"echo x > tests/login.test.ts\"",
+        "echo x > $(echo tests)/login.test.ts",
+        "T=tests; echo x > $T/login.test.ts",
+        "echo x > $NOWHERE/test_pay.py",
+        "find tests -name '*.py' -delete",
+        "git update-ref -d refs/kula/meta",
+        "git show HEAD:.env",
+        "echo x > tests/../tests/login.test.ts",
+    ] {
+        let (_, why) = kula_code(d, &["guard", "hook"], Some(&bash(cmd)), 2);
+        assert!(why.contains("refused") || why.contains("is locked") || why.contains("is hidden"), "{cmd} -> {why}");
+    }
+    // A patch's own paths are its targets.
+    let diff = "/tmp/kula-f1-bypass.diff";
+    std::fs::write(diff, "diff --git a/tests/login.test.ts b/tests/login.test.ts\n--- a/tests/login.test.ts\n+++ b/tests/login.test.ts\n@@ -1 +1 @@\n-a\n+b\n").unwrap();
+    for cmd in [format!("git apply {diff}"), format!("patch -p1 < {diff}")] {
+        let (_, why) = kula_code(d, &["guard", "hook"], Some(&bash(&cmd)), 2);
+        assert!(why.contains("refused"), "{cmd} -> {why}");
+    }
+    std::fs::remove_file(diff).unwrap();
+
+    // Legitimate look-alikes still pass.
+    for cmd in [
+        "cat tests/login.test.ts | grep -n salt",
+        "git show HEAD:tests/login.test.ts",
+        "git checkout HEAD -- worker",
+        "find worker -name '*.py'",
+        "T=worker; echo x > $T/note.md",
+        "cd worker && echo x > note.md",
+        "python3 -c 'print(1)'",
+    ] {
+        kula_code(d, &["guard", "hook"], Some(&bash(cmd)), 0);
+    }
+}
+
+#[test]
+fn symlinks_cannot_carry_new_files_past_the_fence() {
+    let t = fixture();
+    let d = t.path();
+    write(d, "kula.toml", "[[guard]]\npaths = [\"tests/**\"]\nlevel = \"locked\"\n");
+    write(d, "tests/login.test.ts", "test('login', () => {});\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "fences"]);
+    kula(d, &["index"]);
+    let hook = |path: &str| format!(r#"{{"tool_name":"Write","tool_input":{{"file_path":"{path}"}}}}"#);
+    // M1: the /tmp alias and a symlinked directory inside the repo both resolve.
+    // tempdir's path and its canonical form differ by a /private prefix on macOS.
+    let aliased = d.canonicalize().unwrap().display().to_string().replacen("/private", "", 1);
+    if aliased != d.display().to_string() {
+        kula_code(d, &["guard", "hook"], Some(&hook(&format!("{aliased}/tests/brand_new.py"))), 2);
+    }
+    std::os::unix::fs::symlink(d.join("tests"), d.join("t2")).unwrap();
+    let (_, why) = kula_code(d, &["guard", "hook"], Some(&hook(&format!("{}/t2/brand_new.py", d.display()))), 2);
+    assert!(why.contains("fenced") || why.contains("locked"), "{why}");
+    // And a real new file in the fenced directory too.
+    kula_code(d, &["guard", "hook"], Some(&hook(&format!("{}/tests/brand_new.py", d.display()))), 2);
 }

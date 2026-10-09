@@ -342,7 +342,15 @@ pub fn verify_edit(repo: &Repo, agent: Option<&str>) -> Result<Verify> {
     paths.dedup();
     let store = Store::open(repo).ok();
     // kula's own config changes are a person's (agents can't write it: the hooks refuse, `kula run` puts it back).
-    let guard_violations: Vec<_> = crate::guard::violations(repo, store.as_ref(), &paths, agent)
+    // Symbol fences are exact here: the worktree diff's hunks map to the
+    // symbols whose spans they touch.
+    let syms = store
+        .as_ref()
+        .map(|st| crate::guard::diff_symbols(repo, st, &["diff", "-U0", "--no-color", "--no-renames", "HEAD"]))
+        .unwrap_or_default();
+    let touched: Vec<(String, Vec<String>)> =
+        paths.iter().map(|p| (p.clone(), syms.iter().find(|(fp, _)| fp == p).map(|(_, s)| s.clone()).unwrap_or_default())).collect();
+    let guard_violations: Vec<_> = crate::guard::violations_with(repo, store.as_ref(), &touched, agent)
         .unwrap_or_default()
         .into_iter()
         .filter(|(_, v)| v.rule != "kula")

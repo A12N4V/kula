@@ -230,7 +230,16 @@ const MARK: &str = "# >>> kula";
 const MARK_END: &str = "# <<< kula";
 const HOOK_BODY: &str = "if command -v kula >/dev/null 2>&1; then (kula index --if-stale --quiet >/dev/null 2>&1 &); fi";
 /// Refuses an agent's commit of fenced changes (a person's commits pass untouched).
-const PRE_COMMIT: &str = "if command -v kula >/dev/null 2>&1; then kula guard commit || exit 1; fi";
+/// Fails closed: with kula missing from PATH the check cannot run, so the commit
+/// is refused and the person's escape is spelled out. `kula check` in CI is the
+/// authoritative gate; this hook is a speed bump, not a sandbox.
+const PRE_COMMIT: &str = r#"if command -v kula >/dev/null 2>&1; then
+  kula guard commit || exit 1
+else
+  echo "kula: the pre-commit fence check cannot run – kula is not on PATH." >&2
+  echo "  a person's escape: git commit --no-verify, or remove the hooks with: kula hooks uninstall" >&2
+  exit 1
+fi"#;
 
 fn hooks_dir(repo: &Repo) -> Result<PathBuf> {
     let p = repo.run(&["rev-parse", "--git-path", "hooks"])?;
@@ -583,11 +592,16 @@ pub fn check(repo: &Repo, store: Option<&Store>, base: &str, max_risk: &str) -> 
         None => vec![],
     };
     // The team's fences, without this checkout's task scope (CI has none).
+    // Symbol fences are exact: the diff's hunks map to the symbols whose
+    // spans they touch (graph::compare already does the mapping).
     let guards = crate::guard::Guards::new(&config::Config::load(&repo.root)?, None)?;
     let guarded: Vec<(String, String, String)> = c
         .files
         .iter()
-        .map(|f| (f, guards.path(&f.path)))
+        .map(|f| {
+            let names: Vec<String> = f.symbols.iter().map(|n| n.name.clone()).collect();
+            (f, guards.edit_touched(store, &f.path, &names))
+        })
         .filter(|(_, v)| v.level != crate::guard::Level::Open)
         .map(|(f, v)| (f.path.clone(), v.level.as_str().to_string(), v.reason))
         .collect();

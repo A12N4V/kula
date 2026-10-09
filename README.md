@@ -133,11 +133,11 @@ Fences are not a paragraph in a prompt. Every way an agent can change code meets
 | how an agent acts | what holds it |
 |---|---|
 | a file tool: Edit, Write, apply_patch, write_file | the pre-tool hook refuses the call and tells the agent why |
-| a shell command: `rm`, `mv`, `sed -i`, `> file`, `tee`, `git rm` | the same hook reads the command for every file it writes or reads |
-| switching kula off: editing `kula.toml` or a hook, `kula task done`, `git commit --no-verify` | refused: kula's own config is locked for agents, always; they may `suggest` |
-| a commit | the git `pre-commit` hook refuses an agent's commit that holds fenced changes |
+| a shell command: `rm`, `mv`, `sed -i`, `> file`, `tee`, `git rm` | the same hook reads the command for every file it writes or reads – and refuses what it cannot see through: `eval`, command substitution, heredoc-fed interpreters, `git apply`/`stash`/`reset --hard`/`checkout` on fenced paths, `cd` then a relative write, `find -delete`, identity-scrubbing env tricks |
+| switching kula off: editing `kula.toml` or a hook, `kula task done`, `git commit --no-verify` (or `--no-verif`) | refused: kula's own config is locked for agents, always; they may `suggest` |
+| a commit | the git `pre-commit` hook refuses an agent's commit that holds fenced changes – identity from a short-lived session marker under `.git/kula`, so scrubbed env vars don't wash it off; kula missing from PATH fails the commit closed |
 | a harness kula doesn't know | `kula run` makes fenced files read-only for the run (hidden ones unreadable) and puts back anything fenced it changed; the agent's version is kept in `.kula/run/` |
-| a branch | `kula check` fails it in CI |
+| a branch | `kula check` fails it in CI – the authoritative gate; hooks are speed bumps, CI is the wall |
 
 ### Workflows
 
