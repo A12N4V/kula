@@ -59,8 +59,11 @@ html[data-resizing="x"] * { cursor: col-resize !important; }
 html[data-resizing="y"] * { cursor: row-resize !important; }
 
 .split { position: relative; grid-template-columns: var(--list-w, 340px) minmax(0, 1fr); }
-.split > .grip { right: auto; left: calc(var(--list-w, 340px) - 7px); }
-.split > .grip::after { right: auto; left: 3px; }
+/* integration: the g1 grab strip sits wholly right of the list boundary, so it
+   covers no list controls (probe: kq-ex / verify-head × grip overlap). One rule
+   here – git.css's older override is gone. */
+.split > .grip { right: auto; width: 28px; left: calc(var(--list-w, 340px) + 1px); }
+.split > .grip::after { right: auto; left: 2px; }
 
 .inspector { width: var(--size-inspector, 380px); }
 .graph-wrap.inspecting .zoom { right: calc(var(--size-inspector, 380px) + 24px); }

@@ -46,3 +46,10 @@
   .k2-layers .chip-toggle { min-height: 40px; }
   .k2-layers-t .linkish { min-height: 40px; padding: 8px 6px; }
 }
+
+/* ================================================================ integration: split panels vs the grab strip
+   The g1 grab strip now sits wholly right of the list boundary; the query
+   detail side clears it so neither the textarea nor the bar buttons are under it. */
+@media (min-width: 761px) {
+  .kq .kq-editor { padding-left: 32px; }
+}

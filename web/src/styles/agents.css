@@ -406,7 +406,9 @@
 /* phone: every interactive row clears the 40 px floor (probe PROBLEMS) */
 @media (max-width: 760px) {
   .stat-table tr.go { min-height: 40px; }
-  .stat-table tr.go th, .stat-table tr.go td { padding-top: 11px; padding-bottom: 11px; }
+  /* 0-2-2 beats .ag-control .stat-table's 5px padding (agents.css:422) – sweep.css's
+     lower specificity cannot, however late it imports */
+  .ag-control .stat-table tr.go th, .ag-control .stat-table tr.go td { padding-top: 11px; padding-bottom: 11px; }
   .roster-row, .loop-row { min-height: 40px; }
   .roster { overflow-x: visible; }
   .roster-head, .roster-row { grid-template-columns: minmax(0, 1fr) auto; min-width: 0; }
@@ -420,13 +422,8 @@
 /* A2: the control row – loops, teams and the stat table side by side */
 @media (min-width: 1101px) { .ag-control { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); } }
 .ag-control .stat-table th, .ag-control .stat-table td { padding: 5px 8px; }
-@media (max-width: 760px) {
-  .team-tabs button, .team-tab-add { min-height: 40px; }
-  .org-card { min-height: 40px; }
-  .tpl-card { min-height: 40px; }
-}
-
-/* integration: 40px phone hit targets in the agents tabs */
+/* integration: 40px phone hit targets in the agents tabs (A2's tab-add, tpl-card
+   and org-card floors folded in here – one block, not two) */
 @media (max-width: 760px) {
   .team-tabs button, .team-tabs .team-tab-add, .tpl-card, .chip-toggle, .org-card { min-height: 40px; min-width: 40px; }
 }
