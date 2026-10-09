@@ -1,6 +1,6 @@
 {
   "name": "kula-cli",
-  "version": "1.0.2",
+  "version": "0.3.0",
   "description": "git, with a map – a local-first git client with a knowledge-graph view, local issues/PRs, notes and an MCP server.",
   "license": "GPL-3.0-only",
   "repository": { "type": "git", "url": "git+https://github.com/A12N4V/kula.git" },
@@ -10,10 +10,10 @@
   "files": ["bin/kula.js", "README.md"],
   "engines": { "node": ">=16" },
   "optionalDependencies": {
-    "@kula-cli/darwin-arm64": "1.0.2",
-    "@kula-cli/darwin-x64": "1.0.2",
-    "@kula-cli/linux-x64": "1.0.2",
-    "@kula-cli/linux-arm64": "1.0.2",
-    "@kula-cli/win32-x64": "1.0.2"
+    "@kula-cli/darwin-arm64": "0.3.0",
+    "@kula-cli/darwin-x64": "0.3.0",
+    "@kula-cli/linux-x64": "0.3.0",
+    "@kula-cli/linux-arm64": "0.3.0",
+    "@kula-cli/win32-x64": "0.3.0"
   }
 }

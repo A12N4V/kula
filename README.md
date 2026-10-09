@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="kula 1.0: git, with a map, for you and your agents" width="100%">
+  <img src="docs/assets/hero.svg" alt="kula 0.3: git, with a map, for you and your agents" width="100%">
 </p>
 
 <p align="center">
   <a href="https://github.com/A12N4V/kula/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/A12N4V/kula/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="../../releases"><img alt="version" src="https://img.shields.io/badge/version-1.0.2-f97f3a?style=flat-square&labelColor=000000"></a>
+  <a href="../../releases"><img alt="version" src="https://img.shields.io/badge/version-0.3.0-f97f3a?style=flat-square&labelColor=000000"></a>
   <a href="LICENSE"><img alt="license GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-f97f3a?style=flat-square&labelColor=000000"></a>
   <img alt="rust" src="https://img.shields.io/badge/core-rust-e8e2d9?style=flat-square&labelColor=000000&logo=rust&logoColor=e8e2d9">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-21%20tools-8fd694?style=flat-square&labelColor=000000">
@@ -70,17 +70,17 @@ Kula is the one place where those meet, because they all need the same thing: a 
 
 One static binary with the web UI embedded. The only runtime dependency is `git`.
 
-| | command |
-|---|---|
-| **curl** (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh \| sh` |
-| **Homebrew** | `brew install kula`, after a one-time `brew tap a12n4v/tap` |
-| **apt** (Debian, Ubuntu) | `sudo apt install kula`, after adding the signed repository (below) |
-| **npm · pnpm · bun** | `npm i -g kula-cli` · `pnpm add -g kula-cli` · `bunx kula-cli` |
-| **pip · uv · pipx** | `pip install kula` · `uv tool install kula` · `pipx install kula` |
-| **cargo** | `cargo install kula` |
-| **nix** | `nix run github:A12N4V/kula` · `nix profile install github:A12N4V/kula` |
-| **binaries** | macOS (arm64, x64), Linux (x64, arm64), Windows (x64) and `.deb` on [Releases](../../releases) |
-| **source** | `pnpm -C web install && pnpm -C web build && cargo install --path .` |
+| | command | status |
+|---|---|---|
+| **curl** (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh \| sh` | live – installs the binary only; no hooks until you run `kula connect` |
+| **Homebrew** | `brew tap a12n4v/tap && brew install kula` | live |
+| **apt** (Debian, Ubuntu) | `sudo apt install kula`, after adding the signed repository (below) | live |
+| **nix** | `nix run github:A12N4V/kula` · `nix profile install github:A12N4V/kula` | live |
+| **binaries** | macOS (arm64, x64), Linux (x64, arm64), Windows (x64) and `.deb` on [Releases](../../releases) | live |
+| **source** | `git clone https://github.com/A12N4V/kula && cd kula && pnpm -C web install && pnpm -C web build && cargo install --path .` | live |
+| **npm · pnpm · bun** | `npm i -g kula-cli` · `pnpm add -g kula-cli` · `bunx kula-cli` | coming with 0.3 |
+| **pip · uv · pipx** | `pip install kula` · `uv tool install kula` · `pipx install kula` | coming with 0.3 |
+| **cargo** | `cargo install kula` | coming with 0.3 – build from source until then |
 
 <details>
 <summary><b>The apt repository</b>: add it once, then <code>apt install</code> and <code>apt upgrade</code> as usual</summary>

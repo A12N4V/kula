@@ -10,7 +10,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        version = "1.0.2";
+        version = "0.3.0";
 
         # The web UI, built with pnpm and embedded into the binary.
         web = pkgs.stdenvNoCC.mkDerivation (finalAttrs: {

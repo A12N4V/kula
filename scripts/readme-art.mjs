@@ -81,7 +81,7 @@ function hero() {
     .cur { fill: ${UI}; animation: blink 1.1s 2.2s steps(1, end) infinite; opacity: 0; }
     @keyframes blink { 0%, 49% { opacity: 1 } 50%, 100% { opacity: 0 } }
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; opacity: 1 !important; } .g path { opacity: .14 !important; } }`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="kula 1.0 – git, with a map. A knowledge graph of your code for you and your agents.">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="kula 0.3 – git, with a map. A knowledge graph of your code for you and your agents.">
 <style>${css}
 </style>
 <rect width="${W}" height="${H}" fill="${BG}"/>
@@ -91,7 +91,7 @@ function hero() {
 <g shape-rendering="crispEdges"><path class="w" d="${word("KULA", fx, 140, 12)}"/><path class="w2" d="${sq(fx + 4 * 6 * 12 + 4, 140 + 6 * 12, 11.4)}"/></g>
 <text class="t" x="${fx}" y="268">git, with a map – for you and your agents<tspan class="cur">_</tspan></text>
 <text class="s" x="${fx}" y="300">KNOWLEDGE GRAPH · WORKFLOWS · FENCES · MEMORY · MCP</text>
-<text class="s" x="${fx}" y="100"><tspan class="o">●</tspan> V1.0.2 · GPL-3.0 · ONE BINARY · LOCAL-FIRST</text>
+<text class="s" x="${fx}" y="100"><tspan class="o">●</tspan> V0.3.0 · GPL-3.0 · ONE BINARY · LOCAL-FIRST</text>
 </svg>
 `;
 }
