@@ -33,6 +33,15 @@ export interface Node {
   community: number;
 }
 export interface Edge { src: number; dst: number; kind: string; weight: number }
+/** A node outside an isolated slice that touches it (src/isolate.rs). */
+export interface Peer { node: Node; kinds: string[]; edges: number; inside: number[] }
+/** A slice of the graph and its boundary: `kula graph isolate`. */
+export interface Slice {
+  selectors: string[]; nodes: Node[]; edges: Edge[]; boundary: Edge[]; inbound: Peer[]; outbound: Peer[]; files: string[]; clusters: string[];
+  counts: { nodes: number; files: number; internal: number; inbound_edges: number; inbound: number; outbound_edges: number; outbound: number };
+}
+/** A named scope in kula.toml ([[scope]]); workflows use it as `@name`. */
+export interface Scope { name: string; about?: string; select: string[]; hops?: number; paths: string[] }
 export interface Community { id: number; label: string; size: number }
 export interface GraphData { nodes: Node[]; edges: Edge[]; communities: Community[]; truncated: boolean; churn?: Record<string, number> }
 export interface RepoInfo {
@@ -153,6 +162,10 @@ export const api = {
   symbol: (id: number) => get<Context>(`/api/symbol/${id}`),
   impact: (id: number, dir = "up", depth = 3) => get<Impact>(`/api/impact/${id}?${q({ dir, depth })}`),
   flows: () => get<Flow[]>("/api/flows"),
+  isolate: (select: string[], hops = 1) => post<Slice>("/api/isolate", { select, hops }),
+  scopes: () => get<Scope[]>("/api/scopes"),
+  scopeSave: (name: string, select: string[], hops = 1, about = "") => post<Scope>("/api/scopes/save", { name, select, hops, about }),
+  scopeForget: (name: string) => post<{ removed: boolean }>("/api/scopes/forget", { name }),
   file: (path: string) => get<{ path: string; content: string }>(`/api/file?${q({ path })}`),
   compare: (base: string, head?: string) => get<Compare>(`/api/compare?${q({ base, head })}`),
   status: () => get<{ branch: string; files: FileStatus[] }>("/api/git/status"),

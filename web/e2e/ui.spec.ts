@@ -1604,3 +1604,91 @@ test.describe("memory graph M1", () => {
     await expect(page.locator(".ag-empty")).toContainText("Nothing matches");
   });
 });
+
+test.describe("isolate", () => {
+  test.use({ baseURL: ({ fx }, use) => use(fx) });
+  test.describe.configure({ mode: "serial" });
+
+  test("isolate a directory: only the slice and its boundary stubs, inbound and outbound, saved as a scope", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "writes kula.toml in the fixture");
+    test.setTimeout(90_000);
+    await open(page, "graph");
+    await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
+    await page.waitForFunction(() => !!(window as any).__kula);
+    await page.keyboard.press("i");
+    const ask = page.getByRole("dialog", { name: "Isolate part of the graph" });
+    await expect(ask).toBeVisible();
+    await ask.getByLabel("Selectors").fill("src/index/**");
+    await ask.getByLabel("Selectors").press("Enter");
+    const panel = page.getByRole("region", { name: "Isolated slice" });
+    await expect(panel).toBeVisible();
+    await expect(ask).toHaveCount(0);
+    await expect(panel.locator(".iso-sel")).toHaveText("src/index/**");
+    await expect(page.getByRole("button", { name: /Isolate \d+/ })).toHaveAttribute("aria-pressed", "true");
+
+    // What is drawn is the slice plus what crosses its edge – nothing else.
+    const check = await page.evaluate(async () => {
+      const token = document.querySelector<HTMLMetaElement>('meta[name="kula-token"]')?.content ?? "";
+      const slice = await fetch("/api/isolate", { method: "POST", headers: { "x-kula-token": token, "content-type": "application/json" }, body: JSON.stringify({ select: ["src/index/**"] }) }).then((r) => r.json());
+      const { sigma, graph } = (window as any).__kula;
+      const inside = new Set(slice.nodes.map((n: any) => String(n.id)));
+      const peers = new Set([...slice.inbound, ...slice.outbound].map((p: any) => String(p.node.id)));
+      let shown = 0, stray = 0, stubs = 0;
+      graph.forEachNode((id: string, a: any) => {
+        if (a.virtual || a.dir === "__pkg") return;
+        const d = sigma.getNodeDisplayData(id);
+        if (!d || d.hidden) return;
+        if (inside.has(id)) shown++; else if (peers.has(id)) stubs++; else stray++;
+      });
+      return { shown, stray, stubs, counts: slice.counts };
+    });
+    expect(check.stray).toBe(0);
+    expect(check.shown).toBeGreaterThan(5);
+    expect(check.stubs).toBeGreaterThan(0);
+    await expect(panel.locator(".iso-counts")).toContainText(`${check.counts.nodes} symbols`);
+
+    // Inbound and outbound lists, with edge counts.
+    const tabs = panel.getByRole("tab");
+    await expect(tabs.nth(0)).toContainText(`${check.counts.inbound_edges} in · ${check.counts.inbound}`);
+    expect(await panel.locator(".iso-row").count()).toBeGreaterThan(0);
+    await tabs.nth(1).click();
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+    await expect(panel.locator(".iso-row .iso-n.out").first()).toHaveText(/×\d+/);
+    await tabs.nth(2).click();
+    await expect(panel.locator(".iso-row").first()).toContainText("src/index/");
+    await page.screenshot({ path: "test-results/graph-isolate.png" });
+
+    // Save it as a named scope: it lands in kula.toml and is offered next time.
+    await panel.getByLabel("Scope name").fill("e2e-index");
+    await panel.getByRole("button", { name: "Save scope" }).click();
+    await expect(panel.locator(".iso-save")).toContainText('scope = ["@e2e-index"]');
+    const scopes = await page.evaluate(() => fetch("/api/scopes", { headers: { "x-kula-token": document.querySelector<HTMLMetaElement>('meta[name="kula-token"]')?.content ?? "" } }).then((r) => r.json()));
+    expect(scopes.find((s: any) => s.name === "e2e-index")?.select).toEqual(["src/index/**"]);
+    await panel.locator(".iso-sel").click();
+    await expect(ask.getByRole("button", { name: /@e2e-index/ })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // Exit: the whole map comes back.
+    await panel.getByRole("button", { name: "Exit isolate" }).click();
+    await expect(panel).toHaveCount(0);
+    await page.evaluate(() => fetch("/api/scopes/forget", { method: "POST", headers: { "x-kula-token": document.querySelector<HTMLMetaElement>('meta[name="kula-token"]')?.content ?? "", "content-type": "application/json" }, body: JSON.stringify({ name: "e2e-index" }) }));
+  });
+});
+
+test.describe("isolate from the map", () => {
+  test("right-click a symbol to isolate its neighbourhood", async ({ page }) => {
+    await open(page, "graph");
+    const { a } = await nodeAt(page, "edge");
+    // The layout may still be easing: retry the right-click until the menu opens.
+    await expect(async () => {
+      await page.mouse.click(a.x, a.y, { button: "right" });
+      await expect(page.getByRole("menu")).toBeVisible({ timeout: 1000 });
+    }).toPass({ timeout: 15_000 });
+    await page.getByRole("menuitem", { name: /Isolate (neighbourhood|file)/ }).click();
+    const panel = page.getByRole("region", { name: "Isolated slice" });
+    await expect(panel).toBeVisible();
+    await expect(panel.locator(".iso-sel")).toContainText(a.label);
+    await page.keyboard.press("i");
+    await expect(page.getByRole("dialog", { name: "Isolate part of the graph" }).getByLabel("Selectors")).toHaveValue(/symbol:|path:/);
+  });
+});

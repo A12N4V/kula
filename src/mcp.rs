@@ -24,6 +24,8 @@ fn tools() -> Value {
           "inputSchema": s(json!({ "base": { "type": "string" }, "head": { "type": "string" } }), &["base"]) },
         { "name": "graph_diff", "description": "Contrast the knowledge graphs of two revisions (head may be WORKTREE): symbols added/removed/modified and call edges gained/lost.",
           "inputSchema": s(json!({ "base": { "type": "string" }, "head": { "type": "string" } }), &["base"]) },
+        { "name": "isolate", "description": "Isolate part of the codebase: only the symbols a selector picks, the edges among them, and the boundary – who calls in and what it calls out, with counts. Selectors (unioned): a path glob (src/auth/**), cluster:<id|label>, symbol:<name>[~hops], diff:<base>[..head] for what a branch touches, or @<name> for a scope saved in kula.toml. Use it to understand a subsystem's surface before changing it.",
+          "inputSchema": s(json!({ "select": { "type": "array", "items": { "type": "string" } }, "hops": { "type": "integer", "description": "neighbourhood for symbol selectors without ~N (default 1)" }, "limit": { "type": "integer", "description": "max nodes and peers listed (default 200)" } }), &["select"]) },
         { "name": "flows", "description": "Execution flows reachable from entry points.",
           "inputSchema": s(json!({ "limit": { "type": "integer" } }), &[]) },
         { "name": "notes", "description": "Human notes and annotations attached to the repo, files and symbols.",
@@ -125,6 +127,26 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             let mut i = graph::impact(&s, n.id, str_arg("direction") != "downstream", int_arg("depth", 3))?;
             i.hits.retain(|h| g.node(&h.node).level.readable());
             json!(i)
+        }
+        "isolate" => {
+            let sel: Vec<String> = match a.get("select") {
+                Some(Value::String(x)) => vec![x.clone()],
+                Some(Value::Array(v)) => v.iter().filter_map(|x| x.as_str().map(String::from)).collect(),
+                _ => vec![],
+            };
+            let mut sl = crate::isolate::isolate(repo, &st()?, &sel, int_arg("hops", 1))?;
+            let limit = int_arg("limit", 200);
+            sl.nodes = visible(&g, std::mem::take(&mut sl.nodes));
+            let seen: std::collections::HashSet<i64> = sl.nodes.iter().map(|n| n.id).collect();
+            sl.edges.retain(|e| seen.contains(&e.src) && seen.contains(&e.dst));
+            for list in [&mut sl.inbound, &mut sl.outbound] {
+                list.retain(|p| g.node(&p.node).level.readable());
+                list.truncate(limit);
+            }
+            sl.boundary.clear(); // drawing data; the peers say the same
+            sl.files.retain(|f| g.path(f).level.readable());
+            sl.nodes.truncate(limit);
+            json!(sl)
         }
         "trace" => {
             let s = st()?;

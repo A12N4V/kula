@@ -18,6 +18,7 @@ export const Icon = {
   coverage: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 8 8h-8z" fill="var(--accent)" stroke="none" /></svg>),
   package: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" /><path d="M4 7.5l8 4.5 8-4.5M12 12v9" /><path d="M8 5.25l8 4.5" stroke="var(--accent)" /></svg>),
   gauge: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 17a8 8 0 1 1 16 0" /><path d="M12 17l4-6" stroke="var(--accent)" /><circle cx="12" cy="17" r="1.4" fill="currentColor" /></svg>),
+  isolate: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4" /><circle cx="12" cy="12" r="3" stroke="var(--accent)" /></svg>),
   box: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="7" width="17" height="10" /><path d="M7 7v10" /></svg>),
   home: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="4" y="4" width="7" height="7" fill="currentColor" /><rect x="13" y="4" width="7" height="7" /><rect x="4" y="13" width="7" height="7" /><rect x="13" y="13" width="7" height="7" /></svg>),
   graph: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 12 5.5 6.5M12 12l6.5-5.5M12 12v7" /><rect x="9.5" y="9.5" width="5" height="5" fill="currentColor" /><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="20" r="2" /></svg>),

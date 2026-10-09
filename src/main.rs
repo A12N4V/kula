@@ -10,6 +10,7 @@ mod git;
 mod graph;
 mod guard;
 mod index;
+mod isolate;
 mod kg;
 mod mcp;
 mod memory;
@@ -245,6 +246,10 @@ enum Cmd {
         #[arg(long)]
         all: bool,
     },
+    /// Isolate part of the graph: a path, a cluster, a symbol's neighbourhood or a branch's diff, with its boundary.
+    #[command(after_help = "Examples:\n  kula graph isolate src/auth/**\n  kula graph isolate symbol:login~2 cluster:worker\n  kula graph isolate diff:main --save review\n  kula graph scopes")]
+    #[command(subcommand)]
+    Graph(GraphCmd),
     /// Local issues stored in git.
     #[command(after_help = "Examples:\n  kula issue new \"login fails on empty token\" --label bug --anchor src/auth.rs:login")]
     #[command(subcommand)]
@@ -598,6 +603,32 @@ enum AgentsCmd {
 }
 
 #[derive(Subcommand)]
+enum GraphCmd {
+    /// Show only a slice of the graph and what crosses its edge. Selectors are unioned:
+    /// a path glob, cluster:<id|label>, symbol:<name>[~hops], diff:<base>[..head], @<scope>.
+    Isolate {
+        #[arg(required = true)]
+        selectors: Vec<String>,
+        /// Neighbourhood for symbol selectors without ~N.
+        #[arg(long, default_value_t = 1)]
+        hops: usize,
+        /// Save it in kula.toml as a named [[scope]]; workflows reuse it as `scope = ["@name"]`.
+        #[arg(long, value_name = "NAME")]
+        save: Option<String>,
+        /// One line about the saved scope.
+        #[arg(long, requires = "save")]
+        about: Option<String>,
+        /// Rows per boundary list.
+        #[arg(short, long, default_value_t = 12)]
+        limit: usize,
+    },
+    /// The saved scopes.
+    Scopes,
+    /// Forget a saved scope.
+    Forget { name: String },
+}
+
+#[derive(Subcommand)]
 enum TaskCmd {
     /// Start a task; --scope limits what agents may change (globs or symbol names).
     Start {
@@ -727,6 +758,105 @@ fn next_step(msg: &str) -> Option<&'static str> {
 fn passthrough(dir: &std::path::Path, args: &[String]) -> Result<()> {
     let status = std::process::Command::new("git").arg("-C").arg(dir).args(args).status()?;
     std::process::exit(status.code().unwrap_or(1));
+}
+
+fn graph_cmd(repo: &Repo, gc: GraphCmd, json: bool) -> Result<()> {
+    let out = |v: &dyn erased::Json| println!("{}", v.to_json());
+    match gc {
+        GraphCmd::Isolate { selectors, hops, save, about, limit } => {
+            let st = Store::open(repo)?;
+            let (saved, s) = match save {
+                Some(name) => {
+                    let (sc, s) = isolate::save(repo, &st, &name, about.as_deref().unwrap_or(""), &selectors, hops)?;
+                    (Some(sc), s)
+                }
+                None => (None, isolate::isolate(repo, &st, &selectors, hops)?),
+            };
+            if json {
+                let mut v = serde_json::to_value(&s)?;
+                if let Some(sc) = &saved {
+                    v["saved"] = serde_json::to_value(sc)?;
+                }
+                out(&v);
+                return Ok(());
+            }
+            let c = &s.counts;
+            header(&format!("isolate {}", bold(&s.selectors.join(" + "))));
+            println!(
+                "  {} symbols · {} files · {} internal edges · {}",
+                c.nodes,
+                c.files,
+                c.internal,
+                dim(&s.clusters.iter().take(4).cloned().collect::<Vec<_>>().join(", "))
+            );
+            println!(
+                "  {} {} from {} outside   {} {} to {} outside\n",
+                accent("in"),
+                c.inbound_edges,
+                c.inbound,
+                accent("out"),
+                c.outbound_edges,
+                c.outbound
+            );
+            let by_id: std::collections::HashMap<i64, &store::Node> = s.nodes.iter().map(|n| (n.id, n)).collect();
+            for (title, list) in [("inbound – who uses it", &s.inbound), ("outbound – what it uses", &s.outbound)] {
+                if list.is_empty() {
+                    continue;
+                }
+                println!("  {}", bold(title));
+                for p in list.iter().take(limit) {
+                    let via: Vec<&str> = p.inside.iter().filter_map(|i| by_id.get(i)).map(|n| n.name.as_str()).take(3).collect();
+                    println!(
+                        "  {} {}  {}  {} {}",
+                        community(p.node.community, kind_glyph(&p.node.kind)),
+                        bold(&p.node.name),
+                        dim(&format!("{}:{}", p.node.path, p.node.start_line)),
+                        dim(&format!("×{} {}", p.edges, if title.starts_with("in") { "→" } else { "←" })),
+                        via.join(", ")
+                    );
+                }
+                if list.len() > limit {
+                    println!("  {}", dim(&format!("… {} more", list.len() - limit)));
+                }
+                println!();
+            }
+            println!("  {}", bold("files"));
+            for f in s.files.iter().take(limit) {
+                println!("  {f}");
+            }
+            if s.files.len() > limit {
+                println!("  {}", dim(&format!("… {} more", s.files.len() - limit)));
+            }
+            if let Some(sc) = saved {
+                println!("\n  saved as {} in kula.toml – use it in a workflow as {}", bold(&format!("@{}", sc.name)), dim(&format!("scope = [\"@{}\"]", sc.name)));
+            }
+        }
+        GraphCmd::Scopes => {
+            let cfg = config::Config::load(&repo.root)?;
+            if json {
+                out(&cfg.scopes);
+                return Ok(());
+            }
+            header("scopes");
+            if cfg.scopes.is_empty() {
+                println!("  {}", dim("none yet – kula graph isolate <selector> --save <name>"));
+            }
+            for s in &cfg.scopes {
+                println!("  {} {:<20} {}  {}", accent("@"), s.name, s.select.join(" + "), dim(&format!("{} files{}", s.paths.len(), if s.about.is_empty() { String::new() } else { format!(" – {}", s.about) })));
+            }
+        }
+        GraphCmd::Forget { name } => {
+            if !isolate::remove(repo, &name)? {
+                bail!("no saved scope {name:?}");
+            }
+            if json {
+                out(&serde_json::json!({ "removed": name }));
+            } else {
+                println!("  forgot @{name}");
+            }
+        }
+    }
+    Ok(())
 }
 
 fn print_node(n: &store::Node) {
@@ -1203,6 +1333,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Note(nc) => note_cmd(&repo, nc, json)?,
         Cmd::Guard(gc) => guard_cmd(&repo, gc, json)?,
         Cmd::Task(tc) => task_cmd(&repo, tc, json)?,
+        Cmd::Graph(gc) => graph_cmd(&repo, gc, json)?,
         Cmd::Workflow(wc) => workflow_cmd(&repo, wc, json)?,
         Cmd::Agents(ac) => agents_cmd(&repo, ac, json)?,
         Cmd::Team(tc) => team_cmd(&repo, tc, json)?,
