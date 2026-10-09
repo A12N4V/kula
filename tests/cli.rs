@@ -1104,3 +1104,34 @@ fn symlinks_cannot_carry_new_files_past_the_fence() {
     // And a real new file in the fenced directory too.
     kula_code(d, &["guard", "hook"], Some(&hook(&format!("{}/tests/brand_new.py", d.display()))), 2);
 }
+
+#[test]
+fn research_revert_never_deletes_a_persons_files() {
+    let t = fixture();
+    let d = t.path();
+    write(d, "score.txt", "42\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "score"]);
+    kula(d, &["research", "init", "--metric", "cat score.txt", "--goal", "min", "--scope", "score*.txt", "--budget", "5"]);
+    kula(d, &["research", "start", "--here"]);
+    // A person's untracked note exists before the experiment.
+    write(d, "NOTES.txt", "my scratch notes\n");
+    write(d, "score.txt", "45\n"); // worse: reverted
+    let e = kula_json(d, &["research", "try", "this one is worse"]);
+    assert_eq!(e["kept"], false, "{e}");
+    assert_eq!(std::fs::read_to_string(d.join("score.txt")).unwrap(), "42\n");
+    assert_eq!(std::fs::read_to_string(d.join("NOTES.txt")).unwrap(), "my scratch notes\n", "M5: a person's file survives a revert");
+    // The experiment's own in-scope scratch file is cleaned up; the person's is not.
+    write(d, "score2.txt", "agent made this\n");
+    write(d, "score.txt", "47\n");
+    let e = kula_json(d, &["research", "try", "worse again"]);
+    assert_eq!(e["kept"], false, "{e}");
+    assert!(!d.join("score2.txt").exists(), "the experiment's own in-scope file is reverted");
+    assert_eq!(std::fs::read_to_string(d.join("NOTES.txt")).unwrap(), "my scratch notes\n");
+    // And a person's file is never part of a kept experiment either.
+    write(d, "score.txt", "40\n");
+    let e = kula_json(d, &["research", "try", "lower is better"]);
+    assert_eq!(e["kept"], true, "{e}");
+    assert_eq!(std::fs::read_to_string(d.join("NOTES.txt")).unwrap(), "my scratch notes\n");
+    kula(d, &["research", "stop"]);
+}

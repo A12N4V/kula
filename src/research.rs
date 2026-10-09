@@ -59,6 +59,11 @@ pub struct State {
     pub by: String,
     pub active: bool,
     pub experiments: Vec<Experiment>,
+    /// Untracked files that existed before the current step: a person's.
+    /// Reverting never touches them; the state is refreshed after every
+    /// experiment, so a note a person writes mid-run is protected too.
+    #[serde(default)]
+    pub pre_untracked: Vec<String>,
 }
 
 impl State {
@@ -192,12 +197,15 @@ fn changed(repo: &Repo) -> Result<Vec<crate::git::FileStatus>> {
     Ok(repo.status()?.into_iter().filter(|f| !guard::is_own(&f.path)).collect())
 }
 
-/// Put the working tree back to HEAD for these files.
-fn revert(repo: &Repo, files: &[crate::git::FileStatus]) -> Result<()> {
+/// Put the working tree back to HEAD for these files. Untracked files are
+/// removed only if they are not in `pre` – a person's pre-existing files stay.
+fn revert(repo: &Repo, files: &[crate::git::FileStatus], pre: &std::collections::HashSet<String>) -> Result<()> {
     let mut tracked = vec![];
     for f in files {
         if f.untracked {
-            let _ = std::fs::remove_file(repo.root.join(&f.path));
+            if !pre.contains(&f.path) {
+                let _ = std::fs::remove_file(repo.root.join(&f.path));
+            }
         } else {
             tracked.push(f.path.clone());
             if let Some(o) = &f.orig {
@@ -211,6 +219,11 @@ fn revert(repo: &Repo, files: &[crate::git::FileStatus]) -> Result<()> {
         repo.run(&args)?;
     }
     Ok(())
+}
+
+/// Untracked files in the working tree right now.
+fn untracked(repo: &Repo) -> Vec<String> {
+    repo.status().map(|fs| fs.into_iter().filter(|f| f.untracked).map(|f| f.path).collect()).unwrap_or_default()
 }
 
 /// Start a run of `name`: check the tree is clean, branch, measure the baseline.
@@ -248,6 +261,7 @@ pub fn start(repo: &Repo, name: &str, by: &str, branch: bool) -> Result<State> {
         by: by.into(),
         active: true,
         experiments: vec![],
+        pre_untracked: untracked(repo),
     };
     save(repo, &s)?;
     Ok(s)
@@ -280,8 +294,24 @@ pub fn experiment(repo: &Repo, hypothesis: &str, by: &str) -> Result<Experiment>
         bail!("the budget of {} experiments is spent – `kula research stop`", s.budget);
     }
     let cfg = Config::load(&repo.root)?;
-    let (_, r) = research_of(&cfg, &s.workflow)?;
-    let files = changed(repo)?;
+    let (w, r) = research_of(&cfg, &s.workflow)?;
+    // A person's untracked files are never part of the experiment: everything
+    // untracked that existed before the run (the state's snapshot) and
+    // everything outside the workflow's scope is protected – not measured, not
+    // committed, never reverted. Only untracked files the experiment created
+    // inside the scope go away with it.
+    let mut pre: std::collections::HashSet<String> = s.pre_untracked.iter().cloned().collect();
+    let pats: Vec<String> = cfg.expand_scope(&w.scope).iter().filter(|x| guard::looks_like_path(x)).cloned().collect();
+    let scope = guard::globset(&pats).ok();
+    let mut files: Vec<crate::git::FileStatus> = vec![];
+    for f in changed(repo)? {
+        if f.untracked && !pre.contains(&f.path) && !scope.as_ref().is_some_and(|g| g.is_match(&f.path)) {
+            pre.insert(f.path.clone());
+        }
+        if !(f.untracked && pre.contains(&f.path)) {
+            files.push(f);
+        }
+    }
     if files.is_empty() {
         bail!("nothing changed – make one change in scope, then run the experiment");
     }
@@ -297,12 +327,12 @@ pub fn experiment(repo: &Repo, hypothesis: &str, by: &str) -> Result<Experiment>
     let g = Guards::for_agent(repo, by.strip_prefix("agent:"))?;
     let fenced: Vec<String> = files.iter().filter(|f| !g.path(&f.path).level.editable()).map(|f| f.path.clone()).collect();
     if !fenced.is_empty() {
-        revert(repo, &files)?;
+        revert(repo, &files, &pre)?;
         e.note = format!("rejected and reverted: touched fenced {}", fenced.join(", "));
     } else {
         match measure(repo, &r) {
             Err(err) => {
-                revert(repo, &files)?;
+                revert(repo, &files, &pre)?;
                 e.note = format!("reverted: {err}");
             }
             Ok((v, _)) => {
@@ -328,12 +358,15 @@ pub fn experiment(repo: &Repo, hypothesis: &str, by: &str) -> Result<Experiment>
                     s.best = v;
                     s.best_commit = e.commit.clone();
                 } else {
-                    revert(repo, &files)?;
+                    revert(repo, &files, &pre)?;
                     e.note = format!("reverted: {} is not better than {}", fmt(v), fmt(s.best));
                 }
             }
         }
     }
+    // Refresh what counts as "a person's" for the next step: everything
+    // untracked now either was protected or belonged to this experiment.
+    s.pre_untracked = untracked(repo);
     s.experiments.push(e.clone());
     save(repo, &s)?;
     Ok(e)

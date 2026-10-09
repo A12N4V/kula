@@ -151,7 +151,7 @@ pub struct Guards {
     workflow: Option<Workflow>,
 }
 
-fn globset(pats: &[String]) -> Result<GlobSet> {
+pub(crate) fn globset(pats: &[String]) -> Result<GlobSet> {
     let mut b = GlobSetBuilder::new();
     for p in pats {
         let p = p.trim_start_matches("./");
@@ -205,7 +205,7 @@ pub fn task_done(repo: &Repo) -> Result<Option<Task>> {
 }
 
 /// A scope entry is a path glob when it has a slash, a glob character or a file extension.
-fn looks_like_path(s: &str) -> bool {
+pub(crate) fn looks_like_path(s: &str) -> bool {
     s.contains('/') || s.contains('*') || s.contains('.')
 }
 
