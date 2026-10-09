@@ -112,7 +112,7 @@ For a whole change (`compare`, `check`), every changed symbol's dependents to de
 
 ## Metadata in git: `refs/kula/meta`
 
-Issues, proposals, notes and memories are one JSON document (`kula.json`) in a commit on `refs/kula/meta`. Every change writes a new blob with `git hash-object -w`, a one-file tree with `git mktree`, and a commit with `git commit-tree -p <previous>`, then moves the ref with `git update-ref`. Nothing touches your branches or index; the history of every issue and memory is `git log refs/kula/meta`; and `kula sync` fetches, merges and pushes the ref through any remote. Kula's own history views exclude `refs/kula/*`.
+Issues, proposals, notes and memories are one JSON document (`kula.json`) in a commit on `refs/kula/meta`. Every change writes a new blob with `git hash-object -w`, a one-file tree with `git mktree`, and a commit with `git commit-tree -p <previous>`, then moves the ref with `git update-ref`. Nothing touches your branches or index; the history of every issue and memory is `git log refs/kula/meta`; `kula sync` fetches and merges the ref, and only `kula share` pushes it. `kula share` also snapshots the agent setup (`.agents/`, `kula.toml`, `AGENTS.md`/`CLAUDE.md`/`GEMINI.md`, `.mcp.json`) onto `refs/kula/setup`; `kula sync` restores it into the working tree, keeps files changed locally (`--overwrite` takes theirs) and regenerates every agent's copy. GitHub forks do not copy `refs/kula/*`, so a fork runs `kula sync upstream`. Kula's own history views exclude `refs/kula/*`.
 
 ## Agents
 

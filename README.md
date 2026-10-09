@@ -405,7 +405,7 @@ flowchart LR
 - **Any revision, without a checkout.** A revision's graph is built from git objects (`git ls-tree` and one `git cat-file --batch`) and cached per commit. Symbols match across revisions by kind, path, container and name, and compare by a hash of their source.
 - **Storage.** `.kula/graph.db` (SQLite and FTS5) is git-ignored, built beside the live file and swapped in with one rename, so a running `kula view` never reads a half-built graph. It reindexes in the background whenever `HEAD` moves.
 - **Cleans up after itself.** Once `kula view` sits idle (15 min by default), it drops old `kula run` copies, temp files and cached graphs, and compacts the store. Change the timer in Settings → Disk or with `kula clean --after 30` (`0` turns it off); `kula clean` runs a pass now.
-- **Metadata in git.** Issues, proposals, notes and memories are one JSON document committed onto `refs/kula/meta`: full history, nothing touches your branches, `kula sync` shares it through any remote.
+- **Metadata in git.** Issues, proposals, notes and memories are one JSON document committed onto `refs/kula/meta`: full history, nothing touches your branches, `kula share` publishes it (with the agent setup on `refs/kula/setup`) and `kula sync` pulls it; nothing is pushed until you share.
 - **Git itself** is never reimplemented: kula shells out to `git`, so hooks, signing, credential helpers and LFS keep working.
 - **Security.** The UI listens on `127.0.0.1`, rejects foreign `Host` headers (DNS rebinding), requires a per-session token on every call, and validates revisions so they can't be read as options.
 

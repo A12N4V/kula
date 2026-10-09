@@ -181,7 +181,7 @@ kula memory confirm 12                   # still true: re-anchor to the code as 
 kula memory rm 12
 ```
 
-A memory is a note with `kind: "memory"` on `refs/kula/meta`: in git, auditable, shared with `kula sync`. When it is written kula stores an **anchor**: a 64-bit FNV-1a hash of its target's source (the symbol's lines, or the whole file). Every recall recomputes the hash; if it differs, or the target is gone from the graph, the memory comes back with `stale: true`. Agents are told to verify a stale memory before relying on it.
+A memory is a note with `kind: "memory"` on `refs/kula/meta`: in git, auditable, published with `kula share`, pulled with `kula sync`. When it is written kula stores an **anchor**: a 64-bit FNV-1a hash of its target's source (the symbol's lines, or the whole file). Every recall recomputes the hash; if it differs, or the target is gone from the graph, the memory comes back with `stale: true`. Agents are told to verify a stale memory before relying on it.
 
 ```mermaid
 stateDiagram-v2

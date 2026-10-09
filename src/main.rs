@@ -17,6 +17,7 @@ mod project;
 mod research;
 mod run;
 mod server;
+mod setup;
 mod skills;
 mod store;
 mod term;
@@ -308,9 +309,21 @@ enum Cmd {
     #[command(after_help = "Examples:\n  kula kg export -f ttl -o graph.ttl   ·  kula kg examples")]
     #[command(subcommand)]
     Kg(KgCmd),
-    /// Push/pull issues, proposals and notes with a remote.
-    #[command(after_help = "Examples:\n  kula sync   ·  kula sync upstream")]
+    /// Pull what others shared: issues, memories and the agent setup (skills,
+    /// MCP servers, instruction files), then regenerate every agent's copy.
+    /// Never pushes. After a fork: `kula sync upstream`.
+    #[command(after_help = "Examples:\n  kula sync   ·  kula sync upstream   ·  kula sync --overwrite")]
     Sync {
+        #[arg(default_value = "origin")]
+        remote: String,
+        /// Replace setup files you changed locally with the shared versions.
+        #[arg(long)]
+        overwrite: bool,
+    },
+    /// Publish this repo's agent setup, issues and memories to a remote, so
+    /// anyone who clones or forks gets them with `kula sync`. Private until you do.
+    #[command(after_help = "Examples:\n  kula share   ·  kula share upstream")]
+    Share {
         #[arg(default_value = "origin")]
         remote: String,
     },
@@ -1210,7 +1223,35 @@ fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Memory(mc) => memory_cmd(&repo, mc, json)?,
         Cmd::Kg(kc) => kg_cmd(&repo, kc, json)?,
-        Cmd::Sync { remote } => print!("{}", meta::sync(&repo, &remote)?),
+        Cmd::Sync { remote, overwrite } => {
+            print!("{}", meta::sync(&repo, &remote, false)?);
+            match setup::pull(&repo, &remote, overwrite)? {
+                None => println!("remote has no shared agent setup"),
+                Some(r) => {
+                    for f in &r.written {
+                        println!("  {} {f}", green("+"));
+                    }
+                    for f in &r.kept {
+                        println!("  {} {f}  {}", yellow("="), dim("changed here, kept yours (--overwrite takes theirs)"));
+                    }
+                    let skills = skills::sync(&repo.root)?;
+                    let docs = agents::sync(&repo, &[])?;
+                    println!(
+                        "agent setup: {} files restored, {} kept, {} agent copies regenerated",
+                        r.written.len(),
+                        r.kept.len(),
+                        skills.len() + docs.len()
+                    );
+                }
+            }
+        }
+        Cmd::Share { remote } => {
+            let shared = setup::snapshot(&repo)?;
+            print!("{}", meta::sync(&repo, &remote, true)?);
+            setup::push(&repo, &remote)?;
+            println!("shared the agent setup ({} files) on {}", shared.len(), setup::REF);
+            println!("{}", dim("anyone who clones gets it with `kula sync` (a fork: `kula sync upstream`)"));
+        }
         Cmd::Mcp => mcp::run(repo)?,
         Cmd::Doctor | Cmd::Init { .. } | Cmd::Git { .. } | Cmd::External(_) => unreachable!(),
     }

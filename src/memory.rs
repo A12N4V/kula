@@ -9,7 +9,7 @@
 //! changes the memory is marked stale instead of being trusted silently.
 //!
 //! Memories live with the notes in `refs/kula/meta` – in git, auditable, shared
-//! with `kula sync` – never in a separate service. Recall ranks by the graph:
+//! with `kula share` / `kula sync` – never in a separate service. Recall ranks by the graph:
 //! the target's own memories, then its file's, then its callers' and callees'.
 
 use crate::git::Repo;
