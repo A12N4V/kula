@@ -167,7 +167,7 @@ export function Outro({ frames }: { frames: number }) {
         <div style={{ height: 34 }} />
         <div style={{ opacity: clamp((f - 140) / 10) }}><Eyebrow color={C.dim}>workflows · fences · memory · the graph · mcp</Eyebrow></div>
         <div style={{ height: 14 }} />
-        <div style={{ opacity: clamp((f - 160) / 10) }}><Eyebrow>github.com/A12N4V/kula · GPL-3.0 · one binary, no account</Eyebrow></div>
+        <div style={{ opacity: clamp((f - 160) / 10) }}><Eyebrow>github.com/A12N4V/kula · MIT · one binary, no account</Eyebrow></div>
       </div>
       {out > 0 && <Dither value={() => out * 1.05} cell={8} dot={1} color={C.bg} />}
     </AbsoluteFill>

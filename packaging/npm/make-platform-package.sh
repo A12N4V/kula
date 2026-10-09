@@ -14,7 +14,7 @@ cat > "$dir/package.json" <<JSON
   "name": "@kula-cli/$target",
   "version": "$version",
   "description": "kula prebuilt binary for $target",
-  "license": "GPL-3.0-only",
+  "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/A12N4V/kula.git" },
   "os": ["$os"],
   "cpu": ["$cpu"],

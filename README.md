@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/A12N4V/kula/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/A12N4V/kula/actions/workflows/ci.yml/badge.svg"></a>
   <a href="../../releases"><img alt="version" src="https://img.shields.io/badge/version-0.3.0-f97f3a?style=flat-square&labelColor=000000"></a>
-  <a href="LICENSE"><img alt="license GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-f97f3a?style=flat-square&labelColor=000000"></a>
+  <a href="LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-f97f3a?style=flat-square&labelColor=000000"></a>
   <img alt="rust" src="https://img.shields.io/badge/core-rust-e8e2d9?style=flat-square&labelColor=000000&logo=rust&logoColor=e8e2d9">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-24%20tools-8fd694?style=flat-square&labelColor=000000">
   <img alt="agents" src="https://img.shields.io/badge/agents-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20Gemini-8fd694?style=flat-square&labelColor=000000">
@@ -466,4 +466,4 @@ pnpm -C web test:ui                         # Playwright: desktop, tablet and ph
 
 ## License
 
-[GPL-3.0](LICENSE) © 2026 Arnav Sharma. The GNU General Public License, version 3, as used across Ubuntu and the GNU tools. You may use, study, share and change kula; if you distribute a modified version, you share its source under the same terms. Kula is an independent, clean-room project and contains no code from other code-graph tools.
+[MIT](LICENSE) © 2026 Arnav Sharma. Use it anywhere, including in commercial and closed-source work; keep the copyright and licence notice. Kula is an independent, clean-room project and contains no code from other code-graph tools.
