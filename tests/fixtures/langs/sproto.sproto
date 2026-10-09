@@ -1,0 +1,6 @@
+.Person {
+  name 0 : string
+}
+greet 1 {
+  request Person
+}

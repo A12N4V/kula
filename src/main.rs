@@ -12,6 +12,7 @@ mod guard;
 mod index;
 mod isolate;
 mod kg;
+mod lang_cmd;
 mod mcp;
 mod memory;
 mod meta;
@@ -367,6 +368,9 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Language packs: `kula lang list`, `kula lang add <ids…>`, `kula lang remove <id>`.
+    #[command(subcommand)]
+    Lang(lang_cmd::LangCmd),
     /// Explicit git passthrough: `kula git <args>`.
     #[command(after_help = "Examples:\n  kula git stash list")]
     Git {
@@ -897,6 +901,9 @@ fn run(cli: Cli) -> Result<()> {
     if let Cmd::Doctor = cmd {
         return doctor(&cwd);
     }
+    if let Cmd::Lang(lc) = cmd {
+        return lang_cmd::run(&cwd, lc, json);
+    }
     if let Cmd::Init { yes, hooks, no_hooks, agents, no_agents, ci, no_index } = cmd {
         let pick = |on: bool, off: bool| {
             if on {
@@ -1400,7 +1407,7 @@ fn run(cli: Cli) -> Result<()> {
             println!("{}", dim("anyone who clones gets it with `kula sync` (a fork: `kula sync upstream`)"));
         }
         Cmd::Mcp => mcp::run(repo)?,
-        Cmd::Doctor | Cmd::Init { .. } | Cmd::Git { .. } | Cmd::External(_) => unreachable!(),
+        Cmd::Doctor | Cmd::Lang(_) | Cmd::Init { .. } | Cmd::Git { .. } | Cmd::External(_) => unreachable!(),
     }
     Ok(())
 }

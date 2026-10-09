@@ -1,0 +1,7 @@
+package views
+import "strings"
+templ Hello(name string) {
+	<div>{ helper(name) }</div>
+	@Footer()
+}
+func helper(s string) string { return strings.ToUpper(s) }

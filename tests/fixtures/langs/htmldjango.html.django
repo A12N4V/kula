@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}{{ user.name|upper }}{% include "nav.html" %}{% endblock %}

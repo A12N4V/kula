@@ -1,0 +1,4 @@
+SourceFile = Item*
+Item = Fn | Struct
+Fn = 'fn' Name ParamList
+Struct = 'struct' Name

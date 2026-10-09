@@ -934,6 +934,49 @@ async fn agent_path_verdict(State(s): State<AppState>, Query(q): Query<HashMap<S
     .await
 }
 
+/// Languages in this repository: built in, installed packs, and packs it could use.
+async fn langs_get(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let detected: Vec<Value> = index::languages(&s.repo.root)
+            .into_iter()
+            .map(|(id, files, parsed)| {
+                let p = index::packs::get(id);
+                json!({
+                    "id": id,
+                    "name": p.map(|p| p.name.as_str()).unwrap_or(id),
+                    "files": files,
+                    "indexed": parsed,
+                    "builtin": index::langs::is_core(id),
+                    "tier": p.map(|p| p.tier.as_str()).unwrap_or(""),
+                })
+            })
+            .collect();
+        let installed: Vec<&str> =
+            index::packs::all().iter().filter(|p| index::packs::is_installed(&p.id)).map(|p| p.id.as_str()).collect();
+        Ok(json!({ "detected": detected, "installed": installed, "available": index::packs::all().len() }))
+    })
+    .await
+}
+
+#[derive(serde::Deserialize)]
+struct LangAdd {
+    ids: Vec<String>,
+}
+
+/// Install packs from the kula release (sha256-checked), then reindex.
+async fn langs_add(State(s): State<AppState>, Json(b): Json<LangAdd>) -> ApiResult {
+    blocking(move || {
+        let ids: Vec<&str> = b.ids.iter().map(String::as_str).filter(|id| index::packs::get(id).is_some()).collect();
+        if ids.is_empty() {
+            anyhow::bail!("no such language pack");
+        }
+        let done = index::packs::download(&ids, false)?;
+        let stats = index::run(&s.repo, true)?;
+        Ok(json!({ "installed": done, "stats": stats }))
+    })
+    .await
+}
+
 async fn clean_get(State(s): State<AppState>) -> ApiResult {
     blocking(move || {
         let r = &s.repo;
@@ -992,6 +1035,8 @@ pub fn router(repo: Repo, token: String) -> Router {
     spawn_idle_clean(state.clone());
     Router::new()
         .route("/api/clean", get(clean_get).post(clean_set))
+        .route("/api/langs", get(langs_get))
+        .route("/api/langs/add", post(langs_add))
         .route("/api/clean/now", post(clean_now))
         .route("/api/repo", get(repo_info))
         .route("/api/index", post(reindex))

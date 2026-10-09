@@ -1,0 +1,7 @@
+module greeter {
+  namespace "urn:greeter";
+  prefix g;
+  import ietf-inet-types { prefix inet; }
+  grouping address { leaf ip { type inet:ip-address; } }
+  container server { uses address; }
+}

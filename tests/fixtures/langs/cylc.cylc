@@ -1,0 +1,8 @@
+[scheduling]
+    [[graph]]
+        R1 = "prep => build => test"
+[runtime]
+    [[build]]
+        script = make
+    [[test]]
+        inherit = build

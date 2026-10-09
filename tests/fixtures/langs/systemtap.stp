@@ -1,0 +1,2 @@
+function helper:long (x:long) { return x + 1 }
+probe begin { printf("%d\n", helper(1)) }

@@ -1,0 +1,8 @@
+source "drivers/Kconfig"
+menu "Greeter"
+config GREETER
+	bool "Enable greeter"
+	depends on HELPER
+config HELPER
+	bool "Helper"
+endmenu

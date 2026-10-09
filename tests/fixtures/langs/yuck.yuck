@@ -1,0 +1,4 @@
+(include "./bar.yuck")
+(defwidget helper [s] (label :text s))
+(defwidget greet [name] (box (helper :s name)))
+(defwindow main :geometry (geometry :x 0) (greet :name "x"))

@@ -1,0 +1,4 @@
+expr = term , { "+" , term } ;
+term = factor , { "*" , factor } ;
+factor = digit ;
+digit = "0" | "1" ;

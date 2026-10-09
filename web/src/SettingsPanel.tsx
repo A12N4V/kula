@@ -3,7 +3,7 @@ import { dirColor, groupDirs, rankHue } from "./colors";
 import { fuzzyScore } from "./nav";
 import { settings, useKnownDirs, useSettings, type Settings } from "./settings";
 import { Icon } from "./ui";
-import { api } from "./api";
+import { api, type LangRow } from "./api";
 import { hasCustomSizes, resetSizes } from "./resize";
 
 function Seg<T extends string | number>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
@@ -38,7 +38,7 @@ function Toggle({ k, label, hint, q }: { k: keyof Settings; label: string; hint?
   );
 }
 
-const SECTIONS = [["appearance", "Appearance"], ["graph", "Graph encoding"], ["dirs", "Directory colours"], ["disk", "Disk"]] as const;
+const SECTIONS = [["appearance", "Appearance"], ["graph", "Graph encoding"], ["dirs", "Directory colours"], ["langs", "Languages"], ["disk", "Disk"]] as const;
 
 const size = (b: number) => b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB` : b >= 1 << 20 ? `${(b / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
 
@@ -60,6 +60,42 @@ function DiskRows({ q }: { q: string }) {
         <span className="mono">{used === null ? "–" : size(used)}</span>
         <button className="btn sm" onClick={now}>Clean now</button>
       </Row>
+    </>
+  );
+}
+
+/** Languages in this repository. Ones kula skips for want of a language pack get an
+ *  Install button: it fetches the pack from the kula release and reindexes. */
+function LangRows({ q }: { q: string }) {
+  const [rows, setRows] = useState<LangRow[] | null>(null);
+  const [busy, setBusy] = useState<string>("");
+  const [note, setNote] = useState("");
+  const load = () => api.langs().then((r) => setRows(r.detected)).catch(() => setRows([]));
+  useEffect(() => { load(); }, []);
+  const add = (ids: string[]) => {
+    setBusy(ids.join(" ")); setNote("");
+    api.langsAdd(ids).then(() => { setNote(`Installed ${ids.join(", ")} and reindexed`); load(); })
+      .catch((e) => setNote(e.message)).finally(() => setBusy(""));
+  };
+  if (!rows) return null;
+  const missing = rows.filter((r) => !r.indexed);
+  const indexed = rows.filter((r) => r.indexed);
+  return (
+    <>
+      <Row label="Indexed" hint={indexed.length ? indexed.map((r) => `${r.name} (${r.files})`).join(" · ") : "No source files found"} q={q}>
+        <span className="mono">{indexed.length}</span>
+      </Row>
+      {missing.map((r) => (
+        <Row key={r.id} label={r.name} hint={`${r.files} file${r.files === 1 ? "" : "s"} skipped – needs the ${r.id} language pack${r.tier ? ` (${r.tier === "imports" ? "definitions, calls, imports" : r.tier === "calls" ? "definitions and calls" : "definitions"})` : ""}`} q={q}>
+          <button className="btn sm" disabled={!!busy} onClick={() => add([r.id])}>{busy.split(" ").includes(r.id) ? "Installing…" : "Install"}</button>
+        </Row>
+      ))}
+      {missing.length > 1 && (
+        <Row label="Install all" hint={note || `kula lang add --detected`} q={q}>
+          <button className="btn sm" disabled={!!busy} onClick={() => add(missing.map((r) => r.id))}>Install {missing.length}</button>
+        </Row>
+      )}
+      {missing.length <= 1 && note && <div className="muted set-empty">{note}</div>}
     </>
   );
 }
@@ -170,6 +206,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
             })}
             {q && !visible.length && <div className="muted set-empty">No directories match “{q}” – the rest of the settings above still searched.</div>}
           </div>
+          {(!q || fuzzyScore(q, "languages language packs grammars install") >= 0) && <div className="set-sec" id="set-langs">Languages</div>}
+          <LangRows q={q} />
           {(!q || fuzzyScore(q, "disk space clean cleanup idle timer storage") >= 0) && <div className="set-sec" id="set-disk">Disk</div>}
           <DiskRows q={q} />
           {noHits && <div className="muted set-empty">Nothing matches “{q}”.</div>}

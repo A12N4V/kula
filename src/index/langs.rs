@@ -1,9 +1,15 @@
-//! Language registry: grammars + the tree-sitter patterns Kula extracts.
+//! Language registry. Core languages are compiled in, one table row each (a
+//! grammar, file names, a query file under `queries/`); every other language is
+//! a pack described in `packs.toml` and loaded at runtime (see `packs.rs`).
 //!
-//! Captures:
+//! Adding a language is a grammar plus a small `.scm` file: patterns are
+//! separated by blank lines and use these captures:
 //!   @def.function / @def.method / @def.class / @def.interface – a definition's name
+//!   @scope  – (optional) the whole definition node, when `def_kinds` can't find it
 //!   @call   – the callee name at a call site
 //!   @import – an import statement or its module string
+//! tree-sitter `tags.scm` captures work too: @name with @definition.<kind> or
+//! @reference.call, so a grammar's own tags file can be dropped in as-is.
 //!
 //! Each pattern is compiled on its own so one grammar-version mismatch never
 //! disables a whole language.
@@ -18,6 +24,333 @@ pub struct Lang {
     pub class_kinds: &'static [&'static str],
     /// Node kinds that represent a definition body (used to find the enclosing def).
     pub def_kinds: &'static [&'static str],
+}
+
+/// One supported language.
+pub struct Spec {
+    pub id: &'static str,
+    /// Calls only resolve between languages of one family (TS calling JS is fine,
+    /// TS calling a Rust function of the same name is not).
+    pub family: &'static str,
+    /// Lower-case file extensions, without the dot.
+    pub exts: &'static [&'static str],
+    /// Exact file names (`Makefile`, `CMakeLists.txt`).
+    pub names: &'static [&'static str],
+    pub grammar: Option<fn() -> Language>,
+    pub queries: &'static [&'static str],
+    pub class_kinds: &'static [&'static str],
+    pub def_kinds: &'static [&'static str],
+}
+
+pub const SPECS: &[Spec] = &[
+    Spec {
+        id: "rust",
+        family: "rust",
+        exts: &["rs"],
+        names: &[],
+        grammar: Some(|| tree_sitter_rust::LANGUAGE.into()),
+        queries: &[include_str!("queries/rust.scm")],
+        class_kinds: &["impl_item", "trait_item"],
+        def_kinds: &["function_item", "function_signature_item", "struct_item", "enum_item", "trait_item"],
+    },
+    Spec {
+        id: "python",
+        family: "python",
+        exts: &["py", "pyi"],
+        names: &[],
+        grammar: Some(|| tree_sitter_python::LANGUAGE.into()),
+        queries: &[include_str!("queries/python.scm")],
+        class_kinds: &["class_definition"],
+        def_kinds: &["function_definition", "class_definition"],
+    },
+    Spec {
+        id: "javascript",
+        family: "js",
+        exts: &["js", "mjs", "cjs", "jsx"],
+        names: &[],
+        grammar: Some(|| tree_sitter_javascript::LANGUAGE.into()),
+        queries: &[include_str!("queries/javascript.scm")],
+        class_kinds: &["class_declaration", "class"],
+        def_kinds: &[
+            "function_declaration",
+            "generator_function_declaration",
+            "class_declaration",
+            "method_definition",
+            "variable_declarator",
+        ],
+    },
+    Spec {
+        id: "typescript",
+        family: "js",
+        exts: &["ts", "mts", "cts"],
+        names: &[],
+        grammar: Some(|| tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
+        queries: &[include_str!("queries/javascript.scm"), include_str!("queries/typescript_extra.scm")],
+        class_kinds: &["class_declaration", "abstract_class_declaration", "class"],
+        def_kinds: &[
+            "function_declaration",
+            "generator_function_declaration",
+            "class_declaration",
+            "abstract_class_declaration",
+            "method_definition",
+            "variable_declarator",
+            "interface_declaration",
+        ],
+    },
+    Spec {
+        id: "tsx",
+        family: "js",
+        exts: &["tsx"],
+        names: &[],
+        grammar: Some(|| tree_sitter_typescript::LANGUAGE_TSX.into()),
+        queries: &[include_str!("queries/javascript.scm"), include_str!("queries/typescript_extra.scm")],
+        class_kinds: &["class_declaration", "abstract_class_declaration", "class"],
+        def_kinds: &[
+            "function_declaration",
+            "generator_function_declaration",
+            "class_declaration",
+            "abstract_class_declaration",
+            "method_definition",
+            "variable_declarator",
+            "interface_declaration",
+        ],
+    },
+    Spec {
+        id: "vue",
+        family: "js",
+        exts: &["vue"],
+        names: &[],
+        grammar: Some(|| tree_sitter_typescript::LANGUAGE_TSX.into()),
+        queries: &[include_str!("queries/javascript.scm"), include_str!("queries/typescript_extra.scm")],
+        class_kinds: &["class_declaration", "abstract_class_declaration", "class"],
+        def_kinds: &[
+            "function_declaration",
+            "generator_function_declaration",
+            "class_declaration",
+            "abstract_class_declaration",
+            "method_definition",
+            "variable_declarator",
+            "interface_declaration",
+        ],
+    },
+    Spec {
+        id: "svelte",
+        family: "js",
+        exts: &["svelte"],
+        names: &[],
+        grammar: Some(|| tree_sitter_typescript::LANGUAGE_TSX.into()),
+        queries: &[include_str!("queries/javascript.scm"), include_str!("queries/typescript_extra.scm")],
+        class_kinds: &["class_declaration", "abstract_class_declaration", "class"],
+        def_kinds: &[
+            "function_declaration",
+            "generator_function_declaration",
+            "class_declaration",
+            "abstract_class_declaration",
+            "method_definition",
+            "variable_declarator",
+            "interface_declaration",
+        ],
+    },
+    Spec {
+        id: "astro",
+        family: "js",
+        exts: &["astro"],
+        names: &[],
+        grammar: Some(|| tree_sitter_typescript::LANGUAGE_TSX.into()),
+        queries: &[include_str!("queries/javascript.scm"), include_str!("queries/typescript_extra.scm")],
+        class_kinds: &["class_declaration", "abstract_class_declaration", "class"],
+        def_kinds: &[
+            "function_declaration",
+            "generator_function_declaration",
+            "class_declaration",
+            "abstract_class_declaration",
+            "method_definition",
+            "variable_declarator",
+            "interface_declaration",
+        ],
+    },
+    Spec {
+        id: "go",
+        family: "go",
+        exts: &["go"],
+        names: &[],
+        grammar: Some(|| tree_sitter_go::LANGUAGE.into()),
+        queries: &[include_str!("queries/go.scm")],
+        class_kinds: &[],
+        def_kinds: &["function_declaration", "method_declaration", "type_spec"],
+    },
+    Spec {
+        id: "java",
+        family: "jvm",
+        exts: &["java"],
+        names: &[],
+        grammar: Some(|| tree_sitter_java::LANGUAGE.into()),
+        queries: &[include_str!("queries/java.scm")],
+        class_kinds: &["class_declaration", "interface_declaration", "enum_declaration", "record_declaration"],
+        def_kinds: &[
+            "method_declaration",
+            "constructor_declaration",
+            "class_declaration",
+            "interface_declaration",
+            "enum_declaration",
+            "record_declaration",
+        ],
+    },
+    Spec {
+        id: "c",
+        family: "c",
+        exts: &["c", "h"],
+        names: &[],
+        grammar: Some(|| tree_sitter_c::LANGUAGE.into()),
+        queries: &[include_str!("queries/c.scm")],
+        class_kinds: &[],
+        def_kinds: &["function_definition", "struct_specifier", "enum_specifier", "type_definition"],
+    },
+    Spec {
+        id: "cpp",
+        family: "c",
+        exts: &["cc", "cpp", "cxx", "c++", "hh", "hpp", "hxx", "h++", "ipp"],
+        names: &[],
+        grammar: Some(|| tree_sitter_cpp::LANGUAGE.into()),
+        queries: &[include_str!("queries/c.scm"), include_str!("queries/cpp_extra.scm")],
+        class_kinds: &["class_specifier", "struct_specifier"],
+        def_kinds: &["function_definition", "class_specifier", "struct_specifier", "enum_specifier", "type_definition"],
+    },
+    Spec {
+        id: "csharp",
+        family: "dotnet",
+        exts: &["cs"],
+        names: &[],
+        grammar: Some(|| tree_sitter_c_sharp::LANGUAGE.into()),
+        queries: &[include_str!("queries/csharp.scm")],
+        class_kinds: &["class_declaration", "struct_declaration", "record_declaration", "interface_declaration"],
+        def_kinds: &[
+            "method_declaration",
+            "constructor_declaration",
+            "local_function_statement",
+            "class_declaration",
+            "struct_declaration",
+            "record_declaration",
+            "enum_declaration",
+            "interface_declaration",
+        ],
+    },
+    Spec {
+        id: "ruby",
+        family: "ruby",
+        exts: &["rb", "rake", "gemspec"],
+        names: &["Rakefile", "Gemfile"],
+        grammar: Some(|| tree_sitter_ruby::LANGUAGE.into()),
+        queries: &[include_str!("queries/ruby.scm")],
+        class_kinds: &["class", "module"],
+        def_kinds: &["method", "singleton_method", "class", "module"],
+    },
+    Spec {
+        id: "php",
+        family: "php",
+        exts: &["php"],
+        names: &[],
+        grammar: Some(|| tree_sitter_php::LANGUAGE_PHP.into()),
+        queries: &[include_str!("queries/php.scm")],
+        class_kinds: &["class_declaration", "trait_declaration", "interface_declaration", "enum_declaration"],
+        def_kinds: &[
+            "function_definition",
+            "method_declaration",
+            "class_declaration",
+            "trait_declaration",
+            "enum_declaration",
+            "interface_declaration",
+        ],
+    },
+];
+
+fn spec(id: &str) -> Option<&'static Spec> {
+    SPECS.iter().find(|s| s.id == id)
+}
+
+/// Built into the binary (as opposed to a language pack).
+pub fn is_core(id: &str) -> bool {
+    spec(id).is_some()
+}
+
+/// The call-resolution family of a language id.
+pub fn family(id: &str) -> &str {
+    if let Some(s) = spec(id) {
+        return s.family;
+    }
+    super::packs::get(id).map(|p| p.family()).unwrap_or(id)
+}
+
+/// The language kula parses a path as: core languages, then installed packs.
+pub fn for_path(path: &str) -> Option<&'static str> {
+    let id = detect(path)?;
+    (is_core(id) || super::packs::is_installed(id)).then_some(id)
+}
+
+/// The language a path is written in, whether or not its pack is installed.
+pub fn detect(path: &str) -> Option<&'static str> {
+    let name = path.rsplit('/').next()?;
+    // Compound extensions (`.blade.php`) outrank the last one.
+    if let Some(p) = super::packs::for_compound(name) {
+        return Some(p.id.as_str());
+    }
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase());
+    let core = SPECS
+        .iter()
+        .find(|s| s.names.contains(&name))
+        .or_else(|| SPECS.iter().find(|s| ext.as_deref().is_some_and(|e| s.exts.contains(&e))));
+    core.map(|s| s.id).or_else(|| super::packs::for_name(name).map(|p| p.id.as_str()))
+}
+
+/// Settle an extension shared by two languages once the content is known:
+/// `.m` is Objective-C or MATLAB, `.v` is Verilog or V.
+pub fn refine(id: &'static str, src: &str) -> &'static str {
+    let (a, b, is_a) = match id {
+        "objc" | "matlab" => (
+            "objc",
+            "matlab",
+            ["@interface", "@implementation", "@protocol", "#import", "#include", "@end"].iter().any(|k| src.contains(k)),
+        ),
+        "systemverilog" | "v" => ("systemverilog", "v", src.contains("endmodule") || src.contains("module ") && src.contains(");")),
+        _ => return id,
+    };
+    let want = if is_a { a } else { b };
+    match super::packs::get(want) {
+        Some(p) if want != id && super::packs::is_installed(want) => p.id.as_str(),
+        _ => id,
+    }
+}
+
+/// Source as the grammar should see it. Vue, Svelte and Astro components keep
+/// only their <script> blocks (and Astro its frontmatter); everything else becomes spaces so byte offsets and
+/// line numbers still point into the original file.
+pub fn prepare<'a>(id: &str, src: &'a str) -> std::borrow::Cow<'a, str> {
+    if !matches!(id, "vue" | "svelte" | "astro") {
+        return std::borrow::Cow::Borrowed(src);
+    }
+    let mut out: Vec<u8> = src.bytes().map(|b| if b == b'\n' { b'\n' } else { b' ' }).collect();
+    let lower = src.to_ascii_lowercase();
+    let mut at = 0;
+    // Astro: the `---` frontmatter fence at the top is TypeScript.
+    if id == "astro" && src.trim_start().starts_with("---") {
+        let open = src.find("---").unwrap_or(0) + 3;
+        let end = src[open..].find("\n---").map(|i| open + i + 1).unwrap_or(src.len());
+        out[open..end].copy_from_slice(&src.as_bytes()[open..end]);
+        at = end;
+    }
+    while let Some(open) = lower[at..].find("<script").map(|i| i + at) {
+        let Some(body) = lower[open..].find('>').map(|i| open + i + 1) else { break };
+        let end = lower[body..].find("</script").map(|i| body + i).unwrap_or(src.len());
+        out[body..end].copy_from_slice(&src.as_bytes()[body..end]);
+        at = end;
+    }
+    // Only ASCII spaces replaced whole bytes, and kept ranges are copied whole.
+    std::borrow::Cow::Owned(String::from_utf8(out).unwrap_or_default())
+}
+
+/// Split a query file into its patterns (blank-line separated; `;` comments).
+fn patterns(file: &str) -> impl Iterator<Item = &str> {
+    file.split("\n\n").map(str::trim).filter(|p| !p.is_empty() && !p.lines().all(|l| l.trim_start().starts_with(';')))
 }
 
 /// Compile patterns in parallel: each tree-sitter query compile is slow for the
@@ -48,264 +381,91 @@ pub fn warm(ids: impl IntoIterator<Item = &'static str>) {
     });
 }
 
-const RUST: &[&str] = &[
-    "(function_item name: (identifier) @def.function)",
-    "(function_signature_item name: (identifier) @def.function)",
-    "(struct_item name: (type_identifier) @def.class)",
-    "(enum_item name: (type_identifier) @def.class)",
-    "(trait_item name: (type_identifier) @def.interface)",
-    "(call_expression function: (identifier) @call)",
-    "(call_expression function: (field_expression field: (field_identifier) @call))",
-    "(call_expression function: (scoped_identifier name: (identifier) @call))",
-    "(use_declaration argument: (_) @import)",
-    "(mod_item name: (identifier) @import)",
-];
-
-const PYTHON: &[&str] = &[
-    "(function_definition name: (identifier) @def.function)",
-    "(class_definition name: (identifier) @def.class)",
-    "(call function: (identifier) @call)",
-    "(call function: (attribute attribute: (identifier) @call))",
-    "(import_statement name: (dotted_name) @import)",
-    "(import_from_statement module_name: (_) @import)",
-];
-
-const JS: &[&str] = &[
-    "(function_declaration name: (identifier) @def.function)",
-    "(generator_function_declaration name: (identifier) @def.function)",
-    "(class_declaration name: (_) @def.class)",
-    "(method_definition name: (property_identifier) @def.method)",
-    "(variable_declarator name: (identifier) @def.function value: (arrow_function))",
-    "(variable_declarator name: (identifier) @def.function value: (function_expression))",
-    "(call_expression function: (identifier) @call)",
-    "(call_expression function: (member_expression property: (property_identifier) @call))",
-    "(new_expression constructor: (identifier) @call)",
-    "(jsx_opening_element name: (identifier) @call)",
-    "(jsx_self_closing_element name: (identifier) @call)",
-    "(import_statement source: (string) @import)",
-    "(call_expression function: (identifier) @_r arguments: (arguments (string) @import) (#eq? @_r \"require\"))",
-];
-
-const TS_EXTRA: &[&str] = &[
-    "(interface_declaration name: (type_identifier) @def.interface)",
-    "(type_alias_declaration name: (type_identifier) @def.interface)",
-    "(abstract_class_declaration name: (type_identifier) @def.class)",
-    "(enum_declaration name: (identifier) @def.class)",
-];
-
-const GO: &[&str] = &[
-    "(function_declaration name: (identifier) @def.function)",
-    "(method_declaration name: (field_identifier) @def.method)",
-    "(type_spec name: (type_identifier) @def.class)",
-    "(call_expression function: (identifier) @call)",
-    "(call_expression function: (selector_expression field: (field_identifier) @call))",
-    "(import_spec path: (interpreted_string_literal) @import)",
-];
-
-const JAVA: &[&str] = &[
-    "(method_declaration name: (identifier) @def.function)",
-    "(constructor_declaration name: (identifier) @def.function)",
-    "(class_declaration name: (identifier) @def.class)",
-    "(record_declaration name: (identifier) @def.class)",
-    "(enum_declaration name: (identifier) @def.class)",
-    "(interface_declaration name: (identifier) @def.interface)",
-    "(method_invocation name: (identifier) @call)",
-    "(object_creation_expression type: (type_identifier) @call)",
-    "(import_declaration (scoped_identifier) @import)",
-];
-
-const C: &[&str] = &[
-    "(function_definition declarator: (function_declarator declarator: (identifier) @def.function))",
-    "(function_definition declarator: (pointer_declarator declarator: (function_declarator declarator: (identifier) @def.function)))",
-    "(struct_specifier name: (type_identifier) @def.class body: (_))",
-    "(enum_specifier name: (type_identifier) @def.class body: (_))",
-    "(type_definition declarator: (type_identifier) @def.class)",
-    "(call_expression function: (identifier) @call)",
-    "(call_expression function: (field_expression field: (field_identifier) @call))",
-    "(preproc_include path: (_) @import)",
-];
-
-const CPP_EXTRA: &[&str] = &[
-    "(function_definition declarator: (function_declarator declarator: (field_identifier) @def.function))",
-    "(function_definition declarator: (function_declarator declarator: (qualified_identifier name: (identifier) @def.function)))",
-    "(function_definition declarator: (reference_declarator (function_declarator declarator: (identifier) @def.function)))",
-    "(class_specifier name: (type_identifier) @def.class body: (_))",
-    "(call_expression function: (qualified_identifier name: (identifier) @call))",
-    "(call_expression function: (template_function name: (identifier) @call))",
-];
-
-const CSHARP: &[&str] = &[
-    "(method_declaration name: (identifier) @def.function)",
-    "(constructor_declaration name: (identifier) @def.function)",
-    "(local_function_statement name: (identifier) @def.function)",
-    "(class_declaration name: (identifier) @def.class)",
-    "(struct_declaration name: (identifier) @def.class)",
-    "(record_declaration name: (identifier) @def.class)",
-    "(enum_declaration name: (identifier) @def.class)",
-    "(interface_declaration name: (identifier) @def.interface)",
-    "(invocation_expression function: (identifier) @call)",
-    "(invocation_expression function: (member_access_expression name: (identifier) @call))",
-    "(object_creation_expression type: (identifier) @call)",
-    "(using_directive (qualified_name) @import)",
-    "(using_directive (identifier) @import)",
-];
-
-const RUBY: &[&str] = &[
-    "(method name: (identifier) @def.function)",
-    "(singleton_method name: (identifier) @def.function)",
-    "(class name: (constant) @def.class)",
-    "(module name: (constant) @def.class)",
-    "(call method: (identifier) @call)",
-    "((call method: (identifier) @_req arguments: (argument_list (string (string_content) @import))) (#match? @_req \"^require(_relative)?$\"))",
-];
-
-const PHP: &[&str] = &[
-    "(function_definition name: (name) @def.function)",
-    "(method_declaration name: (name) @def.function)",
-    "(class_declaration name: (name) @def.class)",
-    "(trait_declaration name: (name) @def.class)",
-    "(enum_declaration name: (name) @def.class)",
-    "(interface_declaration name: (name) @def.interface)",
-    "(function_call_expression function: (name) @call)",
-    "(member_call_expression name: (name) @call)",
-    "(scoped_call_expression name: (name) @call)",
-    "(object_creation_expression (name) @call)",
-    "(namespace_use_clause (qualified_name) @import)",
-];
-
-pub fn for_path(path: &str) -> Option<&'static str> {
-    let ext = path.rsplit('.').next()?.to_ascii_lowercase();
-    Some(match ext.as_str() {
-        "rs" => "rust",
-        "py" | "pyi" => "python",
-        "js" | "mjs" | "cjs" | "jsx" => "javascript",
-        "ts" | "mts" | "cts" => "typescript",
-        "tsx" => "tsx",
-        "go" => "go",
-        "java" => "java",
-        "c" | "h" => "c",
-        "cc" | "cpp" | "cxx" | "c++" | "hh" | "hpp" | "hxx" | "h++" | "ipp" => "cpp",
-        "cs" => "csharp",
-        "rb" | "rake" | "gemspec" => "ruby",
-        "php" => "php",
-        _ => return None,
-    })
-}
-
-/// Every language kula parses.
-pub const IDS: [&str; 12] = ["rust", "python", "javascript", "typescript", "tsx", "go", "java", "c", "cpp", "csharp", "ruby", "php"];
-
 /// A language's grammar and compiled queries, built once per process and shared
 /// by every parser thread (query compilation dominates small indexes otherwise).
 pub fn get(id: &str) -> Option<&'static Lang> {
     use std::sync::OnceLock;
-    static CELLS: [OnceLock<Option<Lang>>; IDS.len()] = [const { OnceLock::new() }; IDS.len()];
-    let i = IDS.iter().position(|l| *l == id)?;
-    CELLS[i].get_or_init(|| load(id)).as_ref()
+    static CELLS: [OnceLock<Option<Lang>>; SPECS.len()] = [const { OnceLock::new() }; SPECS.len()];
+    match SPECS.iter().position(|s| s.id == id) {
+        Some(i) => CELLS[i].get_or_init(|| load(id)).as_ref(),
+        None => super::packs::lang(id),
+    }
+}
+
+fn spec_patterns(s: &Spec) -> Vec<&'static str> {
+    let mut pats: Vec<&str> = s.queries.iter().flat_map(|q| patterns(q)).collect();
+    // JSX belongs to .jsx/.tsx; plain TypeScript drops those patterns by design.
+    if s.id == "typescript" {
+        pats.retain(|p| !p.contains("jsx_"));
+    }
+    pats
 }
 
 pub fn load(id: &str) -> Option<Lang> {
-    let (language, pats, class_kinds, def_kinds): (Language, Vec<&str>, &[&str], &[&str]) = match id {
-        "rust" => (
-            tree_sitter_rust::LANGUAGE.into(),
-            RUST.to_vec(),
-            &["impl_item", "trait_item"],
-            &["function_item", "function_signature_item", "struct_item", "enum_item", "trait_item"],
-        ),
-        "python" => {
-            (tree_sitter_python::LANGUAGE.into(), PYTHON.to_vec(), &["class_definition"], &["function_definition", "class_definition"])
-        }
-        "javascript" => (
-            tree_sitter_javascript::LANGUAGE.into(),
-            JS.to_vec(),
-            &["class_declaration", "class"],
-            &["function_declaration", "generator_function_declaration", "class_declaration", "method_definition", "variable_declarator"],
-        ),
-        "typescript" | "tsx" => {
-            let lang: Language =
-                if id == "tsx" { tree_sitter_typescript::LANGUAGE_TSX.into() } else { tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into() };
-            let mut p = JS.to_vec();
-            p.extend_from_slice(TS_EXTRA);
-            (
-                lang,
-                p,
-                &["class_declaration", "abstract_class_declaration", "class"],
-                &[
-                    "function_declaration",
-                    "generator_function_declaration",
-                    "class_declaration",
-                    "abstract_class_declaration",
-                    "method_definition",
-                    "variable_declarator",
-                    "interface_declaration",
-                ],
-            )
-        }
-        "go" => (tree_sitter_go::LANGUAGE.into(), GO.to_vec(), &[], &["function_declaration", "method_declaration", "type_spec"]),
-        "java" => (
-            tree_sitter_java::LANGUAGE.into(),
-            JAVA.to_vec(),
-            &["class_declaration", "interface_declaration", "enum_declaration", "record_declaration"],
-            &[
-                "method_declaration",
-                "constructor_declaration",
-                "class_declaration",
-                "interface_declaration",
-                "enum_declaration",
-                "record_declaration",
-            ],
-        ),
-        "c" => (
-            tree_sitter_c::LANGUAGE.into(),
-            C.to_vec(),
-            &[],
-            &["function_definition", "struct_specifier", "enum_specifier", "type_definition"],
-        ),
-        "cpp" => {
-            let mut p = C.to_vec();
-            p.extend_from_slice(CPP_EXTRA);
-            (
-                tree_sitter_cpp::LANGUAGE.into(),
-                p,
-                &["class_specifier", "struct_specifier"],
-                &["function_definition", "class_specifier", "struct_specifier", "enum_specifier", "type_definition"],
-            )
-        }
-        "csharp" => (
-            tree_sitter_c_sharp::LANGUAGE.into(),
-            CSHARP.to_vec(),
-            &["class_declaration", "struct_declaration", "record_declaration", "interface_declaration"],
-            &[
-                "method_declaration",
-                "constructor_declaration",
-                "local_function_statement",
-                "class_declaration",
-                "struct_declaration",
-                "record_declaration",
-                "enum_declaration",
-                "interface_declaration",
-            ],
-        ),
-        "ruby" => {
-            (tree_sitter_ruby::LANGUAGE.into(), RUBY.to_vec(), &["class", "module"], &["method", "singleton_method", "class", "module"])
-        }
-        "php" => (
-            tree_sitter_php::LANGUAGE_PHP.into(),
-            PHP.to_vec(),
-            &["class_declaration", "trait_declaration", "interface_declaration", "enum_declaration"],
-            &[
-                "function_definition",
-                "method_declaration",
-                "class_declaration",
-                "trait_declaration",
-                "enum_declaration",
-                "interface_declaration",
-            ],
-        ),
-        _ => return None,
-    };
+    let s = spec(id)?;
+    let language = (s.grammar?)();
+    let queries = compile(&language, &spec_patterns(s));
+    Some(Lang { id: s.id, language, queries, class_kinds: s.class_kinds, def_kinds: s.def_kinds })
+}
+
+/// A language from a pack: its grammar plus query files.
+pub fn build_lang(
+    id: &'static str,
+    language: Language,
+    files: &[&'static str],
+    class_kinds: &'static [&'static str],
+    def_kinds: &'static [&'static str],
+) -> Lang {
+    let pats: Vec<&str> = files.iter().flat_map(|q| patterns(q)).collect();
     let queries = compile(&language, &pats);
-    Some(Lang { id: IDS.iter().find(|l| **l == id)?, language, queries, class_kinds, def_kinds })
+    let (dk, ck) = derive_kinds(&pats);
+    let def_kinds = if def_kinds.is_empty() { dk } else { def_kinds };
+    let class_kinds = if class_kinds.is_empty() { ck } else { class_kinds };
+    Lang { id, language, queries, class_kinds, def_kinds }
+}
+
+/// Definition kinds read off the queries themselves: the root node of every
+/// pattern that captures a definition is that definition's extent, and the root
+/// of a class or interface pattern (without predicates) is a class body.
+fn derive_kinds(pats: &[&str]) -> (&'static [&'static str], &'static [&'static str]) {
+    let root = |p: &str| -> Option<String> {
+        let t = p.trim_start_matches(|c: char| c == '(' || c.is_whitespace());
+        let k: String = t.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+        (!k.is_empty() && !k.starts_with('_')).then_some(k)
+    };
+    let mut defs: Vec<&'static str> = vec![];
+    let mut classes: Vec<&'static str> = vec![];
+    for p in pats {
+        if !p.contains("@def.") && !p.contains("@definition.") {
+            continue;
+        }
+        let Some(k) = root(p) else { continue };
+        let k: &'static str = Box::leak(k.into_boxed_str());
+        if !defs.contains(&k) {
+            defs.push(k);
+        }
+        let classy = p.contains("@def.class")
+            || p.contains("@def.interface")
+            || p.contains("@definition.class")
+            || p.contains("@definition.interface");
+        if classy && !p.contains("(#") && !classes.contains(&k) {
+            classes.push(k);
+        }
+    }
+    (Box::leak(defs.into_boxed_slice()), Box::leak(classes.into_boxed_slice()))
+}
+
+/// How many of a language's query patterns compile against its grammar, and the failures.
+pub fn check_patterns(language: &Language, file: &str) -> (usize, Vec<String>) {
+    let mut ok = 0;
+    let mut bad = vec![];
+    for p in patterns(file) {
+        match Query::new(language, p) {
+            Ok(_) => ok += 1,
+            Err(e) => bad.push(format!("{p}\n    {e}")),
+        }
+    }
+    (ok, bad)
 }
 
 #[cfg(test)]
@@ -317,28 +477,50 @@ mod tests {
     #[test]
     fn every_pattern_compiles() {
         let mut broken = vec![];
-        for id in IDS {
-            let l = load(id).unwrap_or_else(|| panic!("{id} did not load"));
-            let pats: Vec<&str> = match id {
-                "rust" => RUST.to_vec(),
-                "python" => PYTHON.to_vec(),
-                "javascript" => JS.to_vec(),
-                "typescript" | "tsx" => [JS, TS_EXTRA].concat(),
-                "go" => GO.to_vec(),
-                "java" => JAVA.to_vec(),
-                "c" => C.to_vec(),
-                "cpp" => [C, CPP_EXTRA].concat(),
-                "csharp" => CSHARP.to_vec(),
-                "ruby" => RUBY.to_vec(),
-                _ => PHP.to_vec(),
-            };
-            // JSX belongs to .jsx/.tsx; plain TypeScript drops those patterns by design.
-            for p in pats.into_iter().filter(|p| !(id == "typescript" && p.contains("jsx_"))) {
+        for s in SPECS.iter().filter(|s| s.grammar.is_some()) {
+            let l = load(s.id).unwrap_or_else(|| panic!("{} did not load", s.id));
+            for p in spec_patterns(s) {
                 if let Err(e) = Query::new(&l.language, p) {
-                    broken.push(format!("{id}: {p}\n    {e}"));
+                    broken.push(format!("{}: {p}\n    {e}", s.id));
                 }
             }
         }
         assert!(broken.is_empty(), "patterns that do not compile:\n{}", broken.join("\n"));
+    }
+
+    #[test]
+    fn ids_and_extensions_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for s in SPECS {
+            assert!(seen.insert(s.id), "duplicate id {}", s.id);
+        }
+        let mut exts = std::collections::HashMap::new();
+        for s in SPECS {
+            for e in s.exts.iter().chain(s.names) {
+                if let Some(o) = exts.insert(*e, s.id) {
+                    panic!("{e} claimed by both {o} and {}", s.id);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn detection() {
+        assert_eq!(for_path("x/App.VUE"), Some("vue"));
+        assert_eq!(for_path("main.rs"), Some("rust"));
+        assert_eq!(for_path("README"), None);
+        assert_eq!(detect("a/b/Makefile"), Some("make"));
+        assert_eq!(detect("CMakeLists.txt"), Some("cmake"));
+        assert_eq!(detect("src/App.kt"), Some("kotlin"));
+        assert_eq!(refine("rust", "fn main() {}"), "rust");
+    }
+
+    #[test]
+    fn script_blocks_keep_offsets() {
+        let src = "<template><div/></template>\n<script setup lang=\"ts\">\nconst a = f()\n</script>\n<style>x{}</style>";
+        let p = prepare("vue", src);
+        assert_eq!(p.len(), src.len());
+        assert_eq!(p.find("const a = f()"), src.find("const a = f()"));
+        assert!(!p.contains("template") && !p.contains("style"));
     }
 }
