@@ -2026,6 +2026,9 @@ fn agents_cmd(repo: &Repo, c: AgentsCmd, json: bool) -> Result<()> {
                 let files = agents::connect(&repo.root, &id)?;
                 println!("  {} {:<8} {}", green("✓"), id, dim(&files.join(", ")));
             }
+            for f in agents::sync(repo, &[])? {
+                println!("  {} {:<8} {}", green("✓"), "brief", dim(&f));
+            }
         }
         AgentsCmd::Sync { files } => {
             let done = agents::sync(repo, &files)?;

@@ -705,7 +705,12 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
             }
             "docs_sync" => json!({ "written": crate::agents::sync(r, &[])? }),
             "brief" => json!({ "text": crate::agents::brief(&crate::config::Config::load(&r.root)?) }),
-            "connect" => json!({ "files": crate::agents::connect(&r.root, &a.agent)? }),
+            "connect" => {
+                // connecting also writes the brief, so the agent reads the fences and workflows on its first turn
+                let mut files: Vec<String> = crate::agents::connect(&r.root, &a.agent)?.into_iter().map(String::from).collect();
+                files.extend(crate::agents::sync(r, &[])?);
+                json!({ "files": files })
+            }
             "suggestion_accept" => json!(crate::agents::accept(r, a.id)?),
             "suggestion_dismiss" => {
                 crate::agents::dismiss(r, a.id)?;
