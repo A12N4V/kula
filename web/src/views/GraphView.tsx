@@ -137,6 +137,9 @@ function MapView(props: Props) {
   });
   // Isolate: only a slice of the graph (a path, cluster, neighbourhood or diff), with its boundary.
   const [iso, setIso] = useState<{ slice: Slice; hops: number } | null>(null);
+  // `i` reopens the dialog on the current slice, as the toolbar button does
+  const isoRef = useRef(iso);
+  isoRef.current = iso;
   const [isoAsk, setIsoAsk] = useState<string | null>(null);
   const isolate = (select: string[], hops = 1) =>
     api.isolate(select, hops).then((slice) => { setIso({ slice, hops }); setIsoAsk(null); setFilter(null); setImpact(null); setTrace(null); setFencesOn(false); })
@@ -565,7 +568,7 @@ function MapView(props: Props) {
     const k = (e: KeyboardEvent) => {
       if (/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "f") setFencesOn((x) => !x);
-      if (e.key === "i") { e.preventDefault(); setIsoAsk((x) => (x == null ? "" : null)); }
+      if (e.key === "i") { e.preventDefault(); setIsoAsk((x) => (x == null ? (isoRef.current?.slice.selectors.join(" ") ?? "") : null)); }
       if (e.key === "Escape") { setIsoAsk(null); setMenu(null); setTrace(null); armed.current = false; setTraceArmed(false); }
       if (e.key === "t" && focusRef.current != null) {
         armed.current = true;
