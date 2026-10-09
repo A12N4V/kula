@@ -858,7 +858,11 @@ pub fn brief(cfg: &Config) -> String {
                             (p, "") => p.to_string(),
                             (p, model) => format!("{p}, {model}"),
                         };
-                        if m.name.is_empty() { on } else { format!("{} ({on})", m.name) }
+                        if m.name.is_empty() {
+                            on
+                        } else {
+                            format!("{} ({on})", m.name)
+                        }
                     },
                     if m.workflow.is_empty() { "–" } else { &m.workflow },
                     m.role.replace('|', "/")
