@@ -23,7 +23,7 @@ window.render = (t) => {
     if (cursorOn(t) && t < 6.5) { ctx.fillStyle = C.accent; ctx.fillRect(892 + w + 6, 643, 14, 30); }
   }
   if (t > 4.8) text(ctx, "WORKFLOWS · FENCES · MEMORY · THE GRAPH · MCP", 840, 800, { size: 20, weight: 600, color: C.dim, spacing: 4 });
-  if (t > 5.6) text(ctx, "github.com/A12N4V/kula   ·   GPL-3.0   ·   one binary, no account", 840, 846, { size: 20, weight: 600, color: C.accent, spacing: 1 });
+  if (t > 5.6) text(ctx, "github.com/A12N4V/kula   ·   MIT   ·   one binary, no account", 840, 846, { size: 20, weight: 600, color: C.accent, spacing: 1 });
   const out = clamp((t - (T - 1.1)) / 1.0);
   if (out > 0) dither(ctx, 8, () => ease(out) * 1.05, C.bg, 1.0);
 };
