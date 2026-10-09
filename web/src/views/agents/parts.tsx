@@ -84,6 +84,45 @@ export function useListNav(count: number, onEnter?: (i: number) => void, reset?:
   };
 }
 
+/**
+ * Keyboard navigation plus a `/` filter for one list (module A2): j/k/enter/esc
+ * as in useListNav, and `/` moves focus to the filter input (scoped to this
+ * list's container, so the global ⌘K palette is never in the way). Typing in
+ * the filter narrows the list; Escape clears it and returns to the list.
+ */
+export function useFilterList(count: number, onEnter?: (i: number) => void, reset?: unknown) {
+  const nav = useListNav(count, onEnter, reset);
+  const [filter, setFilter] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const base = nav.props.onKeyDown;
+  useEffect(() => { if (count === 0) nav.setSel(-1); }, [filter, count]);
+  return {
+    filter, setFilter, inputRef,
+    props: {
+      ...nav.props,
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === "/" && !((e.target as HTMLElement).closest("input, textarea, select"))) {
+          e.preventDefault(); e.stopPropagation(); inputRef.current?.focus();
+          return;
+        }
+        base(e);
+      },
+    },
+    sel: nav.sel, setSel: nav.setSel,
+  };
+}
+
+/** The filter field that goes with useFilterList: one input, `/` opens it. */
+export function ListFilter({ inputRef, value, onChange, label, placeholder }: {
+  inputRef: React.Ref<HTMLInputElement>; value: string; onChange: (v: string) => void; label: string; placeholder?: string;
+}) {
+  return (
+    <input ref={inputRef} className="input ag-list-filter" value={value} size={10}
+      onChange={(e) => onChange(e.target.value)} placeholder={placeholder ?? "/ filter"} aria-label={label}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onChange(""); (e.target as HTMLInputElement).blur(); } }} />
+  );
+}
+
 export const pct = (r: ResearchRun) => {
   if (!r.baseline) return 0;
   const d = (r.best - r.baseline) / Math.abs(r.baseline);
@@ -169,7 +208,8 @@ export function WorkflowTile({ w, active, onPreview, onClick, on, idx, sel }: { 
   );
 }
 
-function fenceSummary(w: Workflow): { t: string; l: GuardLevel }[] {
+/** One workflow's fences as short tags, reused by the roster and seat inspector. */
+export function fenceSummary(w: Workflow): { t: string; l: GuardLevel }[] {
   const out: { t: string; l: GuardLevel }[] = [];
   const name = (v: string[]) => (v.length === 1 && v[0] === "**" ? "everything" : v.some((x) => x.includes("test") || x.includes("spec")) && v.length > 4 ? "tests" : v.some((x) => x.endsWith(".md")) && v.length > 3 ? "docs" : v.length === 1 ? v[0] : `${v.length} patterns`);
   if (w.scope?.length) out.push({ t: `only ${name(w.scope)}`, l: "open" });

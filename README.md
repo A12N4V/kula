@@ -213,8 +213,21 @@ One set of skills for every agent, kept in git. Each lives in `.agents/skills/<n
 kula skill new release-notes -d "Write release notes from the commits since the last tag"
 kula skill list                 # each skill, and whether each agent has the current copy
 kula skill adopt claude triage  # take an agent's own skill into the shared set
-kula skill sync
+kula skill sync                 # write every skill where each agent reads it
 ```
+
+When an agent's copy of a skill was edited locally, `kula skill list` shows it as `differs`; Agents › Skills shows the diff – the agent's copy against the source – before a sync overwrites it. The tab also shows which workflows and teams mention a skill, and the skill's own files.
+
+### Agent config: MCP and rules
+
+TeamAI-CLI-style parity beyond skills: every agent's MCP servers (`.mcp.json` for Claude Code, `.cursor/mcp.json` for Cursor, `.gemini/settings.json` for Gemini CLI, `.codex/config.toml` for Codex) and rules files (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, `.cursor/rules/`) are read where each one lies, and shown against the shared source in `.agents/mcp.json`. Syncing writes one server definition out to every agent and never clobbers the rest of their config.
+
+```sh
+kula agents mcp          # the matrix: MCP servers and rules per agent vs the source
+kula agents mcp kula     # sync the kula server from .agents/mcp.json to every agent
+```
+
+Agent memories carry layers derived at read time, no new storage: each memory is labelled with its scope – `task` when its target is inside the active task's scope, else `workflow` when inside a workflow's scope, else `repo` – and its provenance: the agent that wrote it, the commit on `refs/kula/meta` that introduced it, and the symbol or file it is anchored to. Agents › Skills shows the table.
 
 ### Fences
 

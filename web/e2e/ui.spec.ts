@@ -155,7 +155,7 @@ test.describe("shell", () => {
 test.describe("design language", () => {
   test("one typeface: JetBrains Mono everywhere", async ({ page }) => {
     await open(page);
-    for (const sel of ["body", ".ov-title h1", ".stat-table td", ".card-head h2", ".section-title, .stat-table th"]) {
+    for (const sel of ["body", ".ov-title h1", ".stat-table td", ".stat-table .st-note", ".card-head h2", ".section-title, .stat-table th"]) {
       const ff = await page.locator(sel).first().evaluate((el) => getComputedStyle(el).fontFamily);
       expect(ff, sel).toMatch(/^"?JetBrains Mono/);
     }
@@ -1026,11 +1026,10 @@ test.describe("teams and research (T1)", () => {
     await expect(org).toContainText("bench");
     await soc.getByRole("button", { name: /^ship/ }).click();
     await expect(page.locator(".map-inspector").getByLabel("Answers to team")).toHaveValue("steer");
-    // Create a team from a template: the tab strip's add button opens the
-    // template picker; create lands the team in kula.toml at once.
-    await page.getByLabel("New team from a template").click();
-    await page.getByLabel("Team name").fill("e2e-crew");
-    await page.getByRole("button", { name: /Create e2e-crew/ }).click();
+    // Create a team: the tab strip's picker, then the template form names it.
+    await page.getByRole("button", { name: "New team from a template" }).click();
+    await page.locator(".tpl-form").getByLabel("Team name").fill("e2e-crew");
+    await page.locator(".tpl-form").getByRole("button", { name: "Create e2e-crew" }).click();
     const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
     expect(toml.content).toContain('name = "e2e-crew"');
     // Select a member and edit in place: role, then a hand-off to Codex.
@@ -1327,3 +1326,219 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
     await expect(page.locator(".ov-title h1")).toBeVisible();
   });
 });
+// ========================================================= A2: one picture of the whole setup – roster, keyboard, timeline, seat facts
+test.describe("agents A2", () => {
+  test.use({ baseURL: ({ fx }, use) => use(fx) });
+  // Read-only tests: no fixture writes, so no serial coupling and all projects may run them.
+
+  test("A2.1: the roster renders every fixture agent with its wiring, counts and seats", async ({ page }) => {
+    await open(page, "agents");
+    const rows = page.locator(".roster-row");
+    await expect(rows).toHaveCount(4);
+    // Claude Code is connected in the fixture (MCP and hook); the others are not wired.
+    const claude = rows.filter({ hasText: "Claude Code" });
+    await expect(claude).toContainText("connected");
+    await expect(claude).toContainText("hook");
+    for (const name of ["Cursor", "Codex", "Gemini CLI"]) {
+      const row = rows.filter({ hasText: name });
+      await expect(row).toContainText("not wired");
+      await expect(row).toContainText("no hook");
+    }
+    // Exact fixture counts: MCP config files, team seats, skills carried.
+    // .roster-num order: skills, MCP files, last seen, fence hits, attempts, seats.
+    await expect(claude.locator(".roster-num").nth(1)).toHaveText(/^1/);
+    await expect(rows.filter({ hasText: "Cursor" }).locator(".roster-num").nth(5)).toHaveText("2");
+    await expect(rows.filter({ hasText: "Codex" }).locator(".roster-num").nth(5)).toHaveText("3");
+    await expect(rows.filter({ hasText: "Gemini CLI" }).locator(".roster-num").nth(5)).toHaveText("3");
+    for (const row of await rows.all()) await expect(row).toContainText("0"); // no skills in the fixture
+    // Loops and teams as compact rows with status, linked to their tabs.
+    await expect(page.locator(".loop-row")).toHaveCount(4); // the four kula.toml teams
+    await expect(page.locator(".loop-row").filter({ hasText: "ship" })).toContainText("saved");
+    await expect(page.locator(".ag-control")).toContainText("loop is measuring anything");
+    // A roster cell leads to the tab that owns it.
+    await rows.filter({ hasText: "Claude Code" }).locator(".roster-num").nth(5).click(); // seats → Teams
+    await expect(page).toHaveURL(/#agents\/teams/);
+  });
+
+  test("A2.2: j/k/enter/esc walk the roster and / filters it", async ({ page }) => {
+    await open(page, "agents");
+    const roster = page.locator(".roster");
+    await roster.focus();
+    await page.keyboard.press("j");
+    await expect(roster).toHaveAttribute("aria-activedescendant", "list-item-0");
+    await expect(page.locator(".roster-row").nth(0)).toHaveClass(/kb-sel/);
+    await page.keyboard.press("j");
+    await page.keyboard.press("j");
+    await expect(roster).toHaveAttribute("aria-activedescendant", "list-item-2");
+    await page.keyboard.press("k");
+    await expect(roster).toHaveAttribute("aria-activedescendant", "list-item-1");
+    await page.keyboard.press("Enter"); // the roster row opens Connect
+    await expect(page).toHaveURL(/#agents\/connect/);
+    // Back to the roster: / opens the filter, typing narrows, esc clears it.
+    await open(page, "agents");
+    await roster.focus();
+    await page.keyboard.press("/");
+    await expect(page.getByLabel("Filter roster")).toBeFocused();
+    await page.keyboard.insertText("clau");
+    await expect(page.locator(".roster-row")).toHaveCount(1);
+    await expect(page.locator(".roster-row").first()).toContainText("Claude Code");
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".roster-row")).toHaveCount(4);
+  });
+
+  test("A2.2: j/k/enter/esc walk the research attempts, / filters them, and the legend reads as a table", async ({ page }) => {
+    // A finished run injected into the fixture's /api/agents: kept, reverted,
+    // fenced and failed attempts, with exact metric values.
+    const now = Date.now(), min = 60_000;
+    const run = {
+      workflow: "explore", metric: "cargo test --quiet count", goal: "min", budget: 5, branch: "main", base: "main",
+      baseline: 12, best: 10, started: now - 40 * min, by: "agent:claude", active: false,
+      experiments: [
+        { n: 1, hypothesis: "index once per blob", value: 11, best_before: 12, kept: true, commit: "abc1234def", files: ["src/store.rs"], by: "agent:claude", at: now - 35 * min },
+        { n: 2, hypothesis: "borrow the graph", value: 10.5, best_before: 11, kept: false, files: ["src/graph.rs"], by: "agent:cursor", at: now - 28 * min },
+        { n: 3, hypothesis: "narrow the scope", value: null, best_before: 11, kept: false, note: "rejected: touches locked file", files: ["Cargo.toml"], by: "agent:codex", at: now - 20 * min },
+        { n: 4, hypothesis: "stream the diff", value: null, best_before: 11, kept: false, note: "metric failed to run", files: ["src/server.rs"], by: "agent:gemini", at: now - 12 * min },
+        { n: 5, hypothesis: "cache the agents read", value: 10, best_before: 11, kept: true, commit: "def5678abc", files: ["src/store.rs", "src/server.rs"], by: "agent:claude", at: now - 5 * min },
+      ],
+    };
+    await page.route("**/api/agents", (route) => route.fetch().then((r) => r.json()).then((j) => route.fulfill({
+      json: { ...j, research: [run], workflows: [...j.workflows, { name: "explore", about: "loop", builtin: false, research: { metric: run.metric, goal: "min", budget: 5 } }] },
+    })));
+    await open(page, "agents/research");
+    await page.getByRole("tab", { name: "explore", exact: true }).click();
+    const tries = page.locator(".rf-tries");
+    await expect(page.locator(".rf-try")).toHaveCount(5);
+    // The timeline shows the run on a time axis with exact values and a legend table.
+    await expect(page.locator(".rf-time-svg")).toBeVisible();
+    const legend = page.locator(".rf-legend-table");
+    await expect(legend).toBeVisible();
+    await expect(legend).toContainText("kept");
+    await expect(legend.locator("tbody tr").first()).toContainText("11 · 10");
+    await expect(legend.locator("tbody tr.rf-lg-fenced")).toContainText("–");
+    // j/k/enter/esc on the attempt list.
+    await tries.focus();
+    await page.keyboard.press("j");
+    await expect(tries).toHaveAttribute("aria-activedescendant", "list-item-0");
+    await page.keyboard.press("j");
+    await page.keyboard.press("j");
+    await expect(tries).toHaveAttribute("aria-activedescendant", "list-item-2");
+    await page.keyboard.press("Enter"); // pins attempt 3 (fenced) in the detail panel
+    await expect(page.locator(".rf-detail h3")).toContainText("attempt 3");
+    await expect(page.locator(".rf-detail")).toContainText("fenced");
+    await page.keyboard.press("Escape");
+    await expect(tries).not.toHaveAttribute("aria-activedescendant", /.+/);
+    // / filters the attempts.
+    await page.keyboard.press("/");
+    await expect(page.getByLabel("Filter attempts")).toBeFocused();
+    await page.keyboard.insertText("cache");
+    await expect(page.locator(".rf-try")).toHaveCount(1);
+    await expect(page.locator(".rf-try").first()).toContainText("cache the agents read");
+  });
+
+  test("A2: the seat inspector shows the workflow, its fences, scope and the skills the seat sees", async ({ page }) => {
+    await open(page, "agents/teams");
+    await page.locator('[data-org="codex"]').click();
+    const facts = page.locator(".seat-facts");
+    await expect(facts).toBeVisible();
+    await expect(facts).toContainText("explore");
+    await expect(facts).toContainText("no skills carried");
+    // The inspector coexists with drag rewiring: the org card is still draggable.
+    await expect(page.locator('[data-org="codex"]')).toHaveAttribute("draggable", "true");
+  });
+});
+
+// ------------------------------------------------------------------ K2 · unified agent config
+// The skills tab carries the whole config picture: the skill matrix with a diff
+// before a sync overwrites an edited copy, every agent's MCP servers and rules
+// files against the shared source, and the memory layers (scope + provenance).
+test.describe("agents config K2", () => {
+  test.use({ baseURL: ({ fx }, use) => use(fx) });
+  test.describe.configure({ mode: "serial" });
+  const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
+
+  /** This worker's fixture repo on disk (fixture.sh writes the path file). */
+  function fixtureRepo(page: Page): string {
+    const port = new URL(page.url()).port ?? String(Number(process.env.KULA_PW_PORT ?? 7431) + 1);
+    return fs.readFileSync(`/tmp/kula-fixture-${port}.path`, "utf8").trim();
+  }
+
+  test("the config matrix shows every agent's MCP servers and rules, and syncs one from the source", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents/skills");
+    const repo = fixtureRepo(page);
+    // a shared source with one server; cursor holds an edited copy of it
+    fs.mkdirSync(path.join(repo, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(repo, ".cursor"), { recursive: true });
+    fs.writeFileSync(path.join(repo, ".agents/mcp.json"), JSON.stringify({ mcpServers: { kula: { command: "kula", args: ["mcp"] } } }, null, 2));
+    fs.writeFileSync(path.join(repo, ".cursor/mcp.json"), JSON.stringify({ mcpServers: { kula: { command: "kula", args: ["serve", "--edited"] } } }));
+    await page.reload();
+    const panel = page.locator(".k2-config");
+    await expect(panel).toContainText("mcp servers");
+    // every agent has a row with its config path
+    for (const a of ["Claude Code", "Cursor", "Codex", "Gemini CLI"]) await expect(panel).toContainText(a);
+    await expect(panel).toContainText(".mcp.json");
+    await expect(panel).toContainText(".codex/config.toml");
+    // rules files are listed with what exists (AGENTS.md is in the fixture, GEMINI.md is not)
+    await expect(panel).toContainText("AGENTS.md");
+    await expect(panel).toContainText("GEMINI.md");
+    // cursor differs from the source; sync it from the matrix
+    const cursorRow = panel.locator("tr", { hasText: "Cursor" }).filter({ hasText: ".cursor/mcp.json" });
+    await expect(cursorRow).toContainText("differs");
+    await cursorRow.locator("button", { hasText: "sync" }).first().click();
+    await expect(cursorRow).toContainText("in sync");
+    // the merge kept the agent's file structure and wrote the source definition
+    const cur = JSON.parse(fs.readFileSync(path.join(repo, ".cursor/mcp.json"), "utf8"));
+    expect(cur.mcpServers.kula.args).toEqual(["mcp"]);
+  });
+
+  test("a skill whose copy was edited shows the diff before a sync overwrites it", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents/skills");
+    const repo = fixtureRepo(page);
+    // a shared skill, and an edited copy in Claude Code's own folder
+    fs.mkdirSync(path.join(repo, ".agents/skills/triage"), { recursive: true });
+    fs.mkdirSync(path.join(repo, ".claude/skills/triage"), { recursive: true });
+    fs.writeFileSync(path.join(repo, ".agents/skills/triage/SKILL.md"),
+      "---\nname: triage\ndescription: Sort a new issue: reproduce, label, find the owning code\n---\n\n1. Reproduce with the smallest input.\n2. Label.\n");
+    fs.writeFileSync(path.join(repo, ".claude/skills/triage/SKILL.md"),
+      "---\nname: triage\ndescription: Sort a new issue: reproduce, label, find the owning code\n---\n\n1. Reproduce with the smallest input.\n2. Label the severity first.\n");
+    await page.reload();
+    const matrix = page.locator(".sk-matrix");
+    await expect(matrix).toContainText("triage");
+    // the matrix marks Claude Code's copy as edited
+    const row = matrix.locator("tr", { hasText: "triage" });
+    await expect(row.locator(".sk-st.differs")).toHaveCount(1);
+    // picking the skill opens the diff of source vs agent copy
+    await row.click();
+    const diff = page.locator(".sk-diff");
+    await expect(diff).toContainText("sync overwrites these");
+    await expect(diff.locator("pre")).toContainText("-2. Label the severity first.");
+    await expect(diff.locator("pre")).toContainText("+2. Label.");
+    // the sync that the diff warns about: overwrite, and the copy matches again
+    await diff.locator("button", { hasText: "overwrite with sync" }).click();
+    const copy = fs.readFileSync(path.join(repo, ".claude/skills/triage/SKILL.md"), "utf8");
+    expect(copy).toContain("2. Label.\n");
+    expect(copy).not.toContain("severity first");
+    await expect(page.locator(".sk-diff")).toHaveCount(0);
+  });
+
+  test("memory layers label each memory with scope and provenance", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents/skills");
+    const panel = page.locator(".k2-layers");
+    await expect(panel).toContainText("Memory layers");
+    // the fixture ships two memories, both anchored to a symbol or file
+    const rows = panel.locator(".k2-layers-t tbody tr");
+    await expect(rows).toHaveCount(2);
+    // provenance: an agent and the commit that introduced the memory
+    await expect(rows.first().locator("td").nth(3)).toContainText("e2e");
+    await expect(rows.first().locator("td").nth(4)).toHaveText(/[0-9a-f]{7}/);
+    // symbol targets are shown and the scope filter narrows the table
+    await expect(panel).toContainText("symbol:src/store.rs:publish");
+    await panel.locator(".chip-toggle", { hasText: "task" }).click();
+    await expect(rows).toHaveCount(0);
+    await panel.locator(".chip-toggle", { hasText: "repo" }).click();
+    await expect(rows).toHaveCount(2);
+  });
+});
+
