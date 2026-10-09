@@ -7,7 +7,7 @@
   <a href="../../releases"><img alt="version" src="https://img.shields.io/badge/version-0.3.0-f97f3a?style=flat-square&labelColor=000000"></a>
   <a href="LICENSE"><img alt="license GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-f97f3a?style=flat-square&labelColor=000000"></a>
   <img alt="rust" src="https://img.shields.io/badge/core-rust-e8e2d9?style=flat-square&labelColor=000000&logo=rust&logoColor=e8e2d9">
-  <img alt="mcp" src="https://img.shields.io/badge/MCP-21%20tools-8fd694?style=flat-square&labelColor=000000">
+  <img alt="mcp" src="https://img.shields.io/badge/MCP-24%20tools-8fd694?style=flat-square&labelColor=000000">
   <img alt="agents" src="https://img.shields.io/badge/agents-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20Gemini-8fd694?style=flat-square&labelColor=000000">
   <img alt="languages" src="https://img.shields.io/badge/parses-11%20languages-7cb7ff?style=flat-square&labelColor=000000">
   <img alt="rdf" src="https://img.shields.io/badge/graph-RDF%20·%20SPARQL%201.1-d49cf0?style=flat-square&labelColor=000000">
@@ -101,6 +101,7 @@ kula init                          # kula.toml · git hooks · agents connected 
 kula view                          # graph + git UI → http://localhost:7420
 kula impact parseConfig            # what breaks if I change this?
 kula graph-diff main WORKTREE      # what my uncommitted work does to the architecture
+kula graph isolate src/auth/** --save auth   # one part of the code, who calls in, what it calls out
 kula task start "split auth" -w refactor   # agents may restructure; tests are locked
 kula commit -am "ship it"          # …and it's still just git
 ```
@@ -293,6 +294,7 @@ A memory is one fact pinned to a symbol, a file or the repo, stored with the not
 | `remember` · `recall` · `update_memory` | facts about the code that go stale when it changes |
 | `suggest` | propose a fence or a workflow; a person decides |
 | `sparql` | any structural question over the whole graph |
+| `isolate` | one part of the codebase (a path, cluster, symbol neighbourhood, a branch's diff or a saved `@scope`) and what crosses its edge |
 | `query` · `context` · `impact` · `trace` · `compare` · `graph_diff` · `flows` · `notes` · `issues` | the graph itself |
 
 The full model (levels, the hook protocol per agent, recall ranking, the brief) is in [docs/AGENTS.md](docs/AGENTS.md).
@@ -366,7 +368,7 @@ Kula is a **superset of git**: anything it doesn't know goes straight to `git`, 
 | | |
 |---|---|
 | **start** | `init` · `index` · `view` · `status` · `hooks install\|uninstall\|status` · `doctor` |
-| **explore** | `query` · `context` · `impact [--down]` · `trace` · `flows` · `clusters` · `deps` · `kg export\|sparql\|examples` |
+| **explore** | `query` · `context` · `impact [--down]` · `trace` · `flows` · `clusters` · `graph isolate\|scopes\|forget` · `deps` · `kg export\|sparql\|examples` |
 | **review** | `lg` · `compare` · `graph-diff` · `check [--md]` |
 | **agents** | `agents status\|connect\|sync\|brief\|suggestions\|accept\|dismiss` · `workflow list\|show\|install\|prompt` · `task start [-w]\|show\|done` · `guard list\|check\|hook\|commit` · `memory add\|recall\|edit\|stale\|confirm\|rm` · `pack` · `before` · `verify` · `mcp` |
 | **enforce & research** | `run -w <workflow> -- <agent>` · `team save\|start\|stop\|list` · `research init\|start\|try\|status\|stop` |

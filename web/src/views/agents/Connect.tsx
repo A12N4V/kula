@@ -73,7 +73,7 @@ export default function Connect({ info, act }: { info: AgentsInfo; act: Act }) {
 
       <Card title="Enforced everywhere" className="ag-wide">
         <div className="mod-grid">
-          <Module id="mcp" name="MCP server" on what={<><code>kula mcp</code> – the graph, fences, memory and research as 23 tools, for any MCP client</>} />
+          <Module id="mcp" name="MCP server" on what={<><code>kula mcp</code> – the graph, fences, memory and research as 24 tools, for any MCP client</>} />
           <Module id="git" name="git hooks" on={!!pre} what={<>pre-commit refuses an agent's commit of fenced changes{reindex ? `; ${reindex} more keep the graph current` : ""}</>}
             action={!pre ? <button className="btn sm primary" onClick={() => act("hooks_install", {}, "git hooks installed").catch(() => {})}>Install</button> : undefined} />
           <Module id="githubactions" name="CI gate" on={!!info.ci} what={info.ci ? <><code>{info.ci}</code> runs <code>kula check</code> on every pull request</> : <>add it with <code>kula init --ci github</code></>} />

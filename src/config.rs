@@ -27,6 +27,51 @@ pub struct Config {
     /// `[[team]]` agent teams: each agent in its own workflow.
     #[serde(rename = "team")]
     pub teams: Vec<Team>,
+    /// `[[scope]]` named slices of the graph (`kula graph isolate --save`);
+    /// a workflow or task reuses one as `scope = ["@name"]`.
+    #[serde(rename = "scope")]
+    pub scopes: Vec<Scope>,
+}
+
+/// A named part of the codebase.
+///
+/// ```toml
+/// [[scope]]
+/// name = "auth"
+/// select = ["src/auth/**", "symbol:hashToken~1"]
+/// paths = ["src/auth/session.ts", "src/util/crypto.ts"]
+/// ```
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Scope {
+    pub name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub about: String,
+    /// Selectors, re-run by `kula graph isolate @name` (see `isolate.rs`).
+    pub select: Vec<String>,
+    /// Default hops for symbol selectors.
+    #[serde(skip_serializing_if = "is_zero_usize")]
+    pub hops: usize,
+    /// The files the selectors picked when saved: what `@name` means in a workflow scope.
+    pub paths: Vec<String>,
+}
+
+fn is_zero_usize(n: &usize) -> bool {
+    *n == 0
+}
+
+impl Config {
+    /// Replace `@name` entries with the saved scope's files; anything else stays.
+    pub fn expand_scope(&self, entries: &[String]) -> Vec<String> {
+        let mut out = Vec::new();
+        for e in entries {
+            match e.strip_prefix('@').and_then(|n| self.scopes.iter().find(|s| s.name == n)) {
+                Some(s) => out.extend(s.paths.iter().cloned()),
+                None => out.push(e.clone()),
+            }
+        }
+        out
+    }
 }
 
 /// A team of agents, each working in its own workflow.
@@ -355,6 +400,19 @@ pub fn set_workflows(root: &Path, wfs: &[crate::workflow::Workflow]) -> Result<C
     }
     let wfs: Vec<_> = wfs.iter().map(|w| crate::workflow::Workflow { builtin: false, ..w.clone() }).collect();
     edit(root, |d| set_tables(d, "workflow", &wfs))
+}
+
+pub fn set_scopes(root: &Path, scopes: &[Scope]) -> Result<Config> {
+    let mut seen = std::collections::HashSet::new();
+    for s in scopes {
+        if !crate::workflow::valid_name(&s.name) {
+            anyhow::bail!("scope names are letters, digits, - and _: {:?}", s.name);
+        }
+        if !seen.insert(&s.name) {
+            anyhow::bail!("two scopes are called {}", s.name);
+        }
+    }
+    edit(root, |d| set_tables(d, "scope", scopes))
 }
 
 pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {

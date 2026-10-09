@@ -185,7 +185,7 @@ pub fn task_start(repo: &Repo, title: &str, scope: Vec<String>, wf: Option<&str>
         None => None,
     };
     let scope = if scope.is_empty() { wf.as_ref().map(|w| w.scope.clone()).unwrap_or_default() } else { scope };
-    globset(&scope.iter().filter(|s| looks_like_path(s)).cloned().collect::<Vec<_>>())?;
+    globset(&Config::load(&repo.root)?.expand_scope(&scope).iter().filter(|s| looks_like_path(s)).cloned().collect::<Vec<_>>())?;
     let t = Task {
         title: title.trim().into(),
         scope,
@@ -328,7 +328,7 @@ impl Guards {
             if cfg.agents.hide_secrets { Some(globset(&SECRETS.iter().map(|s| s.to_string()).collect::<Vec<_>>())?) } else { None };
         let task = match task {
             Some(t) if !t.scope.is_empty() => {
-                let (paths, syms): (Vec<String>, Vec<String>) = t.scope.iter().cloned().partition(|s| looks_like_path(s));
+                let (paths, syms): (Vec<String>, Vec<String>) = cfg.expand_scope(&t.scope).into_iter().partition(|s| looks_like_path(s));
                 let g = globset(&paths)?;
                 Some((t, g, syms))
             }

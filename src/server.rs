@@ -276,6 +276,39 @@ async fn impact(State(s): State<AppState>, Path(id): Path<i64>, Query(q): Query<
     .await
 }
 
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct IsolateReq {
+    select: Vec<String>,
+    hops: Option<usize>,
+    name: String,
+    about: String,
+}
+
+/// POST /api/isolate {select, hops} – a slice of the graph and its boundary.
+async fn isolate(State(s): State<AppState>, Json(a): Json<IsolateReq>) -> ApiResult {
+    blocking(move || Ok(json!(crate::isolate::isolate(&s.repo, &Store::open(&s.repo)?, &a.select, a.hops.unwrap_or(1))?))).await
+}
+
+async fn scopes(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!(crate::config::Config::load(&s.repo.root)?.scopes))).await
+}
+
+/// POST /api/scopes/{save|forget} – named scopes in kula.toml.
+async fn scopes_action(State(s): State<AppState>, Path(action): Path<String>, Json(a): Json<IsolateReq>) -> ApiResult {
+    blocking(move || {
+        Ok(match action.as_str() {
+            "save" => {
+                let (sc, _) = crate::isolate::save(&s.repo, &Store::open(&s.repo)?, &a.name, &a.about, &a.select, a.hops.unwrap_or(1))?;
+                json!(sc)
+            }
+            "forget" => json!({ "removed": crate::isolate::remove(&s.repo, &a.name)? }),
+            _ => return Err(anyhow!("unknown scopes action {action}")),
+        })
+    })
+    .await
+}
+
 async fn flows(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(graph::flows(&Store::open(&s.repo)?, 25)?))).await
 }
@@ -976,6 +1009,9 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/symbol/{id}", get(symbol))
         .route("/api/impact/{id}", get(impact))
         .route("/api/flows", get(flows))
+        .route("/api/isolate", post(isolate))
+        .route("/api/scopes", get(scopes))
+        .route("/api/scopes/{action}", post(scopes_action))
         .route("/api/file", get(file))
         .route("/api/compare", get(compare))
         .route("/api/git/status", get(git_status))

@@ -102,6 +102,21 @@ kula deps --unused       # declared but never imported by indexed code
 
 Standard-library and runtime modules (`node:fs`, `std`, `os`, Go's stdlib) are marked builtin and never flagged.
 
+### `kula graph isolate`
+
+One part of the codebase on its own, with its boundary: what calls in, what it calls out, with edge counts. Selectors are unioned.
+
+```sh
+kula graph isolate src/auth/**                 # a path glob (a bare directory means everything under it)
+kula graph isolate cluster:3 symbol:login~2    # a cluster by id or label, a symbol and its 2-hop neighbourhood
+kula graph isolate diff:main                   # the symbols this branch touches
+kula graph isolate src/auth/** --save auth     # keep it in kula.toml as [[scope]] auth
+kula graph isolate @auth                       # re-run a saved scope
+kula graph scopes   ·  kula graph forget auth
+```
+
+A saved scope stores its selectors and the files they picked. A workflow or task reuses it as `scope = ["@auth"]`. In the UI: **Isolate** in the graph HUD (or <kbd>i</kbd>), *Isolate neighbourhood* on a node's right-click menu, or *Isolate* under a legend filter. MCP agents get the same slice from the `isolate` tool.
+
 ### For agents: `pack`, `before`, `verify`
 
 These three are the reason to hand an agent kula rather than grep. They're on the CLI and, under the same names, as MCP tools (`context_pack`, `pre_edit`, `verify_edit`) once `kula init --agents` has registered the server.
