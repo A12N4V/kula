@@ -423,8 +423,21 @@ pub fn compile(p: &Pack, grammar: &Path, out: &Path) -> Result<()> {
     let src = grammar.join("src");
     let tmp = std::env::temp_dir().join(format!("kula-pack-{}-{}", p.id, std::process::id()));
     std::fs::create_dir_all(&tmp)?;
-    let cc = std::env::var("CC").unwrap_or_else(|_| "cc".into());
-    let cxx = std::env::var("CXX").unwrap_or_else(|_| "c++".into());
+    // CC and CXX may carry flags ("cc -arch x86_64"), as make and the cc crate allow
+    let tool = |var: &str, dflt: &str| -> Vec<String> {
+        let v: Vec<String> = std::env::var(var).unwrap_or_default().split_whitespace().map(String::from).collect();
+        if v.is_empty() {
+            vec![dflt.into()]
+        } else {
+            v
+        }
+    };
+    let (cc, cxx) = (tool("CC", "cc"), tool("CXX", "c++"));
+    let cmd = |t: &[String]| {
+        let mut c = Command::new(&t[0]);
+        c.args(&t[1..]);
+        c
+    };
     let mut objs = vec![];
     let mut cpp = false;
     for f in ["parser.c", "scanner.c", "scanner.cc", "scanner.cpp"] {
@@ -435,10 +448,10 @@ pub fn compile(p: &Pack, grammar: &Path, out: &Path) -> Result<()> {
         let is_cpp = !f.ends_with(".c");
         cpp |= is_cpp;
         let obj = tmp.join(format!("{f}.o"));
-        let mut c = Command::new(if is_cpp { &cxx } else { &cc });
+        let mut c = cmd(if is_cpp { &cxx } else { &cc });
         c.args(["-c", "-O2", "-fPIC", "-w"]).arg(if is_cpp { "-std=c++14" } else { "-std=gnu11" });
         c.arg("-I").arg(&src).arg(&file).arg("-o").arg(&obj);
-        let o = c.output().with_context(|| format!("no C compiler ({cc}); install one or use prebuilt packs"))?;
+        let o = c.output().with_context(|| format!("no C compiler ({}); install one or use prebuilt packs", cc.join(" ")))?;
         if !o.status.success() {
             bail!("compiling {}: {}", file.display(), String::from_utf8_lossy(&o.stderr).lines().take(5).collect::<Vec<_>>().join("\n"));
         }
@@ -447,7 +460,7 @@ pub fn compile(p: &Pack, grammar: &Path, out: &Path) -> Result<()> {
     if objs.is_empty() {
         bail!("{}: no parser.c", grammar.display());
     }
-    let mut l = Command::new(if cpp { &cxx } else { &cc });
+    let mut l = cmd(if cpp { &cxx } else { &cc });
     l.arg("-shared").args(&objs).arg("-o").arg(out);
     if cfg!(target_os = "linux") {
         l.arg("-s");

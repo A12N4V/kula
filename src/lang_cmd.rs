@@ -246,6 +246,9 @@ fn build(ids: &[String], all: bool, out: &Path, jobs: usize) -> Result<()> {
     }
     std::fs::write(out.join(packs::manifest_name()), serde_json::to_string_pretty(&manifest)?)?;
     eprintln!("{} packs built, {failed} failed → {}", manifest.packs.len(), out.display());
+    if failed > 0 {
+        bail!("{failed} language packs failed to build");
+    }
     Ok(())
 }
 
