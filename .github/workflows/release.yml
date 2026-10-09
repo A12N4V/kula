@@ -56,7 +56,7 @@ jobs:
           (sha256sum kula-${{ matrix.target }}.tar.gz 2>/dev/null || shasum -a 256 kula-${{ matrix.target }}.tar.gz) > kula-${{ matrix.target }}.tar.gz.sha256
           ./packaging/npm/make-platform-package.sh ${{ matrix.npm }} dist/kula$ext "${GITHUB_REF_NAME#v}" npm-out
       - if: contains(matrix.target, 'linux')
-        run: cargo install cargo-deb --locked && cargo deb --no-build --no-strip --target ${{ matrix.target }} --deb-version "1:${GITHUB_REF_NAME#v}" -o .
+        run: cargo install cargo-deb --locked && cargo deb --no-build --no-strip --target ${{ matrix.target }} --deb-version "1:${GITHUB_REF_NAME#v}" -o . && for f in *.deb; do mv "$f" "${f/_1:/_}"; done  # epoch stays in the package, not the filename
       - uses: actions/upload-artifact@v4
         with:
           name: bin-${{ matrix.target }}
