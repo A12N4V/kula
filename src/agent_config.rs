@@ -249,10 +249,11 @@ fn write_json_mcp(root: &Path, path: &str, name: &str, def: &McpDef) -> Result<(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
         Err(e) => return Err(e).with_context(|| format!("reading {path}")),
     };
-    if doc.get("mcpServers").is_none() {
-        doc["mcpServers"] = serde_json::json!({});
-    }
-    doc["mcpServers"][name] = def.to_json();
+    // indexing a non-object panics: refuse a file we would have to clobber
+    let top = doc.as_object_mut().with_context(|| format!("{path} is not a JSON object"))?;
+    let servers = top.entry("mcpServers").or_insert_with(|| serde_json::json!({}));
+    let servers = servers.as_object_mut().with_context(|| format!("{path}: mcpServers is not an object"))?;
+    servers.insert(name.to_string(), def.to_json());
     if let Some(dir) = full.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -291,15 +292,16 @@ fn write_toml_mcp(root: &Path, path: &str, name: &str, def: &McpDef) -> Result<(
     Ok(())
 }
 
-/// Sync one MCP server definition from `.agents/mcp.json` to every agent's own
-/// config: insert or update just that server, never touching the others.
+/// Sync one MCP server definition from `.agents/mcp.json` to the config of every
+/// agent this repo uses: insert or update just that server, never touching the others.
 pub fn mcp_sync(root: &Path, name: &str) -> Result<Vec<String>> {
     let src = read_mcp(root, MCP_SOURCE)?.unwrap_or_else(BTreeMap::new);
     let Some(def) = src.get(name) else {
         bail!("{MCP_SOURCE} has no server {name:?}");
     };
+    // only the agents this repo uses: no .cursor/ or .gemini/ for a Claude-only repo
     let mut written = vec![];
-    for (a, _) in crate::agents::AGENTS {
+    for a in crate::agents::detected(root) {
         let path = mcp_path(a);
         if path.ends_with(".toml") {
             write_toml_mcp(root, path, name, def)?;
@@ -518,7 +520,7 @@ mod tests {
         std::fs::write(root.join(".codex/config.toml"), "# my config\n[mcp_servers.mine]\ncommand = \"mine\"\n").unwrap();
         std::fs::write(root.join(".mcp.json"), r#"{ "mcpServers": { "mine": { "url": "http://x" } } }"#).unwrap();
         let w = mcp_sync(&root, "kula").unwrap();
-        assert_eq!(w.len(), 4);
+        assert_eq!(w, vec![".mcp.json".to_string(), ".codex/config.toml".to_string()], "claude always, codex because .codex/ exists");
         // JSON: the other server survives, kula was inserted
         let claude: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(root.join(".mcp.json")).unwrap()).unwrap();
         assert_eq!(claude["mcpServers"]["mine"]["url"], "http://x");
@@ -529,9 +531,9 @@ mod tests {
         let doc: toml::Value = toml::from_str(&toml_text).unwrap();
         assert_eq!(doc["mcp_servers"]["mine"]["command"].as_str(), Some("mine"));
         assert_eq!(doc["mcp_servers"]["kula"]["args"][0].as_str(), Some("mcp"));
-        // after the sync the matrix is clean for kula everywhere
+        // after the sync the matrix is clean for kula in every agent the repo uses
         let m = matrix(&root).unwrap();
-        for a in &m.agents {
+        for a in m.agents.iter().filter(|a| crate::agents::detected(&root).contains(&a.agent.as_str())) {
             assert!(!a.missing.contains(&"kula".to_string()), "{}", a.agent);
         }
         // syncing an unknown server fails loudly
@@ -555,6 +557,31 @@ mod tests {
         let m = matrix(&root).unwrap();
         let cursor = m.agents.iter().find(|a| a.agent == "cursor").unwrap();
         assert!(cursor.differs.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn sync_touches_only_the_agents_this_repo_uses() {
+        let root = fixture("onlyused");
+        let w = mcp_sync(&root, "kula").unwrap();
+        assert_eq!(w, vec![".mcp.json".to_string()], "a Claude-only repo gets only .mcp.json");
+        for d in [".cursor", ".gemini", ".codex"] {
+            assert!(!root.join(d).exists(), "{d} must not be created");
+        }
+        std::fs::create_dir_all(root.join(".cursor")).unwrap();
+        assert!(mcp_sync(&root, "kula").unwrap().contains(&".cursor/mcp.json".to_string()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn sync_refuses_a_file_it_would_clobber() {
+        let root = fixture("clobber");
+        std::fs::write(root.join(".mcp.json"), r#"{"mcpServers": ["not", "an", "object"]}"#).unwrap();
+        let e = mcp_sync(&root, "kula").unwrap_err().to_string();
+        assert!(e.contains("not an object"), "{e}");
+        std::fs::write(root.join(".mcp.json"), "[1, 2]").unwrap();
+        assert!(mcp_sync(&root, "kula").is_err());
+        assert_eq!(std::fs::read_to_string(root.join(".mcp.json")).unwrap(), "[1, 2]", "left untouched");
         let _ = std::fs::remove_dir_all(&root);
     }
 }
