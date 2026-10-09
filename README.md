@@ -458,10 +458,28 @@ pnpm -C web test:ui                         # Playwright: desktop, tablet and ph
 ## Roadmap
 
 - Incremental re-indexing on file change (`kula view --watch`)
-- Kotlin, Swift, Scala and Elixir
-- Shell-command fencing for agents (parse `sed -i`, `mv`, `rm` before they run)
+- Language packs for Windows
 - Two-way sync with GitHub and GitLab issues and pull requests
 - Time-travel: scrub through history and watch the architecture change
+
+## Contributing
+
+Kula takes contributions through GitHub issues and pull requests.
+
+- **Bugs and ideas:** [open an issue](https://github.com/A12N4V/kula/issues/new). For a bug, include `kula --version`, your OS, what you ran and what happened; for a wrong graph edge or a fence that let a write through, a small repository or a one-line reproducer is ideal.
+- **Pull requests:** for anything beyond a small fix, open an issue first so the approach can be agreed before you write it. Then fork, branch from `main`, and open a [pull request](https://github.com/A12N4V/kula/pulls) that says what changed and how you checked it.
+- **Before you push:** `./scripts/test.sh` must pass (it is what CI runs), and UI changes should pass `pnpm -C web test:ui`. Keep commits focused, and add a test for any behaviour you change.
+- **New languages:** most languages arrive as packs; see [docs/LANGUAGES.md](docs/LANGUAGES.md) for how a pack is defined and built with `scripts/build-langpacks.sh`.
+
+By contributing you agree that your work is released under the [MIT licence](LICENSE).
+
+## Community
+
+- **[Issues](https://github.com/A12N4V/kula/issues)** – bug reports, feature requests and questions. Search first; a 👍 on an existing issue helps prioritise it.
+- **[Pull requests](https://github.com/A12N4V/kula/pulls)** – work in progress and review; anyone is welcome to review and test open PRs.
+- **[Releases](https://github.com/A12N4V/kula/releases)** – what shipped in each version.
+
+Be kind and assume good faith; harassment of any kind is not tolerated in issues, pull requests or anywhere else the project lives.
 
 <img src="docs/assets/logo.svg" width="40" align="right" alt="">
 
