@@ -16,6 +16,9 @@
 .m1-node.stale { border: 1px dashed var(--yellow); background: transparent; color: var(--yellow); }
 .m1-node.stale.sel { border-style: solid; border-color: var(--text); color: var(--text); }
 .m1-empty-cli { font-size: 12px; }
+/* Short windows (≤960px tall, most laptops): the 320px graph would push the
+   last list row under the fixed statusbar – measured 14px of overlap at
+   1440x900 – so the graph collapses to 240px there too, not just on phones. */
 @media (max-width: 900px), (max-height: 960px) {
   .m1-graph .mini-graph { height: 240px; min-height: 240px; }
 }

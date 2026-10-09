@@ -1554,6 +1554,8 @@ test.describe("memory graph M1", () => {
     // two fixture memories, each with a DOM node counterpart on the graph
     const nodes = page.locator(".m1-node");
     await expect(nodes).toHaveCount(2);
+    // the canvas side too: MiniGraph's own label states the counts outright
+    await expect(page.getByRole("img", { name: /Memory graph: 2 memories on 2 anchors/ })).toHaveCount(1);
     // anchors covered, exact numbers: legend rows per layer plus the totals
     const legend = page.locator(".m1-legend-t");
     await expect(legend).toContainText("repo");

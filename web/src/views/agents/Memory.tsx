@@ -52,7 +52,7 @@ export default function MemoryTab({ info, act, open }: { info: AgentsInfo; act: 
         <button className="btn sm primary" disabled={!text.trim() || !info.memory_enabled}>Remember</button>
       </form>
       {info.memories.length > 0
-        ? <MemoryGraph mems={shown} sel={sel} onPickMem={setSel} onOpen={open} />
+        ? <MemoryGraph mems={shown} allMems={info.memories} sel={sel} onPickMem={setSel} onOpen={open} />
         : <div className="muted ag-empty">No memories yet – an agent writes one with <code>kula memory add &lt;target&gt; "one fact" --by agent:&lt;name&gt;</code></div>}
       {shown.length === 0 && info.memories.length > 0 && <div className="muted ag-empty">Nothing matches.</div>}
       <div {...navProps}>

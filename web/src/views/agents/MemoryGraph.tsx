@@ -30,14 +30,17 @@ const LAYERS = ["task", "workflow", "repo"] as const;
 
 const strip = (author: string) => author.replace(/^(agent|user):/, "");
 
-export function MemoryGraph({ mems, sel, onPickMem, onOpen }: {
-  mems: Memory[]; sel: number; onPickMem: (idx: number) => void; onOpen: (target: string) => void;
+export function MemoryGraph({ mems, allMems, sel, onPickMem, onOpen }: {
+  mems: Memory[]; allMems: Memory[]; sel: number; onPickMem: (idx: number) => void; onOpen: (target: string) => void;
 }) {
   const [layers, setLayers] = useState<MemoryLayer[]>([]);
-  // Layers are derived at read time on the server; refetch when the set of
-  // memories changes (remember / forget / still-true all change ids or stale).
-  const ids = mems.map((m) => m.id).join(",");
-  useEffect(() => { api.memoryLayers().then(setLayers).catch(() => {}); }, [ids]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Layers are derived at read time on the server; refetch when the set of all
+  // memories changes (remember / forget / still-true all change ids or stale) –
+  // the unfiltered set, not the filtered view: layer data is per memory, not
+  // per view, so filter keystrokes must not refetch. On failure the previous
+  // layers stay, so the legend never silently recounts every row as repo.
+  const allIds = allMems.map((m) => m.id).join(",");
+  useEffect(() => { api.memoryLayers().then(setLayers).catch(() => {}); }, [allIds]); // eslint-disable-line react-hooks/exhaustive-deps
   const layerOf = (m: Memory) => layers.find((l) => l.id === m.id);
 
   const built = useMemo(() => {
@@ -55,7 +58,7 @@ export function MemoryGraph({ mems, sel, onPickMem, onOpen }: {
       nodes.push({ id: t, label: t === "repo" ? "repo" : short(t), color: cssVar(KCOLOR[k] ?? "--text-2") || cssVar("--text-2"), size: 9, group: k === "repo" ? undefined : k, hub: true, glyph: GLYPH[k] ?? "·" });
       if (t !== "repo") edges.push({ source: t, target: "repo", color: cssVar("--line-2") });
     };
-    nodes.push({ id: "repo", label: "repo", color: cssVar("--accent"), size: 14, hub: true, glyph: "◎" });
+    nodes.push({ id: "repo", label: "repo", color: cssVar("--accent"), size: 14, hub: true, glyph: GLYPH.repo });
     seen.add("repo");
     for (const m of mems) {
       const l = layerOf(m);
@@ -85,8 +88,8 @@ export function MemoryGraph({ mems, sel, onPickMem, onOpen }: {
         for (let j = i + 1; j < holders.length; j++)
           edges.push({ source: holders[i], target: holders[j], color: cssVar("--line-2") });
     return { nodes, edges, perLayer, perStale, anchorsCovered: anchorsCovered.size, stale: mems.filter((m) => m.stale).length };
-    // layerOf closes over layers; the ids key covers it.
-  }, [mems, ids, layers]); // eslint-disable-line react-hooks/exhaustive-deps
+    // layerOf closes over layers; the allIds key covers it.
+  }, [mems, allIds, layers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = (id: string) => {
     if (id.startsWith("mem:")) { const i = mems.findIndex((m) => `mem:${m.id}` === id); if (i >= 0) onPickMem(i); }
