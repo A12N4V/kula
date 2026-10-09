@@ -169,6 +169,8 @@ export const api = {
   file: (path: string) => get<{ path: string; content: string }>(`/api/file?${q({ path })}`),
   compare: (base: string, head?: string) => get<Compare>(`/api/compare?${q({ base, head })}`),
   status: () => get<{ branch: string; files: FileStatus[] }>("/api/git/status"),
+  langs: () => get<{ detected: LangRow[]; installed: string[]; available: number }>("/api/langs"),
+  langsAdd: (ids: string[]) => post<{ installed: string[] }>("/api/langs/add", { ids }),
   clean: () => get<{ policy: { after_min: number }; size_bytes: number }>("/api/clean"),
   setClean: (after_min: number) => post<{ after_min: number }>("/api/clean", { after_min }),
   cleanNow: () => post<{ runs_removed: number; temp_removed: number; freed_bytes: number; size_bytes: number }>("/api/clean/now"),
@@ -224,3 +226,5 @@ export function relTime(ts: number) {
 
 // Cluster colours share the graph palette (see colors.ts).
 export { hue as colorFor } from "./colors";
+
+export type LangRow = { id: string; name: string; files: number; indexed: boolean; builtin: boolean; tier: string };

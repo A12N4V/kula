@@ -1,0 +1,5 @@
+module Greeter exposing (greet)
+import String
+greet : String -> String
+greet name = helper name
+helper s = String.toUpper s

@@ -1,0 +1,6 @@
+.program blink
+.wrap_target
+loop:
+    set pins, 1
+    jmp loop
+.wrap

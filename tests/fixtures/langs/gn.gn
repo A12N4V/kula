@@ -1,0 +1,5 @@
+import("//build/config.gni")
+template("greeter") {
+  executable(target_name) { sources = invoker.sources }
+}
+greeter("hello") { sources = [ "main.cc" ] }

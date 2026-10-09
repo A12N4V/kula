@@ -1,0 +1,6 @@
+import { Button } from "std-widgets.slint";
+component Greeter inherits Window {
+    callback clicked();
+    function helper(x: int) -> int { return x; }
+    Button { text: "Hi"; clicked => { root.helper(1); } }
+}

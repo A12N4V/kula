@@ -1,0 +1,7 @@
+cc_defaults {
+    name: "base_defaults",
+}
+cc_binary {
+    name: "greeter",
+    defaults: ["base_defaults"],
+}

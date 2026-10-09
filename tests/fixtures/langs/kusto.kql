@@ -1,0 +1,3 @@
+let helper = (s:string) { toupper(s) };
+let greet = (name:string) { helper(name) };
+StormEvents | extend x = greet(State) | take 10

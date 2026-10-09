@@ -1,0 +1,6 @@
+---
+import Card from "../components/Card.astro";
+function helper(s: string) { return s.toUpperCase(); }
+const items = await getItems(helper("x"));
+---
+<Card title="x" />

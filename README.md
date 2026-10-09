@@ -367,7 +367,7 @@ Kula is a **superset of git**: anything it doesn't know goes straight to `git`, 
 
 | | |
 |---|---|
-| **start** | `init` · `index` · `view` · `status` · `hooks install\|uninstall\|status` · `doctor` |
+| **start** | `init` · `index` · `view` · `status` · `lang list\|add\|remove` · `hooks install\|uninstall\|status` · `doctor` |
 | **explore** | `query` · `context` · `impact [--down]` · `trace` · `flows` · `clusters` · `graph isolate\|scopes\|forget` · `deps` · `kg export\|sparql\|examples` |
 | **review** | `lg` · `compare` · `graph-diff` · `check [--md]` |
 | **agents** | `agents status\|connect\|sync\|brief\|suggestions\|accept\|dismiss` · `workflow list\|show\|install\|prompt` · `task start [-w]\|show\|done` · `guard list\|check\|hook\|commit` · `memory add\|recall\|edit\|stale\|confirm\|rm` · `pack` · `before` · `verify` · `mcp` |
@@ -398,7 +398,7 @@ flowchart LR
         TOML[kula.toml]
     end
     subgraph kula[kula]
-        IDX[tree-sitter indexer<br/>11 languages]
+        IDX[tree-sitter indexer<br/>11 built in + 173 packs]
         DB[(graph.db<br/>SQLite · FTS5)]
         G[impact · trace · flows<br/>clusters · compare]
         GU[guard: one verdict]
@@ -416,7 +416,7 @@ flowchart LR
     CLI -->|everything else| GITBIN[git]
 ```
 
-- **Indexing.** Files are walked in parallel (respecting `.gitignore`) and parsed with tree-sitter: TypeScript/TSX, JavaScript/JSX, Python, Rust, Go, Java, C, C++, C#, Ruby and PHP. Calls resolve to the same file, then imported files, then a unique match in the same language family; a stoplist keeps `.get()` and `.map()` from wiring everything together. Clusters come from weighted label propagation.
+- **Indexing.** Files are walked in parallel (respecting `.gitignore`) and parsed with tree-sitter. **11 languages are built in** – TypeScript/TSX, JavaScript/JSX, Python, Rust, Go, Java, C, C++, C#, Ruby and PHP, plus the script blocks of Vue, Svelte and Astro – and **173 more come as language packs** via `kula lang add` (`kula lang add --detected` installs whatever the repository contains). A pack is the grammar as a native library, downloaded from this project's GitHub release and checked against its sha256 manifest, or compiled locally with `--build`; the binary stays at 28 MB. 130 packs extract definitions, calls and imports, 28 definitions and calls, 15 definitions only – measured on each grammar's own test corpus; the full table is in [docs/LANGUAGES.md](docs/LANGUAGES.md). Calls resolve to the same file, then imported files, then a unique match in the same language family; a stoplist keeps `.get()` and `.map()` from wiring everything together. Clusters come from weighted label propagation.
 - **Any revision, without a checkout.** A revision's graph is built from git objects (`git ls-tree` and one `git cat-file --batch`) and cached per commit. Symbols match across revisions by kind, path, container and name, and compare by a hash of their source.
 - **Storage.** `.kula/graph.db` (SQLite and FTS5) is git-ignored, built beside the live file and swapped in with one rename, so a running `kula view` never reads a half-built graph. It reindexes in the background whenever `HEAD` moves.
 - **Cleans up after itself.** Once `kula view` sits idle (15 min by default), it drops old `kula run` copies, temp files and cached graphs, and compacts the store. Change the timer in Settings → Disk or with `kula clean --after 30` (`0` turns it off); `kula clean` runs a pass now.
@@ -432,6 +432,7 @@ The internals (resolution, the store, risk, the meta ref, the API) are in [docs/
 |---|---|
 | [docs/CLI.md](docs/CLI.md) | install, `kula init`, `kula.toml`, every command, the CI gate |
 | [docs/AGENTS.md](docs/AGENTS.md) | workflows, fences, tasks, memory, the brief, suggestions, the hook per agent, every MCP tool |
+| [docs/LANGUAGES.md](docs/LANGUAGES.md) | built-in languages, language packs, and what each of the 173 packs extracts |
 | [docs/KNOWLEDGE-GRAPH.md](docs/KNOWLEDGE-GRAPH.md) | the RDF vocabulary, IRIs, SPARQL examples, result shapes |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | indexing, resolution, storage, contrast, risk, the meta ref, the HTTP API, tests |
 | [promo/](promo/) | the launch film: score, voiceover, capture, and the Remotion edit |
