@@ -6,7 +6,7 @@
 import { useState } from "react";
 import type { Team, Workflow } from "../../api";
 import { seatKey, titleFor } from "../../roster";
-import { SeatMark } from "./parts";
+import { SeatMark, seatName } from "./parts";
 import { workflowColor } from "./TeamOrg";
 import { MiniGraph, type MiniEdge, type MiniNode } from "../MiniGraph";
 import { cssVar } from "../../graphfx";
@@ -73,9 +73,9 @@ export function Society({ teams, workflows, cur, active, onPick, onNest }: {
           draggable={!!onNest} onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData("text/plain", t.name); setDrag(t.name); }} onDragEnd={() => { setDrag(null); setOver(null); }}
           title={`${t.name}: ${t.members.length} agents${below.length ? `, ${below.length} team${below.length === 1 ? "" : "s"} under it` : ""}`}>
           <span className="soc-name">{t.name}</span>
-          {lead && <span className="soc-lead"><SeatMark m={lead} size={12} />{seatKey(lead)}</span>}
+          {lead && <span className="soc-lead"><SeatMark m={lead} size={12} />{seatName(lead)}</span>}
           <span className="soc-members" aria-label={`${t.members.length} members`}>
-            {t.members.map((m) => <i key={seatKey(m)} style={{ background: workflowColor(workflows, m.workflow) }} title={`${seatKey(m)} · ${m.workflow || "no workflow"}`} />)}
+            {t.members.map((m) => <i key={seatKey(m)} style={{ background: workflowColor(workflows, m.workflow) }} title={`${seatName(m)} · ${m.workflow || "no workflow"}`} />)}
           </span>
           {below.length > 0 && <span className="soc-n">{count(t)} agents</span>}
           {t.name === active && <span className="tag accent">at work</span>}
@@ -112,7 +112,7 @@ export function SocietyGraph({ teams, workflows, cur, onPick }: {
     if (t.under && names.has(t.under) && t.under !== t.name) edges.push({ source: `team:${t.name}`, target: `team:${t.under}`, color: grey, size: 2.5 });
     for (const m of t.members) {
       const id = `seat:${t.name}/${seatKey(m)}`;
-      nodes.push({ id, label: `${seatKey(m)} · ${titleFor(m.role || (m.reports_to ? "member" : "lead"))}`, color: workflowColor(workflows, m.workflow), size: m.reports_to ? 5 : 7, group: t.name });
+      nodes.push({ id, label: `${seatName(m)} · ${titleFor(m.role || (m.reports_to ? "member" : "lead"))}`, color: workflowColor(workflows, m.workflow), size: m.reports_to ? 5 : 7, group: t.name });
       edges.push({ source: id, target: m.reports_to && t.members.some((x) => seatKey(x) === m.reports_to) ? `seat:${t.name}/${m.reports_to}` : `team:${t.name}`, color: line });
       for (const o of m.hands_off ?? []) if (t.members.some((x) => seatKey(x) === o)) edges.push({ source: id, target: `seat:${t.name}/${o}`, color: accent, flow: true });
     }

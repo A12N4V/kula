@@ -1032,14 +1032,22 @@ test.describe("teams and research (T1)", () => {
     await page.locator(".tpl-form").getByRole("button", { name: "Create e2e-crew" }).click();
     const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
     expect(toml.content).toContain('name = "e2e-crew"');
-    // Select a member and edit in place: role, then a hand-off to Codex.
+    // A template team is named generic agents run by any connected agent:
+    // no vendor names on the seats, and no seat pinned to one in kula.toml.
+    const crew = toml.content.slice(toml.content.indexOf('name = "e2e-crew"'));
+    const crewMembers = crew.slice(0, crew.indexOf("[[team]]", 1) > 0 ? crew.indexOf("[[team]]", 1) : undefined);
+    expect(crewMembers).not.toMatch(/agent = "(claude|cursor|codex|gemini)"/);
+    await expect(page.locator(".org .org-name")).toHaveCount(3);
+    const names = await page.locator(".org .org-name").allInnerTexts();
+    for (const n of names) expect(n).not.toMatch(/Claude|Cursor|Codex|Gemini/);
+    // Select a member and edit in place: role, then a hand-off to the third seat.
     const inspector = page.locator(".map-inspector");
-    // Scope to the member card itself: other cards may carry "hands off → Cursor".
-    const card = page.locator(".org-card").filter({ has: page.locator(".org-name", { hasText: "Cursor" }) });
+    const card = page.locator(".org-card").nth(1);
+    const third = names[2].trim();
     // The 5 s agents poll can refetch mid-edit and reset unsaved inspector
     // state, and the first click after the member editor mounts can race its
     // own render, so the edit-and-save sequence retries until kula.toml has it.
-    const hand = inspector.locator(".chip-toggle").filter({ hasText: "Codex" });
+    const hand = inspector.locator(".chip-toggle").filter({ hasText: third });
     const flipHand = async (to: "true" | "false") => {
       for (let i = 0; i < 4; i++) {
         await hand.click({ timeout: 2000 });
@@ -1056,9 +1064,10 @@ test.describe("teams and research (T1)", () => {
         // second click on the selected card closes the editor again.
         if (!(await inspector.getByLabel("Role").isVisible({ timeout: 1000 }))) await card.click({ timeout: 2000 });
         await inspector.getByLabel("Role").fill("welder");
-        // The template has no Codex hand-off – toggle it on, then off again.
-        await flipHand("true");
-        await flipHand("false");
+        // Toggle the hand-off to the third seat away from how it starts, then back.
+        const was = (await hand.getAttribute("aria-pressed", { timeout: 2000 })) === "true";
+        await flipHand(was ? "false" : "true");
+        await flipHand(was ? "true" : "false");
         // Back to the team, save, and check kula.toml really got the edit.
         await page.getByRole("button", { name: "Back to the team" }).click({ timeout: 2000 });
         const save = page.getByRole("button", { name: "Save", exact: true }).first();

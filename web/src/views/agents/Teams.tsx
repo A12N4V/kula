@@ -13,7 +13,7 @@ import { api, type AgentsInfo, type Team } from "../../api";
 import { Icon, useToast } from "../../ui";
 import { AGENT_IDS, AGENT_NAME, type Act, type Tab } from "./data";
 import { TEAM_TEMPLATES, teamFrom, type TeamTemplate } from "./templates";
-import { Card, SeatMark, TabStrip, fenceSummary } from "./parts";
+import { Card, SeatMark, TabStrip, fenceSummary, keyName, seatName } from "./parts";
 import { Sigil } from "../../sigil";
 import { freeName, seatKey, titleFor } from "../../roster";
 import { Society, SocietyGraph, societyOrder } from "./Society";
@@ -215,14 +215,14 @@ function MemberDetail({ team, k, info, setM, drop, move, close }: { team: Team; 
       <label className="mi-field"><span>role</span><input className="input" value={m.role ?? ""} onChange={(e) => setM({ role: e.target.value })} aria-label="Role" /></label>
       <label className="mi-field"><span>answers to</span>
         <select className="input" value={m.reports_to ?? ""} onChange={(e) => setM({ reports_to: e.target.value })} aria-label="Answers to">
-          <option value="">nobody – leads</option>{others.map((o) => <option key={o} value={o}>{o}</option>)}
+          <option value="">nobody – leads</option>{others.map((o) => <option key={o} value={o}>{keyName(team.members, o)}</option>)}
         </select>
       </label>
       <div className="mi-field"><span>hands off to</span>
         <div className="team-hands">
           {others.map((o) => {
             const on = (m.hands_off ?? []).includes(o);
-            return <button key={o} className={`chip-toggle ${on ? "on" : ""}`} aria-pressed={on} onClick={() => setM({ hands_off: on ? (m.hands_off ?? []).filter((h) => h !== o) : [...(m.hands_off ?? []), o] })}><Sigil seed={o} size={12} /> {o}</button>;
+            return <button key={o} className={`chip-toggle ${on ? "on" : ""}`} aria-pressed={on} onClick={() => setM({ hands_off: on ? (m.hands_off ?? []).filter((h) => h !== o) : [...(m.hands_off ?? []), o] })}><Sigil seed={o} size={12} /> {keyName(team.members, o)}</button>;
           })}
         </div>
       </div>
@@ -274,7 +274,7 @@ function TeamPicker({ info, create, cancel, setTab }: { info: AgentsInfo; create
               <span className="tpl-seats">
                 {preview.members.map((m, i) => (
                   <span key={i} className="tpl-seat" style={{ marginLeft: m.reports_to ? 14 : 0, borderLeftColor: workflowColor(info.workflows, m.workflow) }}>
-                    <SeatMark m={m} size={12} /> {seatKey(m)} <span className="muted">{titleFor(m.role)}</span> <i className="mono">{m.workflow}</i>
+                    <SeatMark m={m} size={12} /> {seatName(m)} <span className="muted">{titleFor(m.role)}</span> <i className="mono">{m.workflow}</i>
                   </span>
                 ))}
               </span>

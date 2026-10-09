@@ -44,9 +44,18 @@ export function Card({ title, sub, right, children, className = "" }: { title: s
     </section>
   );
 }
-/** A seat's mark: its generated sigil, with what runs it as a tooltip. */
+/** What a seat is called on screen: its name, else (teams made before names) the agent's. */
+export const seatName = (m: { name?: string; agent: string }) => m.name || AGENT_NAME[m.agent] || m.agent;
+/** The display name for a key a teammate points at (reports_to, hands_off). */
+export const keyName = (members: { name?: string; agent: string }[], key: string) => {
+  const m = members.find((x) => seatKey(x) === key);
+  return m ? seatName(m) : key;
+};
+
+/** A seat's mark: its generated sigil. */
 export function SeatMark({ m, size = 16 }: { m: { name?: string; agent: string }; size?: number }) {
-  return <Sigil seed={seatKey(m)} size={size} title={`${seatKey(m)} · ${m.agent ? AGENT_NAME[m.agent] ?? m.agent : "any connected agent"}`} />;
+  // decorative: the seat's name always sits beside it, and the runner is written out where it matters
+  return <Sigil seed={seatKey(m)} size={size} />;
 }
 
 export function AgentMark({ id, size = 16 }: { id: string; size?: number }) {

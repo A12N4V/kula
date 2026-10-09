@@ -14,7 +14,7 @@ import { useState } from "react";
 import type { Team, Workflow } from "../../api";
 import { hue } from "../../colors";
 import { AGENT_NAME } from "./data";
-import { SeatMark } from "./parts";
+import { SeatMark, keyName, seatName } from "./parts";
 import { seatKey, titleFor } from "../../roster";
 
 /** The colour a workflow's badge gets: its place in the workflow list. */
@@ -104,7 +104,7 @@ export function TeamOrg({ team, info, selected, onSelect, problems, onReport, on
         if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); focus(1); }
         else if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); focus(-1); }
       }}>
-      {onReport && drag && <div className={`org-leadzone ${over === "" ? "over" : ""}`} {...zone("")}>drop here to make {drag} a lead</div>}
+      {onReport && drag && <div className={`org-leadzone ${over === "" ? "over" : ""}`} {...zone("")}>drop here to make {keyName(team.members, drag)} a lead</div>}
       {rows.map(({ m, depth, orphan }) => {
         const errs = problems[seatKey(m)] ?? [];
         return (
@@ -116,13 +116,13 @@ export function TeamOrg({ team, info, selected, onSelect, problems, onReport, on
               onDragEnd={() => { setDrag(null); setOver(null); }} {...zone(seatKey(m))}
               title={onReport ? "drag onto a member: answers to them · shift-drop: hands off to them" : undefined}
               onClick={() => onSelect(selected === seatKey(m) ? null : seatKey(m))}>
-              <span className="org-name"><SeatMark m={m} size={16} />{seatKey(m) || "unnamed"}</span>
+              <span className="org-name"><SeatMark m={m} size={16} />{seatName(m) || "unnamed"}</span>
               <span className="org-role">{titleFor(m.role || (m.reports_to ? "member" : "lead"))}<span className="org-runner"> · {m.agent ? AGENT_NAME[m.agent] ?? m.agent : "any agent"}</span></span>
               <span className="org-wf"><i style={{ background: workflowColor(info.workflows, m.workflow) }} />{m.workflow || "no workflow"}</span>
               {!!m.scope?.length && <span className="org-scope">scope: {m.scope.join(", ")}</span>}
               {m.prompt && <span className="org-scope" title="has its own system prompt">own prompt</span>}
               {!!m.hands_off?.length && m.hands_off.map((h) =>
-                <span key={h} className="org-hand">hands off <span aria-hidden="true">→</span> {h}</span>)}
+                <span key={h} className="org-hand">hands off <span aria-hidden="true">→</span> {keyName(team.members, h)}</span>)}
               {orphan && m.reports_to && <span className="org-err">answers to {m.reports_to}, who is not a member</span>}
               {errs.map((e) => <span key={e} className="org-err">{e}</span>)}
             </button>

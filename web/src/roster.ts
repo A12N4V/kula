@@ -23,7 +23,8 @@ export const TITLES: Record<string, string> = {
   triage: "Triage",
 };
 
-export const titleFor = (role?: string) => (role && TITLES[role]) || (role ? role[0].toUpperCase() + role.slice(1) : "Agent");
+/** A known role's title; a custom role reads exactly as the person typed it. */
+export const titleFor = (role?: string) => (role && TITLES[role]) || role || "Agent";
 
 function hash(s: string) {
   let h = 2166136261;

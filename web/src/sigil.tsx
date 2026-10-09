@@ -79,7 +79,7 @@ export function Sigil({ seed, size = 24, title, className }: { seed: string | nu
   const m = i % MOTIFS; i = Math.floor(i / MOTIFS);
   const fr = i % FRAMES;
   return (
-    <svg className={`sigil ${className ?? ""}`} width={size} height={size} viewBox="0 0 24 24" role={title ? "img" : undefined} aria-hidden={title ? undefined : true}>
+    <svg data-figure="sigil" className={`sigil ${className ?? ""}`} width={size} height={size} viewBox="0 0 24 24" role={title ? "img" : undefined} aria-hidden={title ? undefined : true}>
       {title && <title>{title}</title>}
       {frame(fr)}
       {/* a triangle's incircle is small: shrink the inside onto its centroid */}

@@ -295,7 +295,7 @@ input.mi-title { font: 600 14px var(--mono); }
 @media (max-width: 760px) { .sk-matrix small, .sk-desc { display: none; } .sk-stray { grid-template-columns: auto minmax(0, 1fr) auto; } .sk-stray .linkish, .sk-stray .sk-desc { display: none; } }
 
 /* ---------- loop icons, and a new-loop form that stays inside its column */
-.loop-icon { flex: 0 0 auto; vertical-align: -3px; margin-right: 6px; color: var(--text-2); }
+.loop-icon { display: inline-flex; flex: 0 0 auto; vertical-align: -3px; margin-right: 6px; color: var(--text-2); }
 .tab-strip .loop-icon { margin-right: 6px; }
 .tpl-card b { display: flex; align-items: center; flex-wrap: wrap; gap: 0 4px; }
 .tpl-card b .loop-icon { margin-right: 4px; }
