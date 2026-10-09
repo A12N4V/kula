@@ -1446,8 +1446,6 @@ test.describe("agents A2", () => {
     await expect(page.locator('[data-org="codex"]')).toHaveAttribute("draggable", "true");
   });
 });
-||||||| 12cf4ab
-=======
 
 // ------------------------------------------------------------------ K2 · unified agent config
 // The skills tab carries the whole config picture: the skill matrix with a diff

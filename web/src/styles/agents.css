@@ -1,5 +1,5 @@
 /* ================================================================ agents: guards, task, memory (views/Agents.tsx) */
-.page { height: 100%; overflow: auto; padding: 24px 28px 40px; }
+.page { height: 100%; overflow: auto; padding: 14px 28px 40px; }
 .page > * { max-width: 1280px; margin-left: auto; margin-right: auto; }
 .page-head { display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; margin-bottom: 16px; }
 .page-head > div:first-child { flex: 1 1 420px; min-width: 0; }
@@ -54,7 +54,7 @@
   .ag-strip .kpi-cell:nth-child(n+4) { border-top: 1px solid var(--line); }
   .ag-remember { grid-template-columns: 1fr; }
 }
-@media (max-width: 760px) { .page { padding: 18px 14px 30px; } .ag-tool { grid-template-columns: 1fr; gap: 0; } }
+@media (max-width: 760px) { .page { padding: 12px 14px 30px; } .ag-tool { grid-template-columns: 1fr; gap: 0; } }
 
 /* notes that are agent memories, wherever they show */
 .note.mem { border-left: 2px solid var(--green); }
@@ -340,10 +340,93 @@
 .wf-tabs .need.sugg { padding: 10px 12px; border: 1px dashed var(--accent); background: var(--bg-2); }
 .wf-from { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; }
 
+/* ================================================================ A2: one picture of the whole setup – roster, timeline, seat facts */
+/* The roster: one row per agent, every cell a link to the tab that owns it. */
+.roster { display: grid; overflow-x: auto; }
+.roster-head, .roster-row { display: grid; grid-template-columns: minmax(150px, 1.6fr) minmax(150px, 1.3fr) minmax(80px, .9fr) minmax(60px, .6fr) minmax(80px, .9fr) minmax(80px, .9fr) minmax(90px, 1fr) minmax(60px, .6fr); align-items: center; gap: 10px; min-width: 640px; text-align: left; }
+.roster-head { padding: 2px 8px 2px; font: 600 10px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.roster-row { width: 100%; min-height: 30px; padding: 4px 8px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
+.roster-row.odd { background: var(--bg-2); }
+.roster-row:hover { background: var(--panel-2); color: var(--text); }
+.roster-row.kb-sel { box-shadow: inset 2px 0 0 var(--accent); background: var(--accent-soft); }
+.roster-agent { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.roster-agent b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roster-wired { display: flex; flex-wrap: wrap; gap: 4px; }
+.roster-num { display: inline-flex; align-items: center; gap: 4px; font: 11.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 28px; }
+.roster-num .ico { width: 11px; height: 11px; color: var(--text-3); }
+.roster-row:hover .roster-num { color: var(--accent); }
+.roster-hint { padding: 6px 8px 2px; }
+.ag-list-filter { height: 24px; width: 110px; font-size: 11.5px; }
+.roster .ag-list-filter { margin: 0 0 0 8px; }
+/* loops and teams as compact status rows */
+.loop-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 7px 8px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--text-2); font: inherit; font-size: 12px; text-align: left; cursor: pointer; min-width: 0; }
+.loop-row:first-of-type { border-top: 0; }
+.loop-row:hover { background: var(--panel-2); color: var(--text); }
+.loop-row > b { flex: none; }
+.loop-row > :last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.loop-row .muted:not(:last-child) { flex: none; }
+.ag-control { margin-top: 12px; }
+/* the run timeline: value scale with exact numbers, marks at their moment */
+.rf-filter { padding: 2px 0 8px; }
+.rf-time { border: 1px solid var(--line); background: var(--bg); margin-bottom: 10px; padding: 6px 8px 4px; overflow-x: auto; }
+.rf-time-svg { display: block; width: 100%; min-width: 560px; height: 130px; }
+.rf-t-grid { stroke: var(--line); stroke-dasharray: 2 4; }
+.rf-t-base { stroke: var(--text-3); stroke-dasharray: 4 3; }
+.rf-t-val { fill: var(--text-3); font: 10px var(--mono); }
+.rf-t-when { fill: var(--text-3); font: 10px var(--mono); }
+.rf-t-mark circle { fill: none; stroke: var(--text-3); stroke-width: 1.5; }
+.rf-t-mark text { fill: var(--text-3); font: 10px var(--mono); }
+.rf-t-mark.kept circle { fill: var(--accent); stroke: var(--accent); }
+.rf-t-mark.kept text { fill: var(--accent); }
+.rf-t-mark.reverted circle { stroke: var(--text-2); }
+.rf-t-mark.fenced rect, .rf-t-mark.failed rect { fill: none; }
+.rf-t-mark.fenced rect { stroke: var(--red); }
+.rf-t-mark.failed rect { stroke: var(--yellow); }
+.rf-t-mark.lit circle, .rf-t-mark.lit rect { stroke-width: 2.5; }
+.rf-t-step { stroke: var(--accent); }
+.rf-t-front { stroke: var(--accent); stroke-width: 1.5; }
+.rf-t-mark { cursor: pointer; }
+/* Grafana-style legend: a table with counts and exact metric values */
+.rf-legend-table { width: 100%; border-collapse: collapse; margin: 2px 0 10px; font-size: 11.5px; background: var(--bg); border: 1px solid var(--line); }
+.rf-legend-table th, .rf-legend-table td { padding: 6px 10px; border-top: 1px solid var(--line); text-align: left; font-weight: 400; color: var(--text-2); }
+.rf-legend-table thead th { border-top: 0; font: 600 10px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.rf-legend-table th[scope="row"] { display: inline-flex; align-items: center; gap: 6px; color: var(--text); white-space: nowrap; }
+.rf-legend-table .num { text-align: right; white-space: nowrap; }
+.rf-legend-table i { display: inline-block; width: 9px; height: 9px; border: 1px solid var(--text-3); }
+.rf-legend-table i.kept { background: var(--accent); border-color: var(--accent); }
+.rf-legend-table i.fenced { background: var(--red); border-color: var(--red); }
+.rf-legend-table i.failed { border-color: var(--yellow); }
+.rf-legend-table i.base { border-style: dashed; }
+/* the seat inspector's read-only facts */
+.seat-facts { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+.seat-h { margin: 0 0 6px; font: 600 10px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.seat-dl { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 5px 10px; margin: 0; font-size: 12px; }
+.seat-dl dt { color: var(--text-3); }
+.seat-dl dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+/* phone: every interactive row clears the 40 px floor (probe PROBLEMS) */
+@media (max-width: 760px) {
+  .stat-table tr.go { min-height: 40px; }
+  .stat-table tr.go th, .stat-table tr.go td { padding-top: 11px; padding-bottom: 11px; }
+  .roster-row, .loop-row { min-height: 40px; }
+  .roster { overflow-x: visible; }
+  .roster-head, .roster-row { grid-template-columns: minmax(0, 1fr) auto; min-width: 0; }
+  .roster-head { display: none; }
+  .roster-row > span { grid-column: auto; }
+  .roster-row .roster-agent { grid-column: 1; grid-row: 1; }
+  .roster-row .roster-wired { grid-column: 2; grid-row: 1; }
+  .roster-row .roster-num { grid-column: 1 / 3; grid-row: 2; min-height: 28px; }
+  .rf-time-svg { min-width: 480px; }
+}
+/* A2: the control row – loops, teams and the stat table side by side */
+@media (min-width: 1101px) { .ag-control { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); } }
+.ag-control .stat-table th, .ag-control .stat-table td { padding: 5px 8px; }
+@media (max-width: 760px) {
+  .team-tabs button, .team-tab-add { min-height: 40px; }
+  .org-card { min-height: 40px; }
+  .tpl-card { min-height: 40px; }
+}
 
-/*
 /* integration: 40px phone hit targets in the agents tabs */
 @media (max-width: 760px) {
   .team-tabs button, .team-tabs .team-tab-add, .tpl-card, .chip-toggle, .org-card { min-height: 40px; min-width: 40px; }
 }
-
