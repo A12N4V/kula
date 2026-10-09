@@ -14,6 +14,13 @@ import type { Go, Target } from "../../nav";
 
 export type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
 export const AGENT_IDS = ["claude", "cursor", "codex", "gemini"];
+/** Models worth suggesting per provider; any other id can be typed. */
+export const MODELS: Record<string, string[]> = {
+  claude: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"],
+  cursor: ["auto", "claude-sonnet-5-5", "gpt-5"],
+  codex: ["gpt-5-codex", "gpt-5"],
+  gemini: ["gemini-2.5-pro", "gemini-2.5-flash"],
+};
 export const AGENT_NAME: Record<string, string> = { claude: "Claude Code", cursor: "Cursor", codex: "Codex", gemini: "Gemini CLI" };
 export const GLYPHS: Record<string, string> = { claude: "\u273b", cursor: "\u25c6", codex: ">", gemini: "\u2726" };
 export const blank = (): Workflow => ({ name: "", about: "", scope: [], lock: [], hide: [], review: [], memory: "write", steps: [], docs: [] });

@@ -53,7 +53,7 @@ export default function Connect({ info, act }: { info: AgentsInfo; act: Act }) {
             <div key={c.id} className={`conn ${c.mcp && c.hook ? "ok" : ""}`}>
               <div className="row conn-title">
                 <a className="conn-brand" href={c.docs} target="_blank" rel="noreferrer" title={`${c.name} docs`}><Mark id={c.id} size={22} /><b>{c.name}</b></a>
-                <span className="spacer" /><span className={`dot ${c.mcp && c.hook ? "ok" : c.mcp || c.hook ? "warn" : ""}`} title={c.mcp && c.hook ? "connected" : "not connected"} />
+                <span className="spacer" />{info.default_agent === c.id && <span className="pill" title="seats set to any run on this">default</span>}<span className={`dot ${c.mcp && c.hook ? "ok" : c.mcp || c.hook ? "warn" : ""}`} title={c.mcp && c.hook ? "connected" : "not connected"} />
               </div>
               <ul className="conn-wires">
                 <li className={c.mcp ? "on" : ""}><span>{c.mcp ? <Icon.check /> : "–"}</span><b>MCP</b><span className="mono muted">{WIRING[c.id]?.mcp}</span></li>
@@ -63,6 +63,7 @@ export default function Connect({ info, act }: { info: AgentsInfo; act: Act }) {
               </ul>
               <div className="row">
                 <a className="btn sm ghost" href={c.docs} target="_blank" rel="noreferrer">docs <Icon.arrow /></a><span className="spacer" />
+                {info.default_agent !== c.id && c.mcp && <button className="btn sm ghost" onClick={() => act("settings_save", { agents: { hide_secrets: info.secrets_hidden, memory: info.memory_enabled, docs: info.docs_list, default: c.id } }, `${c.name} is the default`).catch(() => {})}>Make default</button>}
                 <button className={`btn sm ${c.mcp && c.hook ? "ghost" : "primary"}`} onClick={() => act("connect", { agent: c.id }, `${c.name} connected`).catch(() => {})}>{c.mcp && c.hook ? "Rewrite" : "Connect"}</button>
               </div>
             </div>

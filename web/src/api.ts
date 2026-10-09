@@ -50,7 +50,7 @@ export interface Task { title: string; scope: string[]; started: number; by: str
 export interface GuardRule { level: GuardLevel; paths: string[]; symbols: string[]; reason: string }
 export interface AgentsInfo {
   rules: GuardRule[]; task: Task | null; files: { path: string; verdict: Verdict }[]; levels: Record<string, GuardLevel>;
-  memories: Memory[]; secrets_hidden: boolean; memory_enabled: boolean; mcp_registered: boolean; hook_installed: boolean; kula_toml: boolean;
+  memories: Memory[]; secrets_hidden: boolean; memory_enabled: boolean; default_agent?: string; mcp_registered: boolean; hook_installed: boolean; kula_toml: boolean;
   workflows: Workflow[]; workflow: Workflow | null; workflow_rules: GuardRule[]; raw_rules: RawRule[]; docs_list: string[];
   connections: Connection[]; docs: AgentDoc[]; suggestions: Suggestion[];
   teams: Team[]; team: { name: string; started: number; by: string } | null; research: ResearchRun[];
@@ -69,7 +69,7 @@ export interface ResearchRun {
 /** A team (kula.toml [[team]]): each agent in its own workflow. */
 export interface Team {
   name: string; about?: string; prompt?: string; under?: string;
-  members: { name?: string; agent: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
+  members: { name?: string; agent: string; model?: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
 }
 /** A work mode (src/workflow.rs): its own fences, scope, steps, docs and memory policy. */
 export interface Workflow {

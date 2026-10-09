@@ -11,10 +11,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type AgentsInfo, type Team } from "../../api";
 import { Icon, useToast } from "../../ui";
-import { AGENT_IDS, AGENT_NAME, type Act, type Tab } from "./data";
+import { AGENT_IDS, AGENT_NAME, MODELS, type Act, type Tab } from "./data";
 import { TEAM_TEMPLATES, teamFrom, type TeamTemplate } from "./templates";
 import { Card, SeatMark, TabStrip, fenceSummary, keyName, seatName } from "./parts";
-import { Sigil } from "../../sigil";
+import { Harmonograph } from "../../harmonograph";
 import { freeName, seatKey, titleFor } from "../../roster";
 import { Society, SocietyGraph, societyOrder } from "./Society";
 import { TeamOrg, teamProblems, workflowColor } from "./TeamOrg";
@@ -144,7 +144,7 @@ function TeamEditor({ team: t, all, info, on, saved, dirty, set, remove, act }: 
   return (
     <div className="team-stage">
       <div className="team-graph">
-        <TeamOrg team={t} info={info} selected={sel} onSelect={setSel} problems={perMember}
+        <TeamOrg team={t} info={info} live={info.team?.name === t.name} selected={sel} onSelect={setSel} problems={perMember}
           onReport={(a, to) => setM(t.members.findIndex((m) => seatKey(m) === a), { reports_to: to })}
           onHand={(a, to) => { const m = t.members.find((x) => seatKey(x) === a)!; const h = m.hands_off ?? []; setM(t.members.indexOf(m), { hands_off: h.includes(to) ? h.filter((x) => x !== to) : [...h, to] }); }} />
         <div className="map-legend">
@@ -202,11 +202,15 @@ function MemberDetail({ team, k, info, setM, drop, move, close }: { team: Team; 
       </label>
       <div className="mi-row" title="which agent runs this seat – any connected agent unless you pin one">
         <select className="input" value={known ? (m.agent === "any" ? "" : m.agent) : "other"} onChange={(e) => setM({ agent: e.target.value === "other" ? "aider" : e.target.value })} aria-label="Runs on">
-          <option value="">runs on any connected agent</option>
+          <option value="">{info.default_agent ? `runs on the default – ${AGENT_NAME[info.default_agent] ?? info.default_agent}` : "runs on any connected agent"}</option>
           {AGENT_IDS.map((a) => <option key={a} value={a}>runs on {AGENT_NAME[a]}</option>)}<option value="other">runs on another…</option>
         </select>
         {!known && <input className="input mono" value={m.agent} onChange={(e) => setM({ agent: e.target.value })} aria-label="Agent name" />}
       </div>
+      <label className="mi-field" title="leave empty for the provider's own default model"><span>model</span>
+        <input className="input mono" list={`models-${seatKey(m)}`} value={m.model ?? ""} placeholder="provider default" onChange={(e) => setM({ model: e.target.value.trim() })} aria-label="Model" />
+        <datalist id={`models-${seatKey(m)}`}>{(MODELS[m.agent && m.agent !== "any" ? m.agent : info.default_agent ?? ""] ?? Object.values(MODELS).flat()).map((x) => <option key={x} value={x} />)}</datalist>
+      </label>
       <label className="mi-field"><span>workflow</span>
         <select className="input" value={m.workflow ?? ""} onChange={(e) => setM({ workflow: e.target.value })} aria-label="Workflow" style={{ borderLeft: `3px solid ${workflowColor(info.workflows, m.workflow)}` }}>
           <option value="">none – kula.toml's fences</option>{info.workflows.map((w) => <option key={w.name} value={w.name}>{w.name}</option>)}
@@ -222,7 +226,7 @@ function MemberDetail({ team, k, info, setM, drop, move, close }: { team: Team; 
         <div className="team-hands">
           {others.map((o) => {
             const on = (m.hands_off ?? []).includes(o);
-            return <button key={o} className={`chip-toggle ${on ? "on" : ""}`} aria-pressed={on} onClick={() => setM({ hands_off: on ? (m.hands_off ?? []).filter((h) => h !== o) : [...(m.hands_off ?? []), o] })}><Sigil seed={o} size={12} /> {keyName(team.members, o)}</button>;
+            return <button key={o} className={`chip-toggle ${on ? "on" : ""}`} aria-pressed={on} onClick={() => setM({ hands_off: on ? (m.hands_off ?? []).filter((h) => h !== o) : [...(m.hands_off ?? []), o] })}><Harmonograph seed={o} size={12} /> {keyName(team.members, o)}</button>;
           })}
         </div>
       </div>

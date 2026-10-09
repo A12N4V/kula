@@ -69,8 +69,8 @@ export function teamProblems(t: Team): string[] {
   return out;
 }
 
-export function TeamOrg({ team, info, selected, onSelect, problems, onReport, onHand }: {
-  team: Team; info: { workflows: Workflow[] }; selected: string | null; onSelect: (agent: string | null) => void;
+export function TeamOrg({ team, info, selected, onSelect, problems, onReport, onHand, live }: {
+  team: Team; info: { workflows: Workflow[] }; live?: boolean; selected: string | null; onSelect: (agent: string | null) => void;
   problems: Record<string, string[]>;
   /** Dragging a member onto another: it now answers to them ("" – it leads). */
   onReport?: (agent: string, to: string) => void;
@@ -116,7 +116,7 @@ export function TeamOrg({ team, info, selected, onSelect, problems, onReport, on
               onDragEnd={() => { setDrag(null); setOver(null); }} {...zone(seatKey(m))}
               title={onReport ? "drag onto a member: answers to them · shift-drop: hands off to them" : undefined}
               onClick={() => onSelect(selected === seatKey(m) ? null : seatKey(m))}>
-              <span className="org-name"><SeatMark m={m} size={16} />{seatName(m) || "unnamed"}</span>
+              <span className="org-name"><SeatMark m={m} size={16} live={live} />{seatName(m) || "unnamed"}</span>
               <span className="org-role">{titleFor(m.role || (m.reports_to ? "member" : "lead"))}<span className="org-runner"> · {m.agent ? AGENT_NAME[m.agent] ?? m.agent : "any agent"}</span></span>
               <span className="org-wf"><i style={{ background: workflowColor(info.workflows, m.workflow) }} />{m.workflow || "no workflow"}</span>
               {!!m.scope?.length && <span className="org-scope">scope: {m.scope.join(", ")}</span>}

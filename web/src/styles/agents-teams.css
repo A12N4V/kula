@@ -317,3 +317,11 @@ input.mi-title { font: 600 14px var(--mono); }
 .team-stage .map-inspector .input, .team-stage .map-inspector select, .team-stage .map-inspector textarea { width: 100%; max-width: 100%; box-sizing: border-box; }
 .team-stage .map-inspector .row { flex-wrap: wrap; }
 .org-runner { color: var(--text-3); }
+
+/* harmonograph marks: drawn once on mount, keep swinging while live */
+.hgraph { flex: none; vertical-align: middle; }
+.hgraph path { stroke-dasharray: 1; stroke-dashoffset: 0; animation: hg-draw 1.4s ease-out both; }
+.hgraph.live path { animation: hg-draw 1.4s ease-out both, hg-swing 6s linear 1.4s infinite; }
+@keyframes hg-draw { from { stroke-dashoffset: 1; } }
+@keyframes hg-swing { 0% { stroke-dashoffset: 0; } 50% { stroke-dashoffset: -1; } 50.01% { stroke-dashoffset: 1; } 100% { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .hgraph path, .hgraph.live path { animation: none; } }

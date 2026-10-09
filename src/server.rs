@@ -581,6 +581,7 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "memories": memories,
             "secrets_hidden": cfg.agents.hide_secrets,
             "memory_enabled": cfg.agents.memory,
+            "default_agent": cfg.agents.default,
             "mcp_registered": read(".mcp.json").contains("\"kula\""),
             "hook_installed": read(".claude/settings.json").contains("kula guard hook"),
             "kula_toml": crate::config::Config::exists(&r.root),

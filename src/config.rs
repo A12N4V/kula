@@ -68,6 +68,10 @@ pub struct Member {
     /// name, or `any` (empty) for whichever agent is connected.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub agent: String,
+    /// The model it should use ("claude-opus-5-5", "gpt-5"); empty for the
+    /// agent's own default.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub model: String,
     /// The workflow this agent works in while the team is active.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub workflow: String,
@@ -97,6 +101,13 @@ impl Member {
             &self.name
         }
     }
+    /// The provider that actually runs it: its own, else the repo default.
+    pub fn provider<'a>(&'a self, default: &'a str) -> &'a str {
+        match self.runner() {
+            "any" if !default.is_empty() => default,
+            r => r,
+        }
+    }
     /// The agent that runs it, for people: `any` when unset.
     pub fn runner(&self) -> &str {
         if self.agent.is_empty() {
@@ -117,11 +128,15 @@ pub struct Agents {
     pub memory: bool,
     /// Docs every agent should read first; AGENTS.md and friends are found on their own.
     pub docs: Vec<String>,
+    /// The provider a seat set to `any` runs on: the first agent connected,
+    /// until someone picks another.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub default: String,
 }
 
 impl Default for Agents {
     fn default() -> Self {
-        Agents { hide_secrets: true, memory: true, docs: vec![] }
+        Agents { hide_secrets: true, memory: true, docs: vec![], default: String::new() }
     }
 }
 
@@ -404,8 +419,21 @@ pub fn set_agents(root: &Path, a: &Agents) -> Result<Config> {
         } else {
             t["docs"] = toml_edit::value(a.docs.iter().collect::<toml_edit::Array>());
         }
+        // left out means unchanged: settings saves that predate it keep the default
+        if !a.default.is_empty() {
+            t["default"] = toml_edit::value(&a.default);
+        }
         Ok(())
     })
+}
+
+/// Make `id` the default provider if none is set yet (the first connect wins).
+pub fn default_agent_if_unset(root: &Path, id: &str) -> Result<()> {
+    let cfg = Config::load(root)?;
+    if cfg.agents.default.is_empty() {
+        set_agents(root, &Agents { default: id.to_string(), ..cfg.agents })?;
+    }
+    Ok(())
 }
 
 pub fn risk_rank(r: &str) -> u8 {
@@ -415,5 +443,30 @@ pub fn risk_rank(r: &str) -> u8 {
         "medium" => 2,
         "high" => 3,
         _ => 4,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_connect_sets_the_default_and_later_ones_keep_it() {
+        let dir = std::env::temp_dir().join(format!("kula-default-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("kula.toml"), "[agents]\nmemory = true\n").unwrap();
+        default_agent_if_unset(&dir, "codex").unwrap();
+        default_agent_if_unset(&dir, "claude").unwrap();
+        let cfg = Config::load(&dir).unwrap();
+        assert_eq!(cfg.agents.default, "codex");
+        // a settings save that predates the field leaves it alone
+        set_agents(&dir, &Agents { default: String::new(), ..cfg.agents.clone() }).unwrap();
+        assert_eq!(Config::load(&dir).unwrap().agents.default, "codex");
+        let any = Member { name: "Quill".into(), ..Default::default() };
+        let pinned = Member { agent: "gemini".into(), ..Default::default() };
+        assert_eq!(any.provider("codex"), "codex");
+        assert_eq!(pinned.provider("codex"), "gemini");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

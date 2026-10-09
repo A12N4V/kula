@@ -14,7 +14,7 @@ import { BRANDS, Mark } from "../../brands";
 import { Chips } from "../../Autofill";
 import { Icon, StatTable } from "../../ui";
 import { AGENT_NAME, type Act } from "./data";
-import { Sigil } from "../../sigil";
+import { Harmonograph } from "../../harmonograph";
 import { seatKey } from "../../roster";
 
 export const LEVEL_TEXT: Record<GuardLevel, string> = {
@@ -52,10 +52,10 @@ export const keyName = (members: { name?: string; agent: string }[], key: string
   return m ? seatName(m) : key;
 };
 
-/** A seat's mark: its generated sigil. */
-export function SeatMark({ m, size = 16 }: { m: { name?: string; agent: string }; size?: number }) {
+/** A seat's mark: the harmonograph of its name; `live` while it works. */
+export function SeatMark({ m, size = 16, live }: { m: { name?: string; agent: string }; size?: number; live?: boolean }) {
   // decorative: the seat's name always sits beside it, and the runner is written out where it matters
-  return <Sigil seed={seatKey(m)} size={size} />;
+  return <Harmonograph seed={seatKey(m)} size={size} live={live} />;
 }
 
 export function AgentMark({ id, size = 16 }: { id: string; size?: number }) {

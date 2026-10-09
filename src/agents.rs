@@ -145,6 +145,12 @@ fn mcp_server(m: &mut serde_json::Map<String, Value>) -> Result<()> {
 
 /// Wire an agent up to kula; returns the files written.
 pub fn connect(root: &Path, id: &str) -> Result<Vec<&'static str>> {
+    let files = connect_files(root, id)?;
+    crate::config::default_agent_if_unset(root, id)?;
+    Ok(files)
+}
+
+fn connect_files(root: &Path, id: &str) -> Result<Vec<&'static str>> {
     let p = |f: &str| root.join(f);
     match id {
         // Claude Code: .mcp.json, and a PreToolUse hook (exit 2 blocks, stderr goes to the agent).
@@ -847,7 +853,13 @@ pub fn brief(cfg: &Config) -> String {
                 s.push_str(&format!(
                     "| `{}` | {} | {} | {} |\n",
                     t.name,
-                    if m.name.is_empty() { m.runner().to_string() } else { format!("{} ({})", m.name, m.runner()) },
+                    {
+                        let on = match (m.provider(&cfg.agents.default), m.model.as_str()) {
+                            (p, "") => p.to_string(),
+                            (p, model) => format!("{p}, {model}"),
+                        };
+                        if m.name.is_empty() { on } else { format!("{} ({on})", m.name) }
+                    },
                     if m.workflow.is_empty() { "–" } else { &m.workflow },
                     m.role.replace('|', "/")
                 ));
