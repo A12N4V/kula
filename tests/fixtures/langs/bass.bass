@@ -1,0 +1,3 @@
+(use "./lib.bass")
+(defn helper [s] (str s "!"))
+(defn greet [name] (helper name))

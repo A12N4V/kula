@@ -1,0 +1,5 @@
+module greeter
+import "base.pkl"
+class Point { x: Int }
+function helper(s: String): String = s.toUpperCase()
+greeting = helper("x")

@@ -1,0 +1,3 @@
+{{ define "helper" }}<b>{{ . }}</b>{{ end }}
+{{ define "greet" }}{{ template "helper" .Name }}{{ end }}
+{{ template "greet" . }}

@@ -1,0 +1,5 @@
+include rules.ninja
+rule cc
+  command = cc -c $in -o $out
+build main.o: cc main.c
+build app: link main.o

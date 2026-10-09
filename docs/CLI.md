@@ -90,6 +90,18 @@ The scheme is `kula <verb>`. Graph verbs answer questions, project verbs keep th
 | surfaces | `view` (web UI) · `mcp` (agents over stdio) · `status` · `lg` |
 | git | anything else: `kula commit -am …`, `kula rebase -i`, or `kula git <args>` |
 
+### `kula lang`
+
+```bash
+kula lang list              # built in · installed · available · files of each language in this repo
+kula lang add --detected    # install every pack this repository needs
+kula lang add kotlin swift  # by id (prebuilt, sha256-checked against the release manifest)
+kula lang add zig --build   # no prebuilt for this platform: compile from the pinned grammar source
+kula lang remove kotlin
+```
+
+Packs live in `~/.kula/grammars` (`KULA_HOME` moves `~/.kula`). `KULA_LANGPACK_DIR` installs from a local directory laid out like a release. The full list and what each pack extracts: [LANGUAGES.md](LANGUAGES.md).
+
 ### `kula deps`
 
 Joins the graph's imports with every manifest in the tree (`package.json`, `Cargo.toml`, `pyproject.toml`, `requirements*.txt`, `go.mod`):

@@ -1,0 +1,4 @@
+{% import "forms.html" as forms %}
+{% macro helper(s) %}<b>{{ s|upper }}</b>{% endmacro %}
+{% macro greet(name) %}{{ helper(name) }}{% endmacro %}
+{{ greet("x") }}

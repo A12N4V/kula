@@ -1,0 +1,5 @@
+@import 'EXT:site/Configuration/TypoScript/setup.typoscript'
+lib.helper = TEXT
+lib.helper.value = Hello
+page = PAGE
+page.10 < lib.helper

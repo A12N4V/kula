@@ -69,8 +69,36 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: "wheels-${{ matrix.target }}", path: wheels }
 
+  # Language packs: every grammar in src/index/packs.toml compiled to a shared
+  # library per target, with the sha256 manifest `kula lang add` verifies
+  # against. Windows has no prebuilt packs yet (they need an MSVC build path).
+  langpacks:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macos-latest, cc: "cc", cxx: "c++" }
+          - { target: x86_64-apple-darwin, os: macos-latest, cc: "cc -arch x86_64", cxx: "c++ -arch x86_64" }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04, cc: "cc", cxx: "c++" }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm, cc: "cc", cxx: "c++" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.target }}" }
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: build packs
+        env: { CC: "${{ matrix.cc }}", CXX: "${{ matrix.cxx }}", KULA_BIN: "target/${{ matrix.target }}/release/kula" }
+        run: scripts/build-langpacks.sh dist/langpacks
+      - uses: actions/upload-artifact@v4
+        with:
+          name: langpacks-${{ matrix.target }}
+          path: |
+            dist/langpacks/langpack-*
+            dist/langpacks/langpacks-*.json
+
   release:
-    needs: build
+    needs: [build, langpacks]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +117,7 @@ jobs:
           files: |
             artifacts/bin-*/kula-*.tar.gz*
             artifacts/bin-*/*.deb
+            artifacts/langpacks-*/*
             kula-*-src.tar.gz*
             scripts/install.sh
 

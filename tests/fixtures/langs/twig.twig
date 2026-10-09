@@ -1,0 +1,4 @@
+{% import "forms.html" as forms %}
+{% macro helper(s) %}<b>{{ s|upper }}</b>{% endmacro %}
+{{ _self.helper("x") }}
+{{ forms.input("name") }}

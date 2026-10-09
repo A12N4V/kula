@@ -1,0 +1,1492 @@
+# Language packs: grammars kula loads at runtime (`kula lang add <id>`).
+# Each pack is pinned to an upstream commit (or a crates.io grammar crate when
+# the repository doesn't commit its generated parser) and paired with
+# src/index/queries/<id>.scm. `tier` is measured by `kula lang build` on the
+# grammar's own test corpus: imports (definitions, calls, imports), calls
+# (definitions and calls) or defs (definitions only).
+
+[[pack]]
+id = "gdscript"
+name = "GDScript"
+repo = "https://github.com/PrestonKnopp/tree-sitter-gdscript"
+rev = "9686853b696db07118ad110e440d6de0ca6498b4"
+exts = ["gd"]
+tier = "imports"
+
+[[pack]]
+id = "jinja"
+name = "Jinja"
+repo = "https://github.com/cathaysia/tree-sitter-jinja"
+rev = "c213d3745ccdcaaa858869181c7b1bf9557a025f"
+path = "tree-sitter-jinja"
+exts = ["jinja", "j2", "jinja2"]
+tier = "imports"
+
+[[pack]]
+id = "nasm"
+name = "Assembly"
+repo = "https://github.com/naclsn/tree-sitter-nasm"
+rev = "d1b3638d017f2a8585e26dcfc66fe1df94185e30"
+exts = ["asm", "nasm"]
+tier = "imports"
+
+[[pack]]
+id = "re2c"
+name = "re2c"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-re2c"
+rev = "c18a3c2f4b6665e35b7e50d6048ea3cff770c572"
+exts = ["re", "re2c"]
+tier = "calls"
+
+[[pack]]
+id = "arduino"
+name = "C++"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-arduino"
+rev = "11dd46c9ae25135c473c0003a133bb06a484af0c"
+exts = ["ino", "pde"]
+tier = "imports"
+
+[[pack]]
+id = "supercollider"
+name = "SuperCollider"
+repo = "https://github.com/madskjeldgaard/tree-sitter-supercollider"
+rev = "2b03ff49dd19b046add072d0861c4d1ca8a384c8"
+exts = ["scd"]
+tier = "imports"
+
+[[pack]]
+id = "kotlin"
+name = "Kotlin"
+crate = "tree-sitter-kotlin-ng@1.1.0"
+family = "jvm"
+exts = ["kt", "kts"]
+class_kinds = ["class_declaration", "object_declaration"]
+def_kinds = ["class_declaration", "object_declaration", "function_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "swift"
+name = "Swift"
+crate = "tree-sitter-swift@0.7.4"
+exts = ["swift"]
+class_kinds = ["class_declaration", "protocol_declaration"]
+def_kinds = ["class_declaration", "protocol_declaration", "function_declaration", "protocol_function_declaration", "init_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "scala"
+name = "Scala"
+repo = "https://github.com/tree-sitter/tree-sitter-scala"
+rev = "db390f312a54b04b13790e1767bfac32665c17ac"
+family = "jvm"
+exts = ["scala", "sc"]
+class_kinds = ["class_definition", "object_definition", "trait_definition", "enum_definition"]
+def_kinds = ["class_definition", "object_definition", "trait_definition", "enum_definition", "function_definition", "function_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "groovy"
+name = "Groovy"
+crate = "tree-sitter-groovy@0.1.2"
+family = "jvm"
+exts = ["groovy", "gradle", "gvy"]
+names = ["Jenkinsfile"]
+class_kinds = ["class_declaration", "interface_declaration"]
+def_kinds = ["class_declaration", "interface_declaration", "method_declaration", "function_definition"]
+tier = "imports"
+
+[[pack]]
+id = "dart"
+name = "Dart"
+crate = "tree-sitter-dart@0.2.0"
+exts = ["dart"]
+class_kinds = ["class_declaration", "mixin_declaration", "extension_declaration", "enum_declaration"]
+def_kinds = ["class_declaration", "mixin_declaration", "extension_declaration", "enum_declaration", "function_declaration", "method_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "lua"
+name = "Lua"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-lua"
+rev = "10fe0054734eec83049514ea2e718b2a56acd0c9"
+exts = ["lua"]
+names = [".luacheckrc"]
+def_kinds = ["function_declaration", "assignment_statement"]
+tier = "imports"
+
+[[pack]]
+id = "bash"
+name = "Bash"
+repo = "https://github.com/tree-sitter/tree-sitter-bash"
+rev = "a06c2e4415e9bc0346c6b86d401879ffb44058f7"
+family = "shell"
+exts = ["sh", "bash", "zsh", "ksh"]
+names = [".bashrc", ".zshrc", ".profile", ".bash_profile"]
+def_kinds = ["function_definition"]
+tier = "imports"
+
+[[pack]]
+id = "zig"
+name = "Zig"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-zig"
+rev = "6479aa13f32f701c383083d8b28360ebd682fb7d"
+exts = ["zig"]
+def_kinds = ["function_declaration", "variable_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "elixir"
+name = "Elixir"
+repo = "https://github.com/elixir-lang/tree-sitter-elixir"
+rev = "4b0c7118760af58a2e7081bbc8396e136f820b37"
+family = "beam"
+exts = ["ex", "exs"]
+names = ["mix.lock"]
+def_kinds = ["call"]
+tier = "imports"
+
+[[pack]]
+id = "erlang"
+name = "Erlang"
+repo = "https://github.com/WhatsApp/tree-sitter-erlang"
+rev = "6ba4c762eb3065495e3db85697ffeecdf364ce35"
+family = "beam"
+exts = ["erl", "hrl"]
+names = ["Emakefile", "rebar.config", "rebar.config.lock", "rebar.lock"]
+def_kinds = ["fun_decl", "record_decl"]
+tier = "imports"
+
+[[pack]]
+id = "gleam"
+name = "Gleam"
+repo = "https://github.com/gleam-lang/tree-sitter-gleam"
+rev = "fa6d0d94804f1b342e175865a3dbeb316ee5115e"
+family = "beam"
+exts = ["gleam"]
+def_kinds = ["function", "external_function", "type_definition", "type_alias"]
+tier = "imports"
+
+[[pack]]
+id = "haskell"
+name = "Haskell"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-haskell"
+rev = "98aedbd2d6947a168ba3ba3755d70b0cb6b78395"
+exts = ["hs", "lhs"]
+class_kinds = ["class"]
+def_kinds = ["function", "bind", "data_type", "newtype", "type_synonym", "class"]
+tier = "imports"
+
+[[pack]]
+id = "ocaml"
+name = "OCaml"
+repo = "https://github.com/tree-sitter/tree-sitter-ocaml"
+rev = "3b2e14e0697d405c9aa0beddfa09b71f45abc504"
+path = "grammars/ocaml"
+family = "ml"
+exts = ["ml"]
+class_kinds = ["class_binding"]
+def_kinds = ["let_binding", "module_binding", "module_type_definition", "type_binding", "class_binding", "method_definition"]
+tier = "imports"
+
+[[pack]]
+id = "fsharp"
+name = "F#"
+repo = "https://github.com/ionide/tree-sitter-fsharp"
+rev = "aefd0c8741bdf3aeb827a228aa4a996a6536697e"
+path = "fsharp"
+family = "dotnet"
+exts = ["fs", "fsx"]
+class_kinds = ["type_definition"]
+def_kinds = ["function_or_value_defn", "type_definition", "member_defn", "module_defn"]
+tier = "imports"
+
+[[pack]]
+id = "elm"
+name = "Elm"
+repo = "https://github.com/elm-tooling/tree-sitter-elm"
+rev = "e1e8fea161a1e66f3997855d316be2a43e4e956f"
+exts = ["elm"]
+def_kinds = ["value_declaration", "type_declaration", "type_alias_declaration", "port_annotation"]
+tier = "imports"
+
+[[pack]]
+id = "julia"
+name = "Julia"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-julia"
+rev = "9b92fddcedb55003b32601238653b121bc46f544"
+exts = ["jl"]
+def_kinds = ["function_definition", "macro_definition", "assignment", "struct_definition", "abstract_definition", "module_definition"]
+tier = "imports"
+
+[[pack]]
+id = "r"
+name = "R"
+repo = "https://github.com/r-lib/tree-sitter-r"
+rev = "58a22794466c0fc15b0d3b40531db751593721e8"
+exts = ["r"]
+names = [".Rapp.history", ".Rhistory", ".Rprofile", "expr-dist"]
+def_kinds = ["binary_operator"]
+tier = "imports"
+
+[[pack]]
+id = "objc"
+name = "Objective-C"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-objc"
+rev = "181a81b8f23a2d593e7ab4259981f50122909fda"
+family = "c"
+exts = ["m", "mm"]
+class_kinds = ["class_implementation", "class_interface", "protocol_declaration"]
+def_kinds = ["class_interface", "class_implementation", "protocol_declaration", "method_definition", "method_declaration", "function_definition", "struct_specifier"]
+tier = "imports"
+
+[[pack]]
+id = "matlab"
+name = "MATLAB"
+crate = "tree-sitter-matlab@1.3.1"
+exts = ["matlab", "m"]
+class_kinds = ["class_definition"]
+def_kinds = ["function_definition", "class_definition"]
+tier = "calls"
+
+[[pack]]
+id = "solidity"
+name = "Solidity"
+repo = "https://github.com/JoranHonig/tree-sitter-solidity"
+rev = "048fe686cb1fde267243739b8bdbec8fc3a55272"
+exts = ["sol"]
+class_kinds = ["contract_declaration", "library_declaration", "interface_declaration"]
+def_kinds = ["contract_declaration", "library_declaration", "interface_declaration", "struct_declaration", "enum_declaration", "event_definition", "modifier_definition", "function_definition"]
+tier = "imports"
+
+[[pack]]
+id = "sql"
+name = "SQL"
+crate = "tree-sitter-sequel@0.3.11"
+exts = ["sql"]
+def_kinds = ["create_table", "create_view", "create_materialized_view", "create_function"]
+tier = "calls"
+
+[[pack]]
+id = "hcl"
+name = "HCL"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-hcl"
+rev = "64ad62785d442eb4d45df3a1764962dafd5bc98b"
+exts = ["tf", "tfvars", "hcl"]
+def_kinds = ["block"]
+tier = "imports"
+
+[[pack]]
+id = "graphql"
+name = "GraphQL"
+repo = "https://github.com/bkegley/tree-sitter-graphql"
+rev = "5e66e961eee421786bdda8495ed1db045e06b5fe"
+exts = ["graphql", "gql"]
+def_kinds = ["object_type_definition", "interface_type_definition", "input_object_type_definition", "enum_type_definition", "union_type_definition", "scalar_type_definition", "operation_definition", "fragment_definition", "directive_definition"]
+tier = "calls"
+
+[[pack]]
+id = "proto"
+name = "Protocol Buffer"
+repo = "https://github.com/coder3101/tree-sitter-proto"
+rev = "be5691cf82ca284f83e68b9c8cdc4cac5d7fa208"
+exts = ["proto"]
+class_kinds = ["service"]
+def_kinds = ["message", "enum", "service", "rpc"]
+tier = "imports"
+
+[[pack]]
+id = "fortran"
+name = "Fortran Free Form"
+repo = "https://github.com/stadelmanma/tree-sitter-fortran"
+rev = "2bc0220f34ca660ec9571c54ea57ed5363338de1"
+exts = ["f90", "f95", "f03", "f08", "f", "for", "f77"]
+def_kinds = ["function", "subroutine", "module", "program", "derived_type_definition"]
+tier = "imports"
+
+[[pack]]
+id = "powershell"
+name = "PowerShell"
+repo = "https://github.com/airbus-cert/tree-sitter-powershell"
+rev = "e7bd348c49fdfd5c853a146a670965ba516a6239"
+exts = ["ps1", "psm1", "psd1"]
+class_kinds = ["class_statement"]
+def_kinds = ["function_statement", "class_statement", "class_method_definition"]
+tier = "imports"
+
+[[pack]]
+id = "make"
+name = "Makefile"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-make"
+rev = "70613f3d812cbabbd7f38d104d60a409c4008b43"
+exts = ["mk", "mak", "make"]
+names = ["Makefile", "makefile", "GNUmakefile"]
+def_kinds = ["rule", "define_directive"]
+tier = "imports"
+
+[[pack]]
+id = "cmake"
+name = "CMake"
+repo = "https://github.com/uyha/tree-sitter-cmake"
+rev = "58993af75218bc99a1f5a04c832a5937e7c422cb"
+exts = ["cmake"]
+names = ["CMakeLists.txt"]
+def_kinds = ["function_def", "macro_def"]
+tier = "imports"
+
+[[pack]]
+id = "nix"
+name = "Nix"
+repo = "https://github.com/nix-community/tree-sitter-nix"
+rev = "f5b1119859a538ad63232c41e4fe5e35b095c054"
+exts = ["nix"]
+def_kinds = ["binding"]
+tier = "imports"
+
+[[pack]]
+id = "systemverilog"
+name = "SystemVerilog"
+repo = "https://github.com/gmlarumbe/tree-sitter-systemverilog"
+rev = "d6be6119fe4d04c65c567e7b79625aa6280fea34"
+family = "hdl"
+exts = ["v", "sv", "svh", "vh"]
+class_kinds = ["class_declaration"]
+def_kinds = ["module_declaration", "interface_declaration", "package_declaration", "class_declaration", "function_declaration", "task_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "vhdl"
+name = "VHDL"
+repo = "https://github.com/jpt13653903/tree-sitter-vhdl"
+rev = "9be8e45c3ae7e7a4373a943a5c81ff92ce3656f8"
+family = "hdl"
+exts = ["vhd", "vhdl"]
+def_kinds = ["entity_declaration", "architecture_definition", "package_declaration", "subprogram_definition", "subprogram_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "d"
+name = "D"
+repo = "https://github.com/gdamore/tree-sitter-d"
+rev = "64f27931b4e6fdd75af1102c79bacbca68a8dacc"
+exts = ["d", "di"]
+class_kinds = ["class_declaration", "struct_declaration", "interface_declaration"]
+def_kinds = ["function_declaration", "class_declaration", "struct_declaration", "interface_declaration", "enum_declaration", "template_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "pascal"
+name = "Pascal"
+repo = "https://github.com/Isopod/tree-sitter-pascal"
+rev = "042119eca2e18a60e56317fb06ee3ba5c32cb447"
+exts = ["pas", "dpr", "lpr"]
+class_kinds = ["declClass"]
+def_kinds = ["defProc", "declProc", "declType"]
+tier = "imports"
+
+[[pack]]
+id = "ada"
+name = "Ada"
+repo = "https://github.com/briot/tree-sitter-ada"
+rev = "dd5fa4cdb3aba91abc687aa68fb1431396fce6a6"
+exts = ["adb", "ads", "ada"]
+def_kinds = ["subprogram_body", "subprogram_declaration", "package_declaration", "package_body", "full_type_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "commonlisp"
+name = "Common Lisp"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-commonlisp"
+rev = "32323509b3d9fe96607d151c2da2c9009eb13a2f"
+family = "lisp"
+exts = ["lisp", "lsp", "cl", "asd"]
+def_kinds = ["defun", "list_lit"]
+tier = "imports"
+
+[[pack]]
+id = "elisp"
+name = "Emacs Lisp"
+crate = "tree-sitter-elisp@1.7.2"
+family = "lisp"
+exts = ["el"]
+names = [".emacs"]
+def_kinds = ["function_definition", "macro_definition"]
+tier = "imports"
+
+[[pack]]
+id = "racket"
+name = "Racket"
+repo = "https://github.com/6cdh/tree-sitter-racket"
+rev = "b3cbbde75ce2de3079e33c7fe90bd41b1d45be48"
+family = "scheme"
+exts = ["rkt", "rktl"]
+def_kinds = ["list"]
+tier = "imports"
+
+[[pack]]
+id = "scheme"
+name = "Scheme"
+repo = "https://github.com/6cdh/tree-sitter-scheme"
+rev = "1b112d9571e4f62fb3d095d52a51f1da7756fb94"
+exts = ["scm", "ss", "sld"]
+def_kinds = ["list"]
+tier = "imports"
+
+[[pack]]
+id = "glsl"
+name = "GLSL"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-glsl"
+rev = "24a6c8ef698e4480fecf8340d771fbcb5de8fbb4"
+family = "shader"
+exts = ["glsl", "vert", "frag", "geom", "comp", "tesc", "tese"]
+def_kinds = ["function_definition", "struct_specifier"]
+tier = "imports"
+
+[[pack]]
+id = "cuda"
+name = "Cuda"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-cuda"
+rev = "d58080a327756e4d1d16ec329ba7cb2048f6c6cd"
+family = "c"
+exts = ["cu", "cuh"]
+class_kinds = ["class_specifier", "struct_specifier"]
+def_kinds = ["function_definition", "class_specifier", "struct_specifier"]
+tier = "imports"
+
+[[pack]]
+id = "odin"
+name = "Odin"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-odin"
+rev = "d2ca8efb4487e156a60d5bd6db2598b872629403"
+exts = ["odin"]
+def_kinds = ["procedure_declaration", "overloaded_procedure_declaration", "struct_declaration", "enum_declaration", "union_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "starlark"
+name = "Starlark"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-starlark"
+rev = "a453dbf3ba433db0e5ec621a38a7e59d72e4dc69"
+family = "python"
+exts = ["bzl", "star", "bazel"]
+names = ["BUILD", "BUILD.bazel", "WORKSPACE", "Tiltfile"]
+def_kinds = ["function_definition"]
+tier = "imports"
+
+[[pack]]
+id = "puppet"
+name = "Puppet"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-puppet"
+rev = "15f192929b7d317f5914de2b4accd37b349182a6"
+exts = ["pp"]
+names = ["Modulefile"]
+def_kinds = ["class_definition", "defined_resource_type", "function_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "bicep"
+name = "Bicep"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-bicep"
+rev = "bff59884307c0ab009bd5e81afd9324b46a6c0f9"
+exts = ["bicep"]
+def_kinds = ["user_defined_function", "resource_declaration", "module_declaration", "type_declaration"]
+tier = "imports"
+
+[[pack]]
+id = "agda"
+name = "Agda"
+repo = "https://github.com/tree-sitter/tree-sitter-agda"
+rev = "e8d47a6987effe34d5595baf321d82d3519a8527"
+exts = ["agda"]
+tier = "imports"
+
+[[pack]]
+id = "apex"
+name = "Apex"
+repo = "https://github.com/aheber/tree-sitter-sfapex"
+rev = "da568eee10ce4724a40f368b2b7e795dacb4f1ba"
+path = "apex"
+exts = ["cls", "apex", "trigger"]
+tier = "imports"
+
+[[pack]]
+id = "asm"
+name = "Assembly"
+repo = "https://github.com/RubixDev/tree-sitter-asm"
+rev = "839741fef4dab5128952334624905c82b40c7133"
+exts = ["s"]
+tier = "calls"
+
+[[pack]]
+id = "authzed"
+name = "SpiceDB"
+repo = "https://github.com/mleonidas/tree-sitter-authzed"
+rev = "83e5c26a8687eb4688fe91d690c735cc3d21ad81"
+exts = ["zed"]
+tier = "imports"
+
+[[pack]]
+id = "awk"
+name = "Awk"
+repo = "https://github.com/Beaglefoot/tree-sitter-awk"
+rev = "34bbdc7cce8e803096f47b625979e34c1be38127"
+exts = ["awk", "auk", "gawk", "mawk", "nawk"]
+tier = "calls"
+
+[[pack]]
+id = "bass"
+name = "Bass"
+repo = "https://github.com/vito/tree-sitter-bass"
+rev = "28dc7059722be090d04cd751aed915b2fee2f89a"
+exts = ["bass"]
+tier = "imports"
+
+[[pack]]
+id = "bitbake"
+name = "BitBake"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-bitbake"
+rev = "a5d04fdb5a69a02b8fa8eb5525a60dfb5309b73b"
+exts = ["bb", "bbappend", "bbclass", "inc"]
+tier = "defs"
+
+[[pack]]
+id = "blade"
+name = "Blade"
+repo = "https://github.com/EmranMR/tree-sitter-blade"
+rev = "b5291d1ba207a8ebb8383b2ecb8a8a6535210a50"
+exts = ["blade.php", "blade"]
+tier = "imports"
+
+[[pack]]
+id = "bp"
+name = "bp"
+repo = "https://github.com/ambroisie/tree-sitter-bp"
+rev = "ee641d15390183d7535777947ce0f2f1fbcee69f"
+exts = ["bp"]
+tier = "calls"
+
+[[pack]]
+id = "bpftrace"
+name = "bpftrace"
+repo = "https://github.com/sgruszka/tree-sitter-bpftrace"
+rev = "8269e497af01ef26edea3283bc21ed71ada61f44"
+exts = ["bt"]
+tier = "imports"
+
+[[pack]]
+id = "brightscript"
+name = "Brightscript"
+repo = "https://github.com/ajdelcimmuto/tree-sitter-brightscript"
+rev = "0c534d56bb04778d0a3510bed5e720d1fe15cb76"
+exts = ["brs"]
+tier = "imports"
+
+[[pack]]
+id = "c3"
+name = "C3"
+repo = "https://github.com/c3lang/tree-sitter-c3"
+rev = "e4d3418873ff9f36c71474b5b08c204289f46fb0"
+exts = ["c3"]
+tier = "imports"
+
+[[pack]]
+id = "cairo"
+name = "Cairo"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-cairo"
+rev = "6238f609bea233040fe927858156dee5515a0745"
+exts = ["cairo"]
+tier = "imports"
+
+[[pack]]
+id = "capnp"
+name = "Cap'n Proto"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-capnp"
+rev = "7b0883c03e5edd34ef7bcf703194204299d7099f"
+exts = ["capnp"]
+tier = "imports"
+
+[[pack]]
+id = "circom"
+name = "Circom"
+repo = "https://github.com/Decurity/tree-sitter-circom"
+rev = "02150524228b1e6afef96949f2d6b7cc0aaf999e"
+exts = ["circom"]
+tier = "imports"
+
+[[pack]]
+id = "clojure"
+name = "Clojure"
+repo = "https://github.com/sogaiu/tree-sitter-clojure"
+rev = "e43eff80d17cf34852dcd92ca5e6986d23a7040f"
+exts = ["clj", "boot", "cl2", "cljc", "cljs", "cljs.hl", "cljscm", "cljx", "hic"]
+names = ["riemann.config"]
+tier = "imports"
+
+[[pack]]
+id = "css"
+name = "CSS"
+repo = "https://github.com/tree-sitter/tree-sitter-css"
+rev = "dda5cfc5722c429eaba1c910ca32c2c0c5bb1a3f"
+exts = ["css"]
+tier = "imports"
+
+[[pack]]
+id = "cue"
+name = "CUE"
+repo = "https://github.com/eonpatapon/tree-sitter-cue"
+rev = "dd7b90e0770ff18070c515937ba3c3d6d93db00e"
+exts = ["cue"]
+tier = "imports"
+
+[[pack]]
+id = "cylc"
+name = "Cylc"
+repo = "https://github.com/elliotfontaine/tree-sitter-cylc"
+rev = "6d1d81137112299324b526477ce1db989ab58fb8"
+exts = ["cylc"]
+names = ["suite.rc"]
+tier = "calls"
+
+[[pack]]
+id = "devicetree"
+name = "Devicetree"
+repo = "https://github.com/joelspadin/tree-sitter-devicetree"
+rev = "e78bf56f206cb47bee28a217423acb651e076848"
+exts = ["dts", "dtsi"]
+tier = "imports"
+
+[[pack]]
+id = "dhall"
+name = "Dhall"
+repo = "https://github.com/jbellerb/tree-sitter-dhall"
+rev = "62013259b26ac210d5de1abf64cf1b047ef88000"
+exts = ["dhall"]
+tier = "imports"
+
+[[pack]]
+id = "dockerfile"
+name = "Dockerfile"
+repo = "https://github.com/camdencheek/tree-sitter-dockerfile"
+rev = "971acdd908568b4531b0ba28a445bf0bb720aba5"
+exts = ["dockerfile", "containerfile"]
+names = ["Containerfile", "Dockerfile"]
+tier = "imports"
+
+[[pack]]
+id = "earthfile"
+name = "Earthly"
+repo = "https://github.com/glehmann/tree-sitter-earthfile"
+rev = "5baef88717ad0156fd29a8b12d0d8245bb1096a8"
+exts = []
+names = ["Earthfile"]
+tier = "imports"
+
+[[pack]]
+id = "ebnf"
+name = "EBNF"
+repo = "https://github.com/RubixDev/ebnf"
+rev = "8e635b0b723c620774dfb8abf382a7f531894b40"
+path = "crates/tree-sitter-ebnf"
+exts = ["ebnf"]
+tier = "calls"
+
+[[pack]]
+id = "elsa"
+name = "Elsa"
+repo = "https://github.com/glapa-grossklag/tree-sitter-elsa"
+rev = "0a66b2b3f3c1915e67ad2ef9f7dbd2a84820d9d7"
+exts = ["lc"]
+tier = "calls"
+
+[[pack]]
+id = "elvish"
+name = "Elvish"
+repo = "https://github.com/elves/tree-sitter-elvish"
+rev = "5e7210d945425b77f82cbaebc5af4dd3e1ad40f5"
+exts = ["elv"]
+tier = "imports"
+
+[[pack]]
+id = "facility"
+name = "facility"
+repo = "https://github.com/FacilityApi/tree-sitter-facility"
+rev = "e4bfd3e960de9f4b4648acb1c92e9b95b47d8cfb"
+exts = ["fac"]
+tier = "defs"
+
+[[pack]]
+id = "faust"
+name = "Faust"
+repo = "https://github.com/khiner/tree-sitter-faust"
+rev = "6074204d3511392fd0b9c4fa1cef347ded65b246"
+exts = ["dsp"]
+tier = "imports"
+
+[[pack]]
+id = "fennel"
+name = "Fennel"
+repo = "https://github.com/alexmozaidze/tree-sitter-fennel"
+rev = "3f0f6b24d599e92460b969aabc4f4c5a914d15a0"
+exts = ["fnl"]
+tier = "imports"
+
+[[pack]]
+id = "fidl"
+name = "FIDL"
+repo = "https://github.com/google/tree-sitter-fidl"
+rev = "bd81f6429a1539b05f52a4344bc9f6ac11d73d1f"
+exts = ["fidl"]
+tier = "defs"
+
+[[pack]]
+id = "firrtl"
+name = "FIRRTL"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-firrtl"
+rev = "8503d3a0fe0f9e427863cb0055699ff2d29ae5f5"
+exts = ["fir"]
+tier = "defs"
+
+[[pack]]
+id = "fish"
+name = "fish"
+repo = "https://github.com/ram02z/tree-sitter-fish"
+rev = "b7f1d682941e0c62dfcd6bf9ef481638351bab16"
+exts = ["fish"]
+tier = "calls"
+
+[[pack]]
+id = "forth"
+name = "Forth"
+repo = "https://github.com/AlexanderBrevig/tree-sitter-forth"
+rev = "7190f2173060d19a2174c96bfb5b7c6f9745512b"
+exts = ["fth", "4th", "forth", "fr", "frt"]
+tier = "calls"
+
+[[pack]]
+id = "fsh"
+name = "FSH"
+repo = "https://github.com/mgramigna/tree-sitter-fsh"
+rev = "fad2e175099a45efbc98f000cc196d3674cc45e0"
+exts = ["fsh"]
+tier = "calls"
+
+[[pack]]
+id = "func"
+name = "FunC"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-func"
+rev = "f780ca55e65e7d7360d0229331763e16c452fc98"
+exts = ["fc"]
+tier = "calls"
+
+[[pack]]
+id = "gap"
+name = "GAP"
+repo = "https://github.com/gap-system/tree-sitter-gap"
+rev = "96fe2e49745ecd62b80cd19dca01fb52b83f93a1"
+exts = ["g", "gi", "gap"]
+tier = "imports"
+
+[[pack]]
+id = "gdshader"
+name = "GDShader"
+repo = "https://github.com/airblast-dev/tree-sitter-gdshader"
+rev = "68268631c8b6dc093985f1246b099f81b30ea7d1"
+exts = ["gdshader", "gdshaderinc"]
+tier = "imports"
+
+[[pack]]
+id = "gn"
+name = "GN"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-gn"
+rev = "bc06955bc1e3c9ff8e9b2b2a55b38b94da923c05"
+exts = ["gn", "gni"]
+names = [".gn"]
+tier = "imports"
+
+[[pack]]
+id = "gnuplot"
+name = "Gnuplot"
+repo = "https://github.com/dpezto/tree-sitter-gnuplot"
+rev = "63d0389ced38c411d501ae4ee83450d32fa4f8ad"
+exts = ["gp", "gnu", "gnuplot", "p", "plot", "plt"]
+tier = "defs"
+
+[[pack]]
+id = "gotmpl"
+name = "Go Template"
+repo = "https://github.com/ngalaiko/tree-sitter-go-template"
+rev = "06b2fd2ac32a7be71cdcf925eeeb868a68e2acde"
+exts = ["gohtml", "gotmpl", "html.tmpl", "tmpl", "tpl"]
+names = ["_helpers.tpl"]
+tier = "calls"
+
+[[pack]]
+id = "gren"
+name = "Gren"
+repo = "https://github.com/MaeBrooks/tree-sitter-gren"
+rev = "cecd8ce9b18f1803d37682f33b6224978fd04d31"
+exts = ["gren"]
+tier = "imports"
+
+[[pack]]
+id = "hack"
+name = "Hack"
+repo = "https://github.com/slackhq/tree-sitter-hack"
+rev = "1a7ded90288189746c54861ac144ede97df95081"
+exts = ["hack", "hhi"]
+tier = "imports"
+
+[[pack]]
+id = "hare"
+name = "Hare"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-hare"
+rev = "eed7ddf6a66b596906aa8ca3d40521b8278adc6f"
+exts = ["ha"]
+tier = "imports"
+
+[[pack]]
+id = "hlsl"
+name = "HLSL"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-hlsl"
+rev = "bab9111922d53d43668fabb61869bec51bbcb915"
+exts = ["hlsl", "cginc", "fx", "fxh", "hlsli"]
+tier = "imports"
+
+[[pack]]
+id = "hoon"
+name = "hoon"
+repo = "https://github.com/urbit-pilled/tree-sitter-hoon"
+rev = "1545137aadcc63660c47db9ad98d02fa602655d0"
+exts = ["hoon"]
+tier = "imports"
+
+[[pack]]
+id = "htmldjango"
+name = "Jinja"
+repo = "https://github.com/interdependence/tree-sitter-htmldjango"
+rev = "a10318892603d9a0b925df7cc7771a840304b997"
+exts = ["django", "djhtml"]
+tier = "imports"
+
+[[pack]]
+id = "idl"
+name = "Web IDL"
+repo = "https://github.com/cathaysia/tree-sitter-idl"
+rev = "b5ecf511e542e43313ba4602bdb206a08cb06232"
+exts = ["webidl", "idl"]
+tier = "defs"
+
+[[pack]]
+id = "idris"
+name = "Idris"
+repo = "https://github.com/kayhide/tree-sitter-idris"
+rev = "9fe334fb603fdce0e84349ed78f41ae3d2f7036b"
+exts = ["idr", "lidr"]
+tier = "imports"
+
+[[pack]]
+id = "inko"
+name = "Inko"
+repo = "https://github.com/inko-lang/tree-sitter-inko"
+rev = "e3236318f52613e7240ee82611a671257d6475d8"
+exts = ["inko"]
+tier = "imports"
+
+[[pack]]
+id = "ispc"
+name = "ISPC"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-ispc"
+rev = "ba1bb38ac8ddfa6aa7571cbfe9b4d029f7f77447"
+exts = ["ispc"]
+tier = "imports"
+
+[[pack]]
+id = "janet_simple"
+name = "Janet"
+repo = "https://github.com/sogaiu/tree-sitter-janet-simple"
+rev = "3c1bdcfff374138da03a1db25c75efce623910fe"
+exts = ["janet"]
+tier = "imports"
+
+[[pack]]
+id = "jq"
+name = "jq"
+repo = "https://github.com/flurie/tree-sitter-jq"
+rev = "c204e36d2c3c6fce1f57950b12cabcc24e5cc4d9"
+exts = ["jq"]
+tier = "imports"
+
+[[pack]]
+id = "jsonnet"
+name = "Jsonnet"
+repo = "https://github.com/sourcegraph/tree-sitter-jsonnet"
+rev = "ddd075f1939aed8147b7aa67f042eda3fce22790"
+exts = ["jsonnet", "libsonnet"]
+tier = "imports"
+
+[[pack]]
+id = "just"
+name = "Just"
+repo = "https://github.com/IndianBoy42/tree-sitter-just"
+rev = "5685543a6e64f66335e25518c9ae8ffa1dae3d01"
+exts = ["just"]
+names = [".JUSTFILE", ".Justfile", ".justfile", "JUSTFILE", "Justfile", "justfile"]
+tier = "imports"
+
+[[pack]]
+id = "kcl"
+name = "KCL"
+repo = "https://github.com/kcl-lang/tree-sitter-kcl"
+rev = "6a5cc921928660cd6756cd6e0d636d9e24ea348e"
+exts = ["k"]
+names = ["kcl.mod", "kcl.mod.lock"]
+tier = "imports"
+
+[[pack]]
+id = "kconfig"
+name = "Kconfig"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-kconfig"
+rev = "9ac99fe4c0c27a35dc6f757cef534c646e944881"
+exts = []
+names = ["Kconfig"]
+tier = "imports"
+
+[[pack]]
+id = "kos"
+name = "KerboScript"
+repo = "https://github.com/kos-lang/tree-sitter-kos"
+rev = "a7338629da17c5246dc2129cd2a493a6ee59e922"
+exts = ["ks"]
+tier = "imports"
+
+[[pack]]
+id = "koto"
+name = "Koto"
+repo = "https://github.com/koto-lang/tree-sitter-koto"
+rev = "e8d41cbaca867aa1b0213e1fc1caeaf593da7bf7"
+exts = ["koto"]
+tier = "imports"
+
+[[pack]]
+id = "kusto"
+name = "Kusto"
+repo = "https://github.com/Willem-J-an/tree-sitter-kusto"
+rev = "8353a1296607d6ba33db7c7e312226e5fc83e8ce"
+exts = ["csl", "kql"]
+tier = "calls"
+
+[[pack]]
+id = "lalrpop"
+name = "LALRPOP"
+repo = "https://github.com/traxys/tree-sitter-lalrpop"
+rev = "27b0f7bb55b4cabd8f01a933d9ee6a49dbfc2192"
+exts = ["lalrpop"]
+tier = "imports"
+
+[[pack]]
+id = "leo"
+name = "Leo"
+repo = "https://github.com/r001/tree-sitter-leo"
+rev = "6bc5564917edacd070afc4d33cf5e2e677831ea9"
+exts = ["leo"]
+tier = "calls"
+
+[[pack]]
+id = "liquid"
+name = "Liquid"
+repo = "https://github.com/hankthetank27/tree-sitter-liquid"
+rev = "e45dbac8c5fa95b1f0e00e7e0c04bc8855823391"
+exts = ["liquid"]
+tier = "imports"
+
+[[pack]]
+id = "liquidsoap"
+name = "Liquidsoap"
+repo = "https://github.com/savonet/tree-sitter-liquidsoap"
+rev = "a094345ace46277b23dbcb81a5d8cd972df32183"
+exts = ["liq"]
+tier = "imports"
+
+[[pack]]
+id = "llvm"
+name = "LLVM"
+repo = "https://github.com/benwilliamgraham/tree-sitter-llvm"
+rev = "2914786ae6774d4c4e25a230f4afe16aa68fe1c1"
+exts = ["ll"]
+tier = "calls"
+
+[[pack]]
+id = "luau"
+name = "Luau"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-luau"
+rev = "a8914d6c1fc5131f8e1c13f769fa704c9f5eb02f"
+exts = ["luau"]
+tier = "imports"
+
+[[pack]]
+id = "m68k"
+name = "Motorola 68K Assembly"
+repo = "https://github.com/grahambates/tree-sitter-m68k"
+rev = "ab9f2ad96db56619d05a6474a52e3dbdd705a637"
+exts = ["i", "x68"]
+tier = "imports"
+
+[[pack]]
+id = "menhir"
+name = "Menhir"
+repo = "https://github.com/Kerl13/tree-sitter-menhir"
+rev = "be8866a6bcc2b563ab0de895af69daeffa88fe70"
+exts = ["mly"]
+tier = "calls"
+
+[[pack]]
+id = "nickel"
+name = "Nickel"
+repo = "https://github.com/nickel-lang/tree-sitter-nickel"
+rev = "fd65591d3c7812b0e3e733506f3f08a354a38ea6"
+exts = ["ncl"]
+tier = "imports"
+
+[[pack]]
+id = "nim"
+name = "Nim"
+repo = "https://github.com/alaviss/tree-sitter-nim"
+rev = "ac72ba30d16edf0be021588a9301ede4accd6cf4"
+exts = ["nim", "nim.cfg", "nimble", "nimrod", "nims"]
+tier = "imports"
+
+[[pack]]
+id = "ninja"
+name = "Ninja"
+repo = "https://github.com/alemuller/tree-sitter-ninja"
+rev = "0a95cfdc0745b6ae82f60d3a339b37f19b7b9267"
+exts = ["ninja"]
+tier = "imports"
+
+[[pack]]
+id = "nqc"
+name = "nqc"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-nqc"
+rev = "14e6da1627aaef21d2b2aa0c37d04269766dcc1d"
+exts = ["nqc"]
+tier = "imports"
+
+[[pack]]
+id = "nu"
+name = "Nushell"
+repo = "https://github.com/nushell/tree-sitter-nu"
+rev = "4f577aaa735154f934594b598a69ed7b1b707cf6"
+exts = ["nu"]
+tier = "imports"
+
+[[pack]]
+id = "pioasm"
+name = "PIO Assembly"
+repo = "https://github.com/leo60228/tree-sitter-pioasm"
+rev = "afece58efdb30440bddd151ef1347fa8d6f744a9"
+exts = ["pio"]
+tier = "calls"
+
+[[pack]]
+id = "pkl"
+name = "Pkl"
+repo = "https://github.com/apple/tree-sitter-pkl"
+rev = "c837eff683d62f3cb5e6309b44c257640f202d4b"
+exts = ["pkl"]
+tier = "imports"
+
+[[pack]]
+id = "pony"
+name = "Pony"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-pony"
+rev = "73ff874ae4c9e9b45462673cbc0a1e350e2522a7"
+exts = ["pony"]
+tier = "imports"
+
+[[pack]]
+id = "prisma"
+name = "Prisma"
+repo = "https://github.com/victorhqc/tree-sitter-prisma"
+rev = "3556b2c1f20ec9ac91e92d32c43d9d2a0ca3cc49"
+exts = ["prisma"]
+tier = "calls"
+
+[[pack]]
+id = "prql"
+name = "PRQL"
+repo = "https://github.com/PRQL/tree-sitter-prql"
+rev = "09e158cd3650581c0af4c49c2e5b10c4834c8646"
+exts = ["prql"]
+tier = "calls"
+
+[[pack]]
+id = "purescript"
+name = "PureScript"
+repo = "https://github.com/postsolar/tree-sitter-purescript"
+rev = "f541f95ffd6852fbbe88636317c613285bc105af"
+exts = ["purs"]
+tier = "imports"
+
+[[pack]]
+id = "ql"
+name = "CodeQL"
+repo = "https://github.com/tree-sitter/tree-sitter-ql"
+rev = "d9d6c853caf0f882e6371e4d4da5817c48c8a8d8"
+exts = ["ql", "qll"]
+tier = "imports"
+
+[[pack]]
+id = "qmljs"
+name = "QML"
+repo = "https://github.com/yuja/tree-sitter-qmljs"
+rev = "de96ed62abded51fcdfcbeaaa120e0dd0d20c697"
+exts = ["qml", "qbs"]
+tier = "imports"
+
+[[pack]]
+id = "ralph"
+name = "Ralph"
+repo = "https://github.com/alephium/tree-sitter-ralph"
+rev = "f6d81bf7a4599c77388035439cf5801cd461ff77"
+exts = ["ral"]
+tier = "imports"
+
+[[pack]]
+id = "razor"
+name = "HTML+Razor"
+repo = "https://github.com/tris203/tree-sitter-razor"
+rev = "d4664e409caaea12f73c9525484e3cf88b1cf718"
+exts = ["cshtml", "razor"]
+tier = "imports"
+
+[[pack]]
+id = "rbs"
+name = "RBS"
+repo = "https://github.com/joker1007/tree-sitter-rbs"
+rev = "ff2d91789c0edec421b5c51bad79f59a2abfa81e"
+exts = ["rbs"]
+tier = "defs"
+
+[[pack]]
+id = "rego"
+name = "Open Policy Agent"
+repo = "https://github.com/FallenAngel97/tree-sitter-rego"
+rev = "da2a1f63cd877efb05d56de61fe516e90012b9a7"
+exts = ["rego"]
+tier = "imports"
+
+[[pack]]
+id = "rescript"
+name = "ReScript"
+repo = "https://github.com/rescript-lang/tree-sitter-rescript"
+rev = "90643a6302057b969c51e1bf235b8ecf1da49232"
+exts = ["res", "resi"]
+tier = "imports"
+
+[[pack]]
+id = "robot"
+name = "RobotFramework"
+repo = "https://github.com/Hubro/tree-sitter-robot"
+rev = "b761372af09e6568930ceec2412472179f8751af"
+exts = ["robot", "resource"]
+tier = "imports"
+
+[[pack]]
+id = "roc"
+name = "Roc"
+repo = "https://github.com/faldor20/tree-sitter-roc"
+rev = "40e52f343f1b1f270d6ecb2ca898ca9b8cba6936"
+exts = ["roc"]
+tier = "imports"
+
+[[pack]]
+id = "scss"
+name = "SCSS"
+repo = "https://github.com/serenadeai/tree-sitter-scss"
+rev = "c478c6868648eff49eb04a4df90d703dc45b312a"
+exts = ["scss"]
+tier = "imports"
+
+[[pack]]
+id = "slang"
+name = "Slang"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-slang"
+rev = "1dbcc4abc7b3cdd663eb03d93031167d6ed19f56"
+exts = ["slang"]
+tier = "imports"
+
+[[pack]]
+id = "slint"
+name = "Slint"
+repo = "https://github.com/slint-ui/tree-sitter-slint"
+rev = "68b25244cec6eb9d7f8f790ef781c29c822d8f84"
+exts = ["slint"]
+tier = "imports"
+
+[[pack]]
+id = "smali"
+name = "Smali"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-smali"
+rev = "fdfa6a1febc43c7467aa7e937b87b607956f2346"
+exts = ["smali"]
+tier = "imports"
+
+[[pack]]
+id = "smithy"
+name = "Smithy"
+repo = "https://github.com/indoorvivants/tree-sitter-smithy"
+rev = "ec4fe14586f2b0a1bc65d6db17f8d8acd8a90433"
+exts = ["smithy"]
+tier = "defs"
+
+[[pack]]
+id = "snakemake"
+name = "Snakemake"
+repo = "https://github.com/osthomas/tree-sitter-snakemake"
+rev = "68010430c3e51c0e84c1ce21c6551df0e2469f51"
+exts = ["smk", "snakefile"]
+names = ["Snakefile"]
+tier = "imports"
+
+[[pack]]
+id = "sourcepawn"
+name = "SourcePawn"
+repo = "https://github.com/nilshelmig/tree-sitter-sourcepawn"
+rev = "2ef2d389c29b952f8b23909783f7d3c7972046f5"
+exts = ["sp"]
+tier = "imports"
+
+[[pack]]
+id = "sproto"
+name = "sproto"
+repo = "https://github.com/hanxi/tree-sitter-sproto"
+rev = "d554c1456e35e7b2690552d52921c987d0cf6799"
+exts = ["sproto"]
+tier = "calls"
+
+[[pack]]
+id = "squirrel"
+name = "Squirrel"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-squirrel"
+rev = "072c969749e66f000dba35a33c387650e203e96e"
+exts = ["nut"]
+tier = "imports"
+
+[[pack]]
+id = "sway"
+name = "Sway"
+repo = "https://github.com/FuelLabs/tree-sitter-sway.git"
+rev = "9b7845ce06ecb38b040c3940970b4fd0adc331d1"
+exts = ["sw"]
+tier = "imports"
+
+[[pack]]
+id = "systemtap"
+name = "SystemTap"
+repo = "https://github.com/ok-ryoko/tree-sitter-systemtap"
+rev = "f2b378a9af0b7e1192cff67a5fb45508c927205d"
+exts = ["stp"]
+tier = "calls"
+
+[[pack]]
+id = "t32"
+name = "t32"
+repo = "https://github.com/xasc/tree-sitter-t32"
+rev = "11947ac01ba681fb6f62667cb1447354833f4a5b"
+exts = ["cmm"]
+tier = "calls"
+
+[[pack]]
+id = "tablegen"
+name = "TableGen"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-tablegen"
+rev = "b1170880c61355aaf38fc06f4af7d3c55abdabc4"
+exts = ["td"]
+tier = "defs"
+
+[[pack]]
+id = "tact"
+name = "Tact"
+repo = "https://github.com/tact-lang/tree-sitter-tact"
+rev = "1c689f0a8bbe5910db628a62bfc26d37f54bf9be"
+exts = ["tact"]
+tier = "imports"
+
+[[pack]]
+id = "tcl"
+name = "Tcl"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-tcl"
+rev = "850a72ab6436e06645b33b11cfa60cbdb04b1f01"
+exts = ["tcl", "adp", "sdc", "tcl.in", "tm", "xdc"]
+names = ["owh", "starfield"]
+tier = "imports"
+
+[[pack]]
+id = "templ"
+name = "templ"
+repo = "https://github.com/vrischmann/tree-sitter-templ"
+rev = "94d40865c15ebbaff9ed11dde5d6490b0f5de092"
+exts = ["templ"]
+tier = "imports"
+
+[[pack]]
+id = "tera"
+name = "Tera"
+repo = "https://github.com/uncenter/tree-sitter-tera"
+rev = "54b3f8b43aecdbcf12a7366920f0bc8274af1dd0"
+exts = ["tera"]
+tier = "imports"
+
+[[pack]]
+id = "thrift"
+name = "Thrift"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-thrift"
+rev = "68fd0d80943a828d9e6f49c58a74be1e9ca142cf"
+exts = ["thrift"]
+tier = "defs"
+
+[[pack]]
+id = "tiger"
+name = "Tiger"
+repo = "https://github.com/ambroisie/tree-sitter-tiger"
+rev = "4a77b2d7a004587646bddc4e854779044b6db459"
+exts = ["tig"]
+tier = "imports"
+
+[[pack]]
+id = "tlaplus"
+name = "TLA"
+repo = "https://github.com/tlaplus-community/tree-sitter-tlaplus"
+rev = "add40814fda369f6efd989977b2c498aaddde984"
+exts = ["tla"]
+tier = "defs"
+
+[[pack]]
+id = "twig"
+name = "Twig"
+repo = "https://github.com/gbprod/tree-sitter-twig"
+rev = "2208d2a3c3ee7ef378e97df2e51c18feb7ee9dfc"
+exts = ["twig"]
+tier = "imports"
+
+[[pack]]
+id = "typespec"
+name = "TypeSpec"
+repo = "https://github.com/happenslol/tree-sitter-typespec"
+rev = "395bef1e1eb4dd18365401642beb534e8a244056"
+exts = ["tsp"]
+tier = "defs"
+
+[[pack]]
+id = "typoscript"
+name = "TypoScript"
+repo = "https://github.com/Teddytrombone/tree-sitter-typoscript"
+rev = "b5d0162b328ec52cf300054a8a23d47f84f55cb4"
+exts = ["typoscript"]
+tier = "imports"
+
+[[pack]]
+id = "ungrammar"
+name = "ungrammar"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-ungrammar"
+rev = "debd26fed283d80456ebafa33a06957b0c52e451"
+exts = ["ungram"]
+tier = "calls"
+
+[[pack]]
+id = "uxntal"
+name = "Uxntal"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-uxntal"
+rev = "ad9b638b914095320de85d59c49ab271603af048"
+exts = ["tal"]
+tier = "defs"
+
+[[pack]]
+id = "v"
+name = "V"
+repo = "https://github.com/vlang/v-analyzer"
+rev = "925d4570d1668746762a2cdf0ecb9a25be704a67"
+path = "tree_sitter_v"
+exts = ["v", "vsh"]
+tier = "imports"
+
+[[pack]]
+id = "vala"
+name = "Vala"
+repo = "https://github.com/vala-lang/tree-sitter-vala"
+rev = "97e6db3c8c73b15a9541a458d8e797a07f588ef4"
+exts = ["vala", "vapi"]
+tier = "imports"
+
+[[pack]]
+id = "vim"
+name = "Vim Script"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-vim"
+rev = "039c8d0aa1deae00ddeb0374dd70bcc0ec56938d"
+exts = ["vim"]
+names = [".vimrc", "vimrc", "_vimrc"]
+tier = "imports"
+
+[[pack]]
+id = "wgsl"
+name = "WGSL"
+repo = "https://github.com/szebniok/tree-sitter-wgsl"
+rev = "40259f3c77ea856841a4e0c4c807705f3e4a2b65"
+exts = ["wgsl"]
+tier = "calls"
+
+[[pack]]
+id = "wing"
+name = "Wing"
+repo = "https://github.com/winglang/tree-sitter-wing"
+rev = "76e0c25844a66ebc6e866d690fcc5f4e90698947"
+exts = ["w"]
+tier = "defs"
+
+[[pack]]
+id = "wit"
+name = "WebAssembly Interface Type"
+repo = "https://github.com/bytecodealliance/tree-sitter-wit"
+rev = "da195e4e3a670187abdddee948a115dbe30ebc21"
+exts = ["wit"]
+tier = "defs"
+
+[[pack]]
+id = "yang"
+name = "YANG"
+repo = "https://github.com/Hubro/tree-sitter-yang"
+rev = "2c0e6be8dd4dcb961c345fa35c309ad4f5bd3502"
+exts = ["yang"]
+tier = "imports"
+
+[[pack]]
+id = "yuck"
+name = "yuck"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-yuck"
+rev = "6c60112b3b3e739fb1ca4a8ea4bea2b6ffe11318"
+exts = ["yuck"]
+tier = "imports"
+
+[[pack]]
+id = "zsh"
+name = "Zsh"
+repo = "https://github.com/georgeharker/tree-sitter-zsh"
+rev = "7a593401efb5418ffdedbe3c0e4c61c6d240166d"
+exts = ["bats", "cgi", "command", "fcgi", "pacscript", "sbatch", "sh.in", "slurm", "tmux", "tool", "zsh-theme"]
+names = [".bash_aliases", ".bash_functions", ".bash_history", ".bash_logout", ".cshrc", ".envrc", ".flaskenv", ".kshrc", ".login", ".tmux.conf", ".xinitrc", ".xsession", ".zlogin", ".zlogout", ".zprofile", ".zshenv", "9fs", "PKGBUILD", "bash_aliases", "bash_logout", "bash_profile", "bashrc", "cshrc", "gradlew", "kshrc", "login", "man", "mvnw", "profile", "tmux.conf", "xinitrc", "xsession", "zlogin", "zlogout", "zprofile", "zshenv", "zshrc"]
+tier = "calls"
+
+[[pack]]
+id = "perl"
+name = "Perl"
+crate = "tree-sitter-perl@1.1.2"
+exts = ["pl", "pm", "t", "psgi"]
+names = ["cpanfile"]
+tier = "imports"
+
+[[pack]]
+id = "crystal"
+name = "Crystal"
+repo = "https://github.com/crystal-lang-tools/tree-sitter-crystal"
+rev = "50ca9e6fcfb16a2cbcad59203cfd8ad650e25c49"
+exts = ["cr"]
+tier = "imports"

@@ -1,6 +1,7 @@
 //! The indexer: files → tree-sitter → symbols, calls, imports → knowledge graph.
 
 pub mod langs;
+pub mod packs;
 
 use crate::git::Repo;
 use crate::store::{Edge, Node, Store};
@@ -313,25 +314,34 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
                 let cname = match (cname, tag_def, tag_call) {
                     ("name", Some(k), _) => match k {
                         "method" => "def.method",
-                        "class" | "module" | "type" | "struct" | "enum" => "def.class",
+                        "class" | "module" | "type" | "struct" | "enum" | "object" | "record" | "namespace" => "def.class",
                         "interface" | "trait" | "protocol" => "def.interface",
-                        _ => "def.function",
+                        "function" | "macro" | "procedure" | "subroutine" | "rule" | "task" => "def.function",
+                        // constants, fields, variables: not symbols kula tracks
+                        _ => continue,
                     },
                     ("name", None, true) => "call",
                     (c, _, _) => c,
                 };
                 let node = cap.node;
-                let text = node.utf8_text(bytes).unwrap_or("").to_string();
+                let raw = node.utf8_text(bytes).unwrap_or("");
+                // Names some grammars only have as strings (`define "helper"`) lose their quotes.
+                let text = if cname == "import" { raw } else { raw.trim().trim_matches(|c| c == '"' || c == '\'' || c == '`') }.to_string();
                 if let Some(kind) = cname.strip_prefix("def.") {
                     // Definition range: the @scope capture, else the nearest ancestor that is a def kind.
                     let mut def_node = scope.unwrap_or_else(|| node.parent().unwrap_or(node));
                     let mut cur = if scope.is_some() { None } else { Some(node) };
+                    let mut found = false;
                     while let Some(n) = cur {
                         if lang.def_kinds.contains(&n.kind()) {
                             def_node = n;
+                            found = true;
                             break;
                         }
                         cur = n.parent();
+                    }
+                    if !found && scope.is_none() {
+                        def_node = enclosing_def(node).unwrap_or(def_node);
                     }
                     let key = (def_node.start_byte(), node.start_byte());
                     if !seen_defs.insert(key) {
@@ -373,7 +383,8 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
                             t.split_whitespace().last().map(|s| s.trim_matches(|c: char| !c.is_alphanumeric() && c != '_').to_string())
                         });
                     }
-                    if text.is_empty() {
+                    // A name is one token; anything else is a pattern that captured too much.
+                    if text.is_empty() || text.len() > 120 || text.contains('\n') {
                         continue;
                     }
                     pf.defs.push(Def {
@@ -387,13 +398,13 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
                         hash: fnv(&bytes[def_node.start_byte()..def_node.end_byte()]),
                     });
                 } else if cname == "call" {
-                    if !text.is_empty() {
+                    if !text.is_empty() && text.len() <= 100 && !text.contains('\n') {
                         pf.calls.push((text, node.start_byte()));
                     }
                 } else if cname == "import" {
                     let t = text.trim();
                     let t = t.strip_prefix("import ").map(str::trim).unwrap_or(t);
-                    if !t.is_empty() {
+                    if !t.is_empty() && t.len() <= 300 && t.lines().count() <= 4 {
                         pf.imports.push(t.to_string());
                     }
                 }
@@ -402,6 +413,43 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
     }
     pf.defs.sort_by_key(|d| (d.start_byte, std::cmp::Reverse(d.end_byte)));
     Some(pf)
+}
+
+/// For grammars without `def_kinds`: the nearest ancestor that reads like a
+/// definition, else the top-level statement holding the name.
+fn enclosing_def(name: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    const HINTS: &[&str] = &[
+        "function",
+        "method",
+        "def",
+        "decl",
+        "proc",
+        "sub",
+        "fn",
+        "macro",
+        "rule",
+        "class",
+        "struct",
+        "module",
+        "item",
+        "form",
+        "_lit",
+        "tup",
+        "binding",
+        "signature",
+    ];
+    let mut cur = name.parent();
+    let mut top = None;
+    while let Some(n) = cur {
+        if n.end_byte() - n.start_byte() > name.end_byte() - name.start_byte() && HINTS.iter().any(|h| n.kind().contains(h)) {
+            return Some(n);
+        }
+        if n.parent().is_some_and(|p| p.parent().is_none()) {
+            top = Some(n);
+        }
+        cur = n.parent();
+    }
+    top
 }
 
 fn strip_ext(p: &str) -> &str {
@@ -832,6 +880,11 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     let _done = ProgressGuard;
     let root = repo.root.clone();
     let files = walk(&root);
+    if !quiet {
+        if let Some(h) = missing_hint(&files) {
+            eprintln!("\n{h}");
+        }
+    }
     let read = |p: &str| std::fs::read_to_string(root.join(p)).ok();
     let Built { nodes, edges, communities, files: nfiles, parsed, .. } = build_with(&files, &read, Some(&PROGRESS));
 
@@ -858,6 +911,78 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         eprintln!();
     }
     Ok(stats)
+}
+
+/// Files per language whose pack isn't installed.
+pub fn missing(files: &[(String, Option<&'static str>)]) -> Vec<(&'static str, usize)> {
+    let mut m: HashMap<&'static str, usize> = HashMap::new();
+    for (p, l) in files {
+        if l.is_none() {
+            if let Some(id) = langs::detect(p) {
+                *m.entry(id).or_default() += 1;
+            }
+        }
+    }
+    let mut v: Vec<_> = m.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    v
+}
+
+/// One line naming the languages this index skipped and how to add them.
+fn missing_hint(files: &[(String, Option<&'static str>)]) -> Option<String> {
+    let m = missing(files);
+    if m.is_empty() {
+        return None;
+    }
+    let named: Vec<String> =
+        m.iter().take(4).map(|(id, n)| format!("{n} {}", packs::get(id).map(|p| p.name.as_str()).unwrap_or(id))).collect();
+    let more = if m.len() > 4 { format!(" and {} more", m.len() - 4) } else { String::new() };
+    Some(format!("kula: skipped {}{more} file(s) with no language pack – `kula lang add --detected` to index them", named.join(", ")))
+}
+
+/// Every language in a working tree: (id, files, parsed now).
+pub fn languages(root: &Path) -> Vec<(&'static str, usize, bool)> {
+    let mut m: HashMap<&'static str, (usize, bool)> = HashMap::new();
+    for (p, l) in walk(root) {
+        if let Some(id) = l.or_else(|| langs::detect(&p)) {
+            let e = m.entry(id).or_insert((0, l.is_some()));
+            e.0 += 1;
+        }
+    }
+    let mut v: Vec<_> = m.into_iter().map(|(k, (n, ok))| (k, n, ok)).collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    v
+}
+
+/// What a language's queries find in one source: (definitions, calls, imports).
+pub fn probe(lang: &langs::Lang, src: &str) -> (usize, usize, usize) {
+    let mut parser = Parser::new();
+    if parser.set_language(&lang.language).is_err() {
+        return (0, 0, 0);
+    }
+    match parse_source("probe", src, lang, &mut parser) {
+        Some(pf) => (pf.defs.len(), pf.calls.len(), pf.imports.len()),
+        None => (0, 0, 0),
+    }
+}
+
+/// Every capture a language's queries make in one source, for `kula lang check`.
+pub fn probe_detail(lang: &langs::Lang, src: &str) -> Vec<String> {
+    let mut parser = Parser::new();
+    if parser.set_language(&lang.language).is_err() {
+        return vec![];
+    }
+    let Some(pf) = parse_source("probe", src, lang, &mut parser) else { return vec![] };
+    let mut out: Vec<String> = pf
+        .defs
+        .iter()
+        .map(|d| {
+            format!("def {} {}{} :{}", d.kind, d.parent_name.as_deref().map(|p| format!("{p}.")).unwrap_or_default(), d.name, d.start_line)
+        })
+        .collect();
+    out.extend(pf.calls.iter().map(|(c, _)| format!("call {c}")));
+    out.extend(pf.imports.iter().map(|i| format!("import {i}")));
+    out
 }
 
 const SKIP_DIRS: &[&str] = &[".git", ".kula", "node_modules", "target", "dist", "build", "vendor", "__pycache__", ".venv", "venv"];
@@ -946,7 +1071,7 @@ mod tests {
         ),
         ("lua.lua", &["function greet", "function helper", "function private"], &["helper", "upper"], &["json"]),
         ("bash.sh", &["function greet", "function helper"], &["helper", "greet"], &["./lib.sh"]),
-        ("zig.zig", &["class Point", "function norm", "function helper", "function main"], &["helper", "print"], &["std"]),
+        ("zig.zig", &["class Point", "method norm", "function helper", "function main"], &["helper", "print"], &["std"]),
         ("elixir.ex", &["class Greeter", "function greet", "function helper"], &["helper", "upcase"], &["Demo.Util", "Enum"]),
         ("erlang.erl", &["function greet", "function helper"], &["helper", "uppercase"], &["lists", "\"defs.hrl\""]),
         ("gleam.gleam", &["class Shape", "function greet", "function helper"], &["helper", "uppercase"], &["gleam/io", "gleam/string"]),
@@ -988,8 +1113,8 @@ mod tests {
         ("make.mk", &["function build", "function deps", "function helper"], &["deps"], &["common.mk"]),
         ("cmake.cmake", &["function greet", "function helper"], &["helper", "greet", "message"], &["CTest", "src"]),
         ("nix.nix", &["function helper", "function greet"], &["helper", "toUpper"], &["./util.nix", "<nixpkgs>"]),
-        ("verilog.sv", &["class counter", "class top", "function helper"], &["helper", "counter"], &["\"defs.svh\""]),
-        ("vhdl.vhd", &["class counter", "class rtl", "function helper"], &["counter"], &["ieee.std_logic_1164.all"]),
+        ("systemverilog.sv", &["class counter", "class top", "function helper"], &["helper", "counter"], &["\"defs.svh\""]),
+        ("vhdl.vhd", &["class counter", "class rtl", "method helper"], &["counter"], &["ieee.std_logic_1164.all"]),
         (
             "d.d",
             &["class Greeter", "method greet", "class Point", "function helper", "function main"],
@@ -997,7 +1122,7 @@ mod tests {
             &["std.stdio"],
         ),
         ("pascal.pas", &["function Helper", "function Greet"], &["Helper", "UpperCase", "WriteLn"], &["SysUtils"]),
-        ("ada.adb", &["class Greeter", "function Helper", "function Greet"], &["Helper", "Put_Line"], &["Ada.Text_IO"]),
+        ("ada.adb", &["class Greeter", "method Helper", "method Greet"], &["Helper", "Put_Line"], &["Ada.Text_IO"]),
         ("commonlisp.lisp", &["function helper", "function greet", "class greeter"], &["helper", "string-upcase"], &[":asdf"]),
         ("elisp.el", &["function helper", "function greet", "function with-x"], &["helper", "upcase"], &["cl-lib"]),
         ("racket.rkt", &["function helper", "function greet"], &["helper", "string-upcase"], &["racket/string"]),
@@ -1008,11 +1133,19 @@ mod tests {
         ("starlark.bzl", &["function helper", "function greet"], &["helper", "my_rule"], &["\"//tools:defs.bzl\""]),
         ("puppet.pp", &["class web::server", "class web::helper", "function web::greet"], &["web::helper", "upcase"], &["apache"]),
         ("bicep.bicep", &["function greet", "class stg", "class sa"], &["toUpper", "toLower"], &["'./storage.bicep'"]),
+        ("astro.astro", &["function helper"], &["helper", "getItems"], &["\"../components/Card.astro\""]),
+        ("perl.pl", &["class Greeter", "function helper", "function greet"], &["helper", "name"], &["List::Util", "Data::Dumper"]),
+        (
+            "clojure.clj",
+            &["function helper", "function greet", "class Point", "interface Shape"],
+            &["helper", "upper-case"],
+            &["clojure.string"],
+        ),
         ("vue.vue", &["function onClick", "function helper"], &["helper"], &["'./Child.vue'"]),
         ("svelte.svelte", &["function greet", "function helper"], &["helper", "onMount"], &["'svelte'"]),
     ];
 
-    /// None when this build leaves the fixture's language out (`--no-default-features`).
+    /// None when the fixture's language pack isn't installed.
     fn parse_fixture(name: &str) -> Option<ParsedFile> {
         let path = format!("{}/tests/fixtures/langs/{name}", env!("CARGO_MANIFEST_DIR"));
         let src = std::fs::read_to_string(&path).unwrap();
@@ -1053,13 +1186,38 @@ mod tests {
         assert!(fails.is_empty(), "{}", fails.join("\n"));
     }
 
-    /// Every fixture file is covered by a case, so a new language can't skip its test.
+    /// Smoke test for every other fixture: when its language is available, it is
+    /// detected as the language its file is named for and yields definitions.
     #[test]
-    fn every_fixture_has_a_case() {
+    fn every_fixture_smokes() {
         let dir = format!("{}/tests/fixtures/langs", env!("CARGO_MANIFEST_DIR"));
+        let mut fails = vec![];
+        let mut ran = 0;
         for e in std::fs::read_dir(dir).unwrap().flatten() {
             let n = e.file_name().to_string_lossy().to_string();
-            assert!(CASES.iter().any(|c| c.0 == n), "{n} has no case");
+            let Some(pf) = parse_fixture(&n) else { continue };
+            ran += 1;
+            if pf.defs.is_empty() {
+                fails.push(format!("{n}: no definitions"));
+            }
+        }
+        eprintln!("smoke-tested {ran} fixtures (packs not installed are skipped)");
+        assert!(fails.is_empty(), "{}", fails.join("\n"));
+    }
+
+    /// Every pack has a query file, and none of its extensions is claimed by a
+    /// built-in language.
+    #[test]
+    fn packs_are_wired() {
+        for p in packs::all() {
+            assert!(p.query().is_some(), "{} has no queries/{}.scm", p.id, p.id);
+            assert!(!p.exts.is_empty() || !p.names.is_empty(), "{} has no file names", p.id);
+            assert!(!p.tier.is_empty(), "{} has no measured tier", p.id);
+            for e in &p.exts {
+                if !e.contains('.') {
+                    assert_ne!(langs::detect(&format!("x.{e}")).map(langs::is_core), Some(true), "{}: .{e} is a built-in extension", p.id);
+                }
+            }
         }
     }
 

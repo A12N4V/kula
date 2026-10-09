@@ -9,7 +9,7 @@
   <img alt="rust" src="https://img.shields.io/badge/core-rust-e8e2d9?style=flat-square&labelColor=000000&logo=rust&logoColor=e8e2d9">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-21%20tools-8fd694?style=flat-square&labelColor=000000">
   <img alt="agents" src="https://img.shields.io/badge/agents-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20Gemini-8fd694?style=flat-square&labelColor=000000">
-  <img alt="languages" src="https://img.shields.io/badge/parses-45%20languages-7cb7ff?style=flat-square&labelColor=000000">
+  <img alt="languages" src="https://img.shields.io/badge/parses-187%20languages-7cb7ff?style=flat-square&labelColor=000000">
   <img alt="rdf" src="https://img.shields.io/badge/graph-RDF%20·%20SPARQL%201.1-d49cf0?style=flat-square&labelColor=000000">
   <img alt="platforms" src="https://img.shields.io/badge/macOS%20·%20Linux%20·%20Windows-x64%20·%20arm64-e8e2d9?style=flat-square&labelColor=000000">
   <img alt="local-first" src="https://img.shields.io/badge/local--first-no%20account%20·%20no%20telemetry-e8e2d9?style=flat-square&labelColor=000000">
@@ -365,7 +365,7 @@ Kula is a **superset of git**: anything it doesn't know goes straight to `git`, 
 
 | | |
 |---|---|
-| **start** | `init` · `index` · `view` · `status` · `hooks install\|uninstall\|status` · `doctor` |
+| **start** | `init` · `index` · `view` · `status` · `lang list\|add\|remove` · `hooks install\|uninstall\|status` · `doctor` |
 | **explore** | `query` · `context` · `impact [--down]` · `trace` · `flows` · `clusters` · `deps` · `kg export\|sparql\|examples` |
 | **review** | `lg` · `compare` · `graph-diff` · `check [--md]` |
 | **agents** | `agents status\|connect\|sync\|brief\|suggestions\|accept\|dismiss` · `workflow list\|show\|install\|prompt` · `task start [-w]\|show\|done` · `guard list\|check\|hook\|commit` · `memory add\|recall\|edit\|stale\|confirm\|rm` · `pack` · `before` · `verify` · `mcp` |
@@ -396,7 +396,7 @@ flowchart LR
         TOML[kula.toml]
     end
     subgraph kula[kula]
-        IDX[tree-sitter indexer<br/>45 languages]
+        IDX[tree-sitter indexer<br/>11 built in + 173 packs]
         DB[(graph.db<br/>SQLite · FTS5)]
         G[impact · trace · flows<br/>clusters · compare]
         GU[guard: one verdict]
@@ -414,7 +414,7 @@ flowchart LR
     CLI -->|everything else| GITBIN[git]
 ```
 
-- **Indexing.** Files are walked in parallel (respecting `.gitignore`) and parsed with tree-sitter. The default build reads 45 languages: TypeScript/TSX, JavaScript/JSX, Vue and Svelte script blocks, Python, Rust, Go, Java, Kotlin, Scala, Groovy, C, C++, C#, Swift, Dart, Ruby, PHP, Lua, Bash, Zig, Elixir, Erlang, Gleam, Elm, R, MATLAB, Solidity, Terraform/HCL, GraphQL, Protobuf, PowerShell, Make, CMake, Nix, Pascal, Ada, Common Lisp, Emacs Lisp, Racket, Scheme, GLSL, Starlark/Bazel, Puppet and Bicep. `--features all-languages` adds 12 more with large grammars – SQL, Objective-C, Haskell, OCaml, F#, Julia, Fortran, CUDA, D, Odin, Verilog/SystemVerilog and VHDL – for 57 (and about 130 MB instead of 52 MB); `--no-default-features` keeps only the original 11 plus Vue and Svelte. Each language is one row in [`langs.rs`](src/index/langs.rs) and a short query file in [`src/index/queries/`](src/index/queries) that captures definitions, calls and imports. Calls resolve to the same file, then imported files, then a unique match in the same language family; a stoplist keeps `.get()` and `.map()` from wiring everything together. Clusters come from weighted label propagation.
+- **Indexing.** Files are walked in parallel (respecting `.gitignore`) and parsed with tree-sitter. **11 languages are built in** – TypeScript/TSX, JavaScript/JSX, Python, Rust, Go, Java, C, C++, C#, Ruby and PHP, plus the script blocks of Vue, Svelte and Astro – and **173 more come as language packs** via `kula lang add` (`kula lang add --detected` installs whatever the repository contains). A pack is the grammar as a native library, downloaded from this project's GitHub release and checked against its sha256 manifest, or compiled locally with `--build`; the binary stays at 28 MB. 130 packs extract definitions, calls and imports, 28 definitions and calls, 15 definitions only – measured on each grammar's own test corpus; the full table is in [docs/LANGUAGES.md](docs/LANGUAGES.md). Calls resolve to the same file, then imported files, then a unique match in the same language family; a stoplist keeps `.get()` and `.map()` from wiring everything together. Clusters come from weighted label propagation.
 - **Any revision, without a checkout.** A revision's graph is built from git objects (`git ls-tree` and one `git cat-file --batch`) and cached per commit. Symbols match across revisions by kind, path, container and name, and compare by a hash of their source.
 - **Storage.** `.kula/graph.db` (SQLite and FTS5) is git-ignored, built beside the live file and swapped in with one rename, so a running `kula view` never reads a half-built graph. It reindexes in the background whenever `HEAD` moves.
 - **Cleans up after itself.** Once `kula view` sits idle (15 min by default), it drops old `kula run` copies, temp files and cached graphs, and compacts the store. Change the timer in Settings → Disk or with `kula clean --after 30` (`0` turns it off); `kula clean` runs a pass now.
@@ -430,6 +430,7 @@ The internals (resolution, the store, risk, the meta ref, the API) are in [docs/
 |---|---|
 | [docs/CLI.md](docs/CLI.md) | install, `kula init`, `kula.toml`, every command, the CI gate |
 | [docs/AGENTS.md](docs/AGENTS.md) | workflows, fences, tasks, memory, the brief, suggestions, the hook per agent, every MCP tool |
+| [docs/LANGUAGES.md](docs/LANGUAGES.md) | built-in languages, language packs, and what each of the 173 packs extracts |
 | [docs/KNOWLEDGE-GRAPH.md](docs/KNOWLEDGE-GRAPH.md) | the RDF vocabulary, IRIs, SPARQL examples, result shapes |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | indexing, resolution, storage, contrast, risk, the meta ref, the HTTP API, tests |
 | [promo/](promo/) | the launch film: score, voiceover, capture, and the Remotion edit |
