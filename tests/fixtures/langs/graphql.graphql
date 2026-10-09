@@ -1,0 +1,4 @@
+type User { id: ID! name: String }
+interface Node { id: ID! }
+query GetUser { user(id: 1) { ...UserFields } }
+fragment UserFields on User { name }

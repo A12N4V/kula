@@ -7,7 +7,7 @@ use crate::store::{Edge, Node, Store};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Parser, QueryCursor};
@@ -288,17 +288,44 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(q, tree.root_node(), bytes);
         while let Some(m) = matches.next() {
+            // tags.scm style: @name plus @definition.<kind> / @reference.call on the
+            // enclosing node; kula style: @def.<kind> / @call / @import, with an
+            // optional @scope for the definition's extent.
+            let mut scope = None;
+            let mut tag_def = None;
+            let mut tag_call = false;
+            for cap in m.captures() {
+                let cname = names[cap.index as usize];
+                if cname == "scope" {
+                    scope = Some(cap.node);
+                } else if let Some(k) = cname.strip_prefix("definition.") {
+                    scope = Some(cap.node);
+                    tag_def = Some(k);
+                } else if cname == "reference.call" {
+                    tag_call = true;
+                }
+            }
             for cap in m.captures() {
                 let cname = names[cap.index as usize];
                 if cname.starts_with('_') {
                     continue;
                 }
+                let cname = match (cname, tag_def, tag_call) {
+                    ("name", Some(k), _) => match k {
+                        "method" => "def.method",
+                        "class" | "module" | "type" | "struct" | "enum" => "def.class",
+                        "interface" | "trait" | "protocol" => "def.interface",
+                        _ => "def.function",
+                    },
+                    ("name", None, true) => "call",
+                    (c, _, _) => c,
+                };
                 let node = cap.node;
                 let text = node.utf8_text(bytes).unwrap_or("").to_string();
                 if let Some(kind) = cname.strip_prefix("def.") {
-                    // Definition range: nearest ancestor that is a def kind.
-                    let mut def_node = node.parent().unwrap_or(node);
-                    let mut cur = Some(node);
+                    // Definition range: the @scope capture, else the nearest ancestor that is a def kind.
+                    let mut def_node = scope.unwrap_or_else(|| node.parent().unwrap_or(node));
+                    let mut cur = if scope.is_some() { None } else { Some(node) };
                     while let Some(n) = cur {
                         if lang.def_kinds.contains(&n.kind()) {
                             def_node = n;
@@ -327,6 +354,12 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
                             let owner = a
                                 .child_by_field_name("type")
                                 .or_else(|| a.child_by_field_name("name"))
+                                .or_else(|| {
+                                    let mut c = a.walk();
+                                    let first =
+                                        a.named_children(&mut c).find(|n| n.kind().contains("identifier") || n.kind().ends_with("name"));
+                                    first
+                                })
                                 .and_then(|n| n.utf8_text(bytes).ok())
                                 .map(|s| s.split('<').next().unwrap_or(s).trim().to_string());
                             parent_name = owner;
@@ -358,7 +391,11 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
                         pf.calls.push((text, node.start_byte()));
                     }
                 } else if cname == "import" {
-                    pf.imports.push(text);
+                    let t = text.trim();
+                    let t = t.strip_prefix("import ").map(str::trim).unwrap_or(t);
+                    if !t.is_empty() {
+                        pf.imports.push(t.to_string());
+                    }
                 }
             }
         }
@@ -409,11 +446,7 @@ pub(crate) fn package_name(raw: &str, lang: &str) -> Option<String> {
             let s = s.strip_prefix("node:").map(|b| format!("node:{}", b.split('/').next().unwrap_or(b))).unwrap_or_else(|| s.to_string());
             let mut it = s.split('/');
             let first = it.next()?;
-            if first.starts_with('@') {
-                format!("{first}/{}", it.next()?)
-            } else {
-                first.to_string()
-            }
+            if first.starts_with('@') { format!("{first}/{}", it.next()?) } else { first.to_string() }
         }
         "python" => {
             if s.starts_with('.') {
@@ -430,11 +463,7 @@ pub(crate) fn package_name(raw: &str, lang: &str) -> Option<String> {
         }
         "go" => {
             let segs: Vec<&str> = s.split('/').collect();
-            if segs[0].contains('.') {
-                segs.iter().take(3).copied().collect::<Vec<_>>().join("/")
-            } else {
-                segs[0].to_string()
-            }
+            if segs[0].contains('.') { segs.iter().take(3).copied().collect::<Vec<_>>().join("/") } else { segs[0].to_string() }
         }
         _ => return None,
     };
@@ -530,7 +559,29 @@ fn resolve_import(
                 .flat_map(|(_, v)| v.iter().copied().take(12))
                 .collect()
         }
-        _ => vec![],
+        "java" | "c" | "cpp" | "csharp" | "ruby" | "php" => vec![],
+        _ => {
+            // Generic: `./x/y`, `"pkg/mod.ext"`, `<a/b.h>`, `Data.List`, `a::b`, `a:b`.
+            let s = s.trim_matches(|c| matches!(c, '<' | '>' | '(' | ')' | ' '));
+            if s.is_empty() || s.contains(char::is_whitespace) {
+                return vec![];
+            }
+            if s.starts_with("./") || s.starts_with("../") {
+                let joined = normalize(&format!("{dir}/{s}"));
+                return by_stem.get(strip_ext(&joined)).cloned().unwrap_or_default();
+            }
+            let path = if s.contains('/') { strip_ext(s).to_string() } else { s.replace("::", "/").replace([':', '.'], "/") };
+            let segs: Vec<&str> = path.split('/').filter(|p| !p.is_empty() && *p != "*").collect();
+            // A bare first segment (`kotlin` of `kotlin.math.max`) is too vague to match on.
+            let floor = if segs.len() > 2 { 2 } else { 1 };
+            for n in (floor..=segs.len()).rev() {
+                let r = suffix_lookup(&segs[..n].join("/"));
+                if !r.is_empty() {
+                    return r;
+                }
+            }
+            vec![]
+        }
     }
 }
 
@@ -576,12 +627,12 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                     let mut parser = Parser::new();
                     let mut out = Vec::new();
                     for (path, lid) in batch {
-                        let Some(lang) = langs::get(lid) else { continue };
+                        let Some(src) = read(path) else { continue };
+                        let Some(lang) = langs::get(langs::refine(lid, &src)) else { continue };
                         if parser.set_language(&lang.language).is_err() {
                             continue;
                         }
-                        let Some(src) = read(path) else { continue };
-                        if let Some(pf) = parse_source(path, &src, lang, &mut parser) {
+                        if let Some(pf) = parse_source(path, &langs::prepare(lang.id, &src), lang, &mut parser) {
                             out.push(pf);
                         }
                         if let Some(p) = progress {
@@ -710,13 +761,7 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
     }
 
     // Calls.
-    fn family(lang: &str) -> &str {
-        match lang {
-            "javascript" | "typescript" | "tsx" => "js",
-            "c" | "cpp" => "c",
-            other => other,
-        }
-    }
+    use langs::family;
     let mut call_set: HashSet<(usize, usize)> = HashSet::new();
     for (pi, pf) in parsed.iter().enumerate() {
         let fid = file_id[&pf.path];
@@ -827,11 +872,7 @@ pub fn worktree(repo: &Repo) -> Built {
 
 /// `WORKTREE` (uncommitted state) or any revision.
 pub fn snapshot_any(repo: &Repo, rev: &str) -> Result<Built> {
-    if rev.eq_ignore_ascii_case("worktree") {
-        Ok(worktree(repo))
-    } else {
-        snapshot(repo, rev)
-    }
+    if rev.eq_ignore_ascii_case("worktree") { Ok(worktree(repo)) } else { snapshot(repo, rev) }
 }
 
 /// Build the graph of any revision straight from git objects – no checkout.
@@ -872,5 +913,164 @@ impl Node {
             guard += 1;
         }
         cur.id as usize
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// (fixture, defs as "kind name", calls, imports) – each language's fixture
+    /// under tests/fixtures/langs must yield at least these.
+    type Case = (&'static str, &'static [&'static str], &'static [&'static str], &'static [&'static str]);
+    const CASES: &[Case] = &[
+        ("kotlin.kt", &["class Greeter", "method greet", "interface Shape", "function helper"], &["helper", "max"], &["kotlin.math.max"]),
+        (
+            "swift.swift",
+            &["class Greeter", "method greet", "interface Shape", "function helper"],
+            &["helper", "uppercased"],
+            &["Foundation"],
+        ),
+        (
+            "scala.scala",
+            &["class Greeter", "method greet", "interface Shape", "function helper"],
+            &["helper", "println"],
+            &["scala.collection.mutable"],
+        ),
+        ("groovy.groovy", &["class Greeter", "method greet", "function helper"], &["helper"], &["groovy.json.JsonSlurper"]),
+        (
+            "dart.dart",
+            &["class Greeter", "method greet", "function helper"],
+            &["helper", "toUpperCase"],
+            &["'package:flutter/material.dart'"],
+        ),
+        ("lua.lua", &["function greet", "function helper", "function private"], &["helper", "upper"], &["json"]),
+        ("bash.sh", &["function greet", "function helper"], &["helper", "greet"], &["./lib.sh"]),
+        ("zig.zig", &["class Point", "function norm", "function helper", "function main"], &["helper", "print"], &["std"]),
+        ("elixir.ex", &["class Greeter", "function greet", "function helper"], &["helper", "upcase"], &["Demo.Util", "Enum"]),
+        ("erlang.erl", &["function greet", "function helper"], &["helper", "uppercase"], &["lists", "\"defs.hrl\""]),
+        ("gleam.gleam", &["class Shape", "function greet", "function helper"], &["helper", "uppercase"], &["gleam/io", "gleam/string"]),
+        ("haskell.hs", &["class Shape", "interface Named", "function greet", "function helper"], &["helper", "sort"], &["Data.List"]),
+        ("ocaml.ml", &["class Util", "class shape", "function greet", "function helper"], &["helper", "printf"], &["Printf"]),
+        (
+            "fsharp.fs",
+            &["class Point", "class Greeter", "method Greet", "function helper", "function greet"],
+            &["helper", "ToUpper"],
+            &["System"],
+        ),
+        ("elm.elm", &["class Shape", "class Point", "function greet", "function helper"], &["helper", "toUpper"], &["Html"]),
+        ("julia.jl", &["class Point", "function greet", "function helper"], &["helper", "uppercase"], &["LinearAlgebra", "Base: show"]),
+        ("r.R", &["function greet", "function helper"], &["helper", "toupper"], &["dplyr", "\"utils.R\""]),
+        (
+            "objc.m",
+            &["class Greeter", "method greet", "method helper", "function upper"],
+            &["helper", "upper", "uppercaseString"],
+            &["<Foundation/Foundation.h>", "\"Util.h\""],
+        ),
+        ("matlab.m", &["function greet", "function helper"], &["helper", "upper"], &[]),
+        ("solidity.sol", &["class Greeter", "method greet", "method helper", "interface IShape"], &["helper"], &["\"./Util.sol\""]),
+        ("sql.sql", &["class users", "class active", "function greet"], &["greet", "upper", "users"], &[]),
+        ("hcl.tf", &["class vpc", "class web", "class amis"], &["lookup"], &["./modules/vpc"]),
+        ("graphql.graphql", &["class User", "interface Node", "function GetUser", "function UserFields"], &["UserFields"], &[]),
+        (
+            "proto.proto",
+            &["class User", "interface Greeter", "method Greet", "class Kind"],
+            &["User"],
+            &["\"google/protobuf/timestamp.proto\""],
+        ),
+        ("fortran.f90", &["class util", "class main", "function helper", "function greet"], &["helper", "greet"], &["util"]),
+        (
+            "powershell.ps1",
+            &["function Get-Greeting", "function Invoke-Helper", "class Greeter", "method Greet"],
+            &["Write-Output"],
+            &["./Util.psm1", "./lib.ps1"],
+        ),
+        ("make.mk", &["function build", "function deps", "function helper"], &["deps"], &["common.mk"]),
+        ("cmake.cmake", &["function greet", "function helper"], &["helper", "greet", "message"], &["CTest", "src"]),
+        ("nix.nix", &["function helper", "function greet"], &["helper", "toUpper"], &["./util.nix", "<nixpkgs>"]),
+        ("verilog.sv", &["class counter", "class top", "function helper"], &["helper", "counter"], &["\"defs.svh\""]),
+        ("vhdl.vhd", &["class counter", "class rtl", "function helper"], &["counter"], &["ieee.std_logic_1164.all"]),
+        (
+            "d.d",
+            &["class Greeter", "method greet", "class Point", "function helper", "function main"],
+            &["helper", "writeln"],
+            &["std.stdio"],
+        ),
+        ("pascal.pas", &["function Helper", "function Greet"], &["Helper", "UpperCase", "WriteLn"], &["SysUtils"]),
+        ("ada.adb", &["class Greeter", "function Helper", "function Greet"], &["Helper", "Put_Line"], &["Ada.Text_IO"]),
+        ("commonlisp.lisp", &["function helper", "function greet", "class greeter"], &["helper", "string-upcase"], &[":asdf"]),
+        ("elisp.el", &["function helper", "function greet", "function with-x"], &["helper", "upcase"], &["cl-lib"]),
+        ("racket.rkt", &["function helper", "function greet"], &["helper", "string-upcase"], &["racket/string"]),
+        ("scheme.scm", &["function helper", "function greet"], &["helper", "string-upcase"], &["(scheme base)"]),
+        ("glsl.glsl", &["class Light", "function helper", "function main"], &["helper", "clamp"], &["\"common.glsl\""]),
+        ("cuda.cu", &["function kernel", "function helper", "class Grid", "function main"], &["helper", "kernel"], &["<cuda.h>"]),
+        ("odin.odin", &["class Point", "function helper", "function main"], &["helper", "println"], &["\"core:fmt\""]),
+        ("starlark.bzl", &["function helper", "function greet"], &["helper", "my_rule"], &["\"//tools:defs.bzl\""]),
+        ("puppet.pp", &["class web::server", "class web::helper", "function web::greet"], &["web::helper", "upcase"], &["apache"]),
+        ("bicep.bicep", &["function greet", "class stg", "class sa"], &["toUpper", "toLower"], &["'./storage.bicep'"]),
+        ("vue.vue", &["function onClick", "function helper"], &["helper"], &["'./Child.vue'"]),
+        ("svelte.svelte", &["function greet", "function helper"], &["helper", "onMount"], &["'svelte'"]),
+    ];
+
+    /// None when this build leaves the fixture's language out (`--no-default-features`).
+    fn parse_fixture(name: &str) -> Option<ParsedFile> {
+        let path = format!("{}/tests/fixtures/langs/{name}", env!("CARGO_MANIFEST_DIR"));
+        let src = std::fs::read_to_string(&path).unwrap();
+        // Fixtures are named `<language id>.<ext>`.
+        let want = name.split('.').next().unwrap_or(name);
+        langs::get(want)?;
+        let id = langs::refine(langs::for_path(name)?, &src);
+        assert_eq!(id, want, "{name} detected as {id}");
+        let lang = langs::get(id).unwrap();
+        let mut parser = Parser::new();
+        parser.set_language(&lang.language).unwrap();
+        Some(parse_source(name, &langs::prepare(lang.id, &src), lang, &mut parser).unwrap())
+    }
+
+    #[test]
+    fn every_language_fixture() {
+        let mut fails = vec![];
+        for (file, defs, calls, imports) in CASES {
+            let Some(pf) = parse_fixture(file) else { continue };
+            let got_defs: Vec<String> = pf.defs.iter().map(|d| format!("{} {}", d.kind, d.name)).collect();
+            let got_calls: HashSet<&str> = pf.calls.iter().map(|(c, _)| c.as_str()).collect();
+            for d in *defs {
+                if !got_defs.iter().any(|g| g == d) {
+                    fails.push(format!("{file}: missing def `{d}` (got {got_defs:?})"));
+                }
+            }
+            for c in *calls {
+                if !got_calls.contains(c) {
+                    fails.push(format!("{file}: missing call `{c}` (got {got_calls:?})"));
+                }
+            }
+            for i in *imports {
+                if !pf.imports.iter().any(|g| g == i) {
+                    fails.push(format!("{file}: missing import `{i}` (got {:?})", pf.imports));
+                }
+            }
+        }
+        assert!(fails.is_empty(), "{}", fails.join("\n"));
+    }
+
+    /// Every fixture file is covered by a case, so a new language can't skip its test.
+    #[test]
+    fn every_fixture_has_a_case() {
+        let dir = format!("{}/tests/fixtures/langs", env!("CARGO_MANIFEST_DIR"));
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            assert!(CASES.iter().any(|c| c.0 == n), "{n} has no case");
+        }
+    }
+
+    #[test]
+    fn generic_imports_resolve() {
+        let mut by_stem: HashMap<String, Vec<usize>> = HashMap::new();
+        by_stem.insert("src/Data/Util".into(), vec![1]);
+        by_stem.insert("lib/helpers".into(), vec![2]);
+        let by_dir = HashMap::new();
+        assert_eq!(resolve_import("Data.Util", "app/Main.hs", "haskell", &by_stem, &by_dir), vec![1]);
+        assert_eq!(resolve_import("./helpers.sh", "lib/x.sh", "bash", &by_stem, &by_dir), vec![2]);
+        assert!(resolve_import("kotlin.math.max", "a.kt", "kotlin", &by_stem, &by_dir).is_empty());
     }
 }

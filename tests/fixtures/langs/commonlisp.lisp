@@ -1,0 +1,5 @@
+(require :asdf)
+(defun helper (s) (string-upcase s))
+(defun greet (name) (helper name))
+(defclass greeter () ())
+(defmacro with-x (&body b) `(progn ,@b))

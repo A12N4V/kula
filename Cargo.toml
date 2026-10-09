@@ -43,9 +43,103 @@ tree-sitter-cpp = "0.23"
 tree-sitter-ruby = "0.23"
 tree-sitter-c-sharp = "0.23"
 tree-sitter-php = "0.24"
+tree-sitter-ada = { version = "0.1.0", optional = true }
+tree-sitter-bash = { version = "0.25.1", optional = true }
+tree-sitter-bicep = { version = "1.1.0", optional = true }
+tree-sitter-cmake = { version = "0.7.5", optional = true }
+tree-sitter-commonlisp = { version = "0.4.1", optional = true }
+tree-sitter-cuda = { version = "0.21.2", optional = true }
+tree-sitter-d = { version = "0.8.2", optional = true }
+tree-sitter-dart = { version = "0.2.0", optional = true }
+tree-sitter-elisp = { version = "1.7.2", optional = true }
+tree-sitter-elixir = { version = "0.3.5", optional = true }
+tree-sitter-elm = { version = "5.9.4", optional = true }
+tree-sitter-erlang = { version = "0.21.0", optional = true }
+tree-sitter-fortran = { version = "0.6.0", optional = true }
+tree-sitter-fsharp = { version = "0.3.12", optional = true }
+tree-sitter-gleam = { version = "1.0.0", optional = true }
+tree-sitter-glsl = { version = "0.2.0", optional = true }
+tree-sitter-graphql = { version = "0.3.0", optional = true }
+tree-sitter-groovy = { version = "0.1.2", optional = true }
+tree-sitter-haskell = { version = "0.24.1", optional = true }
+tree-sitter-hcl = { version = "1.1.0", optional = true }
+tree-sitter-julia = { version = "0.23.1", optional = true }
+tree-sitter-kotlin-ng = { version = "1.1.0", optional = true }
+tree-sitter-lua = { version = "0.5.0", optional = true }
+tree-sitter-make = { version = "1.1.1", optional = true }
+tree-sitter-matlab = { version = "1.3.1", optional = true }
+tree-sitter-nix = { version = "0.3.0", optional = true }
+tree-sitter-objc = { version = "3.0.2", optional = true }
+tree-sitter-ocaml = { version = "0.26.0", optional = true }
+tree-sitter-odin = { version = "1.3.0", optional = true }
+tree-sitter-pascal = { version = "0.10.2", optional = true }
+tree-sitter-powershell = { version = "0.26.4", optional = true }
+tree-sitter-proto = { version = "0.6.0", optional = true }
+tree-sitter-puppet = { version = "1.3.0", optional = true }
+tree-sitter-r = { version = "1.3.0", optional = true }
+tree-sitter-racket = { version = "0.25.0", optional = true }
+tree-sitter-scala = { version = "0.26.2", optional = true }
+tree-sitter-scheme = { version = "0.24.7", optional = true }
+tree-sitter-sequel = { version = "0.3.11", optional = true }
+tree-sitter-solidity = { version = "1.2.13", optional = true }
+tree-sitter-starlark = { version = "1.3.0", optional = true }
+tree-sitter-swift = { version = "0.7.4", optional = true }
+tree-sitter-systemverilog = { version = "0.4.1", optional = true }
+tree-sitter-vhdl = { version = "1.4.0", optional = true }
+tree-sitter-zig = { version = "1.1.2", optional = true }
 oxigraph = { version = "0.5", default-features = false }
 globset = "0.4"
 toml_edit = { version = "0.23", default-features = false, features = ["parse", "display"] }
+
+[features]
+default = ["default-languages"]
+# Grammars beyond the core twelve. The default set skips the large ones (each
+# adds 2–24 MB to the binary); `all-languages` adds them, and
+# `--no-default-features` builds a slim core-only binary.
+default-languages = ["lang-kotlin", "lang-swift", "lang-scala", "lang-groovy", "lang-dart", "lang-lua", "lang-bash", "lang-zig", "lang-elixir", "lang-erlang", "lang-gleam", "lang-elm", "lang-r", "lang-matlab", "lang-solidity", "lang-hcl", "lang-graphql", "lang-proto", "lang-powershell", "lang-make", "lang-cmake", "lang-nix", "lang-pascal", "lang-ada", "lang-lisp", "lang-scheme", "lang-shaders", "lang-starlark", "lang-puppet", "lang-bicep"]
+all-languages = ["default-languages", "lang-sql", "lang-odin", "lang-vhdl", "lang-objc", "lang-haskell", "lang-d", "lang-julia", "lang-fortran", "lang-cuda", "lang-ocaml", "lang-fsharp", "lang-verilog"]
+lang-kotlin = ["dep:tree-sitter-kotlin-ng"]
+lang-swift = ["dep:tree-sitter-swift"]
+lang-scala = ["dep:tree-sitter-scala"]
+lang-groovy = ["dep:tree-sitter-groovy"]
+lang-dart = ["dep:tree-sitter-dart"]
+lang-lua = ["dep:tree-sitter-lua"]
+lang-bash = ["dep:tree-sitter-bash"]
+lang-zig = ["dep:tree-sitter-zig"]
+lang-elixir = ["dep:tree-sitter-elixir"]
+lang-erlang = ["dep:tree-sitter-erlang"]
+lang-gleam = ["dep:tree-sitter-gleam"]
+lang-haskell = ["dep:tree-sitter-haskell"]
+lang-ocaml = ["dep:tree-sitter-ocaml"]
+lang-fsharp = ["dep:tree-sitter-fsharp"]
+lang-elm = ["dep:tree-sitter-elm"]
+lang-julia = ["dep:tree-sitter-julia"]
+lang-r = ["dep:tree-sitter-r"]
+lang-objc = ["dep:tree-sitter-objc"]
+lang-matlab = ["dep:tree-sitter-matlab"]
+lang-solidity = ["dep:tree-sitter-solidity"]
+lang-sql = ["dep:tree-sitter-sequel"]
+lang-hcl = ["dep:tree-sitter-hcl"]
+lang-graphql = ["dep:tree-sitter-graphql"]
+lang-proto = ["dep:tree-sitter-proto"]
+lang-fortran = ["dep:tree-sitter-fortran"]
+lang-powershell = ["dep:tree-sitter-powershell"]
+lang-make = ["dep:tree-sitter-make"]
+lang-cmake = ["dep:tree-sitter-cmake"]
+lang-nix = ["dep:tree-sitter-nix"]
+lang-verilog = ["dep:tree-sitter-systemverilog"]
+lang-vhdl = ["dep:tree-sitter-vhdl"]
+lang-d = ["dep:tree-sitter-d"]
+lang-pascal = ["dep:tree-sitter-pascal"]
+lang-ada = ["dep:tree-sitter-ada"]
+lang-lisp = ["dep:tree-sitter-commonlisp", "dep:tree-sitter-elisp"]
+lang-scheme = ["dep:tree-sitter-racket", "dep:tree-sitter-scheme"]
+lang-shaders = ["dep:tree-sitter-glsl"]
+lang-cuda = ["dep:tree-sitter-cuda"]
+lang-odin = ["dep:tree-sitter-odin"]
+lang-starlark = ["dep:tree-sitter-starlark"]
+lang-puppet = ["dep:tree-sitter-puppet"]
+lang-bicep = ["dep:tree-sitter-bicep"]
 
 [dev-dependencies]
 tempfile = "3"
