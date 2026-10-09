@@ -13,7 +13,7 @@ import { api, type AgentsInfo, type Team } from "../../api";
 import { Icon, useToast } from "../../ui";
 import { AGENT_IDS, AGENT_NAME, type Act, type Tab } from "./data";
 import { TEAM_TEMPLATES, teamFrom, type TeamTemplate } from "./templates";
-import { AgentMark, Card, TabStrip } from "./parts";
+import { AgentMark, Card, TabStrip, fenceSummary } from "./parts";
 import { Society, SocietyGraph, societyOrder } from "./Society";
 import { TeamOrg, teamProblems, workflowColor } from "./TeamOrg";
 
@@ -222,6 +222,7 @@ function MemberDetail({ team, k, info, setM, drop, move, close }: { team: Team; 
         <button className="btn sm ghost" onClick={() => (preview === null ? show() : setPreview(null))}>{preview === null ? "Full instructions" : "Hide"}</button>
         <span className="spacer" /><button className="btn sm ghost danger" onClick={drop}>Remove</button>
       </div>
+      <SeatFacts agent={m.agent} wfName={m.workflow} info={info} />
       {preview !== null && <pre className="code team-preview">{preview}</pre>}
     </>
   );
@@ -287,6 +288,32 @@ function TeamPicker({ info, create, cancel, setTab }: { info: AgentsInfo; create
           <button className="btn sm primary" disabled={!name || info.teams.some((t) => t.name === name)}>Create {name}</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/**
+ * The seat inspector (module A2): what this seat's workflow fences, the scope
+ * the seat is narrowed to, and the skills the agent behind the seat carries –
+ * read-only facts beside the editable member fields.
+ */
+function SeatFacts({ agent, wfName, info }: { agent: string; wfName?: string; info: AgentsInfo }) {
+  const w = info.workflows.find((x) => x.name === wfName);
+  const fences = w ? fenceSummary(w) : [];
+  const scope = info.workflows.find((x) => x.name === wfName)?.scope ?? [];
+  const skills = (info.skills ?? []).filter((s) => s.targets[agent]);
+  const strays = (info.skill_strays ?? []).filter((s) => s.agent === agent);
+  const conn = info.connections.find((c) => c.id === agent);
+  return (
+    <div className="seat-facts" aria-label={`What ${AGENT_NAME[agent] ?? agent} sees in this seat`}>
+      <h3 className="seat-h">what this seat sees</h3>
+      <dl className="rf-dl seat-dl">
+        <dt>workflow</dt><dd>{w ? <span className="mono">{w.name}</span> : <span className="muted">none – kula.toml's fences</span>}</dd>
+        <dt>fences</dt><dd>{fences.length ? fences.map((f) => <span key={f.t} className={`guard-tag ${f.l}`}>{f.t}</span>) : <span className="muted">no extra fences</span>}</dd>
+        <dt>scope</dt><dd>{scope.length ? <span className="mono">{scope.join(", ")}</span> : <span className="muted">whole repository</span>}</dd>
+        <dt>skills</dt><dd>{skills.length || strays.length ? <span className="mono">{[...skills.map((s) => s.name), ...strays.map((s) => `${s.name} (stray)`)].join(", ")}</span> : <span className="muted">no skills carried</span>}</dd>
+        <dt>wiring</dt><dd>{conn ? <span>{conn.mcp ? <span className="tag ok">connected</span> : <span className="tag">not wired</span>} {conn.hook ? <span className="tag ok">hook</span> : <span className="tag">no hook</span>}</span> : <span className="muted">not a connected agent</span>}</dd>
+      </dl>
     </div>
   );
 }
