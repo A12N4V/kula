@@ -258,6 +258,28 @@ test.describe("graph chrome", () => {
     await expect(page.getByRole("button", { name: /settings/i })).toHaveCount(1);
   });
 
+  test("languages settings: indexed languages and install buttons for detected-but-missing ones", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press(",");
+    await page.locator("#set-langs").scrollIntoViewIfNeeded();
+    // The two-column table: every language here, with the count of files.
+    await expect(page.locator("#set-langs")).toBeVisible();
+    // The two-column table: every language here, with the count of files.
+    await expect(page.locator("#set-langs")).toBeVisible();
+    const indexed = page.locator(".settings .set-row", { hasText: "Indexed" });
+    await expect(indexed).toBeVisible({ timeout: 20_000 });
+    // This checkout contains files in languages without packs installed, so at
+    // least one row offers an Install button naming the pack it would fetch.
+    const install = page.locator(".settings .set-row").filter({ has: page.getByRole("button", { name: "Install" }) });
+    const n = await install.count();
+    expect(n, "detected-but-missing languages offer Install buttons").toBeGreaterThan(0);
+    const hint = await install.first().textContent().catch(() => "");
+    expect(hint ?? "").toMatch(/language pack/);
+    // The hint text uses spaced en dashes, never an em dash.
+    const body = await page.locator(".settings").textContent();
+    expect(body).not.toContain("—");
+  });
+
   test("while the graph loads it is blocked by the recursive mark and a progress bar", async ({ page }) => {
     test.setTimeout(60_000);
     await page.route("**/api/graph*", async (r) => { await new Promise((f) => setTimeout(f, 3000)); await r.continue(); });
@@ -318,7 +340,10 @@ test.describe("agent checks, for people", () => {
   });
 
   test("verify reads the working tree against HEAD", async ({ request }) => {
-    const v = await (await request.get("/api/agent/verify", { headers: { "x-kula-token": "test" } })).json();
+    // The session token is whatever the server stamps into the page, not a constant.
+    const html = await (await request.get("/")).text();
+    const tok = /kula-token" content="([^"]*)"/.exec(html)?.[1] ?? "";
+    const v = await (await request.get("/api/agent/verify", { headers: { "x-kula-token": tok } })).json();
     expect(typeof v.ok).toBe("boolean");
     expect(v.summary).toHaveProperty("modified");
     for (const k of ["changed_refs", "dangling_refs", "recheck_refs"]) expect(Array.isArray(v[k]), k).toBe(true);
@@ -333,7 +358,9 @@ test.describe("api", () => {
   });
 
   test("graph export includes package nodes wired by IMPORTS", async ({ request }) => {
-    const g = await (await request.get("/api/graph?level=file", { headers: { "x-kula-token": "test" } })).json();
+    const html = await (await request.get("/")).text();
+    const tok = /kula-token" content="([^"]*)"/.exec(html)?.[1] ?? "";
+    const g = await (await request.get("/api/graph?level=file", { headers: { "x-kula-token": tok } })).json();
     const pk = g.nodes.filter((n: { kind: string }) => n.kind === "package");
     expect(pk.length).toBeGreaterThan(3);
     const ids = new Set(pk.map((n: { id: number }) => n.id));
@@ -405,6 +432,18 @@ if (view === "graph") { test.setTimeout(60_000); await expect(page.locator(".gra
 }
 
 test.describe("phone chrome", () => {
+  test("@responsive settings with the languages table fits without sideways scroll", async ({ page }, info) => {
+    await open(page);
+    await page.keyboard.press(",");
+    await page.locator("#set-langs").scrollIntoViewIfNeeded();
+    const over = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
+    expect(over).toBeLessThanOrEqual(0);
+    const clipped = await page.evaluate(() => [...document.querySelectorAll(".settings .set-row button, .settings .set-row .mono")]
+      .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > window.innerWidth + 1; }).map((el) => el.textContent?.trim().slice(0, 30)));
+    expect(clipped).toEqual([]);
+    await page.screenshot({ path: `test-results/${info.project.name}-settings.png` });
+  });
+
   test("@mobile logo and sidebar toggle on the left, search and settings on the right; the sidebar is a drawer", async ({ page }, info) => {
     test.skip(info.project.name !== "phone", "phones only");
     await open(page);
