@@ -7,7 +7,7 @@ class Kula < Formula
   homepage "https://github.com/A12N4V/kula"
   url "https://github.com/A12N4V/kula/releases/download/vVERSION/kula-VERSION-src.tar.gz"
   sha256 "SHA256_SRC"
-  license "GPL-3.0-only"
+  license "MIT"
   head "https://github.com/A12N4V/kula.git", branch: "main"
 
   depends_on "rust" => :build

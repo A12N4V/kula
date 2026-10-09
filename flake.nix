@@ -42,7 +42,7 @@
           meta = with pkgs.lib; {
             description = "Local-first git client with a knowledge-graph view";
             homepage = "https://github.com/A12N4V/kula";
-            license = licenses.gpl3Only;
+            license = licenses.mit;
             mainProgram = "kula";
           };
         };

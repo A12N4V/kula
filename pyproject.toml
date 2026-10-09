@@ -7,7 +7,7 @@ build-backend = "maturin"
 name = "kula"
 description = "git, with a map – a local-first git client with a knowledge-graph view, local issues/PRs, notes and an MCP server."
 readme = "README.md"
-license = "GPL-3.0-only"
+license = "MIT"
 requires-python = ">=3.8"
 keywords = ["git", "knowledge-graph", "mcp", "code-intelligence", "tree-sitter"]
 classifiers = [
