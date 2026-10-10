@@ -78,9 +78,9 @@ One binary with the web UI embedded. The only runtime dependency is `git`.
 | **nix** | `nix run github:A12N4V/kula` · `nix profile install github:A12N4V/kula` | live |
 | **binaries** | macOS (arm64, x64), Linux (x64, arm64), Windows (x64) and `.deb` on [Releases](../../releases) | live |
 | **source** | `git clone https://github.com/A12N4V/kula && cd kula && pnpm -C web install && pnpm -C web build && cargo install --path .` | live |
-| **npm · pnpm · bun** | `npm i -g kula-cli` · `pnpm add -g kula-cli` · `bunx kula-cli` | coming with 0.3 |
-| **pip · uv · pipx** | `pip install kula` · `uv tool install kula` · `pipx install kula` | coming with 0.3 |
-| **cargo** | `cargo install kula` | coming with 0.3 – build from source until then |
+| **npm · pnpm · bun** | `npm i -g @kula-cli/kula` · `pnpm add -g @kula-cli/kula` · `bunx @kula-cli/kula` | live |
+| **pip · uv · pipx** | `pip install kula` · `uv tool install kula` · `pipx install kula` | live |
+| **cargo** | `cargo install kula` | live – builds from source; needs Rust |
 
 <details>
 <summary><b>The apt repository</b>: add it once, then <code>apt install</code> and <code>apt upgrade</code> as usual</summary>

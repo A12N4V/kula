@@ -1,5 +1,5 @@
 {
-  "name": "kula-cli",
+  "name": "@kula-cli/kula",
   "version": "0.3.0",
   "description": "git, with a map – a local-first git client with a knowledge-graph view, local issues/PRs, notes and an MCP server.",
   "license": "MIT",

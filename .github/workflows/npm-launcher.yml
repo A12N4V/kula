@@ -1,0 +1,22 @@
+# Publish only the npm launcher (@kula-cli/kula) for a version whose platform
+# packages are already on npm – for when release.yml's npm job needs a retry
+# without re-running the whole release.
+name: npm launcher
+on:
+  workflow_dispatch:
+    inputs:
+      version: { description: "version, e.g. 0.3.0", required: true }
+permissions: { contents: read }
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}", V: "${{ inputs.version }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
+      - run: |
+          for p in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do npm view "@kula-cli/$p@$V" version; done
+          cd packaging/npm/kula-cli && cp ../../../README.md . \
+            && sed -i -E "s/\"[0-9]+\.[0-9]+\.[0-9]+\"/\"$V\"/g" package.json && npm publish --access public

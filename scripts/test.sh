@@ -121,8 +121,8 @@ if want pkg; then
     PLAT="$(node -p 'process.platform+"-"+process.arch')"
     PD=$(./packaging/npm/make-platform-package.sh "$PLAT" "$REL" "$VERSION" "$NT/out")
     (cd "$NT" && npm pack -s "$PD" >/dev/null && npm pack -s "$ROOT/packaging/npm/kula-cli" >/dev/null)
-    mkdir -p "$NT/app" && (cd "$NT/app" && npm init -y >/dev/null && npm i -s --no-audit --no-fund --omit=optional "$NT"/kula-cli-*-*.tgz "$NT"/kula-cli-$VERSION.tgz >/dev/null 2>&1)
-    if [ -x "$NT/app/node_modules/.bin/kula" ] && "$NT/app/node_modules/.bin/kula" --version | grep -q "kula $VERSION"; then ok "npm: kula-cli launcher → @kula-cli/$PLAT"; else bad "npm install + run"; fi
+    mkdir -p "$NT/app" && (cd "$NT/app" && npm init -y >/dev/null && npm i -s --no-audit --no-fund --omit=optional "$NT"/kula-cli-*-*.tgz "$NT"/kula-cli-kula-$VERSION.tgz >/dev/null 2>&1)
+    if [ -x "$NT/app/node_modules/.bin/kula" ] && "$NT/app/node_modules/.bin/kula" --version | grep -q "kula $VERSION"; then ok "npm: @kula-cli/kula launcher → @kula-cli/$PLAT"; else bad "npm install + run"; fi
     rm -rf "$NT"
   else skip "npm" "npm not installed"; fi
 
