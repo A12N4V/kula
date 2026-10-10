@@ -117,9 +117,19 @@ jobs:
           files: |
             artifacts/bin-*/kula-*.tar.gz*
             artifacts/bin-*/*.deb
-            artifacts/langpacks-*/*
             kula-*-src.tar.gz*
             scripts/install.sh
+      # ~700 pack files in one burst trip GitHub's secondary rate limit, so they
+      # go up one at a time, skipping any a previous run already uploaded.
+      - name: language packs
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          have=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')
+          for f in artifacts/langpacks-*/*; do
+            grep -qxF "$(basename "$f")" <<<"$have" && continue
+            gh release upload "$GITHUB_REF_NAME" "$f" --clobber || { sleep 90; gh release upload "$GITHUB_REF_NAME" "$f" --clobber; }
+            sleep 1
+          done
 
   pypi:
     needs: build
