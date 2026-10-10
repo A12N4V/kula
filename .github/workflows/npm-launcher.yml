@@ -5,18 +5,20 @@ name: npm launcher
 on:
   workflow_dispatch:
     inputs:
-      version: { description: "version, e.g. 0.3.0", required: true }
+      version: { description: "launcher version, e.g. 0.3.0", required: true }
+      platforms: { description: "platform package version, if different (a launcher-only fix)", required: false }
 permissions: { contents: read }
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}", V: "${{ inputs.version }}" }
+    env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}", V: "${{ inputs.version }}", P: "${{ inputs.platforms || inputs.version }}" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
       - run: |
-          for p in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do npm view "@kula-cli/$p@$V" version; done
+          for p in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do npm view "@kula-cli/$p@$P" version; done
           cd packaging/npm/kula-cli && cp ../../../README.md . \
-            && sed -i -E "s/\"[0-9]+\.[0-9]+\.[0-9]+\"/\"$V\"/g" package.json && npm publish --access public
+            && node -e 'const f="package.json",j=require("./"+f);j.version=process.env.V;for(const k in j.optionalDependencies)j.optionalDependencies[k]=process.env.P;require("fs").writeFileSync(f,JSON.stringify(j,null,2)+"\n")' \
+            && npm publish --access public

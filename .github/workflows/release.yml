@@ -158,6 +158,7 @@ jobs:
       - if: env.HAS_NPM == 'true'
         run: |
           v="${GITHUB_REF_NAME#v}"
+          chmod +x artifacts/bin-*/npm-out/*/bin/kula 2>/dev/null || true  # artifacts drop the executable bit
           for d in artifacts/bin-*/npm-out/*/; do npm publish "$d" --access public || true; done
           cd packaging/npm/kula-cli && cp ../../../README.md . \
             && sed -i -E "s/\"[0-9]+\.[0-9]+\.[0-9]+\"/\"$v\"/g" package.json && npm publish --access public

@@ -25,6 +25,14 @@ if (!bin) {
   console.error("Install from source instead:  cargo install kula");
   process.exit(1);
 }
+// npm tarballs built from CI artifacts can lose the executable bit
+if (process.platform !== "win32") {
+  try {
+    fs.accessSync(bin, fs.constants.X_OK);
+  } catch {
+    try { fs.chmodSync(bin, 0o755); } catch {}
+  }
+}
 const r = spawnSync(bin, process.argv.slice(2), { stdio: "inherit" });
 if (r.error) {
   console.error(`kula: ${r.error.message}`);
