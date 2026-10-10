@@ -1,6 +1,6 @@
-# Homebrew formula. The release workflow rewrites VERSION and the sha256 values
-# and pushes this file to the tap repo (github.com/A12N4V/homebrew-tap).
-#   brew tap a12n4v/tap   # once
+# Homebrew formula; this repo is its own tap. The release workflow rewrites the
+# version and sha256 values here and commits them to main.
+#   brew tap a12n4v/kula https://github.com/A12N4V/kula   # once
 #   brew install kula
 class Kula < Formula
   desc "Git, with a map: local-first git client with a knowledge-graph view"
@@ -13,22 +13,22 @@ class Kula < Formula
   on_macos do
     on_arm do
       url "https://github.com/A12N4V/kula/releases/download/v#{version}/kula-aarch64-apple-darwin.tar.gz"
-      sha256 "SHA256_AARCH64_APPLE_DARWIN"
+      sha256 "73023d8e16361e043b03fc15cf734bbd6ced4c84b5a64b0449ac72ad7e8ff51c"
     end
     on_intel do
       url "https://github.com/A12N4V/kula/releases/download/v#{version}/kula-x86_64-apple-darwin.tar.gz"
-      sha256 "SHA256_X86_64_APPLE_DARWIN"
+      sha256 "45126129eaaa3644cebef76f8b82ed9abf3a8bf45826bca13e0c6b3abadc0203"
     end
   end
 
   on_linux do
     on_arm do
       url "https://github.com/A12N4V/kula/releases/download/v#{version}/kula-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "SHA256_AARCH64_UNKNOWN_LINUX_GNU"
+      sha256 "d921f4b1273a82eaec1c799d10c6e4431d9b6a67432818f769ed7abf3b372706"
     end
     on_intel do
       url "https://github.com/A12N4V/kula/releases/download/v#{version}/kula-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "SHA256_X86_64_UNKNOWN_LINUX_GNU"
+      sha256 "82568709380ba5a3a5ae8fb07d94134436fabdbb075a3fabfb5e9f3cbe3c42bb"
     end
   end
 

@@ -139,7 +139,7 @@ if want pkg; then
 
   run "crate contains embedded UI" sh -c "cargo package --list --allow-dirty 2>/dev/null | grep -q 'web/dist/index.html'"
   if has cargo-deb; then run "deb package" cargo deb --no-build -o "$(mktemp -d)"; else skip "deb package" "cargo-deb not installed; built in CI"; fi
-  if has ruby; then run "homebrew formula syntax" ruby -c packaging/homebrew/kula.rb packaging/homebrew/kula-core.rb; else skip "homebrew formula" "ruby missing"; fi
+  if has ruby; then run "homebrew formula syntax" ruby -c Formula/kula.rb packaging/homebrew/kula-core.rb; else skip "homebrew formula" "ruby missing"; fi
   run "apt repo script syntax" sh -n packaging/apt/build-repo.sh
   run "install.sh syntax" sh -n scripts/install.sh
   if has nix; then run "nix flake eval" nix flake show --no-write-lock-file; else skip "nix flake" "nix not installed; evaluated in CI"; fi

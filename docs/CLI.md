@@ -7,7 +7,7 @@ How kula is installed, set up per project, run day to day, and wired into CI.
 | where | command |
 |---|---|
 | curl (macOS, Linux) | `curl -fsSL https://raw.githubusercontent.com/A12N4V/kula/main/scripts/install.sh \| sh` |
-| Homebrew | `brew install kula`, after `brew tap a12n4v/tap` once |
+| Homebrew | `brew install kula`, after `brew tap a12n4v/kula https://github.com/A12N4V/kula` once |
 | apt | `apt install kula`, after adding the signed repository in the README once |
 | npm | `npm i -g @kula-cli/kula`: a launcher plus the platform binary (`@kula-cli/<os>-<arch>`) |
 | pip | `pip install kula` · `uv tool install kula` · `pipx install kula` |

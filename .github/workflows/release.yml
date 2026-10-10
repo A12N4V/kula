@@ -1,21 +1,28 @@
 # Tag `vX.Y.Z` → binaries for 5 targets, .deb packages and install.sh on a
 # GitHub release, then the registries. Registry steps run only when their
 # credential is configured, so a release never fails for a missing token:
-#   NPM_TOKEN             npm (needs the @kula-cli org on npmjs.com)
+#   npm                   trusted publishing, no token (each @kula-cli package
+#                         trusts this repo + release.yml on npmjs.com)
 #   CARGO_REGISTRY_TOKEN  crates.io
 #   PyPI                  trusted publishing (add this repo + workflow on pypi.org),
 #                         or set the PYPI_API_TOKEN secret
-#   TAP_TOKEN             push the Homebrew formula to A12N4V/homebrew-tap
+#   Homebrew              none: this repo is the tap; Formula/kula.rb is committed to main
 #   APT_GPG_KEY           ASCII-armoured private key that signs the apt repository
 #                         served from GitHub Pages (Pages source: GitHub Actions)
 name: release
 on:
   push: { tags: ["v*"] }
+  # Launcher-only publish (@kula-cli/kula) for platform packages already on npm,
+  # e.g. a launcher fix. Lives here because npm trusts one workflow per package.
   workflow_dispatch:
+    inputs:
+      version: { description: "launcher version, e.g. 0.3.1", required: true }
+      platforms: { description: "platform package version, if different", required: false }
 permissions: { contents: write, id-token: write, pages: write }
 
 jobs:
   web:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,6 +80,7 @@ jobs:
   # library per target, with the sha256 manifest `kula lang add` verifies
   # against. Windows has no prebuilt packs yet (they need an MSVC build path).
   langpacks:
+    if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
@@ -147,21 +155,32 @@ jobs:
   npm:
     needs: build
     runs-on: ubuntu-latest
-    # setup-node injects a placeholder NODE_AUTH_TOKEN, so gate on the secret itself.
-    env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}", HAS_NPM: "${{ secrets.NPM_TOKEN != '' }}" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { pattern: "bin-*", path: artifacts }
       - uses: actions/setup-node@v4
-        with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
-      - if: env.HAS_NPM == 'true'
-        run: |
+        with: { node-version: 24, registry-url: "https://registry.npmjs.org" }
+      - run: |
           v="${GITHUB_REF_NAME#v}"
           chmod +x artifacts/bin-*/npm-out/*/bin/kula 2>/dev/null || true  # artifacts drop the executable bit
           for d in artifacts/bin-*/npm-out/*/; do npm publish "$d" --access public || true; done
           cd packaging/npm/kula-cli && cp ../../../README.md . \
             && sed -i -E "s/\"[0-9]+\.[0-9]+\.[0-9]+\"/\"$v\"/g" package.json && npm publish --access public
+
+  npm-launcher:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env: { V: "${{ inputs.version }}", P: "${{ inputs.platforms || inputs.version }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, registry-url: "https://registry.npmjs.org" }
+      - run: |
+          for p in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do npm view "@kula-cli/$p@$P" version; done
+          cd packaging/npm/kula-cli && cp ../../../README.md . \
+            && node -e 'const f="package.json",j=require("./"+f);j.version=process.env.V;for(const k in j.optionalDependencies)j.optionalDependencies[k]=process.env.P;require("fs").writeFileSync(f,JSON.stringify(j,null,2)+"\n")' \
+            && npm publish --access public
 
   crates:
     needs: build
@@ -175,25 +194,25 @@ jobs:
       - if: env.CARGO_REGISTRY_TOKEN != ''
         run: cargo publish --allow-dirty
 
+  # This repo is the tap (brew tap a12n4v/kula https://github.com/A12N4V/kula),
+  # so the bumped formula is committed straight to main.
   homebrew:
     needs: release
     runs-on: ubuntu-latest
-    env: { TAP_TOKEN: "${{ secrets.TAP_TOKEN }}" }
     steps:
       - uses: actions/checkout@v4
+        with: { ref: main }
       - uses: actions/download-artifact@v4
         with: { pattern: "bin-*", path: artifacts }
-      - if: env.TAP_TOKEN != ''
-        run: |
-          v="${GITHUB_REF_NAME#v}"; f=packaging/homebrew/kula.rb
-          sed -i "s/version \".*\"/version \"$v\"/" $f
+      - run: |
+          v="${GITHUB_REF_NAME#v}"; f=Formula/kula.rb
+          sed -i "s/^  version \".*\"/  version \"$v\"/" $f
           for t in aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu; do
             sha=$(cut -d' ' -f1 artifacts/bin-$t/kula-$t.tar.gz.sha256)
-            key=SHA256_$(echo $t | tr 'a-z-' 'A-Z_'); sed -i "s/$key/$sha/" $f
+            sed -i "/kula-$t.tar.gz\"/{n;s/sha256 \"[0-9a-f]*\"/sha256 \"$sha\"/}" $f
           done
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/A12N4V/homebrew-tap" tap
-          mkdir -p tap/Formula && cp $f tap/Formula/kula.rb
-          cd tap && git add -A && git -c user.name=kula-bot -c user.email=bot@kula.dev commit -m "kula $v" && git push
+          git diff --quiet && exit 0
+          git -c user.name=kula-bot -c user.email=bot@kula.dev commit -qam "Formula: kula $v" && git push origin HEAD:main
 
   # Signed apt repository on GitHub Pages:  https://a12n4v.github.io/kula/apt
   apt:
