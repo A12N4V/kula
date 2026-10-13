@@ -107,6 +107,45 @@ fn index_and_graph_queries() {
 }
 
 #[test]
+fn syntagm_blocks_and_chains_hold_the_contract() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+
+    let s = kula_json(d, &["blocks"]);
+    let blocks = s["blocks"].as_array().unwrap();
+    assert!(!blocks.is_empty(), "blocks exist");
+    // Every leaf-bearing block stays within the leaf cap.
+    for b in blocks {
+        if b["children"].as_array().unwrap().is_empty() {
+            let n = b["symbols"].as_array().unwrap().len();
+            assert!(n <= 40, "block {} holds {} leaves", b["name"], n);
+        }
+    }
+    // Names are segment-first and summaries are one line, no prose.
+    for b in blocks {
+        assert!(!b["name"].as_str().unwrap().is_empty());
+        assert!(!b["summary"].as_str().unwrap().contains('\n'));
+        assert_eq!(b["source"], "graph");
+    }
+    // Chains are deterministic across two runs and respect the depth cap.
+    let c1 = kula_json(d, &["chains"]);
+    let c2 = kula_json(d, &["chains"]);
+    assert_eq!(c1, c2, "chains are deterministic");
+    for c in c1.as_array().unwrap() {
+        let len = c["len"].as_u64().unwrap();
+        assert!(len >= 2 && len as usize <= 12);
+        assert!(!c["blocks"].as_array().unwrap().is_empty(), "chain lists the blocks it crosses");
+    }
+    // Incremental: a second blocks run reuses the stored tree unchanged
+    // (stats differ – batches 0 marks a cache hit – the tree does not).
+    let b2 = kula_json(d, &["blocks"]);
+    assert_eq!(s["blocks"], b2["blocks"], "unchanged files reuse the stored tree");
+    assert_eq!(s["chains"], b2["chains"]);
+    assert_eq!(b2["stats"]["batches"], 0, "cache hit is marked by batches 0");
+}
+
+#[test]
 fn compare_proposals_issues_notes() {
     let t = fixture();
     let d = t.path();
