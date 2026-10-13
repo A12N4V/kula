@@ -5,7 +5,7 @@
 //! served page, so other websites cannot drive your repository.
 
 use crate::git::{validate_rev, Repo};
-use crate::{graph, index, meta, store::Store};
+use crate::{graph, index, meta, store::Store, syntagm};
 use anyhow::anyhow;
 use axum::{
     body::Body,
@@ -311,6 +311,22 @@ async fn scopes_action(State(s): State<AppState>, Path(action): Path<String>, Js
 
 async fn flows(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(graph::flows(&Store::open(&s.repo)?, 25)?))).await
+}
+
+/// GET /api/syntagm – blocks, chains, leaves and stats.
+async fn syntagm_all(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!(syntagm::all_json(&s.repo, &Store::open(&s.repo)?).unwrap_or_else(|e| json!({ "error": e.to_string() })))))
+        .await
+}
+
+/// GET /api/syntagm/block/:id – a block, its children and its leaves.
+async fn syntagm_block(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || Ok(json!(syntagm::block_json(&s.repo, &Store::open(&s.repo)?, &id)?))).await
+}
+
+/// GET /api/syntagm/chain/:id – a chain and its resolved steps.
+async fn syntagm_chain(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || Ok(json!(syntagm::chain_json(&s.repo, &Store::open(&s.repo)?, &id)?))).await
 }
 
 async fn file(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
@@ -1054,6 +1070,9 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/symbol/{id}", get(symbol))
         .route("/api/impact/{id}", get(impact))
         .route("/api/flows", get(flows))
+        .route("/api/syntagm", get(syntagm_all))
+        .route("/api/syntagm/block/{id}", get(syntagm_block))
+        .route("/api/syntagm/chain/{id}", get(syntagm_chain))
         .route("/api/isolate", post(isolate))
         .route("/api/scopes", get(scopes))
         .route("/api/scopes/{action}", post(scopes_action))
