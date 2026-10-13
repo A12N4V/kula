@@ -14,6 +14,7 @@ const History = lazy(() => import("./views/GitViews").then((m) => ({ default: m.
 const Branches = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Branches })));
 const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
 const Flows = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Flows })));
+const Syntagm = lazy(() => import("./views/Syntagm"));
 const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
 const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
 const Proposals = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Proposals })));
@@ -47,6 +48,7 @@ const GROUPS: Rail[][] = [
     { id: "overview", label: "Overview", icon: Icon.home, key: "1" },
     { id: "graph", label: "Graph", icon: Icon.graph, key: "2" },
     { id: "flows", label: "Flows", icon: Icon.flows, key: "3" },
+    { id: "syntagm", label: "Syntagm", icon: Icon.box, key: "s" },
   ],
   [
     { id: "changes", label: "Changes", icon: Icon.changes, key: "4" },
@@ -79,6 +81,7 @@ function parseHash() {
   if (view === "proposals" && Number(a)) target.proposal = Number(a);
   if (view === "history" && a) target.sha = a;
   if (view === "agents" && a) target.tab = a;
+  if (view === "syntagm" && a) target.block = a;
   if (view === "graph" && a === "fences") target.fences = b ?? "";
   return { view, contrast, focus, target };
 }
@@ -139,6 +142,7 @@ export default function App() {
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
     else if (view === "agents" && target.tab && target.tab !== "overview") h += `/${target.tab}`;
+    else if (view === "syntagm" && target.block) h += `/${target.block}`;
     if (`#${h}` === location.hash) return;
     if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
     else history.pushState(null, "", `#${h}`);
@@ -263,6 +267,7 @@ export default function App() {
             {view === "issues" && <Issues {...nav} />}
             {view === "notes" && <Notes {...nav} />}
             {view === "flows" && <Flows {...nav} />}
+            {view === "syntagm" && <Syntagm openSymbol={(id) => go("graph", { symbol: id })} version={version} block={target.block} />}
             {view === "agents" && <Agents {...nav} />}
             {view === "query" && <Query {...nav} />}
             {view === "console" && <Console {...nav} />}
