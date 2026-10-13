@@ -491,6 +491,24 @@ async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: numbe
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 20_000 });
   await page.waitForFunction(() => !!(window as any).__kula);
   await page.waitForTimeout(400);
+  // Under load the layout can still settle after the loader clears; positions
+  // sampled too early drift and the subsequent mouse click misses the node.
+  // Wait until the two candidate positions hold still across a beat.
+  await expect.poll(async () => {
+    const read = () => page.evaluate((pick) => {
+      const { sigma, graph } = (window as any).__kula;
+      const box = sigma.getContainer().getBoundingClientRect();
+      const edges = graph.edges().map((e: string) => graph.extremities(e)).filter(([s, t]: string[]) => s !== t);
+      const flat = edges.flat().slice(0, 200);
+      return flat.map((id: string) => {
+        const p = sigma.framedGraphToViewport(sigma.getNodeDisplayData(id));
+        return `${id}:${Math.round(p.x)},${Math.round(p.y)}`;
+      }).join("|");
+    }, pick);
+    const first = await read();
+    await page.waitForTimeout(250);
+    return (await read()) === first ? "still" : "moving";
+  }).toBe("still");
   return page.evaluate((pick) => {
     const { sigma, graph } = (window as any).__kula;
     const box = sigma.getContainer().getBoundingClientRect();
