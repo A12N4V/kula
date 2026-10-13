@@ -1135,3 +1135,45 @@ fn research_revert_never_deletes_a_persons_files() {
     assert_eq!(std::fs::read_to_string(d.join("NOTES.txt")).unwrap(), "my scratch notes\n");
     kula(d, &["research", "stop"]);
 }
+
+#[test]
+fn embed_is_off_by_default_and_check_gates_install() {
+    let d = fixture();
+    kula(d.path(), &["index"]);
+    // status: off by default, nothing installed, no runtime linked in
+    let s = kula_json(d.path(), &["embed", "status", "--json"]);
+    assert_eq!(s["enabled"], false, "embeddings are opt-in");
+    assert_eq!(s["installed"], false);
+    assert_eq!(s["feature"], false, "default build has no ONNX runtime");
+    assert_eq!(s["run"]["running"], false);
+
+    // check: a two-column table with the verdict; JSON carries the stats
+    let table = kula(d.path(), &["embed", "check"]);
+    assert!(table.contains("RAM total"), "{table}");
+    assert!(table.contains("Verdict"), "{table}");
+    let c = kula_json(d.path(), &["embed", "check", "--json"]);
+    assert_eq!(c["verdict"], "refuse", "refuses while [embed] enabled = false");
+    assert!(c["reasons"].as_array().unwrap().iter().any(|r| r.as_str().unwrap().contains("enabled = false")));
+    assert!(c["symbols"].as_u64().unwrap() > 0, "it counts this repo's symbols");
+    assert_eq!(c["model_mb"], 210);
+
+    // install: the check is run first and its refusal is a real exit-code failure
+    let (_, err) = kula_code(d.path(), &["embed", "install"], None, 1);
+    assert!(err.contains("refuse") || err.contains("embed check"), "{err}");
+}
+
+#[test]
+fn embed_run_uses_the_mock_provider_and_remove_cleans_up() {
+    let d = fixture();
+    kula(d.path(), &["index"]);
+    // Without the feature and without a model, run falls back to the mock provider.
+    let r = kula_json(d.path(), &["embed", "run", "--json"]);
+    assert_eq!(r["provider"], "mock");
+    assert_eq!(r["dim"], 256, "Matryoshka truncation");
+    assert!(r["symbols"].as_u64().unwrap() > 0);
+    assert!(d.path().join(".kula/embed/cache.json").exists(), "cache lands in .kula/embed");
+    // remove: deletes the cache (and the model dir when present)
+    let rm = kula_json(d.path(), &["embed", "remove", "--json"]);
+    assert!(rm["freed_mb"].as_u64().is_some());
+    assert!(!d.path().join(".kula/embed/cache.json").exists(), "cache is gone");
+}
