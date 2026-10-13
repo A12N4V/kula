@@ -5,7 +5,7 @@
 //! served page, so other websites cannot drive your repository.
 
 use crate::git::{validate_rev, Repo};
-use crate::{graph, index, meta, store::Store};
+use crate::{config, embed, graph, index, meta, store::Store};
 use anyhow::anyhow;
 use axum::{
     body::Body,
@@ -836,6 +836,33 @@ async fn kg_sparql(State(s): State<AppState>, Json(q): Json<SparqlReq>) -> ApiRe
     .await
 }
 
+async fn embed_status(State(s): State<AppState>) -> ApiResult {
+    Ok(Json(embed::api_status(&s.repo)?))
+}
+
+async fn embed_check(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        embed::api_check(&s.repo, &st)
+    })
+    .await
+}
+
+async fn embed_install(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        let cfg = config::Config::load(&s.repo.root)?.embed;
+        let verdict = embed::check(&s.repo, &st, &cfg)?;
+        embed::install_gate(&verdict, false)?;
+        Ok(serde_json::json!({ "installed": embed::install(&s.repo)? }))
+    })
+    .await
+}
+
+async fn embed_remove(State(s): State<AppState>) -> ApiResult {
+    Ok(Json(serde_json::json!({ "freed_mb": embed::remove(&s.repo)? / (1024 * 1024) })))
+}
+
 async fn kg_export(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let f = q.get("format").cloned().unwrap_or_else(|| "ttl".into());
@@ -1079,6 +1106,10 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/kg/sparql", post(kg_sparql))
         .route("/api/kg/export", get(kg_export))
         .route("/api/kg/examples", get(kg_examples))
+        .route("/api/embed/status", get(embed_status))
+        .route("/api/embed/check", get(embed_check))
+        .route("/api/embed/install", post(embed_install))
+        .route("/api/embed/remove", post(embed_remove))
         .route("/api/meta/{kind}/{action}", post(meta_action))
         .fallback(static_file)
         .layer(middleware::from_fn_with_state(state.clone(), guard))
