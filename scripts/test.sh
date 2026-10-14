@@ -108,6 +108,11 @@ if want e2e; then
     curl -s "${H[@]}" "$U/api/embed/status" | grep -q '"enabled":false' && ok "E1: GET /api/embed/status (off by default)" || bad "E1: GET /api/embed/status (off by default)"
     curl -s "${H[@]}" "$U/api/embed/check" | grep -q '"verdict":"refuse"' && ok "E1: GET /api/embed/check (refuses while disabled)" || bad "E1: GET /api/embed/check (refuses while disabled)"
     curl -s "${H[@]}" "$U/api/embed/check" | grep -q '"ram_total_gb"' && ok "E1: GET /api/embed/check returns the stats table" || bad "E1: GET /api/embed/check returns the stats table"
+    # E1: run + cancel over the API – the run refuses while disabled, cancel always answers.
+    curl -s "${H[@]}" -X POST "$U/api/embed/cancel" | grep -q '"cancelled":true' && ok "E1: POST /api/embed/cancel" || bad "E1: POST /api/embed/cancel"
+    curl -s "${H[@]}" -X POST "$U/api/embed/run" | grep -q '"started":true' && ok "E1: POST /api/embed/run starts" || bad "E1: POST /api/embed/run starts"
+    sleep 1
+    curl -s "${H[@]}" "$U/api/embed/status" | grep -qE '"error":"embedding is off' && ok "E1: API run refuses while disabled (error in status)" || bad "E1: API run refuses while disabled (error in status)"
   fi
   kill $SRV 2>/dev/null; wait $SRV 2>/dev/null
 fi

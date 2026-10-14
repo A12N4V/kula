@@ -128,8 +128,9 @@ pub fn check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<
     let disk_free = disk_free(&model_dir());
     let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     let symbols = store.nodes_where("kind != 'file'", ())?.len();
-    // Q4 ONNX on an M-class core: ~8 ms per text batched at 32.
-    let est_seconds = (symbols as f64 / cfg.batch_size().max(1) as f64 * 0.008 * cfg.pool() as f64).ceil() as u64;
+    // Q4 ONNX on an M-class core: ~8 ms per text – batches stream through the
+    // pool, so wall time is texts/batch * per-text, not multiplied by threads.
+    let est_seconds = (symbols as f64 / cfg.batch_size().max(1) as f64 * 0.008).ceil() as u64;
     let mut reasons = Vec::new();
     let mut verdict = "ok";
     if ram_free < MIN_FREE_RAM_GB {
@@ -376,6 +377,8 @@ pub struct RunState {
     pub batches: usize,
     pub cancelled: bool,
     pub provider: String,
+    /// Last failure of a background (API) run, empty when all went well.
+    pub error: String,
 }
 
 static RUN: OnceLock<Mutex<RunState>> = OnceLock::new();
@@ -391,12 +394,21 @@ fn run_state() -> &'static Mutex<RunState> {
             batches: 0,
             cancelled: false,
             provider: String::new(),
+            error: String::new(),
         })
     })
 }
 
 pub fn status() -> RunState {
     run_state().lock().unwrap().clone()
+}
+
+/// Record a background (API) run's failure for the status endpoint.
+pub fn run_error(msg: String) {
+    set_run(|s| {
+        s.running = false;
+        s.error = msg;
+    });
 }
 
 pub fn installed() -> bool {
@@ -437,6 +449,7 @@ pub fn run(
             batches: 0,
             cancelled: false,
             provider: provider.name().into(),
+            error: String::new(),
         }
     });
     CANCEL.get_or_init(|| AtomicBool::new(false)).store(false, Ordering::Relaxed);
@@ -531,13 +544,17 @@ fn lower_priority() {
 // ------------------------------------------------------------------ install / remove
 
 /// Pick a provider: the real model when the `embed` feature is built and the
-/// model is installed, the deterministic mock otherwise (so `run` and tests
-/// work without a 200 MB download).
-pub fn provider_for(cfg: &EmbedCfg) -> Result<std::sync::Arc<dyn EmbedProvider>> {
+/// model is installed; `--mock` forces the deterministic mock (tests, caches
+/// without a download). Without either, `run` refuses – mock vectors must
+/// never be mistaken for embeddings.
+pub fn provider_for(cfg: &EmbedCfg, mock: bool) -> Result<std::sync::Arc<dyn EmbedProvider>> {
+    if mock {
+        return Ok(std::sync::Arc::new(MockProvider::new()));
+    }
     if cfg.enabled && installed() {
         real_provider()
     } else {
-        Ok(std::sync::Arc::new(MockProvider::new()))
+        bail!("embedding is off: [embed] enabled = {} and the model is {}installed – set enabled = true, run `kula embed install`, or pass --mock", cfg.enabled, if installed() { "" } else { "not " })
     }
 }
 
@@ -552,7 +569,7 @@ pub fn cancel_requested() -> bool {
 pub fn install(repo: &crate::git::Repo) -> Result<bool> {
     #[cfg(feature = "embed")]
     {
-        Ok(crate::embed_ort::install_model(repo)?)
+        crate::embed_ort::install_model(repo)
     }
     #[cfg(not(feature = "embed"))]
     {

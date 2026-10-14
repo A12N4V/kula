@@ -406,7 +406,14 @@ enum EmbedCmd {
         force: bool,
     },
     /// Embed every symbol in the graph (batched, low priority, resumable).
-    Run,
+    /// Ctrl-C stops between batches; the cache keeps what was done.
+    Run {
+        /// Use the deterministic mock provider instead of the model – for
+        /// tests and caches without a download. Real embedding needs
+        /// `[embed]` enabled and the model installed.
+        #[arg(long)]
+        mock: bool,
+    },
     /// Delete the model and this repo's embedding cache.
     Remove,
 }
@@ -1048,10 +1055,21 @@ fn run(cli: Cli) -> Result<()> {
                     println!("  model in {}", embed::model_dir().display());
                 }
             }
-            EmbedCmd::Run => {
+            EmbedCmd::Run { mock } => {
                 let st = open_or_index(&repo)?;
                 let cfg = crate::config::Config::load(&repo.root)?.embed;
-                let prov = embed::provider_for(&cfg)?;
+                let prov = embed::provider_for(&cfg, mock)?;
+                // Ctrl-C asks the run to stop between batches; the cache
+                // already written stays resumable.
+                let cancel_task = tokio::runtime::Builder::new_current_thread().build().map(|rt| {
+                    std::thread::spawn(move || {
+                        rt.block_on(async {
+                            let _ = tokio::signal::ctrl_c().await;
+                            embed::cancel();
+                            eprintln!("\n{} stopping after this batch – cache is resumable", crate::term::yellow("!"));
+                        });
+                    })
+                });
                 let (idx, fresh) = embed::run(&repo, &st, &cfg, &prov, embed::cancel_requested)?;
                 if json {
                     out(&serde_json::json!({ "symbols": idx.vectors.len(), "fresh": fresh, "dim": idx.dim, "provider": idx.provider }));
@@ -1064,6 +1082,12 @@ fn run(cli: Cli) -> Result<()> {
                         idx.dim,
                         idx.provider
                     );
+                }
+                if let Ok(t) = cancel_task {
+                    t.join().ok();
+                }
+                if embed::status().cancelled {
+                    std::process::exit(130);
                 }
             }
             EmbedCmd::Remove => {

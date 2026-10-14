@@ -1167,7 +1167,7 @@ fn embed_run_uses_the_mock_provider_and_remove_cleans_up() {
     let d = fixture();
     kula(d.path(), &["index"]);
     // Without the feature and without a model, run falls back to the mock provider.
-    let r = kula_json(d.path(), &["embed", "run", "--json"]);
+    let r = kula_json(d.path(), &["embed", "run", "--json", "--mock"]);
     assert_eq!(r["provider"], "mock");
     assert_eq!(r["dim"], 256, "Matryoshka truncation");
     assert!(r["symbols"].as_u64().unwrap() > 0);

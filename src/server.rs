@@ -863,6 +863,42 @@ async fn embed_remove(State(s): State<AppState>) -> ApiResult {
     Ok(Json(serde_json::json!({ "freed_mb": embed::remove(&s.repo)? / (1024 * 1024) })))
 }
 
+/// POST /api/embed/run – start an embedding run in the background (mock or
+/// real model per config); returns immediately, progress on /api/embed/status.
+async fn embed_run(State(s): State<AppState>) -> ApiResult {
+    if embed::status().running {
+        return Ok(Json(serde_json::json!({ "started": false, "reason": "already running" })));
+    }
+    let repo = s.repo.clone();
+    tokio::spawn(async move {
+        let st = Store::open(&repo).ok();
+        let cfg = config::Config::load(&repo.root).map(|c| c.embed).ok();
+        match (st, cfg) {
+            (Some(st), Some(cfg)) => {
+                let prov = match embed::provider_for(&cfg, false) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        embed::run_error(format!("{e:#}"));
+                        return;
+                    }
+                };
+                match embed::run(&repo, &st, &cfg, &prov, embed::cancel_requested) {
+                    Ok(_) => {}
+                    Err(e) => embed::run_error(format!("{e:#}")),
+                }
+            }
+            _ => embed::run_error("cannot open store or config".into()),
+        }
+    });
+    Ok(Json(serde_json::json!({ "started": true })))
+}
+
+/// POST /api/embed/cancel – ask the running job to stop between batches.
+async fn embed_cancel() -> ApiResult {
+    embed::cancel();
+    Ok(Json(serde_json::json!({ "cancelled": true })))
+}
+
 async fn kg_export(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let f = q.get("format").cloned().unwrap_or_else(|| "ttl".into());
@@ -1110,6 +1146,8 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/embed/check", get(embed_check))
         .route("/api/embed/install", post(embed_install))
         .route("/api/embed/remove", post(embed_remove))
+        .route("/api/embed/run", post(embed_run))
+        .route("/api/embed/cancel", post(embed_cancel))
         .route("/api/meta/{kind}/{action}", post(meta_action))
         .fallback(static_file)
         .layer(middleware::from_fn_with_state(state.clone(), guard))
