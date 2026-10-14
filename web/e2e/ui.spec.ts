@@ -490,7 +490,23 @@ test.describe("console", () => {
 async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: number; y: number; id: string; label: string }; b: { x: number; y: number; id: string; label: string } }> {
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 20_000 });
   await page.waitForFunction(() => !!(window as any).__kula);
-  await page.waitForTimeout(400);
+  // The loader hides when the settle timer fires, but under load the layout
+  // worker and camera can still be moving: a blind wait returns coordinates
+  // that go stale before the click lands. Sample until the viewport positions
+  // stop changing (same pattern the shift-click test uses for its far end).
+  await page.waitForFunction(() => {
+    const { sigma, graph } = (window as any).__kula;
+    if (!sigma || !graph) return false;
+    const pos = (id: string) => {
+      const p = sigma.framedGraphToViewport(sigma.getNodeDisplayData(id));
+      return `${Math.round(p.x)},${Math.round(p.y)}`;
+    };
+    const w = window as any;
+    const snap = graph.nodes().map(pos).join("|");
+    if (w.__kulaSnap === snap) return true;
+    w.__kulaSnap = snap;
+    return false;
+  }, undefined, { polling: 200, timeout: 15_000 }).catch(() => { /* settle as far as it got */ });
   return page.evaluate((pick) => {
     const { sigma, graph } = (window as any).__kula;
     const box = sigma.getContainer().getBoundingClientRect();
