@@ -1105,7 +1105,8 @@ fn shell_bypasses_are_refused_in_a_fenced_repo() {
         let (_, why) = kula_code(d, &["guard", "hook"], Some(&bash(&cmd)), 2);
         assert!(why.contains("refused"), "{cmd} -> {why}");
     }
-    std::fs::remove_file(diff).unwrap();
+    // Cleanup, not coverage: another concurrent sweep may already have taken the file.
+    let _ = std::fs::remove_file(diff);
 
     // Legitimate look-alikes still pass.
     for cmd in [
