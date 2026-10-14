@@ -26,6 +26,7 @@ mod server;
 mod setup;
 mod skills;
 mod store;
+mod syntagm;
 mod term;
 mod workflow;
 
@@ -242,6 +243,20 @@ enum Cmd {
     Flows {
         #[arg(short, long, default_value_t = 10)]
         limit: usize,
+    },
+    /// Hierarchical code blocks built from the graph.
+    #[command(after_help = "Examples:\n  kula blocks   ·  kula blocks --depth 1 --json")]
+    Blocks {
+        /// Show only blocks up to this depth.
+        #[arg(long)]
+        depth: Option<usize>,
+    },
+    /// Maximal call chains from entry points.
+    #[command(after_help = "Examples:\n  kula chains   ·  kula chains --from pay")]
+    Chains {
+        /// Chains starting at this symbol.
+        #[arg(long)]
+        from: Option<String>,
     },
     /// Functional clusters (communities) in the codebase.
     #[command(after_help = "Examples:\n  kula clusters")]
@@ -1434,6 +1449,24 @@ fn run(cli: Cli) -> Result<()> {
                     println!("      {}", dim(&format!("→ {}", names.join(", "))));
                 }
             }
+        }
+        Cmd::Blocks { depth } => {
+            let st = Store::open(&repo)?;
+            let s = syntagm::build(&repo, &st)?;
+            if json {
+                out(&s);
+                return Ok(());
+            }
+            syntagm::print_blocks(&s, depth);
+        }
+        Cmd::Chains { from } => {
+            let st = Store::open(&repo)?;
+            let s = syntagm::build(&repo, &st)?;
+            if json {
+                out(&s.chains);
+                return Ok(());
+            }
+            syntagm::print_chains(&st, &s, from.as_deref())?;
         }
         Cmd::Clusters => {
             let st = Store::open(&repo)?;
