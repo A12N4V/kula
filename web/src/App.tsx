@@ -48,7 +48,8 @@ const GROUPS: Rail[][] = [
     { id: "overview", label: "Overview", icon: Icon.home, key: "1" },
     { id: "graph", label: "Graph", icon: Icon.graph, key: "2" },
     { id: "flows", label: "Flows", icon: Icon.flows, key: "3" },
-    { id: "syntagm", label: "Syntagm", icon: Icon.box, key: "s" },
+    // `s` stages files in Changes, so Syntagm takes `y` (sYntagm) instead.
+    { id: "syntagm", label: "Syntagm", icon: Icon.box, key: "y" },
   ],
   [
     { id: "changes", label: "Changes", icon: Icon.changes, key: "4" },
