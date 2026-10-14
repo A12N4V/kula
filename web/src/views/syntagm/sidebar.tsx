@@ -11,6 +11,7 @@ export const KIND_GLYPH: Record<LeafKind, string> = { fn: "ƒ", class: "C", var:
 const GLYPH_COLOR: Record<LeafKind, string> = { fn: "var(--accent)", class: "var(--blue)", var: "var(--green)", type: "var(--violet)" };
 
 export type SideRow =
+  | { t: "header"; key: string; label: string }
   | { t: "chain"; chain: Chain; name: string }
   | { t: "block"; block: Block; open: boolean }
   | { t: "leaf"; id: number; name: string; kind: LeafKind; path: string };
@@ -31,13 +32,14 @@ type Props = {
 
 /** Expandable prefix: block ids the user has opened, deepest first in the tree. */
 function flatten(rows: SideRow[]): (SideRow & { key: string })[] {
-  return rows.map((r, i) => ({ ...r, key: `${r.t}:${r.t === "leaf" ? r.id : r.t === "block" ? r.block.id : r.chain.id}:${i}` }));
+  return rows.map((r, i) => ({ ...r, key: `${r.t}:${r.t === "header" ? r.key : r.t === "leaf" ? r.id : r.t === "block" ? r.block.id : r.chain.id}:${i}` }));
 }
 
 export function SyntagmSidebar(p: Props) {
   const [q, setQ] = useState("");
   const [active, setActive] = useState(-1);
   const scroll = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
   const [top, setTop] = useState(0);
   const [vh, setVh] = useState(760);
   // Row height follows the hit-target floor: 28px on desktop, 40px on phones
@@ -53,17 +55,18 @@ export function SyntagmSidebar(p: Props) {
     const s = q.trim().toLowerCase();
     const hit = (t: string) => !s || t.toLowerCase().includes(s);
     const out: SideRow[] = [];
-    out.push({ t: "chain", chain: { id: "", entry: 0, steps: [], blocks: [], len: 0 }, name: "" }); // header marker – replaced below
-    out.length = 0;
     // CHAINS
+    const chainRows: SideRow[] = [];
     p.chains.forEach((c) => {
       const entry = p.leaves[c.entry];
       const name = entry?.name ?? c.id;
-      if (hit(name)) out.push({ t: "chain", chain: c, name });
+      if (hit(name)) chainRows.push({ t: "chain", chain: c, name });
     });
+    if (chainRows.length) out.push({ t: "header", key: "h-chains", label: "Chains" }, ...chainRows);
     // BLOCKS tree, filtered: a block shows when it or any descendant/leaf matches.
     const blockHit = (b: Block): boolean =>
       hit(b.name) || b.children.some((c) => blockHit(p.blocks[c])) || b.symbols.some((id) => hit(p.leaves[id]?.name ?? ""));
+    const blockStart = out.length;
     const walk = (id: string, open: boolean) => {
       const b = p.blocks[id];
       if (!b) return;
@@ -78,6 +81,7 @@ export function SyntagmSidebar(p: Props) {
       }
     };
     for (const c of p.openRoot.filter((id) => p.blocks[id]?.depth === 0)) walk(c, true);
+    if (out.length > blockStart) out.splice(blockStart, 0, { t: "header", key: "h-blocks", label: "Blocks" });
     return flatten(out);
   }, [p.blocks, p.chains, p.leaves, p.openRoot, q]);
 
@@ -97,12 +101,19 @@ export function SyntagmSidebar(p: Props) {
     return () => { el.removeEventListener("scroll", onScroll); ro.disconnect(); };
   }, []);
 
-  // Keyboard: ↑ ↓ move the active row, ↵ opens it, / focuses the filter.
+  // Keyboard: ↑ ↓ move the active row (headers are skipped), ↵ opens it,
+  // / focuses the filter.
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    if (e.key === "/") {
+      e.preventDefault();
+      filterRef.current?.focus();
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       setActive((a) => {
-        const next = a < 0 ? 0 : Math.min(visible.length - 1, a + (e.key === "ArrowDown" ? 1 : -1));
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        let next = a < 0 ? (step > 0 ? 0 : visible.length - 1) : a + step;
+        while (next >= 0 && next < visible.length && visible[next].t === "header") next += step;
+        next = Math.min(visible.length - 1, Math.max(0, next));
         scroll.current?.querySelector(`[data-row="${next}"]`)?.scrollIntoView({ block: "nearest" });
         return next;
       });
@@ -115,6 +126,7 @@ export function SyntagmSidebar(p: Props) {
   const activate = (row: SideRow & { key: string }, viaKey = false) => {
     if (row.t === "chain") p.onChain(row.chain);
     else if (row.t === "leaf") p.onLeaf(row.id);
+    else if (row.t === "header") { /* labels are not interactive */ }
     else if (!viaKey) p.onToggle(row.block.id);
     else { // keyboard open on a block: toggle, or zoom if already open
       if (row.open) p.onZoom(row.block.id); else p.onToggle(row.block.id);
@@ -129,7 +141,7 @@ export function SyntagmSidebar(p: Props) {
       </div>
       <div className="sy-filter">
         <input
-          className="input sy-filter-input" placeholder="Filter chains and blocks" value={q}
+          className="input sy-filter-input" placeholder="Filter chains and blocks" value={q} ref={filterRef}
           onChange={(e) => { setQ(e.target.value); setActive(-1); }} onKeyDown={onKey} aria-label="Filter chains and blocks" data-testid="syntagm-filter"
         />
       </div>
@@ -140,6 +152,9 @@ export function SyntagmSidebar(p: Props) {
               const idx = start + i;
               const sel = row.t === "chain" && p.selChain === row.chain.id ? " on" : row.t === "leaf" && p.selLeaf === row.id ? " on" : "";
               const act = idx === active ? " act" : "";
+              if (row.t === "header") {
+                return <h3 key={row.key} data-row={idx} className="sy-section-label">{row.label}</h3>;
+              }
               if (row.t === "chain") {
                 const crossed = row.chain.blocks.length;
                 return (

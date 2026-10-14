@@ -1743,6 +1743,7 @@ test.describe("Syntagm", () => {
     await expect(page.locator("[data-testid=syntagm-readout]")).toBeVisible();
     // fixture data is in: chains listed, the readout table filled
     await expect(page.locator(".sy-chain").first()).toBeVisible();
+    await expect(page.locator(".sy-section-label").first()).toHaveText(/chains/i);
     await expect(page.locator("[data-testid=syntagm-stats-table]")).toContainText("batches");
   });
 
@@ -1797,6 +1798,8 @@ test.describe("Syntagm", () => {
     await expect(page.locator(".code-panel")).toBeVisible();
     // the panel shows the leaf's file
     await expect(page.locator(".code-panel")).toContainText(".rs");
+    // the code panel is an overlay – the tab must stay on Syntagm
+    await expect(page).toHaveURL(/#syntagm/);
   });
 
   test("sidebar filter narrows chains and blocks", async ({ page }) => {

@@ -16,7 +16,7 @@ import { SyntagmSidebar } from "./syntagm/sidebar";
 import type { Chain, SyntagmData } from "./syntagm/types";
 
 // The view owns its own sidebar visibility on phones (390 px): a drawer.
-export default function Syntagm({ openSymbol, block }: { openSymbol?: (id: number) => void; version?: number; block?: string }) {
+export default function Syntagm({ block }: { openSymbol?: (id: number) => void; version?: number; block?: string }) {
   const [data, setData] = useState<SyntagmData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [path, setPath] = useState<string[]>([]);
@@ -49,7 +49,7 @@ export default function Syntagm({ openSymbol, block }: { openSymbol?: (id: numbe
   useEffect(() => {
     if (!data) return;
     if (path.length && !data.blocks[path[0]]) setPath([]);
-    if (!openRoot.length && data.blocks.b0) {
+    if (!openRoot.length) {
       setOpenRoot(Object.values(data.blocks).filter((b) => b.depth === 0).map((b) => b.id));
     }
   }, [data, path, openRoot]);
@@ -91,9 +91,10 @@ export default function Syntagm({ openSymbol, block }: { openSymbol?: (id: numbe
   const selectLeaf = useCallback((id: number) => {
     setSelLeaf(id);
     const l = data?.leaves[id];
+    // CodePanel is a shell-level overlay – opening it here keeps the user in
+    // Syntagm (openSymbol would bounce the tab to Graph).
     if (l) code.open({ path: l.path, line: l.line, name: l.name, kind: l.kind as never, id });
-    if (openSymbol) openSymbol(id);
-  }, [data, code, openSymbol]);
+  }, [data, code]);
 
   const toggle = useCallback((id: string) => {
     setOpenRoot((o) => (o.includes(id) ? o.filter((x) => x !== id) : [...o, id]));
