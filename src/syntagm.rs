@@ -114,6 +114,17 @@ pub fn default_threads() -> usize {
     (cores.saturating_sub(2)).clamp(1, 6)
 }
 
+/// Drop the process priority (nice 10) so block building never competes with
+/// the user's foreground work. Best effort – failure to renice is not fatal.
+fn lower_priority() {
+    let pid = std::process::id().to_string();
+    let _ = std::process::Command::new("renice")
+        .args(["10", "-p", &pid])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+}
+
 fn config_threads(repo: &Repo) -> usize {
     if let Ok(src) = std::fs::read_to_string(repo.root.join("kula.toml")) {
         if let Ok(t) = src.parse::<toml::Table>() {
@@ -144,6 +155,7 @@ pub fn build_with(repo: &Repo, store: &Store, sim: Option<&dyn Similarity>) -> R
 impl Builder<'_> {
     pub fn run(&self, _repo: &Repo, store: &Store) -> Result<Syntagm> {
         let t0 = std::time::Instant::now();
+        lower_priority();
         let rev = file_rev(store)?;
         let mut s = if store.meta("syntagm_rev").is_some_and(|r| r == rev) {
             load_stored(store)?.unwrap_or_else(|| self.compute(store))
@@ -169,6 +181,8 @@ impl Builder<'_> {
             let p = pool(self.threads);
             p.install(|| nodes.par_iter().map(|x| is_test_path(&x.path)).collect::<Vec<_>>())
         };
+        // One work batch per parallel pass or ≤64-item chunk actually executed.
+        let mut batches = 1usize;
         let is_hub_file: Vec<bool> = nodes.iter().map(|x| is_reexport(&x.path)).collect();
 
         // Call-graph degrees: hub down-weighting and chain entries. Entry
@@ -209,6 +223,10 @@ impl Builder<'_> {
                 "CALLS" => e.weight.max(0.25),
                 "INHERITS" => 0.9,
                 "IMPORTS" => 0.6,
+                // Symbol→symbol CONTAINS (nested definitions) adds mild
+                // file-internal cohesion; file→symbol CONTAINS is skipped
+                // naturally because file nodes are not in the symbol index.
+                "CONTAINS" => 0.3,
                 _ => 0.0,
             };
             if w == 0.0 {
@@ -227,6 +245,7 @@ impl Builder<'_> {
             }
             for group in dirs.into_values() {
                 for chunk in group.chunks(64) {
+                    batches += 1;
                     for (x, &i) in chunk.iter().enumerate() {
                         for &j in &chunk[x + 1..] {
                             let s = sim.similarity(nodes[i].id, nodes[j].id);
@@ -254,7 +273,7 @@ impl Builder<'_> {
         }
 
         let chains = build_chains(&nodes, &call_adj, &prod_in, &prod_out, &is_test, &is_hub_file, &blocks);
-        let stats = SyntagmStats { ms: 0, batches: blocks.len(), threads: self.threads, embed: "off".into() };
+        let stats = SyntagmStats { ms: 0, batches, threads: self.threads, embed: "off".into() };
         Syntagm { blocks, chains, stats }
     }
 }
@@ -668,7 +687,8 @@ fn name_block(nodes: &[crate::store::Node], in_deg: &[usize], members: &[usize],
         name = format!("{name} · inner");
     }
     let files: HashSet<&str> = members.iter().map(|&m| nodes[m].path.as_str()).collect();
-    let summary = format!("{} files · {} symbols", files.len(), members.len());
+    let nf = files.len();
+    let summary = format!("{} · {} symbols", if nf == 1 { "1 file".to_string() } else { format!("{nf} files") }, members.len());
     (name, summary)
 }
 
@@ -1025,8 +1045,7 @@ pub fn print_blocks(s: &Syntagm, depth: Option<usize>) {
     println!("{} blocks · {} chains · {} ms\n", s.blocks.len(), s.chains.len(), s.stats.ms);
     for b in s.blocks.iter().filter(|b| b.depth <= max) {
         let indent = "  ".repeat(b.depth);
-        let leaves = if b.children.is_empty() { format!(" {}", b.symbols.len()) } else { String::new() };
-        println!("{}▪ {}  {}{}  cohesion {:.2}", indent, b.name, b.summary, leaves, b.cohesion);
+        println!("{}▪ {}  {}  cohesion {:.2}", indent, b.name, b.summary, b.cohesion);
     }
 }
 
