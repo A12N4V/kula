@@ -6,6 +6,9 @@ mod agents;
 mod cache;
 mod clean;
 mod config;
+mod embed;
+#[cfg(feature = "embed")]
+mod embed_ort;
 mod git;
 mod graph;
 mod guard;
@@ -149,6 +152,15 @@ enum Cmd {
         /// Only packages declared but never imported by indexed code.
         #[arg(long)]
         unused: bool,
+    },
+    /// Optional EmbeddingGemma embeddings for Syntagm: status | check | install | run | remove.
+    #[command(after_help = "Examples:\n  kula embed check\n  kula embed install --force\n  kula embed run")]
+    Embed {
+        #[command(subcommand)]
+        cmd: Option<EmbedCmd>,
+        /// Install even when the check refuses (low RAM or disk).
+        #[arg(long)]
+        force: bool,
     },
     /// Agent context: the code a task needs, ranked by graph distance and fitted to a token budget.
     #[command(after_help = "Examples:\n  kula pack \"how does login validate a token\" --budget 6000")]
@@ -379,6 +391,31 @@ enum Cmd {
     },
     #[command(external_subcommand)]
     External(Vec<String>),
+}
+
+#[derive(Subcommand)]
+enum EmbedCmd {
+    /// Where the model lives, whether it is installed, the last run.
+    Status,
+    /// System stats and a verdict (ok / warn / refuse) – no model needed.
+    Check,
+    /// Run the check, then download the model unless it refuses.
+    Install {
+        /// Install even when the check refuses (low RAM or disk).
+        #[arg(long)]
+        force: bool,
+    },
+    /// Embed every symbol in the graph (batched, low priority, resumable).
+    /// Ctrl-C stops between batches; the cache keeps what was done.
+    Run {
+        /// Use the deterministic mock provider instead of the model – for
+        /// tests and caches without a download. Real embedding needs
+        /// `[embed]` enabled and the model installed.
+        #[arg(long)]
+        mock: bool,
+    },
+    /// Delete the model and this repo's embedding cache.
+    Remove,
 }
 
 #[derive(Subcommand)]
@@ -978,6 +1015,90 @@ fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Cmd::Embed { cmd, force } => match cmd.unwrap_or(EmbedCmd::Status) {
+            EmbedCmd::Status => {
+                let v = embed::api_status(&repo)?;
+                if json {
+                    out(&v);
+                } else {
+                    header("embeddings");
+                    let o = v.as_object().unwrap();
+                    for (k, val) in o {
+                        println!("  {:<28} {}", k, val);
+                    }
+                }
+            }
+            EmbedCmd::Check => {
+                let st = open_or_index(&repo)?;
+                let cfg = crate::config::Config::load(&repo.root)?.embed;
+                let s = embed::check(&repo, &st, &cfg)?;
+                if json {
+                    out(&serde_json::to_value(&s)?);
+                } else {
+                    header("embed check");
+                    print!("{}", embed::render_check(&s));
+                    println!();
+                }
+            }
+            EmbedCmd::Install { force: install_force } => {
+                let force = force || install_force;
+                let st = open_or_index(&repo)?;
+                let cfg = crate::config::Config::load(&repo.root)?.embed;
+                let s = embed::check(&repo, &st, &cfg)?;
+                embed::install_gate(&s, force)?;
+                if json {
+                    out(&serde_json::json!({ "installed": embed::install(&repo)? }));
+                } else {
+                    eprint!("{} downloading EmbeddingGemma 300M (Q4 ONNX) …", crate::term::accent("◯"));
+                    embed::install(&repo)?;
+                    eprintln!(" {}", crate::term::green("✓"));
+                    println!("  model in {}", embed::model_dir().display());
+                }
+            }
+            EmbedCmd::Run { mock } => {
+                let st = open_or_index(&repo)?;
+                let cfg = crate::config::Config::load(&repo.root)?.embed;
+                let prov = embed::provider_for(&cfg, mock)?;
+                // Ctrl-C asks the run to stop between batches; the cache
+                // already written stays resumable.
+                let cancel_task = tokio::runtime::Builder::new_current_thread().build().map(|rt| {
+                    std::thread::spawn(move || {
+                        rt.block_on(async {
+                            let _ = tokio::signal::ctrl_c().await;
+                            embed::cancel();
+                            eprintln!("\n{} stopping after this batch – cache is resumable", crate::term::yellow("!"));
+                        });
+                    })
+                });
+                let (idx, fresh) = embed::run(&repo, &st, &cfg, &prov, embed::cancel_requested)?;
+                if json {
+                    out(&serde_json::json!({ "symbols": idx.vectors.len(), "fresh": fresh, "dim": idx.dim, "provider": idx.provider }));
+                } else {
+                    println!(
+                        "{} {} symbols embedded ({fresh} fresh, {} cached) · {} dims · {}",
+                        crate::term::green("✓"),
+                        idx.vectors.len(),
+                        idx.vectors.len() - fresh,
+                        idx.dim,
+                        idx.provider
+                    );
+                }
+                if let Ok(t) = cancel_task {
+                    t.join().ok();
+                }
+                if embed::status().cancelled {
+                    std::process::exit(130);
+                }
+            }
+            EmbedCmd::Remove => {
+                let freed = embed::remove(&repo)?;
+                if json {
+                    out(&serde_json::json!({ "freed_mb": freed / (1024 * 1024) }));
+                } else {
+                    println!("{} removed {} MB", crate::term::green("✓"), freed / (1024 * 1024));
+                }
+            }
+        },
         Cmd::Pack { targets, budget } => {
             let st = open_or_index(&repo)?;
             let p = agent::context_pack(&repo, &st, &targets, budget)?;
