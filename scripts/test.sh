@@ -104,6 +104,10 @@ if want e2e; then
     curl -s "${H[@]}" "$U/api/meta" | grep -q 'p1-cache-freshness' && ok "P1: /api/meta shows a fresh note right after write" || bad "P1: /api/meta shows a fresh note right after write"
     SH() { node -e 'const o=JSON.parse(require("fs").readFileSync(0));const k=x=>typeof x==="object"&&x!==null?Array.isArray(x)?x.map(k):Object.keys(x).sort().join(","):typeof x;console.log(k(o))'; }
     [ "$(echo "$A1" | SH)" = "$(echo "$A2" | SH)" ] && ok "P1: /api/agents response shape unchanged (e2e)" || bad "P1: /api/agents response shape unchanged (e2e)"
+    # E1: embed APIs – off by default, the check refuses while [embed] is disabled.
+    curl -s "${H[@]}" "$U/api/embed/status" | grep -q '"enabled":false' && ok "E1: GET /api/embed/status (off by default)" || bad "E1: GET /api/embed/status (off by default)"
+    curl -s "${H[@]}" "$U/api/embed/check" | grep -q '"verdict":"refuse"' && ok "E1: GET /api/embed/check (refuses while disabled)" || bad "E1: GET /api/embed/check (refuses while disabled)"
+    curl -s "${H[@]}" "$U/api/embed/check" | grep -q '"ram_total_gb"' && ok "E1: GET /api/embed/check returns the stats table" || bad "E1: GET /api/embed/check returns the stats table"
   fi
   kill $SRV 2>/dev/null; wait $SRV 2>/dev/null
 fi

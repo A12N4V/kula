@@ -166,7 +166,7 @@ pub fn check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<
 
 /// The two-column table `kula embed check` prints.
 pub fn render_check(s: &Stats) -> String {
-    let row = |k: &str, v: String| format!("  {:<28} {}", k, v);
+    let row = |k: &str, v: String| format!("  {:<28} {}\n", k, v);
     let mut out = String::new();
     out.push_str(&row("RAM total", format!("{:.1} GB", s.ram_total_gb)));
     out.push_str(&row("RAM free", format!("{:.1} GB", s.ram_free_gb)));
@@ -675,6 +675,7 @@ mod tests {
         let table = render_check(&s);
         assert!(table.contains("RAM total"));
         assert!(table.contains("Verdict"));
+        assert!(table.lines().count() >= 9, "two-column table, one row per line:\n{table}");
         // Below-threshold install refuses without --force.
         let low = Stats { ram_free_gb: 1.0, disk_free_gb: 1.0, verdict: "refuse".into(), ..s.clone() };
         assert!(install_gate(&low, false).is_err());

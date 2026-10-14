@@ -400,7 +400,11 @@ enum EmbedCmd {
     /// System stats and a verdict (ok / warn / refuse) – no model needed.
     Check,
     /// Run the check, then download the model unless it refuses.
-    Install,
+    Install {
+        /// Install even when the check refuses (low RAM or disk).
+        #[arg(long)]
+        force: bool,
+    },
     /// Embed every symbol in the graph (batched, low priority, resumable).
     Run,
     /// Delete the model and this repo's embedding cache.
@@ -1029,7 +1033,8 @@ fn run(cli: Cli) -> Result<()> {
                     println!();
                 }
             }
-            EmbedCmd::Install => {
+            EmbedCmd::Install { force: install_force } => {
+                let force = force || install_force;
                 let st = open_or_index(&repo)?;
                 let cfg = crate::config::Config::load(&repo.root)?.embed;
                 let s = embed::check(&repo, &st, &cfg)?;
