@@ -100,11 +100,13 @@ CREATE TABLE IF NOT EXISTS syntagm_chains (
 pub struct Builder<'a> {
     pub similarity: Option<&'a dyn Similarity>,
     pub threads: usize,
+    /// Stats chip: off | on | stale – what the similarity provider promised.
+    pub embed_state: String,
 }
 
 impl Default for Builder<'_> {
     fn default() -> Self {
-        Builder { similarity: None, threads: default_threads() }
+        Builder { similarity: None, threads: default_threads(), embed_state: "off".into() }
     }
 }
 
@@ -144,11 +146,11 @@ fn pool(threads: usize) -> rayon::ThreadPool {
 
 /// Build (or reuse) blocks and chains for the repository, store them, return them.
 pub fn build(repo: &Repo, store: &Store) -> Result<Syntagm> {
-    build_with(repo, store, None)
+    build_with(repo, store, None, "off")
 }
 
-pub fn build_with(repo: &Repo, store: &Store, sim: Option<&dyn Similarity>) -> Result<Syntagm> {
-    let b = Builder { similarity: sim, threads: config_threads(repo) };
+pub fn build_with(repo: &Repo, store: &Store, sim: Option<&dyn Similarity>, embed_state: &str) -> Result<Syntagm> {
+    let b = Builder { similarity: sim, threads: config_threads(repo), embed_state: embed_state.to_string() };
     b.run(repo, store)
 }
 
@@ -158,7 +160,7 @@ impl Builder<'_> {
         lower_priority();
         let rev = file_rev(store)?;
         let mut s = if store.meta("syntagm_rev").is_some_and(|r| r == rev) {
-            load_stored(store)?.unwrap_or_else(|| self.compute(store))
+            load_stored(store, &self.embed_state)?.unwrap_or_else(|| self.compute(store))
         } else {
             let s = self.compute(store);
             let _ = store_stored(store, &s, &rev);
@@ -273,7 +275,8 @@ impl Builder<'_> {
         }
 
         let chains = build_chains(&nodes, &call_adj, &prod_in, &prod_out, &is_test, &is_hub_file, &blocks);
-        let stats = SyntagmStats { ms: 0, batches, threads: self.threads, embed: "off".into() };
+        let stats = SyntagmStats { ms: 0, batches, threads: self.threads, embed: self.embed_state.clone() };
+        let _ = store.set_meta("syntagm_embed", &self.embed_state);
         Syntagm { blocks, chains, stats }
     }
 }
@@ -924,7 +927,7 @@ fn store_stored(store: &Store, s: &Syntagm, rev: &str) -> Result<()> {
     Ok(())
 }
 
-fn load_stored(store: &Store) -> Result<Option<Syntagm>> {
+fn load_stored(store: &Store, embed_state: &str) -> Result<Option<Syntagm>> {
     let has =
         store.conn.query_row("SELECT count(*) FROM sqlite_master WHERE name = 'syntagm_blocks'", [], |r| r.get::<_, i64>(0)).unwrap_or(0);
     if has == 0 {
@@ -973,7 +976,7 @@ fn load_stored(store: &Store) -> Result<Option<Syntagm>> {
             chains.push(c?);
         }
     }
-    Ok(Some(Syntagm { blocks, chains, stats: SyntagmStats { ms: 0, batches: 0, threads: default_threads(), embed: "off".into() } }))
+    Ok(Some(Syntagm { blocks, chains, stats: SyntagmStats { ms: 0, batches: 0, threads: default_threads(), embed: embed_state.into() } }))
 }
 
 // ----------------------------------------------------------------– readout
@@ -986,9 +989,10 @@ pub struct LeafInfo {
     pub line: i64,
 }
 
-/// `GET /api/syntagm` shape.
-pub fn all_json(repo: &Repo, store: &Store) -> Result<serde_json::Value> {
-    let s = build(repo, store)?;
+/// `GET /api/syntagm` shape with an optional similarity provider (E1's
+/// embedding cache) and its state for the stats chip (off | on | stale).
+pub fn all_json_with(repo: &Repo, store: &Store, sim: Option<&dyn Similarity>, embed_state: &str) -> Result<serde_json::Value> {
+    let s = build_with(repo, store, sim, embed_state)?;
     let mut leaves = serde_json::Map::new();
     for n in store.nodes_where("kind != 'file'", [])? {
         leaves.insert(n.id.to_string(), serde_json::json!({ "name": n.name, "kind": n.kind, "path": n.path, "line": n.start_line }));

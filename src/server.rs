@@ -315,8 +315,15 @@ async fn flows(State(s): State<AppState>) -> ApiResult {
 
 /// GET /api/syntagm – blocks, chains, leaves and stats.
 async fn syntagm_all(State(s): State<AppState>) -> ApiResult {
-    blocking(move || Ok(json!(syntagm::all_json(&s.repo, &Store::open(&s.repo)?).unwrap_or_else(|e| json!({ "error": e.to_string() })))))
-        .await
+    blocking(move || {
+        let store = Store::open(&s.repo)?;
+        // Wave-2 wiring: E1's embedding cache refines B1's blocks when it
+        // exists; full coverage reports "on", partial "stale".
+        let (idx, state) = embed::similarity_for(&s.repo, &store);
+        let sim = idx.as_ref().map(|i| i as &dyn syntagm::Similarity);
+        Ok(json!(syntagm::all_json_with(&s.repo, &store, sim, state).unwrap_or_else(|e| json!({ "error": e.to_string() }))))
+    })
+    .await
 }
 
 /// GET /api/syntagm/block/:id – a block, its children and its leaves.

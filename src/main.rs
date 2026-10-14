@@ -1452,7 +1452,9 @@ fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Blocks { depth } => {
             let st = Store::open(&repo)?;
-            let s = syntagm::build(&repo, &st)?;
+            let (idx, state) = embed::similarity_for(&repo, &st);
+            let sim = idx.as_ref().map(|i| i as &dyn syntagm::Similarity);
+            let s = syntagm::build_with(&repo, &st, sim, state)?;
             if json {
                 out(&s);
                 return Ok(());
@@ -1461,7 +1463,9 @@ fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Chains { from } => {
             let st = Store::open(&repo)?;
-            let s = syntagm::build(&repo, &st)?;
+            let (idx, state) = embed::similarity_for(&repo, &st);
+            let sim = idx.as_ref().map(|i| i as &dyn syntagm::Similarity);
+            let s = syntagm::build_with(&repo, &st, sim, state)?;
             if json {
                 out(&s.chains);
                 return Ok(());

@@ -168,7 +168,7 @@ fn incremental_rebuild_reuses_stored_tree() {
     let s1 = Builder::default().compute(&store);
     store_stored(&store, &s1, &file_rev(&store).unwrap()).unwrap();
     let rev = file_rev(&store).unwrap();
-    let loaded = load_stored(&store).unwrap().expect("stored tree loads");
+    let loaded = load_stored(&store, "off").unwrap().expect("stored tree loads");
     assert_eq!(loaded.blocks, s1.blocks);
     assert_eq!(file_rev(&store).unwrap(), rev, "unchanged files keep the same rev");
 }
@@ -184,7 +184,7 @@ fn similarity_provider_refines_without_overriding() {
     let (_d, _repo, store) = temp_store();
     fixture(&store);
     let sim = Half;
-    let b = Builder { similarity: Some(&sim), threads: 2 };
+    let b = Builder { similarity: Some(&sim), threads: 2, embed_state: "on".into() };
     let s = b.compute(&store);
     for blk in &s.blocks {
         assert!(blk.symbols.len() <= MAX_LEAVES);

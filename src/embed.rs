@@ -305,6 +305,57 @@ pub fn truncate(v: &[f32], dim: usize) -> Vec<f32> {
     }
 }
 
+// ----------------------------------------------------------------– B1 wiring
+
+/// Load this repo's embedding cache as a similarity index for B1's builder.
+/// `None` when nothing has been embedded yet (the graph-only path).
+pub fn load_index(repo: &crate::git::Repo) -> Option<EmbedIndex> {
+    let cache = Cache::load(&cache_dir(repo));
+    let mut vectors: HashMap<i64, Vec<f32>> = HashMap::with_capacity(cache.by_node.len());
+    for (id, h) in &cache.by_node {
+        if let Some(v) = cache.by_hash.get(h) {
+            vectors.insert(*id, v.clone());
+        }
+    }
+    if vectors.is_empty() {
+        None
+    } else {
+        let dim = vectors.values().next().map(|v| v.len()).unwrap_or(DIM);
+        Some(EmbedIndex { provider: "cached".into(), dim, vectors })
+    }
+}
+
+impl EmbedIndex {
+    /// How much of the symbol graph this index covers, 0..1. Below 1 the
+    /// graph changed after the last run – syntagm reports the chip "stale".
+    pub fn coverage(&self, store: &Store) -> f64 {
+        let total = store.nodes_where("kind != 'file'", []).map(|n| n.len()).unwrap_or(0);
+        if total == 0 {
+            return 0.0;
+        }
+        self.vectors.len().min(total) as f64 / total as f64
+    }
+}
+
+/// B1's `Similarity` trait, answered from the cached embeddings.
+impl crate::syntagm::Similarity for EmbedIndex {
+    fn similarity(&self, a: i64, b: i64) -> f64 {
+        self.similarity_ids(a, b) as f64
+    }
+}
+
+/// Shared wiring for every `syntagm` entry point (the `blocks`/`chains` CLI
+/// and `/api/syntagm`): load the cache and classify its state. Full coverage
+/// of the current symbol graph is "on"; a graph that changed since the last
+/// run is "stale"; no cache is "off".
+pub fn similarity_for(repo: &crate::git::Repo, store: &Store) -> (Option<EmbedIndex>, &'static str) {
+    match load_index(repo) {
+        Some(i) if i.coverage(store) >= 0.9 => (Some(i), "on"),
+        Some(i) => (Some(i), "stale"),
+        None => (None, "off"),
+    }
+}
+
 // ------------------------------------------------------------------ cache
 
 /// Content-hash cache in `.kula/embed/`: hash → vector. Only changed symbols
