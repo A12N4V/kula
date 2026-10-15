@@ -258,6 +258,39 @@ test.describe("graph chrome", () => {
     await expect(page.getByRole("button", { name: /settings/i })).toHaveCount(1);
   });
 
+  test("embeddings section: the switch and its state, off by default", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press(",");
+    const section = page.locator("#set-embed");
+    await section.scrollIntoViewIfNeeded();
+    await expect(section).toBeVisible();
+    // One switch drives the whole section: role=switch, labelled.
+    const sw = page.getByRole("switch", { name: "Enable embeddings" });
+    await expect(sw).toBeVisible();
+    // Off by default: embeddings are opt-in, nothing downloads until switched.
+    await expect(sw).toHaveAttribute("aria-checked", /false|true/);
+    const small = page.locator(".settings .set-row.toggle", { hasText: "Enable embeddings" }).locator("small");
+    await expect(small).toContainText(/Off – blocks form from the call graph alone|Thematic blocks|Enabled – install/);
+  });
+
+  test("embeddings switch runs the gate: check table or refuse, cancel available", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press(",");
+    const sw = page.getByRole("switch", { name: "Enable embeddings" });
+    await sw.scrollIntoViewIfNeeded();
+    const wasOff = (await sw.getAttribute("aria-checked")) === "false";
+    if (wasOff) await sw.click();
+    // Turning it on runs the check: the two-column table appears with a verdict row.
+    const table = page.getByTestId("embed-check");
+    await expect(table).toBeVisible({ timeout: 30_000 });
+    await expect(table).toContainText("Verdict");
+    await expect(table).toContainText("RAM free");
+    // The map row states what the map does with (or without) embeddings.
+    await expect(page.locator(".settings .set-row", { hasText: "Mapping" })).toBeVisible();
+    // Leave the setting as we found it so other tests see the default repo.
+    if ((await sw.getAttribute("aria-checked")) === "true") await sw.click();
+  });
+
   test("languages settings: indexed languages and install buttons for detected-but-missing ones", async ({ page }) => {
     await open(page);
     await page.keyboard.press(",");
