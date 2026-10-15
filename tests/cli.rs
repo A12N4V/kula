@@ -1220,25 +1220,20 @@ fn embed_run_uses_the_mock_provider_and_remove_cleans_up() {
 
 // -------------------------------------------------- I1 · map by default
 
-/// Map by default: `kula index` maps in the background, and the stored map is
-/// there right after (the CLI waits for nothing, so we poll briefly).
+/// Map by default: `kula index` runs the map and the stored map is in the
+/// graph store when the process exits – the CLI joins the run (run_now), so
+/// the rows must be there without running `kula blocks`, which would build a
+/// map on demand and mask a dead background thread. Stored-map count only.
 #[test]
 fn index_maps_by_default_and_no_map_skips_it() {
     let d = fixture();
     kula(d.path(), &["index"]);
-    // The background map lands within seconds on the small fixture.
-    let mapped = std::time::Instant::now();
-    let blocks = loop {
-        if mapped.elapsed() > std::time::Duration::from_secs(30) {
-            panic!("background map never landed");
-        }
-        let out = kula_code(d.path(), &["blocks", "--json"], None, 0).0;
-        if !out.trim().is_empty() {
-            break out;
-        }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while stored_map_rows(d.path()) == 0 {
+        assert!(std::time::Instant::now() < deadline, "background map never landed");
         std::thread::sleep(std::time::Duration::from_millis(300));
-    };
-    assert!(blocks.contains("\"blocks\""), "map stored after index: {blocks}");
+    }
+    assert!(stored_map_rows(d.path()) > 0, "the stored map is there after `kula index` exits");
 
     // Second index: the map is reused, not rebuilt (syntagm_rev unchanged).
     kula(d.path(), &["index", "--quiet"]);
@@ -1257,7 +1252,10 @@ fn stored_map_rows(d: &std::path::Path) -> i64 {
 }
 
 /// `--no-map` and `[map] auto = false` both leave no stored map behind –
-/// `kula blocks` builds one on demand later, so the store itself is the proof.
+/// the store itself is the proof. The contrast with the default carries the
+/// claim: the same fixture with the default ON has rows (see
+/// index_maps_by_default_and_no_map_skips_it), so a zero here means the
+/// switch actually kept the map from running, not that the CLI never ran.
 #[test]
 fn no_map_and_auto_false_turn_mapping_off() {
     let d = fixture();
@@ -1270,6 +1268,15 @@ fn no_map_and_auto_false_turn_mapping_off() {
     kula(d2.path(), &["index"]);
     std::thread::sleep(std::time::Duration::from_millis(700));
     assert_eq!(stored_map_rows(d2.path()), 0, "[map] auto = false leaves no stored map");
+
+    // The contrast: same fixture, default switches, rows land.
+    let d3 = fixture();
+    kula(d3.path(), &["index"]);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while stored_map_rows(d3.path()) == 0 {
+        assert!(std::time::Instant::now() < deadline, "default map never landed – the zero asserts above prove nothing");
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
 }
 
 /// The switch persists: embed enable true/false lands in kula.toml and reads

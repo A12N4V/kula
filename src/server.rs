@@ -878,10 +878,23 @@ async fn embed_status(State(s): State<AppState>) -> ApiResult {
 }
 
 /// POST /api/embed/enable – flip `[embed] enabled` in kula.toml (the Settings
-/// switch's persistence) and return the new status.
+/// switch's persistence) and return the new status. Gated server-side: a
+/// `refuse` verdict never flips the flag, so kula.toml only ever says
+/// enabled = true when the pipeline may actually run.
 async fn embed_enable(State(s): State<AppState>, Json(v): Json<Value>) -> ApiResult {
     let on = v.get("enabled").and_then(|b| b.as_bool()).ok_or_else(|| anyhow!("enabled boolean required"))?;
     blocking(move || {
+        if on {
+            // Run the check against the config the switch would produce
+            // (enabled = true): the file only flips when the verdict allows.
+            let mut cfg = config::Config::load(&s.repo.root)?.embed;
+            cfg.enabled = true;
+            let st = Store::open(&s.repo)?;
+            let verdict = embed::check(&s.repo, &st, &cfg)?;
+            if verdict.verdict == "refuse" {
+                anyhow::bail!("embed check says refuse – {}", verdict.reasons.join("; "));
+            }
+        }
         embed::set_enabled(&s.repo, on)?;
         if on {
             // The switch turned on: map again so the engine picks the

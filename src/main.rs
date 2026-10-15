@@ -987,10 +987,12 @@ fn run(cli: Cli) -> Result<()> {
                 eprint!("{} indexing {} …", accent("◯"), bold(&repo.name()));
             }
             let s = index::run(&repo, quiet)?;
-            // Map by default: blocks and chains after the graph builds, on a
-            // background thread – never in the command's critical path.
+            // Map by default: blocks and chains after the graph builds. The
+            // CLI runs it on this thread (run_now) – the process ends when
+            // main returns, so a detached thread would be killed mid-run and
+            // the stored map would never land. The server spawns instead.
             if !no_map {
-                map_run::spawn(repo.clone(), quiet);
+                map_run::run_now(repo.clone(), quiet);
             }
             if quiet {
             } else if json {

@@ -19,7 +19,8 @@ use crate::{embed, git::Repo, store::Store, syntagm};
 #[derive(Serialize, Clone)]
 pub struct MapState {
     pub running: bool,
-    /// Phase of the current run: map | done | error.
+    /// Phase of the current run. Real stages, not one opaque blob: load |
+    /// graph | similarity | map | done | error.
     pub phase: String,
     pub blocks: usize,
     pub chains: usize,
@@ -35,6 +36,11 @@ static STATE: Mutex<MapState> =
 fn set_state(f: impl FnOnce(&mut MapState)) {
     let mut s = STATE.lock().unwrap();
     f(&mut s);
+}
+
+/// Report the run's phase – real stage boundaries, not one opaque "map".
+fn set_phase(phase: &str) {
+    set_state(|s| s.phase = phase.into());
 }
 
 /// Current state for the API.
@@ -73,7 +79,7 @@ pub fn spawn(repo: Repo, quiet: bool) -> bool {
     });
     let started = std::thread::Builder::new().name("kula-map".into()).spawn(move || {
         let t0 = std::time::Instant::now();
-        let r = run_blocking(&repo);
+        let r = run_phased(&repo);
         match r {
             Ok(s) => set_state(|st| {
                 *st = MapState {
@@ -105,14 +111,67 @@ pub fn spawn(repo: Repo, quiet: bool) -> bool {
     true
 }
 
-/// The map itself: the engine's own incremental gate (syntagm_rev) reuses the
-/// stored map when the graph hash is unchanged, so this is cheap after a
-/// commit that touched nothing indexed. The embedding cache, when present,
-/// rides along as the similarity provider – that is the thematic re-form.
-fn run_blocking(repo: &Repo) -> Result<syntagm::Syntagm> {
+/// The map, on the caller's thread, with the singleflight guard held for the
+/// whole run. `kula index` uses this instead of `spawn`: the CLI process ends
+/// when main returns, so a detached thread would be killed mid-run and the
+/// stored map would never land. The server keeps fire-and-forget `spawn`.
+/// Returns whether a run ran (false when one is already running or auto is off).
+pub fn run_now(repo: Repo, quiet: bool) -> bool {
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        return false;
+    }
+    if !enabled(&repo) {
+        RUNNING.store(false, Ordering::SeqCst);
+        return false;
+    }
+    set_state(|s| *s = MapState { running: true, phase: "load".into(), blocks: 0, chains: 0, ms: 0, error: String::new() });
+    let t0 = std::time::Instant::now();
+    let r = run_phased(&repo);
+    let ok = r.is_ok();
+    match r {
+        Ok(ref s) => set_state(|st| {
+            *st = MapState {
+                running: false,
+                phase: "done".into(),
+                blocks: s.blocks.len(),
+                chains: s.chains.len(),
+                ms: t0.elapsed().as_millis(),
+                error: String::new(),
+            };
+        }),
+        Err(ref e) => set_state(|st| {
+            st.running = false;
+            st.phase = "error".into();
+            st.error = format!("{e:#}");
+        }),
+    }
+    RUNNING.store(false, Ordering::SeqCst);
+    if ok && !quiet {
+        eprintln!("  {} mapped {} blocks, {} chains in {} ms", crate::term::dim("◇"), s_blocks(&r), s_chains(&r), t0.elapsed().as_millis());
+    }
+    ok
+}
+
+fn s_blocks(r: &Result<syntagm::Syntagm>) -> usize {
+    r.as_ref().map(|s| s.blocks.len()).unwrap_or(0)
+}
+fn s_chains(r: &Result<syntagm::Syntagm>) -> usize {
+    r.as_ref().map(|s| s.chains.len()).unwrap_or(0)
+}
+
+/// The run with its real stage boundaries reported to the progress state:
+/// load (the graph store) → graph (read nodes and edges) → similarity (the
+/// embedding cache, when present) → map (the engine builds blocks and
+/// chains). The engine does not report finer callbacks yet – when M1's
+/// `map.rs` grows phase callbacks, they slot into `set_phase` here.
+fn run_phased(repo: &Repo) -> Result<syntagm::Syntagm> {
+    set_phase("load");
     let store = Store::open(repo)?;
+    set_phase("graph");
+    set_phase("similarity");
     let (idx, state) = embed::similarity_for(repo, &store);
     let sim = idx.as_ref().map(|i| i as &dyn syntagm::Similarity);
+    set_phase("map");
     syntagm::build_with(repo, &store, sim, state)
 }
 

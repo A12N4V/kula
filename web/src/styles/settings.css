@@ -182,9 +182,12 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 /* ================================================================ i1 · Embeddings section (I1) */
 /* Two-column check table, one progress bar, all palette tokens – no new colours. */
 .embed-check { margin: 8px 0 4px; }
-.embed-check .kv-row, .kv-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid var(--line-2, #24201d); }
-.kv-row .k { color: var(--text-2, #a89f93); font-size: 11px; }
+.embed-check .kv-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid var(--line-2, #24201d); }
+.embed-check .kv-row .k { color: var(--text-2, #a89f93); font-size: 11px; }
 .embed-progress { margin: 8px 0 4px; display: flex; flex-direction: column; gap: 6px; }
 .embed-progress .bar { height: 4px; background: var(--line-1, #1a1714); border-radius: 4px; overflow: hidden; }
 .embed-progress .bar i { display: block; height: 100%; background: var(--accent, #f97f3a); transition: width .4s ease; }
+/* Indeterminate state – install and the first embed batch have no total yet.
+   A dimmed full-width bar, no fake percentage, no animation. */
+.embed-progress .bar.idle i { background: var(--line-2, #24201d); }
 @media (prefers-reduced-motion: reduce) { .embed-progress .bar i { transition: none; } }

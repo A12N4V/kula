@@ -56,8 +56,9 @@ function EmbedRows({ q }: { q: string }) {
   };
 
   const turnOn = () => {
-    // The switch flips [embed] enabled in kula.toml, then the check decides
-    // whether the pipeline may run at all.
+    // The server gates the flip: enable refuses when the check verdict is
+    // refuse, so kula.toml only ever turns true when the pipeline may run.
+    // One write, gated – no flip-and-flip-back here.
     setBusy("check"); setNote(""); setConfirmWarn(false);
     api.embedEnable(true)
       .then(() => api.embedCheck() as unknown as Promise<EmbedStats>)
@@ -67,11 +68,15 @@ function EmbedRows({ q }: { q: string }) {
         else if (c.verdict === "warn") setConfirmWarn(true);
         else {
           // Refuse: explain why and leave the switch off.
-          setCheck(c);
           api.embedEnable(false).then(load).catch(() => {});
         }
       })
-      .catch((e) => { setNote(e.message); api.embedEnable(false).then(load).catch(() => {}); })
+      .catch((e) => {
+        // The server refused the enable – the switch never flipped, so only
+        // the explanation is needed. Still show the check table for the why.
+        setNote(e.message);
+        api.embedCheck().then((c) => setCheck(c as unknown as EmbedStats)).catch(() => {});
+      })
       .finally(() => setBusy(""));
   };
 
@@ -136,7 +141,7 @@ function EmbedRows({ q }: { q: string }) {
         <div className="embed-progress" data-testid="embed-progress">
           <div className="set-label"><span>{busy === "install" ? "Installing Gemma" : st.run.phase || "Embedding"}</span>
             <small>{st.run.total ? `${st.run.done}/${st.run.total}` : "…"}</small></div>
-          <div className="bar"><i style={{ width: st.run.total ? `${Math.min(100, (st.run.done / st.run.total) * 100)}%` : "12%" }} /></div>
+          <div className={"bar" + (st.run.total ? "" : " idle")}><i style={{ width: st.run.total ? `${Math.min(100, (st.run.done / st.run.total) * 100)}%` : "100%" }} /></div>
           <button className="btn ghost sm" onClick={cancel}>Cancel</button>
         </div>
       )}

@@ -383,6 +383,97 @@ pub fn similarity_for(repo: &crate::git::Repo, store: &Store) -> (Option<EmbedIn
     }
 }
 
+// ------------------------------------------------- thematic map (I1 ↔ map)
+
+/// The role table's one-line rules – also the prototype texts the role
+/// cross-check embeds. Kept in step with the map's classify_role contract.
+// Consumed by the map engine at integration (see the plan's I1 note).
+#[allow(dead_code)]
+pub const ROLE_RULES: &[(&str, &str)] = &[
+    ("entry", "a source: nothing in the repo calls it, and it calls into the repo"),
+    ("orchestrator", "high fan-out into several blocks, low fan-in"),
+    ("core", "inside a block's chains, neither entry nor utility – the actual work"),
+    ("utility", "high fan-in from many distinct blocks, low fan-out, small"),
+    ("adapter", "touches the outside world: file, network, process, DB, env"),
+    ("model", "classes, structs, types, enums, constants read more than called"),
+    ("config", "settings, constants and loaders under config paths"),
+    ("test", "test code and fixtures"),
+    ("glue", "re-export barrels and module index files"),
+];
+
+/// Embed each role's rule as a prototype vector. The map's graph role wins
+/// unless the embedding cross-check is confident against these.
+// Consumed by the map engine at integration (see the plan's I1 note).
+#[allow(dead_code)]
+pub fn role_prototypes(prov: &dyn EmbedProvider) -> Vec<(String, Vec<f32>)> {
+    let texts: Vec<String> = ROLE_RULES.iter().map(|(r, rule)| format!("task: code retrieval | query: role {} – {}", r, rule)).collect();
+    match prov.embed(&texts) {
+        Ok(vs) => ROLE_RULES.iter().map(|(r, _)| r.to_string()).zip(vs).collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Mean of a block's member vectors – the point the theme terms are measured
+/// against. `None` when no member has a vector.
+// Consumed by the map engine at integration (see the plan's I1 note).
+#[allow(dead_code)]
+pub fn block_centroid(idx: &EmbedIndex, members: &[i64]) -> Option<Vec<f32>> {
+    let mut sum: Option<Vec<f32>> = None;
+    let mut n = 0usize;
+    for m in members {
+        if let Some(v) = idx.vectors.get(m) {
+            let s = sum.get_or_insert_with(|| vec![0.0; v.len()]);
+            for (a, b) in s.iter_mut().zip(v) {
+                *a += b;
+            }
+            n += 1;
+        }
+    }
+    if n == 0 {
+        return None;
+    }
+    sum.map(|s| s.into_iter().map(|x| x / n as f32).collect())
+}
+
+/// The block's theme: the 2–4 candidate terms (identifiers, docstring words)
+/// whose embeddings sit closest to the block centroid, joined with spaces.
+/// `None` when there is nothing to measure against.
+// Consumed by the map engine at integration (see the plan's I1 note).
+#[allow(dead_code)]
+pub fn theme_for_terms(prov: &dyn EmbedProvider, centroid: &[f32], terms: &[String]) -> Option<String> {
+    if centroid.is_empty() || terms.is_empty() {
+        return None;
+    }
+    let texts: Vec<String> = terms.iter().map(|t| format!("task: code retrieval | query: {}", t)).collect();
+    let vs = prov.embed(&texts).ok()?;
+    let mut scored: Vec<(f32, &str)> =
+        vs.iter().zip(terms).map(|(v, t)| (cosine(centroid, v), t.as_str())).filter(|(c, _)| *c > 0.0).collect();
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    if scored.is_empty() {
+        return None;
+    }
+    let take = scored.len().clamp(2, 4);
+    Some(scored[..take].iter().map(|(_, t)| *t).collect::<Vec<_>>().join(" "))
+}
+
+/// Cross-check a graph role against the prototype embeddings for `symbol_text`
+/// (the symbol's identifier plus first source lines). Returns
+/// `(suggested_role, confidence)` when a prototype is meaningfully close –
+/// `None` below the confidence bar (0.35), where the graph role stands.
+// Consumed by the map engine at integration (see the plan's I1 note).
+#[allow(dead_code)]
+pub fn role_cross_check(prov: &dyn EmbedProvider, symbol_text: &str) -> Option<(String, f64)> {
+    const BAR: f64 = 0.35;
+    let ps = role_prototypes(prov);
+    if ps.is_empty() {
+        return None;
+    }
+    let v = prov.embed(&[format!("task: code retrieval | query: {}", symbol_text)]).ok()?.pop()?;
+    let best =
+        ps.iter().map(|(r, p)| (r, cosine(&v, p) as f64)).max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?;
+    (best.1 >= BAR).then(|| (best.0.clone(), best.1))
+}
+
 // ------------------------------------------------------------------ cache
 
 /// Content-hash cache in `.kula/embed/`: hash → vector. Only changed symbols
@@ -757,6 +848,60 @@ mod tests {
         assert!((n - 1.0).abs() < 1e-4, "unit vector, got {n}");
         let w = p.embed(&["task: code retrieval | query: fn parse_cfg".into()]).unwrap();
         assert_eq!(v[0], w[0], "same text, same vector");
+    }
+
+    // ------------------------------------------------– thematic map (I1)
+
+    #[test]
+    fn role_prototypes_cover_every_role_and_are_unit_vectors() {
+        let p = MockProvider::new();
+        let ps = role_prototypes(&p);
+        assert_eq!(ps.len(), ROLE_RULES.len(), "one prototype per role");
+        for (r, v) in &ps {
+            let n: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+            assert!((n - 1.0).abs() < 1e-3, "role {} prototype not unit length", r);
+        }
+        // Same provider, same prototypes – deterministic.
+        assert_eq!(role_prototypes(&p), ps);
+    }
+
+    #[test]
+    fn role_cross_check_accepts_the_exact_rule_and_drops_noise() {
+        let p = MockProvider::new();
+        // The prototype text itself must cross-check back to its role.
+        for (r, rule) in ROLE_RULES {
+            let (got, conf) = role_cross_check(&p, &format!("role {} – {}", r, rule)).expect("a confident match");
+            assert_eq!(got, *r, "exact rule text cross-checks to its own role");
+            assert!(conf > 0.9, "self-similarity is near 1, got {}", conf);
+        }
+        // A text that matches no rule closely still names some nearest role –
+        // but the mock's hash vectors keep confidence well under the bar for
+        // genuinely unrelated text, so just prove the shape of the answer.
+        if let Some((role, conf)) = role_cross_check(&p, "fn do_things(x: u8) -> u8 { x + 1 }") {
+            assert!(ROLE_RULES.iter().any(|(r, _)| r == &role), "the suggestion is a known role");
+            assert!((0.0..=1.0).contains(&conf), "confidence in 0..1");
+        }
+    }
+
+    #[test]
+    fn theme_for_terms_picks_the_closest_terms_to_the_centroid() {
+        let p = MockProvider::new();
+        // The members' vectors ARE the mock's embedding of one term's text, so
+        // the centroid equals that embedding and that term must win with a
+        // hash provider – deterministic, not hoping a hash vector is close.
+        let term_text = |t: &str| format!("task: code retrieval | query: {}", t);
+        let v_dicom = p.embed(&[term_text("dicom")]).unwrap().pop().unwrap();
+        let cs: HashMap<i64, Vec<f32>> = [(1i64, v_dicom.clone()), (2, v_dicom.clone())].into_iter().collect();
+        let ix = EmbedIndex { provider: "mock".into(), dim: DIM, vectors: cs };
+        let c = block_centroid(&ix, &[1, 2]).expect("centroid from members");
+        let theme = theme_for_terms(&p, &c, &["dicom".into(), "decode".into(), "pixel".into(), "render".into()]).expect("theme from terms");
+        let words: Vec<&str> = theme.split(' ').collect();
+        assert!((2..=4).contains(&words.len()), "theme is 2–4 words, got {:?}", words);
+        assert!(theme.contains("dicom"), "the dominant term leads the theme");
+        // Empty inputs give no theme.
+        assert!(theme_for_terms(&p, &[], &["x".into()]).is_none());
+        assert!(theme_for_terms(&p, &c, &[]).is_none());
+        assert!(block_centroid(&ix, &[99]).is_none(), "no vectors, no centroid");
     }
 
     #[test]
