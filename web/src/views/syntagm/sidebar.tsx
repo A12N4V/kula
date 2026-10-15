@@ -4,7 +4,7 @@
 // smooth because only the slice on screen (plus overscan) is in the DOM, and
 // the visible slice is memoised, not re-sorted per keystroke.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../ui";
 import type { Block, Chain, ChainPage, Family, Leaf, LeafKind, Role } from "./types";
 import { ROLE_RULES } from "./types";
@@ -101,7 +101,9 @@ export function SyntagmSidebar(p: Props) {
     if (!openFams.includes(famId) && !pages[famId]) load(famId);
   };
 
-  const famName = (f: Family) => `${p.leaves[f.source]?.name ?? f.source} → ${p.leaves[f.terminal]?.name ?? f.terminal}`;
+  const famName = useCallback(
+    (f: Family) => `${p.leaves[f.source]?.name ?? f.source} → ${p.leaves[f.terminal]?.name ?? f.terminal}`,
+    [p.leaves]);
 
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -192,7 +194,7 @@ export function SyntagmSidebar(p: Props) {
   };
 
   const activate = (row: SideRow & { key: string }, viaKey = false) => {
-    if (row.t === "family") { if (!viaKey) expand(row.fam.id); else expand(row.fam.id); }
+    if (row.t === "family") expand(row.fam.id);
     else if (row.t === "chain") p.onChain(row.chain);
     else if (row.t === "chain-load") { const page = pages[row.famId]; if (page?.cursor) load(row.famId, page.cursor, true); }
     else if (row.t === "leaf") p.onLeaf(row.id);

@@ -148,7 +148,7 @@ export default function Syntagm({ block }: { openSymbol?: (id: number) => void; 
     const has = (arr: Role[]) => arr.every((r) => roles.has(r)) && roles.size === arr.length;
     if (has(f)) return "functions";
     if (has(u)) return "utilities";
-    return roles.size === ROLES.length ? "all" : "all"; // mixed custom set reads as All
+    return "all"; // mixed custom set reads as All
   }, [roles]);
 
   if (!data) {

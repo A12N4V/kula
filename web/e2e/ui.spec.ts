@@ -1915,9 +1915,9 @@ test.describe("Syntagm", () => {
 
   test("the role filter narrows families and blocks", async ({ page }) => {
     await open(page, "syntagm");
-    const all = await page.locator(".sy-family").count();
-    // open the legend and drop the test role
+    // count only after the data has landed, so `all` is not 0
     await expect(page.locator(".sy-family").first()).toBeVisible();
+    const all = await page.locator(".sy-family").count();
     await page.locator("[data-testid=syntagm-roles-btn]").click();
     await page.locator("[data-testid=syntagm-role-test]").click();
     const fewer = await page.locator(".sy-family").count();
