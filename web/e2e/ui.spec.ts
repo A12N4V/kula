@@ -1903,8 +1903,9 @@ test.describe("Syntagm", () => {
   test("sidebar filter narrows chains and blocks", async ({ page }) => {
     await open(page, "syntagm");
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
-    // the first box's title, unique to this map (live blocks or fixture)
-    const name = ((await page.locator(".sy-box-title").first().textContent()) ?? "").split(" ")[0] ?? "server";
+    // the first box's name span – textContent would glue the role glyph to
+    // the name ("ocore"), so read .sy-bname, the name the sidebar filters on
+    const name = (await page.locator(".sy-box-title .sy-bname").first().textContent()) ?? "server";
     await page.fill("[data-testid=syntagm-filter]", name);
     await expect(page.locator(".sy-block").first()).toBeVisible();
     await page.fill("[data-testid=syntagm-filter]", "zzzznope");
@@ -1986,22 +1987,23 @@ test.describe("Syntagm", () => {
   });
 
   test("@u2 while the map runs, its progress shows – not an empty state", async ({ page }) => {
-    // no /api/map yet, but /api/map/progress says a map is running: the view
-    // shows the progress table and polls until the map lands
+    // /api/map/progress speaks the I1 contract (map_run.rs state): running,
+    // phase, blocks, chains, ms. A run in flight shows the progress table.
     await page.route("**/api/map", (r) => r.fulfill({ status: 404, body: "{}", contentType: "application/json" }));
     await page.route("**/api/map/chains**", (r) => r.fulfill({ status: 404, body: "{}", contentType: "application/json" }));
     await page.route("**/api/map/progress", (r) => r.fulfill({
       status: 200, contentType: "application/json",
-      body: JSON.stringify({ active: true, phase: "dp", done: 1200, total: 3400, elapsed_ms: 4210 }),
+      body: JSON.stringify({ running: true, phase: "map", blocks: 1200, chains: 3400, ms: 4210, error: "" }),
     }));
     await open(page, "syntagm");
     await expect(page.locator("[data-testid=syntagm-progress]")).toBeVisible();
-    await expect(page.locator("[data-testid=syntagm-progress-table]")).toContainText("counting paths");
-    await expect(page.locator("[data-testid=syntagm-progress-table]")).toContainText("1200 / 3400");
+    await expect(page.locator("[data-testid=syntagm-progress-table]")).toContainText("mapping");
+    await expect(page.locator("[data-testid=syntagm-progress-table]")).toContainText("1200");
+    await expect(page.locator("[data-testid=syntagm-progress-table]")).toContainText("3400");
     // the map landing (progress goes idle) swaps in the fixture stand-in
     await page.route("**/api/map/progress", (r) => r.fulfill({
       status: 200, contentType: "application/json",
-      body: JSON.stringify({ active: false, phase: "done", done: 3400, total: 3400, elapsed_ms: 9000 }),
+      body: JSON.stringify({ running: false, phase: "done", blocks: 3400, chains: 9000, ms: 9000, error: "" }),
     }));
     await expect(page.locator("[data-testid=syntagm-sidebar]")).toBeVisible({ timeout: 10_000 });
   });
