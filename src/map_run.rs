@@ -29,7 +29,8 @@ pub struct MapState {
 }
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
-static STATE: Mutex<MapState> = Mutex::new(MapState { running: false, phase: String::new(), blocks: 0, chains: 0, ms: 0, error: String::new() });
+static STATE: Mutex<MapState> =
+    Mutex::new(MapState { running: false, phase: String::new(), blocks: 0, chains: 0, ms: 0, error: String::new() });
 
 fn set_state(f: impl FnOnce(&mut MapState)) {
     let mut s = STATE.lock().unwrap();
@@ -70,37 +71,34 @@ pub fn spawn(repo: Repo, quiet: bool) -> bool {
     set_state(|s| {
         *s = MapState { running: true, phase: "map".into(), blocks: 0, chains: 0, ms: 0, error: String::new() };
     });
-    match std::thread::Builder::new()
-        .name("kula-map".into())
-        .spawn(move || {
-            let t0 = std::time::Instant::now();
-            let r = run_blocking(&repo);
-            match r {
-                Ok(s) => set_state(|st| {
-                    *st = MapState {
-                        running: false,
-                        phase: "done".into(),
-                        blocks: s.blocks.len(),
-                        chains: s.chains.len(),
-                        ms: t0.elapsed().as_millis(),
-                        error: String::new(),
-                    };
-                }),
-                Err(e) => set_state(|st| {
-                    st.running = false;
-                    st.phase = "error".into();
-                    st.error = format!("{e:#}");
-                }),
-            }
-            RUNNING.store(false, Ordering::SeqCst);
-        }) {
-        // Thread spawn failed – release the flight guard and say so.
-        Err(_) => {
-            RUNNING.store(false, Ordering::SeqCst);
-            return false;
+    let started = std::thread::Builder::new().name("kula-map".into()).spawn(move || {
+        let t0 = std::time::Instant::now();
+        let r = run_blocking(&repo);
+        match r {
+            Ok(s) => set_state(|st| {
+                *st = MapState {
+                    running: false,
+                    phase: "done".into(),
+                    blocks: s.blocks.len(),
+                    chains: s.chains.len(),
+                    ms: t0.elapsed().as_millis(),
+                    error: String::new(),
+                };
+            }),
+            Err(e) => set_state(|st| {
+                st.running = false;
+                st.phase = "error".into();
+                st.error = format!("{e:#}");
+            }),
         }
-        Ok(_) => {}
+        RUNNING.store(false, Ordering::SeqCst);
+    });
+    // Thread spawn failed – release the flight guard and say so.
+    if started.is_err() {
+        RUNNING.store(false, Ordering::SeqCst);
+        return false;
     }
+    drop(started);
     if !quiet {
         eprintln!("  {} mapping in the background – {} for progress", crate::term::dim("◇"), crate::term::dim("/api/map/progress"));
     }
