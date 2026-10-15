@@ -28,10 +28,29 @@ export default function Syntagm({ block }: { openSymbol?: (id: number) => void; 
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Live API first; the fixture stands in until B1 lands (or if it errors).
+  // The API lists blocks (contract JSON); the view indexes them by id, so
+  // key them once – the fixture already has the Record shape.
   useEffect(() => {
     let dead = false;
     api.syntagm()
-      .then((d) => { if (!dead) setData(d); })
+      .then((d) => {
+        if (dead) return;
+        if (Array.isArray(d.blocks)) {
+          // The API's block list is flat (depth-0 sections carry parent null);
+          // the view hangs everything off a synthetic root, like the
+          // fixture's b0 node.
+          const root: SyntagmData["blocks"][string] = {
+            id: "__root", parent: null, depth: 0, name: "repo", summary: "whole repo",
+            kind: "section", symbols: [], children: [], files: 0, cohesion: 1, source: "graph",
+          };
+          const byId: SyntagmData["blocks"] = { __root: root };
+          for (const b of d.blocks) {
+            if (b.parent === null && b.depth === 0) { b.parent = "__root"; root.children.push(b.id); }
+            byId[b.id] = b;
+          }
+          setData({ ...d, blocks: byId });
+        } else setData(d);
+      })
       .catch(() => { if (!dead) setData(fixture); });
     return () => { dead = true; };
   }, []);

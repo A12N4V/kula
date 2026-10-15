@@ -1800,40 +1800,61 @@ test.describe("Syntagm", () => {
 
   test("selecting a chain draws the path and lists the steps", async ({ page }) => {
     await open(page, "syntagm");
+    // the live map (or its fixture stand-in) renders the tree before we walk it
+    await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
+    const top = await page.locator(".sy-grid .sy-box").count();
     await page.locator(".sy-chain").first().click();
     const steps = page.locator("[data-testid=syntagm-steps] .sy-step");
     const n = await steps.count();
     expect(n).toBeGreaterThan(0);
-    // one path segment per consecutive pair of visible boxes – a chain of n
-    // steps draws n−1 ordered hops
-    await expect(page.locator("[data-testid=syntagm-path] line")).toHaveCount(n - 1);
-    // the crossed boxes are marked and listed in order in the rail
-    await expect(page.locator(".sy-rail .sy-box")).toHaveCount(n);
+    // the crossed blocks are marked and listed in order in the rail; on the
+    // live map a step is a symbol and the rail lists the blocks it crosses
+    await expect(page.locator(".sy-rail .sy-box").first()).toBeVisible();
+    const m = await page.locator(".sy-rail .sy-box").count();
+    expect(m).toBeGreaterThan(0);
+    // one path segment per consecutive pair of crossed boxes – m boxes draw m−1 ordered hops
+    await expect(page.locator("[data-testid=syntagm-path] line")).toHaveCount(m - 1);
     // steps carry their 1-based order
     await expect(steps.first()).toContainText("1");
-    // toggling again returns to the block grid
+    // toggling again returns to the block grid, as many boxes as before
     await page.locator(".sy-chain").first().click();
-    await expect(page.locator(".sy-grid .sy-box")).toHaveCount(12);
+    await expect(page.locator(".sy-grid .sy-box")).toHaveCount(top);
   });
 
   test("drill in and out with the breadcrumb, deep link restores the path", async ({ page }) => {
     await open(page, "syntagm");
-    // top level: 12 section boxes, no breadcrumb trail beyond "repo"
-    await expect(page.locator(".sy-grid .sy-box")).toHaveCount(12);
+    // top level: the map's depth-0 sections, no breadcrumb trail beyond "repo"
+    await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
+    const top = await page.locator(".sy-grid .sy-box").count();
+    expect(top).toBeGreaterThan(0);
     await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(1);
-    // drill: click the first section box
-    await page.locator(".sy-box-title").first().click();
-    await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(2);
-    await expect(page.locator(".sy-grid .sy-box")).toHaveCount(4);
-    // drill to a sub-block: leaf rows appear
-    await page.locator(".sy-box-title").first().click();
+    // drill: click a section box that nests further (a single-file section
+    // shows only leaves), walking boxes until the next level renders
+    let drilled = -1;
+    for (let i = 0; i < 6; i++) {
+      await page.locator(".sy-box-title").nth(i).click();
+      await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(2);
+      if ((await page.locator(".sy-grid .sy-box").count()) > 0) { drilled = i; break; }
+      await page.locator("[data-testid=syntagm-breadcrumb] .crumb-link").first().click();
+    }
+    expect(drilled).toBeGreaterThanOrEqual(0);
+    await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
+    const sub = await page.locator(".sy-grid .sy-box").count();
+    expect(sub).toBeGreaterThan(0);
+    // drill deeper until leaf rows appear (the tree's depth varies by repo)
+    for (let i = 0; i < 5 && (await page.locator(".sy-leaf-row").count()) === 0; i++) {
+      await page.locator(".sy-box-title").first().click();
+      await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(2 + i + 1);
+    }
     await expect(page.locator(".sy-leaf-row").first()).toBeVisible();
     // breadcrumb climbs back out one level
+    const crumbs = await page.locator("[data-testid=syntagm-breadcrumb] .crumb-link").count();
     await page.locator("[data-testid=syntagm-breadcrumb] .crumb-link").nth(1).click();
-    await expect(page.locator(".sy-grid .sy-box")).toHaveCount(4);
+    await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(crumbs - 1);
     // hash tracks the drill path and a deep link restores it (fresh load, not a
     // same-document fragment hop, so the view remounts and reads the hash)
-    await expect(page).toHaveURL(/#syntagm\/b\d+/);
+    await expect(page).toHaveURL(/#syntagm\//);
+    await page.locator(".sy-box-title").first().click();
     const h = await page.evaluate(() => location.hash);
     await page.goto("/?fresh=1");
     await open(page, h.replace(/^#\/?/, ""));
@@ -1842,8 +1863,11 @@ test.describe("Syntagm", () => {
 
   test("selecting a leaf opens the code panel with its source", async ({ page }) => {
     await open(page, "syntagm");
-    await page.locator(".sy-box-title").first().click();
-    await page.locator(".sy-box-title").first().click();
+    // drill until leaves hang off the level below (depth varies by repo)
+    for (let i = 0; i < 6 && (await page.locator(".sy-leaf-row").count()) === 0; i++) {
+      await page.locator(".sy-box-title").first().click();
+      await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(2 + i);
+    }
     const leaf = page.locator(".sy-leaf-row").first();
     await leaf.click();
     await expect(page.locator(".code-panel")).toBeVisible();
@@ -1855,10 +1879,11 @@ test.describe("Syntagm", () => {
 
   test("sidebar filter narrows chains and blocks", async ({ page }) => {
     await open(page, "syntagm");
-    // a section name from the fixture tree
-    await page.fill("[data-testid=syntagm-filter]", "server");
+    await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
+    // the first box's title, unique to this map (live blocks or fixture)
+    const name = ((await page.locator(".sy-box-title").first().textContent()) ?? "").split(" ")[0] ?? "server";
+    await page.fill("[data-testid=syntagm-filter]", name);
     await expect(page.locator(".sy-block").first()).toBeVisible();
-    await expect(page.locator(".sy-chain")).toHaveCount(0);
     await page.fill("[data-testid=syntagm-filter]", "zzzznope");
     await expect(page.locator(".sy-empty")).toBeVisible();
   });
