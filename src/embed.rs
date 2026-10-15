@@ -71,6 +71,7 @@ pub struct Stats {
 
 /// RAM and disk read without pulling in a heavyweight stats crate: libc's
 /// sysconf / sysctl / statvfs, ~40 KB of dep.
+#[cfg(unix)]
 fn ram_stats() -> (f64, f64) {
     unsafe {
         let total = libc::sysconf(libc::_SC_PHYS_PAGES) as f64 * libc::sysconf(libc::_SC_PAGESIZE) as f64;
@@ -103,6 +104,32 @@ fn ram_stats() -> (f64, f64) {
     }
 }
 
+/// Windows has no sysconf: ask CIM through PowerShell (values in KB).
+#[cfg(windows)]
+fn ram_stats() -> (f64, f64) {
+    let kb = powershell("$o = Get-CimInstance Win32_OperatingSystem; \"$($o.TotalVisibleMemorySize) $($o.FreePhysicalMemory)\"");
+    let mut it = kb.split_whitespace().map(|v| v.parse::<f64>().unwrap_or(0.0) * 1024.0 / 1e9);
+    (it.next().unwrap_or(0.0), it.next().unwrap_or(0.0))
+}
+
+#[cfg(windows)]
+fn powershell(cmd: &str) -> String {
+    std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", cmd])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default()
+}
+
+#[cfg(windows)]
+fn disk_free(path: &std::path::Path) -> f64 {
+    let mut p = path.to_path_buf();
+    while !p.exists() && p.pop() {}
+    let drive = p.to_string_lossy().chars().next().filter(|c| c.is_ascii_alphabetic()).unwrap_or('C');
+    powershell(&format!("(Get-PSDrive {drive}).Free")).parse::<f64>().unwrap_or(0.0) / 1e9
+}
+
+#[cfg(unix)]
 fn disk_free(path: &std::path::Path) -> f64 {
     // statvfs needs an existing path – walk up to the first ancestor that is there.
     let mut p = path.to_path_buf();
@@ -586,7 +613,7 @@ fn lower_priority() {
     unsafe {
         libc::setpriority(libc::PRIO_PROCESS, 0, 10);
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(all(unix, not(target_os = "macos")))]
     unsafe {
         libc::nice(10);
     }

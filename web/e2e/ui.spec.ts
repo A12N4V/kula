@@ -1749,3 +1749,115 @@ test.describe("isolate from the map", () => {
     await expect(page.getByRole("dialog", { name: "Isolate part of the graph" }).getByLabel("Selectors")).toHaveValue(/symbol:|path:/);
   });
 });
+
+test.describe("Syntagm", () => {
+  // The repo server has no /api/syntagm until B1 lands; the view falls back to
+  // its fixture, which is exactly what U1 ships against (wave 2 swaps it).
+  test("tab loads with sidebar, canvas and readout", async ({ page }) => {
+    await open(page, "syntagm");
+    await expect(page.locator("[data-testid=syntagm-view]")).toBeVisible();
+    await expect(page.locator("[data-testid=syntagm-filter]")).toBeVisible();
+    await expect(page.locator("[data-testid=syntagm-canvas]")).toBeVisible();
+    await expect(page.locator("[data-testid=syntagm-readout]")).toBeVisible();
+    // fixture data is in: chains listed, the readout table filled
+    await expect(page.locator(".sy-chain").first()).toBeVisible();
+    await expect(page.locator(".sy-section-label").first()).toHaveText(/chains/i);
+    await expect(page.locator("[data-testid=syntagm-stats-table]")).toContainText("batches");
+  });
+
+  test("selecting a chain draws the path and lists the steps", async ({ page }) => {
+    await open(page, "syntagm");
+    await page.locator(".sy-chain").first().click();
+    const steps = page.locator("[data-testid=syntagm-steps] .sy-step");
+    const n = await steps.count();
+    expect(n).toBeGreaterThan(0);
+    // one path segment per consecutive pair of visible boxes – a chain of n
+    // steps draws n−1 ordered hops
+    await expect(page.locator("[data-testid=syntagm-path] line")).toHaveCount(n - 1);
+    // the crossed boxes are marked and listed in order in the rail
+    await expect(page.locator(".sy-rail .sy-box")).toHaveCount(n);
+    // steps carry their 1-based order
+    await expect(steps.first()).toContainText("1");
+    // toggling again returns to the block grid
+    await page.locator(".sy-chain").first().click();
+    await expect(page.locator(".sy-grid .sy-box")).toHaveCount(12);
+  });
+
+  test("drill in and out with the breadcrumb, deep link restores the path", async ({ page }) => {
+    await open(page, "syntagm");
+    // top level: 12 section boxes, no breadcrumb trail beyond "repo"
+    await expect(page.locator(".sy-grid .sy-box")).toHaveCount(12);
+    await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(1);
+    // drill: click the first section box
+    await page.locator(".sy-box-title").first().click();
+    await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(2);
+    await expect(page.locator(".sy-grid .sy-box")).toHaveCount(4);
+    // drill to a sub-block: leaf rows appear
+    await page.locator(".sy-box-title").first().click();
+    await expect(page.locator(".sy-leaf-row").first()).toBeVisible();
+    // breadcrumb climbs back out one level
+    await page.locator("[data-testid=syntagm-breadcrumb] .crumb-link").nth(1).click();
+    await expect(page.locator(".sy-grid .sy-box")).toHaveCount(4);
+    // hash tracks the drill path and a deep link restores it (fresh load, not a
+    // same-document fragment hop, so the view remounts and reads the hash)
+    await expect(page).toHaveURL(/#syntagm\/b\d+/);
+    const h = await page.evaluate(() => location.hash);
+    await page.goto("/?fresh=1");
+    await open(page, h.replace(/^#\/?/, ""));
+    await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(2);
+  });
+
+  test("selecting a leaf opens the code panel with its source", async ({ page }) => {
+    await open(page, "syntagm");
+    await page.locator(".sy-box-title").first().click();
+    await page.locator(".sy-box-title").first().click();
+    const leaf = page.locator(".sy-leaf-row").first();
+    await leaf.click();
+    await expect(page.locator(".code-panel")).toBeVisible();
+    // the panel shows the leaf's file
+    await expect(page.locator(".code-panel")).toContainText(".rs");
+    // the code panel is an overlay – the tab must stay on Syntagm
+    await expect(page).toHaveURL(/#syntagm/);
+  });
+
+  test("sidebar filter narrows chains and blocks", async ({ page }) => {
+    await open(page, "syntagm");
+    // a section name from the fixture tree
+    await page.fill("[data-testid=syntagm-filter]", "server");
+    await expect(page.locator(".sy-block").first()).toBeVisible();
+    await expect(page.locator(".sy-chain")).toHaveCount(0);
+    await page.fill("[data-testid=syntagm-filter]", "zzzznope");
+    await expect(page.locator(".sy-empty")).toBeVisible();
+  });
+
+  test("@responsive syntagm fits without sideways scroll", async ({ page }, info) => {
+    await open(page, "syntagm");
+    await expect(page.locator("[data-testid=syntagm-view]")).toBeVisible();
+    await page.waitForTimeout(300);
+    const over = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
+    expect(over).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: `test-results/${info.project.name}-syntagm.png` });
+  });
+
+  test("@mobile the sidebar is a drawer, summoned and dismissed", async ({ page }, info) => {
+    test.skip(info.project.name !== "phone", "phones only");
+    await open(page, "syntagm");
+    const side = page.locator("[data-testid=syntagm-sidebar]");
+    await expect(side).toBeHidden();
+    await page.locator("[data-testid=syntagm-side-toggle]").click();
+    await expect(side).toBeVisible();
+    await expect(page.locator("[data-testid=syntagm-filter]")).toBeVisible();
+    await page.locator("[data-testid=syntagm-side-close]").click();
+    await expect(side).toBeHidden();
+  });
+
+  test("keyboard moves through sidebar rows and opens with enter", async ({ page }) => {
+    await open(page, "syntagm");
+    await page.locator("[data-testid=syntagm-side-scroll]").focus();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    // a chain got selected: the canvas is in chain mode
+    await expect(page.locator("[data-testid=syntagm-steps]")).toBeVisible();
+  });
+});

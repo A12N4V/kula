@@ -1,0 +1,150 @@
+/* syntagm.css – U1 · Syntagm tab: sidebar, nested-block canvas, readout.
+   Design language: absolute black, warm 1px lines, cream text, one orange
+   accent. Hover is a background/border shift, never a shadow, glow, scale. */
+
+.sy-root { height: 100%; display: flex; flex-direction: column; }
+.sy-split { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: var(--size-syntagm, 320px) 28px 1fr minmax(230px, 300px); }
+.sy-side-wrap { display: flex; flex-direction: column; min-height: 0; background: var(--bg-2); border-right: 1px solid var(--line); }
+.sy-side { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.sy-side-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+.sy-side-head h2 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted, var(--text-3)); }
+.sy-side-close { margin-left: auto; }
+
+.sy-filter { padding: 4px 10px 8px; }
+.sy-filter-input { width: 100%; }
+.sy-side-scroll { flex: 1; overflow-y: auto; outline-offset: -2px; }
+.sy-side-scroll:focus-visible { outline: 2px solid var(--accent); }
+
+.sy-row { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 28px; padding: 0 10px; border: 0; background: none; color: var(--text-2); text-align: left; cursor: pointer; transition: background var(--dur), color var(--dur); }
+.sy-row:hover { background: var(--hover-bg); color: var(--text); }
+.sy-row.on { background: var(--sel-bg); color: var(--text); }
+.sy-row.act { outline: 1px dashed var(--line-2); outline-offset: -1px; }
+.sy-row-meta { margin-left: auto; font-size: 10.5px; color: var(--text-3); flex: none; }
+.sy-empty { padding: 14px 12px; color: var(--text-3); }
+
+.sy-chain { flex-direction: column; align-items: flex-start; gap: 1px; padding: 5px 10px; }
+.sy-chain-name { font-size: 12px; color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sy-chain.on .sy-chain-name { color: var(--accent); }
+.sy-section-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); padding: 8px 10px 2px; }
+
+.sy-block { gap: 2px; }
+.sy-d1 { padding-left: 16px; }
+.sy-d2 { padding-left: 34px; }
+.sy-twist { flex: none; width: 28px; height: 28px; border: 0; background: none; color: var(--text-3); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.sy-twist svg { width: 12px; height: 12px; transition: transform 120ms ease; transform: rotate(-90deg); }
+.sy-twist[aria-expanded="true"] svg { transform: rotate(0deg); }
+.sy-twist:hover { color: var(--text); }
+.sy-block-name { min-height: 28px; display: flex; align-items: center; gap: 6px; min-width: 0; border: 0; background: none; color: inherit; cursor: pointer; padding: 0; flex: 1; }
+.sy-bname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sy-kind { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); flex: none; }
+.sy-glyph { flex: none; width: 14px; text-align: center; color: var(--accent); }
+
+.sy-leaf { gap: 6px; padding-left: 48px; }
+.sy-leaf-name { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* – canvas – */
+.sy-canvas { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.sy-bread { display: flex; align-items: center; gap: 2px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.sy-bread-sep { color: var(--text-3); margin: 0 4px; display: inline-flex; }
+.sy-bread-sep svg { width: 12px; height: 12px; transform: rotate(-90deg); }
+.crumb-link { border: 0; background: none; color: var(--text-2); cursor: pointer; padding: 2px 8px; min-height: 28px; }
+.crumb-link:hover { background: var(--hover-bg); color: var(--text); }
+.crumb-link.on { color: var(--accent); }
+.sy-bread-chain { margin-left: auto; font-size: 11px; color: var(--accent); }
+
+.sy-canvas-scroll { flex: 1; overflow: auto; padding: 14px; }
+.sy-path { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.sy-path line { stroke: var(--accent); stroke-width: 1.5; }
+.sy-rail { display: flex; flex-direction: column; gap: 24px; max-width: 760px; position: relative; z-index: 1; }
+.sy-grid { display: grid; gap: 12px; align-items: start; position: relative; z-index: 1; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+
+.sy-box { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; min-width: 0; position: relative;
+  /* skip off-screen boxes entirely: keeps 4 000+ leaves cheap, and keeps
+     off-screen rects from colliding with panels below the scroll */
+  content-visibility: auto; contain-intrinsic-size: auto 240px; }
+.sy-box-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 10px; border-bottom: 1px solid var(--line); }
+.sy-box-title { min-height: 28px; display: flex; align-items: center; gap: 5px; min-width: 0; border: 0; background: none; color: var(--text); cursor: pointer; padding: 2px 4px; flex: 1; text-align: left; }
+.sy-box-title:hover { background: var(--hover-bg); }
+.sy-box-title svg { width: 12px; height: 12px; color: var(--text-3); flex: none; }
+.sy-box-meta { font-size: 10.5px; color: var(--text-3); flex: none; }
+.sy-box-block { border-radius: 6px; }
+.sy-box-sub { border-radius: 4px; background: var(--bg-2); }
+.sy-on-chain { border-color: var(--accent); }
+
+.sy-box-kids { padding: 8px; display: grid; gap: 6px; }
+.sy-kid { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); background: none; color: var(--text-2); cursor: pointer; padding: 5px 8px; border-radius: 4px; min-height: 28px; transition: background var(--dur), border-color var(--dur); }
+.sy-kid:hover { background: var(--hover-bg); border-color: var(--hover-line); color: var(--text); }
+.sy-kid.sy-on-chain { border-color: var(--accent); }
+.sy-kid-more { justify-content: center; color: var(--text-3); }
+.sy-kname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.sy-leafs { padding: 6px 4px; }
+.sy-leaf-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 0 8px; border: 0; background: none; color: var(--text-2); cursor: pointer; text-align: left; transition: background var(--dur); }
+.sy-leaf-row:hover { background: var(--hover-bg); color: var(--text); }
+.sy-leaf-row .sy-glyph { color: var(--text-3); }
+.sy-leaf-row:hover .sy-glyph { color: var(--accent); }
+.sy-more { color: var(--text-3); justify-content: center; }
+
+.sy-steps { position: relative; z-index: 4; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 2px; }
+.sy-step { min-height: 28px; height: 28px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text-2); cursor: pointer; padding: 3px 8px; border-radius: 4px; font-size: 11px; max-width: 100%; }
+.sy-step:hover { background: var(--hover-bg); color: var(--text); }
+.sy-step-n { color: var(--accent); }
+
+/* – readout – */
+.sy-readout-wrap { border-left: 1px solid var(--line); background: var(--bg-2); overflow: auto; min-width: 0; }
+.sy-readout { padding: 14px 16px; }
+.sy-readout h2 { margin: 0 0 4px; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.sy-summary { margin: 0 0 12px; color: var(--text-3); font-size: 11.5px; }
+.sy-t { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 14px; }
+.sy-t th, .sy-t td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.sy-t th { color: var(--text-3); font-weight: 400; width: 45%; }
+.sy-t td { text-align: right; color: var(--text); }
+
+.sy-embed-chip { width: 100%; min-height: 28px; justify-content: flex-start; }
+.sy-embed-chip.embed-on { border-color: var(--green); color: var(--green); }
+.sy-embed-chip.embed-stale { border-color: var(--yellow); color: var(--yellow); }
+.sy-embed { margin-top: 10px; display: grid; gap: 8px; }
+.sy-embed-reasons { font-size: 11px; color: var(--yellow); }
+.sy-embed-msg { font-size: 11.5px; color: var(--accent); }
+.sy-confirm { display: grid; gap: 6px; font-size: 11.5px; }
+.sy-confirm > div { display: flex; gap: 8px; }
+.embed-verdict-ok { color: var(--green); }
+.embed-verdict-warn { color: var(--yellow); }
+.embed-verdict-refuse { color: var(--red); }
+
+.sy-scrim { display: none; }
+
+/* – phone (390 px): the sidebar is a drawer, the readout stacks under the canvas – */
+@media (max-width: 720px) {
+  .sy-split { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  .sy-split > .grip { display: none; }
+  .sy-side-wrap { position: absolute; z-index: 20; top: 0; bottom: 0; left: 0; width: min(320px, 84vw); border-right: 1px solid var(--line); background: var(--bg-2); }
+  /* the closed drawer is display:none, not translated: an off-canvas box is
+     still an off-screen control to the probe, and transitions are moot */
+  .sy-side-wrap:not(.open) { display: none; }
+  .sy-scrim { display: block; position: absolute; inset: 0; z-index: 15; background: rgba(0, 0, 0, 0.5); }
+  .sy-root { position: relative; }
+  .sy-side-toggle { display: inline-flex; }
+  .sy-readout-wrap { border-left: 0; border-top: 1px solid var(--line); max-height: 40vh; }
+}
+@media (min-width: 721px) {
+  .sy-side-toggle { display: none; }
+}
+
+/* phone floor: every control is a 40 px hit target */
+@media (max-width: 720px) {
+  .sy-row, .sy-twist, .sy-block-name, .sy-leaf-row, .sy-kid, .sy-step,
+  .sy-embed-chip, .crumb-link, .sy-box-title, .sy-side-close { min-height: 40px; }
+  /* fixed kid rows keep the windowed column's offsets exact */
+  .sy-kid { height: 40px; }
+  .sy-kid .sy-kname, .sy-kid .sy-row-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sy-row { min-height: 40px; }
+  .sy-twist { width: 40px; }
+  .sy-filter-input { min-height: 40px; }
+  .crumb-link { min-width: 40px; }
+}
+
+/* the sidebar grip is a real 28px grid column, not an overlay: an absolutely
+   positioned 7px sliver is both a tiny hit target and an overlap with whatever
+   sits under it. Static position keeps it in the gutter between the columns. */
+.sy-split > .grip { position: static; width: 28px; cursor: col-resize; }
