@@ -1,4 +1,4 @@
-// Syntagm types – the shared contract from BRIEF.md "the model", extended to
+// Fmap types – the shared contract from BRIEF.md "the model", extended to
 // the map: blocks with roles and themes, chain families, loops, and the
 // /api/map* payloads. The fixture matches these exact shapes so the live API
 // drops in without a UI change.

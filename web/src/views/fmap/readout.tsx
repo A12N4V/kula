@@ -1,4 +1,4 @@
-// Syntagm readout: the right/foot panel. Block facts as a two-column table
+// Fmap readout: the right/foot panel. Block facts as a two-column table
 // (label left, value right – the house style): role, theme (when embedded),
 // and the chain flow through the block, plus the map stats. The embed chip
 // opens the Settings dialog, where the Embeddings section lives (the same
@@ -46,12 +46,12 @@ export function Readout({ data, block, onLeaf }: { data: MapData; block: Block |
   }, [data.families, block]);
 
   return (
-    <aside className="sy-readout" data-testid="syntagm-readout" aria-label="Syntagm readout">
+    <aside className="sy-readout" data-testid="fmap-readout" aria-label="Fmap readout">
       {block && (
         <>
           <h2 className="mono">{block.name}</h2>
           <p className="sy-summary">{block.summary}</p>
-          <table className="sy-t" data-testid="syntagm-block-table">
+          <table className="sy-t" data-testid="fmap-block-table">
             <tbody>
               <tr><th>role</th><td title={ROLE_RULES[block.role]}>{block.role}</td></tr>
               {block.theme && <tr><th>theme</th><td>{block.theme}</td></tr>}
@@ -68,7 +68,7 @@ export function Readout({ data, block, onLeaf }: { data: MapData; block: Block |
           </table>
         </>
       )}
-      <table className="sy-t" data-testid="syntagm-stats-table">
+      <table className="sy-t" data-testid="fmap-stats-table">
         <tbody>
           <tr><th>build</th><td>{(data.stats.ms / 1000).toFixed(1)}s</td></tr>
           <tr><th>chains</th><td>{fmt(data.stats.chains)}{data.stats.exact ? "" : " (saturated)"}</td></tr>
@@ -79,7 +79,7 @@ export function Readout({ data, block, onLeaf }: { data: MapData; block: Block |
           <tr><th>embedding</th><td>{EMBED_LABEL[data.stats.embed]}</td></tr>
         </tbody>
       </table>
-      <button className={`chip-btn sy-embed-chip embed-${data.stats.embed}`} data-testid="syntagm-embed-chip"
+      <button className={`chip-btn sy-embed-chip embed-${data.stats.embed}`} data-testid="fmap-embed-chip"
         title="Embeddings – Settings (,)" aria-haspopup="dialog"
         onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "," }))}>
         embedding: {EMBED_LABEL[data.stats.embed]} – Settings →
