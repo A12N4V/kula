@@ -47,7 +47,11 @@ function EmbedRows({ q }: { q: string }) {
     api.embedInstall()
       .then(() => { setBusy("run"); return api.embedRun(); })
       .then(() => setNote("Embedding in batches – progress here, the map re-forms when it lands"))
-      .catch((e) => setNote(e.message))
+      .catch((e) => {
+        setNote(e.message);
+        // The pipeline did not start – embeddings stay opt-in: switch off.
+        api.embedEnable(false).then(load).catch(() => {});
+      })
       .finally(() => setBusy(""));
   };
 
