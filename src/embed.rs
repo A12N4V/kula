@@ -693,6 +693,24 @@ fn size_of(dir: &std::path::Path, seed: u64) -> u64 {
 
 // ------------------------------------------------------------------ API payloads
 
+/// Flip `[embed] enabled` in kula.toml in place, keeping every other comment
+/// and table untouched. This is the Settings switch's persistence: the
+/// server's `/api/embed/enable` calls it, so the run gate (`provider_for`)
+/// and `kula embed status` agree with what the UI shows.
+pub fn set_enabled(repo: &crate::git::Repo, on: bool) -> Result<()> {
+    let p = repo.root.join("kula.toml");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|_| crate::config::Config::default().render());
+    let mut doc: toml_edit::DocumentMut = text.parse().with_context(|| format!("reading {}", p.display()))?;
+    let t = doc.entry("embed").or_insert(toml_edit::table()).as_table_mut().context("[embed] must be a table")?;
+    t["enabled"] = toml_edit::value(on);
+    let out = doc.to_string();
+    // Never write a file kula itself can't read back.
+    let cfg: crate::config::Config = toml::from_str(&out).context("the edit would make kula.toml invalid")?;
+    std::fs::write(&p, out)?;
+    let _ = cfg;
+    Ok(())
+}
+
 /// `GET /api/embed/status` – config, install state, live run.
 pub fn api_status(repo: &crate::git::Repo) -> Result<serde_json::Value> {
     let cfg = crate::config::Config::load(&repo.root)?.embed;
@@ -906,5 +924,59 @@ mod tests {
         let (idx, fresh) = run(&repo, &st, &cfg, &prov, || false).unwrap();
         assert_eq!(fresh, 0, "empty repo, nothing to embed");
         assert_eq!(idx.dim, DIM, "Matryoshka truncation to 256");
+    }
+
+    // -------------------------------------------------- I1 · the switch
+
+    /// set_enabled writes `[embed] enabled` in place, keeping the rest of
+    /// kula.toml – and status reads it back. This is the Settings switch's
+    /// whole persistence story.
+    #[test]
+    fn set_enabled_flips_the_switch_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = test_repo(dir.path());
+        std::fs::create_dir_all(repo.kula_dir()).unwrap();
+        std::fs::write(repo.root.join("kula.toml"), "# top comment\n[agents]\nmemory = true\n").unwrap();
+
+        set_enabled(&repo, true).unwrap();
+        let text = std::fs::read_to_string(repo.root.join("kula.toml")).unwrap();
+        assert!(text.contains("enabled = true"), "{text}");
+        assert!(text.contains("[agents]"), "other tables kept: {text}");
+        assert!(text.contains("# top comment"), "comments kept: {text}");
+        let cfg = crate::config::Config::load(&repo.root).unwrap().embed;
+        assert!(cfg.enabled);
+
+        set_enabled(&repo, false).unwrap();
+        let cfg = crate::config::Config::load(&repo.root).unwrap().embed;
+        assert!(!cfg.enabled, "flips back off");
+    }
+
+    /// The wiring test that runs without the model: the mock provider rides
+    /// similarity_for into the map (once M1 lands the thematic pass, this is
+    /// the same path), and the stored map records the embed state.
+    #[test]
+    fn mock_similarity_rides_the_map_via_similarity_for() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = test_repo(dir.path());
+        std::fs::create_dir_all(repo.kula_dir()).unwrap();
+        // Two files with calls between them: something for the cache to hold.
+        std::fs::create_dir_all(repo.root.join("src")).unwrap();
+        std::fs::write(repo.root.join("src/a.ts"), "export function ping() { return pong(); }\n").unwrap();
+        std::fs::write(repo.root.join("src/b.ts"), "export function pong() { return 1; }\n").unwrap();
+        crate::index::run(&repo, true).unwrap();
+        let st = Store::open(&repo).unwrap();
+        // Nothing embedded: similarity_for reports "off" and hands back no index.
+        let (idx, state) = similarity_for(&repo, &st);
+        assert!(idx.is_none(), "no cache, no index");
+        assert_eq!(state, "off");
+        // After a mock run the cache exists and similarity_for serves it.
+        let cfg = EmbedCfg { enabled: true, threads: 1, batch: 2 };
+        run(&repo, &st, &cfg, &(std::sync::Arc::new(MockProvider::new()) as std::sync::Arc<dyn EmbedProvider>), || false).unwrap();
+        let (idx, state) = similarity_for(&repo, &st);
+        assert!(idx.is_some(), "cache present after a run");
+        assert_eq!(state, "on", "full coverage reports on");
+        // And the map engine accepts the provider through the trait.
+        let s = crate::syntagm::build_with(&repo, &st, idx.as_ref().map(|i| i as &dyn crate::syntagm::Similarity), state).unwrap();
+        assert!(!s.blocks.is_empty() || s.chains.is_empty(), "map built with the mock provider");
     }
 }

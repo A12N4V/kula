@@ -877,6 +877,22 @@ async fn embed_status(State(s): State<AppState>) -> ApiResult {
     Ok(Json(embed::api_status(&s.repo)?))
 }
 
+/// POST /api/embed/enable – flip `[embed] enabled` in kula.toml (the Settings
+/// switch's persistence) and return the new status.
+async fn embed_enable(State(s): State<AppState>, Json(v): Json<Value>) -> ApiResult {
+    let on = v.get("enabled").and_then(|b| b.as_bool()).ok_or_else(|| anyhow!("enabled boolean required"))?;
+    blocking(move || {
+        embed::set_enabled(&s.repo, on)?;
+        if on {
+            // The switch turned on: map again so the engine picks the
+            // embedding cache up when the model finishes embedding.
+            map_run::spawn(s.repo.clone(), true);
+        }
+        Ok(json!(embed::api_status(&s.repo)?))
+    })
+    .await
+}
+
 async fn embed_check(State(s): State<AppState>) -> ApiResult {
     blocking(move || {
         let st = Store::open(&s.repo)?;
@@ -920,7 +936,10 @@ async fn embed_run(State(s): State<AppState>) -> ApiResult {
                     }
                 };
                 match embed::run(&repo, &st, &cfg, &prov, embed::cancel_requested) {
-                    Ok(_) => {}
+                    // Embeddings changed – remap so blocks re-form thematically.
+                    Ok(_) => {
+                        map_run::spawn(repo.clone(), true);
+                    }
                     Err(e) => embed::run_error(format!("{e:#}")),
                 }
             }
@@ -1187,6 +1206,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/kg/export", get(kg_export))
         .route("/api/kg/examples", get(kg_examples))
         .route("/api/embed/status", get(embed_status))
+        .route("/api/embed/enable", post(embed_enable))
         .route("/api/embed/check", get(embed_check))
         .route("/api/embed/install", post(embed_install))
         .route("/api/embed/remove", post(embed_remove))

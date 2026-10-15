@@ -203,6 +203,12 @@ export const api = {
   embedInstall: () => post<EmbedInstall>("/api/embed/install"),
   embedRemove: () => post<EmbedInstall>("/api/embed/remove"),
 
+  // I1 · Embeddings switch: persist the switch, run and cancel a batch embed
+  embedEnable: (enabled: boolean) => post<EmbedStatusFull>("/api/embed/enable", { enabled }),
+  embedRun: () => post<{ started: boolean; reason?: string }>("/api/embed/run", {}),
+  embedCancel: () => post<{ cancelled: boolean }>("/api/embed/cancel", {}),
+  mapProgress: () => get<MapProgress>("/api/map/progress"),
+
   // K2 · unified agent config: skills, rules, MCP, memory layers
   configMatrix: () => get<ConfigMatrix>("/api/agent/config_matrix"),
   skillDetail: (name: string) => get<SkillDetail>(`/api/agent/skill_detail?${q({ name })}`),
@@ -242,5 +248,10 @@ export type { Chain, EmbedCheck, SyntagmData } from "./views/syntagm/types";
 export interface SyntagmBlock { block: import("./views/syntagm/types").Block }
 export interface EmbedStatus { state: "off" | "on" | "stale"; installed: boolean; model: string | null; ms: number }
 export interface EmbedInstall { ok: boolean; phase?: string; done?: number; total?: number }
+
+// I1 · the real /api/embed/status payload (embed.rs api_status) and /api/map/progress (map_run.rs).
+export interface EmbedRun { running: boolean; phase: string; done: number; total: number; batches: number; cancelled: boolean; provider: string; error: string }
+export interface EmbedStatusFull { enabled: boolean; installed: boolean; feature: boolean; model_dir: string; run: EmbedRun }
+export interface MapProgress { running: boolean; phase: string; blocks: number; chains: number; ms: number; error: string }
 
 export type LangRow = { id: string; name: string; files: number; indexed: boolean; builtin: boolean; tier: string };
