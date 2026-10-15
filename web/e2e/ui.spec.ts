@@ -1759,28 +1759,55 @@ test.describe("Syntagm", () => {
     await expect(page.locator("[data-testid=syntagm-filter]")).toBeVisible();
     await expect(page.locator("[data-testid=syntagm-canvas]")).toBeVisible();
     await expect(page.locator("[data-testid=syntagm-readout]")).toBeVisible();
-    // fixture data is in: chains listed, the readout table filled
-    await expect(page.locator(".sy-chain").first()).toBeVisible();
+    // fixture data is in: families listed, the readout table filled
+    await expect(page.locator(".sy-family").first()).toBeVisible();
     await expect(page.locator(".sy-section-label").first()).toHaveText(/chains/i);
-    await expect(page.locator("[data-testid=syntagm-stats-table]")).toContainText("batches");
+    await expect(page.locator("[data-testid=syntagm-stats-table]")).toContainText("families");
+    // the lens bar is in: Functions / Utilities / All, plus the roles legend
+    await expect(page.locator("[data-testid=syntagm-lens-functions]")).toBeVisible();
+    await expect(page.locator("[data-testid=syntagm-lens-utilities]")).toBeVisible();
+    await expect(page.locator("[data-testid=syntagm-lens-all]")).toBeVisible();
   });
 
-  test("selecting a chain draws the path and lists the steps", async ({ page }) => {
+  test("expanding a family pages its chains; selecting one draws the path", async ({ page }) => {
     await open(page, "syntagm");
-    await page.locator(".sy-chain").first().click();
+    await expect(page.locator(".sy-family").first()).toBeVisible();
+    // narrow to one family so every row is on screen (the list is windowed)
+    const name = await page.locator(".sy-family .sy-fam-name").first().textContent();
+    await page.fill("[data-testid=syntagm-filter]", name ?? "");
+    await expect(page.locator(".sy-family")).toHaveCount(1);
+    await page.locator(".sy-family .sy-twist").first().click();
+    // the family pages its chains in (fixture enumeration, same paged shape)
+    const chains = page.locator(".sy-chain");
+    await expect(chains.first()).toBeVisible();
+    const first = await chains.count();
+    expect(first).toBeGreaterThan(0);
+    // "+ load more chains" pages the next cursor in – more chain rows appear.
+    // The row is below the fold and windowed out of the DOM: scroll to it.
+    await page.locator("[data-testid=syntagm-side-scroll]").evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await page.locator(".sy-chain-load").first().click();
+    await expect.poll(async () => chains.count()).toBeGreaterThan(first);
+    await expect(chains.nth(first)).toBeVisible();
+    // selecting a chain draws the path and lists the steps
+    await chains.first().click();
     const steps = page.locator("[data-testid=syntagm-steps] .sy-step");
     const n = await steps.count();
     expect(n).toBeGreaterThan(0);
-    // one path segment per consecutive pair of visible boxes – a chain of n
-    // steps draws n−1 ordered hops
-    await expect(page.locator("[data-testid=syntagm-path] line")).toHaveCount(n - 1);
+    // one path segment per consecutive pair of visible boxes – a chain that
+    // crosses n boxes draws n−1 ordered hops (a chain may revisit a block,
+    // so the rail's box count, not the step count, drives the path)
+    const crossed = await page.locator(".sy-rail .sy-box").count();
+    expect(crossed).toBeGreaterThan(1);
+    await expect(page.locator("[data-testid=syntagm-path] line")).toHaveCount(crossed - 1);
     // the crossed boxes are marked and listed in order in the rail
-    await expect(page.locator(".sy-rail .sy-box")).toHaveCount(n);
+    await expect(page.locator(".sy-rail .sy-box")).toHaveCount(crossed);
     // steps carry their 1-based order
     await expect(steps.first()).toContainText("1");
-    // toggling again returns to the block grid
-    await page.locator(".sy-chain").first().click();
-    await expect(page.locator(".sy-grid .sy-box")).toHaveCount(12);
+    // toggling again returns to the block grid – click the selected chain
+    // (after paging, the first .sy-chain in the DOM is a windowed row, not
+    // necessarily the one that is on)
+    await page.locator(".sy-chain.on").click();
+    await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
   });
 
   test("drill in and out with the breadcrumb, deep link restores the path", async ({ page }) => {
@@ -1856,8 +1883,72 @@ test.describe("Syntagm", () => {
     await page.locator("[data-testid=syntagm-side-scroll]").focus();
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("ArrowDown");
+    // the first active row is a family: ↵ expands it and its chains page in
     await page.keyboard.press("Enter");
-    // a chain got selected: the canvas is in chain mode
-    await expect(page.locator("[data-testid=syntagm-steps]")).toBeVisible();
+    await expect(page.locator(".sy-chain").first()).toBeVisible();
+  });
+
+  test("the lens switch filters the view (Functions / Utilities / All)", async ({ page }) => {
+    await open(page, "syntagm");
+    // All: families listed whole (wait for the payload to land first)
+    await expect(page.locator(".sy-family").first()).toBeVisible();
+    const all = await page.locator(".sy-family").count();
+    expect(all).toBeGreaterThan(0);
+    // Utilities: only families whose both ends are utility-role leaves – every
+    // visible family's entry glyph is "u" (windowing-agnostic assertion)
+    await page.locator("[data-testid=syntagm-lens-utilities]").click();
+    const glyphs = await page.locator(".sy-family .sy-role").allTextContents();
+    expect(glyphs.length).toBeGreaterThan(0);
+    expect(glyphs.every((g) => g === "u")).toBe(true);
+    // the role legend explains each role's one-line rule
+    await page.locator("[data-testid=syntagm-roles-btn]").click();
+    for (const role of ["entry", "orchestrator", "core", "utility", "adapter", "model", "config", "test", "glue"]) {
+      await expect(page.locator(`[data-testid=syntagm-role-${role}]`)).toBeVisible();
+    }
+    await expect(page.locator(".sy-role-rule", { hasText: "high fan-in from ≥ 3 distinct blocks" })).toBeVisible();
+    // back to All: the full list returns – non-utility entries are visible again
+    await page.locator("[data-testid=syntagm-lens-all]").click();
+    const allGlyphs = await page.locator(".sy-family .sy-role").allTextContents();
+    expect(allGlyphs.length).toBeGreaterThan(glyphs.length);
+    expect(allGlyphs.some((g) => g !== "u")).toBe(true);
+  });
+
+  test("the role filter narrows families and blocks", async ({ page }) => {
+    await open(page, "syntagm");
+    const all = await page.locator(".sy-family").count();
+    // open the legend and drop the test role
+    await expect(page.locator(".sy-family").first()).toBeVisible();
+    await page.locator("[data-testid=syntagm-roles-btn]").click();
+    await page.locator("[data-testid=syntagm-role-test]").click();
+    const fewer = await page.locator(".sy-family").count();
+    expect(fewer).toBeLessThanOrEqual(all);
+    // blocks carry their role glyph, one-line rule as its title
+    await expect(page.locator(".sy-box .sy-role").first()).toBeVisible();
+    // unchecking the last role never filters to nothing
+    for (const role of ["entry", "orchestrator", "core", "utility", "adapter", "model", "config", "glue"]) {
+      await page.locator(`[data-testid=syntagm-role-${role}]`).click();
+    }
+    await expect(page.locator(".sy-family").first()).toBeVisible();
+  });
+
+  test("@u2 while the map runs, its progress shows – not an empty state", async ({ page }) => {
+    // no /api/map yet, but /api/map/progress says a map is running: the view
+    // shows the progress table and polls until the map lands
+    await page.route("**/api/map", (r) => r.fulfill({ status: 404, body: "{}", contentType: "application/json" }));
+    await page.route("**/api/map/chains**", (r) => r.fulfill({ status: 404, body: "{}", contentType: "application/json" }));
+    await page.route("**/api/map/progress", (r) => r.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ active: true, phase: "dp", done: 1200, total: 3400, elapsed_ms: 4210 }),
+    }));
+    await open(page, "syntagm");
+    await expect(page.locator("[data-testid=syntagm-progress]")).toBeVisible();
+    await expect(page.locator("[data-testid=syntagm-progress-table]")).toContainText("counting paths");
+    await expect(page.locator("[data-testid=syntagm-progress-table]")).toContainText("1200 / 3400");
+    // the map landing (progress goes idle) swaps in the fixture stand-in
+    await page.route("**/api/map/progress", (r) => r.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ active: false, phase: "done", done: 3400, total: 3400, elapsed_ms: 9000 }),
+    }));
+    await expect(page.locator("[data-testid=syntagm-sidebar]")).toBeVisible({ timeout: 10_000 });
   });
 });
