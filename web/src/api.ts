@@ -194,6 +194,12 @@ export const api = {
   metaAction: <T = unknown>(kind: "issues" | "proposals" | "notes", action: string | number, body: Record<string, unknown>) =>
     post<T>(`/api/meta/${kind}/${action}`, body),
 
+  // U2 · map: the whole map in one payload, paged family chains, progress
+  map: () => get<MapData>("/api/map"),
+  mapChains: (family: string, cursor?: string, limit = 40) =>
+    get<ChainPage>(`/api/map/chains?${q({ family, cursor, limit })}`),
+  mapProgress: () => get<MapProgress>("/api/map/progress"),
+
   // U1 · Syntagm: blocks and chains (+ E1's embed endpoints)
   syntagm: () => get<SyntagmData>("/api/syntagm"),
   syntagmBlock: (id: string) => get<SyntagmBlock>(`/api/syntagm/block/${encodeURIComponent(id)}`),
@@ -237,8 +243,8 @@ export function relTime(ts: number) {
 export { hue as colorFor } from "./colors";
 
 // U1 · Syntagm shared types (the contract shapes live in views/syntagm/types.ts).
-import type { Chain, EmbedCheck, SyntagmData } from "./views/syntagm/types";
-export type { Chain, EmbedCheck, SyntagmData } from "./views/syntagm/types";
+import type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/syntagm/types";
+export type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/syntagm/types";
 export interface SyntagmBlock { block: import("./views/syntagm/types").Block }
 export interface EmbedStatus { state: "off" | "on" | "stale"; installed: boolean; model: string | null; ms: number }
 export interface EmbedInstall { ok: boolean; phase?: string; done?: number; total?: number }
