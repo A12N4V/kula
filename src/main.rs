@@ -994,6 +994,20 @@ fn run(cli: Cli) -> Result<()> {
             if !no_map {
                 map_run::run_now(repo.clone(), quiet);
             }
+            // Embeddings on by default: a fresh repo (no `[embed] decided`)
+            // gets the hardware check exactly once. Ok installs and embeds
+            // inline – the process would otherwise exit before the download
+            // lands – then remaps thematically. Warn or refuse stays off and
+            // says why; the decision is recorded either way.
+            let auto_store = Store::open(&repo)?;
+            let rep = embed::auto(&repo, &auto_store, true);
+            if !quiet {
+                match rep.verdict.as_str() {
+                    "ok" => eprintln!("  {} embeddings on – {}", crate::term::dim("◇"), rep.reasons.join("; ")),
+                    "decided" | "busy" | "spawned" => {}
+                    v => eprintln!("  {} embeddings off – {}: {}", crate::term::dim("◆"), v, rep.reasons.join("; ")),
+                }
+            }
             if quiet {
             } else if json {
                 out(&s);

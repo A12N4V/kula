@@ -179,6 +179,9 @@ async fn reindex(State(s): State<AppState>) -> ApiResult {
         // graph is unchanged; singleflight keeps this from double-mapping
         // with the auto-reindex loop.
         map_run::spawn(s.repo.clone(), true);
+        // A fresh repo's first index may have happened here rather than via
+        // the CLI: settle the embeddings decision once if it is still open.
+        embed::auto(&s.repo, &Store::open(&s.repo)?, false);
         Ok(v)
     })
     .await
@@ -1168,6 +1171,13 @@ pub fn router(repo: Repo, token: String) -> Router {
     // Map by default at start-up: after the first index the map runs on its
     // own thread, never blocking graph serving.
     map_run::spawn(repo.clone(), true);
+    // Embeddings on by default, decided once: a fresh repo (no `[embed]
+    // decided`) gets the hardware check in the background at low priority –
+    // ok installs and embeds, warn or refuse stays off. Never on the request
+    // path.
+    if let Ok(st) = Store::open(&repo) {
+        embed::auto(&repo, &st, false);
+    }
     Router::new()
         .route("/api/clean", get(clean_get).post(clean_set))
         .route("/api/langs", get(langs_get))

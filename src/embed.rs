@@ -150,7 +150,10 @@ fn disk_free(path: &std::path::Path) -> f64 {
 }
 
 /// The check itself – no model needed, ships value even if the runtime stalls.
-pub fn check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<Stats> {
+/// Hardware only: RAM, disk, cores. The `[embed] enabled` gate lives in
+/// [`check`] so the automatic first-run decision can judge the machine before
+/// the person has touched the switch.
+pub fn hardware_check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<Stats> {
     let (ram_total, ram_free) = ram_stats();
     let disk_free = disk_free(&model_dir());
     let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
@@ -174,10 +177,6 @@ pub fn check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<
         verdict = if verdict == "refuse" { verdict } else { "warn" };
         reasons.push(format!("free disk {disk_free:.1} GB < 4 GB"));
     }
-    if !cfg.enabled {
-        verdict = "refuse";
-        reasons.push("[embed] enabled = false in kula.toml – turn it on before install".into());
-    }
     Ok(Stats {
         ram_total_gb: (ram_total * 10.0).round() / 10.0,
         ram_free_gb: (ram_free * 10.0).round() / 10.0,
@@ -190,6 +189,17 @@ pub fn check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<
         verdict: verdict.into(),
         reasons,
     })
+}
+
+/// The full check for the switch and CLI: hardware verdict plus the
+/// `[embed] enabled` gate – the switch must be on before anything installs.
+pub fn check(repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<Stats> {
+    let mut s = hardware_check(repo, store, cfg)?;
+    if !cfg.enabled {
+        s.verdict = "refuse".into();
+        s.reasons.push("[embed] enabled = false in kula.toml – turn it on before install".into());
+    }
+    Ok(s)
 }
 
 /// The two-column table `kula embed check` prints.
@@ -784,22 +794,198 @@ fn size_of(dir: &std::path::Path, seed: u64) -> u64 {
 
 // ------------------------------------------------------------------ API payloads
 
+/// Whether the embedding question has been settled: `[embed] decided = true`
+/// in kula.toml. Once set the automatic path never re-prompts – the switch is
+/// the person's, on or off, and it sticks.
+pub fn decided(repo: &crate::git::Repo) -> bool {
+    if let Ok(src) = std::fs::read_to_string(repo.root.join("kula.toml")) {
+        if let Ok(t) = src.parse::<toml::Table>() {
+            return t.get("embed").and_then(|e| e.get("decided")).and_then(|v| v.as_bool()).unwrap_or(false);
+        }
+    }
+    false
+}
+
+/// Write one boolean into `[embed]` in kula.toml in place, keeping every
+/// other comment and table untouched.
+fn toml_flag(repo: &crate::git::Repo, key: &str, value: bool) -> Result<()> {
+    let p = repo.root.join("kula.toml");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|_| crate::config::Config::default().render());
+    let mut doc: toml_edit::DocumentMut = text.parse().with_context(|| format!("reading {}", p.display()))?;
+    let t = doc.entry("embed").or_insert(toml_edit::table()).as_table_mut().context("[embed] must be a table")?;
+    t[key] = toml_edit::value(value);
+    let out = doc.to_string();
+    // Never write a file kula itself can't read back.
+    let _: crate::config::Config = toml::from_str(&out).context("the edit would make kula.toml invalid")?;
+    std::fs::write(&p, out)?;
+    Ok(())
+}
+
 /// Flip `[embed] enabled` in kula.toml in place, keeping every other comment
 /// and table untouched. This is the Settings switch's persistence: the
 /// server's `/api/embed/enable` calls it, so the run gate (`provider_for`)
-/// and `kula embed status` agree with what the UI shows.
+/// and `kula embed status` agree with what the UI shows. Any explicit flip –
+/// on or off – also records `decided = true`, so the automatic first-run
+/// path never overrides the person's choice.
 pub fn set_enabled(repo: &crate::git::Repo, on: bool) -> Result<()> {
     let p = repo.root.join("kula.toml");
     let text = std::fs::read_to_string(&p).unwrap_or_else(|_| crate::config::Config::default().render());
     let mut doc: toml_edit::DocumentMut = text.parse().with_context(|| format!("reading {}", p.display()))?;
     let t = doc.entry("embed").or_insert(toml_edit::table()).as_table_mut().context("[embed] must be a table")?;
     t["enabled"] = toml_edit::value(on);
+    t["decided"] = toml_edit::value(true);
     let out = doc.to_string();
     // Never write a file kula itself can't read back.
-    let cfg: crate::config::Config = toml::from_str(&out).context("the edit would make kula.toml invalid")?;
+    let _: crate::config::Config = toml::from_str(&out).context("the edit would make kula.toml invalid")?;
     std::fs::write(&p, out)?;
-    let _ = cfg;
     Ok(())
+}
+
+// ------------------------------------------------------------------ auto on
+
+/// What the automatic first-run decision did.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AutoReport {
+    /// ok | warn | refuse | decided | busy | error
+    pub verdict: String,
+    pub reasons: Vec<String>,
+    pub enabled: bool,
+}
+
+fn auto_running() -> &'static AtomicBool {
+    static A: OnceLock<AtomicBool> = OnceLock::new();
+    A.get_or_init(|| AtomicBool::new(false))
+}
+
+/// The automatic embeddings decision, run once per repo. On first index and
+/// at server start (when `[embed] decided` is absent) judge the machine with
+/// the hardware check: ok turns embeddings on and installs, embeds and remaps
+/// in the background at low priority; warn or refuse stays off and the
+/// reasons surface in Settings. Either way the decision is recorded – the
+/// person is never re-prompted, and the switch always wins afterwards.
+///
+/// `block = true` runs the pipeline on the calling thread (the CLI index,
+/// which would otherwise die mid-install); `block = false` spawns a
+/// low-priority background thread (the server).
+pub fn auto(repo: &crate::git::Repo, store: &Store, block: bool) -> AutoReport {
+    let cfg = crate::config::Config::load(&repo.root).map(|c| c.embed).unwrap_or_default();
+    if decided(repo) || cfg.enabled {
+        return AutoReport { verdict: "decided".into(), reasons: Vec::new(), enabled: cfg.enabled };
+    }
+    // Singleflight: one auto pipeline per process, and not while an explicit
+    // run (switch → install → embed) is already going.
+    if status().running || auto_running().swap(true, Ordering::SeqCst) {
+        return AutoReport { verdict: "busy".into(), reasons: Vec::new(), enabled: false };
+    }
+    if !block {
+        // Detached, low-priority: the server never waits for a download.
+        let repo = repo.clone();
+        let store = Store::open(&repo).ok();
+        let spawned = std::thread::Builder::new().name("kula-embed-auto".into()).spawn(move || {
+            lower_priority();
+            let r = match store {
+                Some(st) => auto_steps(&repo, &st, false),
+                None => AutoReport { verdict: "error".into(), reasons: vec!["store would not open".into()], enabled: false },
+            };
+            auto_running().store(false, Ordering::SeqCst);
+            if !r.enabled && r.verdict == "error" {
+                crate::embed::run_error(r.reasons.join("; "));
+            }
+            r
+        });
+        if spawned.is_err() {
+            auto_running().store(false, Ordering::SeqCst);
+            return AutoReport { verdict: "error".into(), reasons: vec!["could not spawn the auto thread".into()], enabled: false };
+        }
+        return AutoReport { verdict: "spawned".into(), reasons: Vec::new(), enabled: false };
+    }
+    let r = auto_steps(repo, store, true);
+    auto_running().store(false, Ordering::SeqCst);
+    r
+}
+
+/// The pipeline itself, on the caller's thread: check → install → embed →
+/// remap. Testable with a fake check and no-op model steps via [`auto_core`].
+fn auto_steps(repo: &crate::git::Repo, store: &Store, block: bool) -> AutoReport {
+    let cfg = crate::config::Config::load(&repo.root).map(|c| c.embed).unwrap_or_default();
+    let stats = hardware_check(repo, store, &cfg).unwrap_or_else(|e| {
+        // A failed check is a refuse with the reason on the record.
+        Stats { verdict: "refuse".into(), reasons: vec![format!("check failed – {e:#}")], ..default_stats() }
+    });
+    auto_core(repo, store, block, stats, install, |r, s| {
+        let cfg = crate::config::Config::load(&r.root)?.embed;
+        let prov = provider_for(&cfg, false)?;
+        let (_, n) = run(r, s, &cfg, &prov, cancel_requested)?;
+        Ok(n)
+    })
+}
+
+fn default_stats() -> Stats {
+    Stats {
+        ram_total_gb: 0.0,
+        ram_free_gb: 0.0,
+        disk_free_gb: 0.0,
+        cores: 0,
+        arch: String::new(),
+        symbols: 0,
+        model_mb: MODEL_MB,
+        est_seconds: 0,
+        verdict: "refuse".into(),
+        reasons: Vec::new(),
+    }
+}
+
+/// The decision logic with the machine's verdict and the model steps as
+/// inputs, so tests can drive ok / warn / refuse without hardware or a
+/// download. Records `decided` either way before anything else happens.
+fn auto_core(
+    repo: &crate::git::Repo,
+    store: &Store,
+    block: bool,
+    stats: Stats,
+    install_step: impl Fn(&crate::git::Repo) -> Result<bool>,
+    embed_step: impl Fn(&crate::git::Repo, &Store) -> Result<usize>,
+) -> AutoReport {
+    // The decision is recorded whatever the verdict – never re-prompt.
+    if let Err(e) = toml_flag(repo, "decided", true) {
+        return AutoReport { verdict: "error".into(), reasons: vec![format!("{e:#}")], enabled: false };
+    }
+    if stats.verdict != "ok" {
+        return AutoReport { verdict: stats.verdict, reasons: stats.reasons, enabled: false };
+    }
+    // Hardware says ok: turn the switch on, install, embed, remap. An install
+    // failure leaves the switch off – Settings explains, and the person can
+    // turn it on manually.
+    if let Err(e) = set_enabled(repo, true) {
+        return AutoReport { verdict: "error".into(), reasons: vec![format!("{e:#}")], enabled: false };
+    }
+    if let Err(e) = install_step(repo).and_then(|downloaded| {
+        if downloaded || installed() {
+            Ok(())
+        } else {
+            bail!("install reported nothing to do and the model is still missing")
+        }
+    }) {
+        let _ = set_enabled(repo, false);
+        return AutoReport { verdict: "error".into(), reasons: vec![format!("install failed – {e:#}")], enabled: false };
+    }
+    match embed_step(repo, store) {
+        Ok(n) => {
+            // Embeddings landed: remap so blocks re-form thematically. The
+            // CLI runs it inline (a spawned thread would die at exit); the
+            // server spawns on the background pool.
+            if block {
+                crate::map_run::run_now(repo.clone(), true);
+            } else {
+                crate::map_run::spawn(repo.clone(), true);
+            }
+            AutoReport { verdict: "ok".into(), reasons: vec![format!("embedded {n} symbols")], enabled: true }
+        }
+        Err(e) => {
+            let _ = set_enabled(repo, false);
+            AutoReport { verdict: "error".into(), reasons: vec![format!("embed failed – {e:#}")], enabled: false }
+        }
+    }
 }
 
 /// `GET /api/embed/status` – config, install state, live run.
@@ -916,6 +1102,78 @@ mod tests {
         let t = truncate(&[3.0, 4.0, 99.0], 2);
         assert_eq!(t.len(), 2);
         assert!((cosine(&t, &[3.0, 4.0]) - 1.0).abs() < 1e-6);
+    }
+
+    // ------------------------------------------------– auto on (I1)
+
+    fn no_install(_r: &crate::git::Repo) -> Result<bool> {
+        Ok(true)
+    }
+    fn no_embed(_r: &crate::git::Repo, _s: &Store) -> Result<usize> {
+        Ok(0)
+    }
+
+    #[test]
+    fn auto_refuse_records_the_decision_and_stays_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = test_repo(dir.path());
+        std::fs::create_dir_all(repo.kula_dir()).unwrap();
+        std::fs::write(repo.root.join("kula.toml"), "[embed]\nenabled = false\n").unwrap();
+        let store = Store::create(&repo).unwrap();
+        store.publish().unwrap();
+        let st = Store::open(&repo).unwrap();
+        let low = Stats {
+            ram_free_gb: 1.0,
+            disk_free_gb: 1.0,
+            verdict: "refuse".into(),
+            reasons: vec!["free RAM 1.0 GB < 4 GB".into()],
+            ..default_stats()
+        };
+        let rep = auto_core(&repo, &st, true, low, no_install, no_embed);
+        assert_eq!(rep.verdict, "refuse");
+        assert!(!rep.enabled, "a refuse verdict never flips the switch");
+        let cfg = crate::config::Config::load(&repo.root).unwrap().embed;
+        assert!(!cfg.enabled);
+        assert!(decided(&repo), "the decision is recorded either way");
+        // A second run never re-prompts – the marker short-circuits.
+        let again = auto(&repo, &st, true);
+        assert_eq!(again.verdict, "decided");
+        assert!(!again.enabled);
+    }
+
+    #[test]
+    fn auto_ok_flips_the_switch_and_runs_the_pipeline() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = test_repo(dir.path());
+        std::fs::create_dir_all(repo.kula_dir()).unwrap();
+        std::fs::write(repo.root.join("kula.toml"), "[embed]\nenabled = false\n").unwrap();
+        let store = Store::create(&repo).unwrap();
+        store.publish().unwrap();
+        let st = Store::open(&repo).unwrap();
+        let ok = Stats { verdict: "ok".into(), reasons: Vec::new(), ..default_stats() };
+        let rep = auto_core(&repo, &st, true, ok.clone(), no_install, |_, _| Ok(5));
+        assert_eq!(rep.verdict, "ok");
+        assert!(rep.enabled, "an ok verdict turns embeddings on in the background path");
+        let text = std::fs::read_to_string(repo.root.join("kula.toml")).unwrap();
+        assert!(text.contains("enabled = true"));
+        assert!(text.contains("decided = true"));
+        // An install failure leaves the switch off but the decision recorded.
+        let fail = auto_core(&repo, &st, true, ok.clone(), |_r| bail!("download died"), no_embed);
+        assert_eq!(fail.verdict, "error");
+        assert!(fail.reasons[0].contains("download died"));
+        let cfg = crate::config::Config::load(&repo.root).unwrap().embed;
+        assert!(!cfg.enabled, "install failure flips the switch back off");
+        assert!(decided(&repo));
+    }
+
+    #[test]
+    fn set_enabled_also_records_the_decision() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = test_repo(dir.path());
+        std::fs::create_dir_all(repo.kula_dir()).unwrap();
+        std::fs::write(repo.root.join("kula.toml"), "[embed]\nenabled = false\n").unwrap();
+        set_enabled(&repo, false).unwrap();
+        assert!(decided(&repo), "any explicit flip sticks – auto never re-prompts");
     }
 
     #[test]
