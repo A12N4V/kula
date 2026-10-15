@@ -1,28 +1,45 @@
-// Syntagm sidebar: CHAINS (searchable) and BLOCKS (tree), one filter on top.
-// The flat row list is virtualised – 4 000+ leaves stay smooth because only
-// the slice on screen (plus overscan) is in the DOM.
+// Syntagm sidebar: CHAINS (chain families, searchable) and BLOCKS (tree),
+// one filter on top. A family expands to page its chains in from
+// /api/map/chains. The flat row list is virtualised – 10^5+ families stay
+// smooth because only the slice on screen (plus overscan) is in the DOM, and
+// the visible slice is memoised, not re-sorted per keystroke.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../ui";
-import type { Block, Chain, LeafKind, Leaf } from "./types";
+import type { Block, Chain, ChainPage, Family, Leaf, LeafKind, Role } from "./types";
+import { ROLE_RULES } from "./types";
 
 /** Kind glyphs, same language as colors.ts – fn / class / var / type. */
 export const KIND_GLYPH: Record<LeafKind, string> = { fn: "ƒ", class: "C", var: "·", type: "▭" };
 const GLYPH_COLOR: Record<LeafKind, string> = { fn: "var(--accent)", class: "var(--blue)", var: "var(--green)", type: "var(--violet)" };
+/** Role glyphs: one letter, colored, on every block node. */
+export const ROLE_GLYPH: Record<Role, string> = {
+  entry: "e", orchestrator: "o", core: "c", utility: "u", adapter: "a",
+  model: "m", config: "k", test: "t", glue: "g",
+};
+const ROLE_COLOR: Record<Role, string> = {
+  entry: "var(--accent)", orchestrator: "var(--violet)", core: "var(--text-2)",
+  utility: "var(--green)", adapter: "var(--blue)", model: "var(--yellow)",
+  config: "var(--yellow)", test: "var(--red)", glue: "var(--text-3)",
+};
 
 export type SideRow =
   | { t: "header"; key: string; label: string }
-  | { t: "chain"; chain: Chain; name: string }
+  | { t: "family"; fam: Family; name: string }
+  | { t: "chain"; chain: Chain; name: string; famId: string }
+  | { t: "chain-load"; famId: string }
   | { t: "block"; block: Block; open: boolean }
   | { t: "leaf"; id: number; name: string; kind: LeafKind; path: string };
 
 type Props = {
   blocks: Record<string, Block>;
-  chains: Chain[];
+  families: Family[];
   leaves: Record<number, Leaf>;
+  roles: Set<Role>;
   selChain: string | null;
   selLeaf: number | null;
   openRoot: string[];
+  loadChains: (family: string, cursor?: string) => Promise<ChainPage>;
   onChain: (c: Chain) => void;
   onLeaf: (id: number) => void;
   onToggle: (id: string) => void;
@@ -32,7 +49,15 @@ type Props = {
 
 /** Expandable prefix: block ids the user has opened, deepest first in the tree. */
 function flatten(rows: SideRow[]): (SideRow & { key: string })[] {
-  return rows.map((r, i) => ({ ...r, key: `${r.t}:${r.t === "header" ? r.key : r.t === "leaf" ? r.id : r.t === "block" ? r.block.id : r.chain.id}:${i}` }));
+  return rows.map((r, i) => ({
+    ...r, key: `${r.t}:${r.t === "header" ? r.key : r.t === "leaf" ? r.id : r.t === "family" ? r.fam.id : r.t === "block" ? r.block.id : "chain"}:${i}`,
+  }));
+}
+
+/** 12 340 stays 12 340; 8.4e17 saturates to exponent form. */
+export function fmtCount(n: number): string {
+  if (n >= 1e15) return n.toExponential(1).replace("e+", "e");
+  return n.toLocaleString("en-US");
 }
 
 export function SyntagmSidebar(p: Props) {
@@ -42,6 +67,11 @@ export function SyntagmSidebar(p: Props) {
   const filterRef = useRef<HTMLInputElement>(null);
   const [top, setTop] = useState(0);
   const [vh, setVh] = useState(760);
+  // Expanded families: the family ids, in the order the user opened them.
+  const [openFams, setOpenFams] = useState<string[]>([]);
+  // One page per expanded family, plus the cursor for the next page.
+  const [pages, setPages] = useState<Record<string, ChainPage>>({});
+  const [loadingFam, setLoadingFam] = useState<string | null>(null);
   // Row height follows the hit-target floor: 28px on desktop, 40px on phones
   // (the CSS in syntagm.css does the same under the same query).
   const [rowH, setRowH] = useState(() => (window.innerWidth <= 720 ? 40 : 28));
@@ -51,21 +81,59 @@ export function SyntagmSidebar(p: Props) {
     return () => window.removeEventListener("resize", onR);
   }, []);
 
+  const load = (famId: string, cursor?: string, append = false) => {
+    setLoadingFam(famId);
+    p.loadChains(famId, cursor)
+      .then((page) => {
+        setPages((prev) => {
+          const before = append && prev[famId] ? prev[famId].chains : [];
+          // steps as ids must make two equal paths one chain – dedupe by id
+          const seen = new Set(before.map((c) => c.id));
+          return { ...prev, [famId]: { chains: [...before, ...page.chains.filter((c) => !seen.has(c.id))], cursor: page.cursor, done: page.done } };
+        });
+      })
+      .catch(() => { /* the family stays folded-in empty */ })
+      .finally(() => setLoadingFam(null));
+  };
+
+  const expand = (famId: string) => {
+    setOpenFams((o) => (o.includes(famId) ? o.filter((x) => x !== famId) : [...o, famId]));
+    if (!openFams.includes(famId) && !pages[famId]) load(famId);
+  };
+
+  const famName = (f: Family) => `${p.leaves[f.source]?.name ?? f.source} → ${p.leaves[f.terminal]?.name ?? f.terminal}`;
+
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase();
     const hit = (t: string) => !s || t.toLowerCase().includes(s);
+    const roleOK = (id: number) => {
+      const role = p.leaves[id]?.role;
+      return role ? p.roles.has(role) : true;
+    };
     const out: SideRow[] = [];
-    // CHAINS
-    const chainRows: SideRow[] = [];
-    p.chains.forEach((c) => {
-      const entry = p.leaves[c.entry];
-      const name = entry?.name ?? c.id;
-      if (hit(name)) chainRows.push({ t: "chain", chain: c, name });
-    });
-    if (chainRows.length) out.push({ t: "header", key: "h-chains", label: "Chains" }, ...chainRows);
-    // BLOCKS tree, filtered: a block shows when it or any descendant/leaf matches.
+    // CHAINS: every family, filtered by role (both ends) and search.
+    const famRows: SideRow[] = [];
+    for (const f of p.families) {
+      if (!roleOK(f.source) || !roleOK(f.terminal)) continue;
+      const name = famName(f);
+      if (!hit(name)) continue;
+      famRows.push({ t: "family", fam: f, name });
+      const at = openFams.includes(f.id);
+      if (at) {
+        const page = pages[f.id];
+        if (page) for (const c of page.chains) famRows.push({ t: "chain", chain: c, name: c.id, famId: f.id });
+        if (loadingFam === f.id && !page) famRows.push({ t: "chain-load", famId: f.id });
+        if (page && !page.done && page.cursor) famRows.push({ t: "chain-load", famId: f.id });
+      }
+    }
+    if (famRows.length) out.push({ t: "header", key: "h-chains", label: "Chains" }, ...famRows);
+    // BLOCKS tree, filtered: a block shows when the role filter passes for it
+    // (its own role, or any leaf inside), AND the search hits it or its
+    // subtree. The two filters compose – the role check never bypasses search.
+    const rolePass = (b: Block): boolean =>
+      p.roles.has(b.role) || b.children.some((c) => rolePass(p.blocks[c])) || b.symbols.some((id) => roleOK(id));
     const blockHit = (b: Block): boolean =>
-      hit(b.name) || b.children.some((c) => blockHit(p.blocks[c])) || b.symbols.some((id) => hit(p.leaves[id]?.name ?? ""));
+      rolePass(b) && (hit(b.name) || b.children.some((c) => blockHit(p.blocks[c])) || b.symbols.some((id) => roleOK(id) && hit(p.leaves[id]?.name ?? "")));
     const blockStart = out.length;
     const walk = (id: string, open: boolean) => {
       const b = p.blocks[id];
@@ -76,14 +144,14 @@ export function SyntagmSidebar(p: Props) {
         if (b.children.length) b.children.forEach((c) => walk(c, p.openRoot.includes(c)));
         else for (const sid of b.symbols) {
           const l = p.leaves[sid];
-          if (l && hit(l.name)) out.push({ t: "leaf", id: sid, name: l.name, kind: l.kind, path: l.path });
+          if (l && roleOK(sid) && hit(l.name)) out.push({ t: "leaf", id: sid, name: l.name, kind: l.kind, path: l.path });
         }
       }
     };
     for (const c of p.openRoot.filter((id) => p.blocks[id]?.depth === 0)) walk(c, true);
     if (out.length > blockStart) out.splice(blockStart, 0, { t: "header", key: "h-blocks", label: "Blocks" });
     return flatten(out);
-  }, [p.blocks, p.chains, p.leaves, p.openRoot, q]);
+  }, [p.blocks, p.families, p.leaves, p.roles, p.openRoot, q, openFams, pages, loadingFam, famName]);
 
   // Windowing: only rows near the viewport exist in the DOM.
   const ROW = rowH, OVER = 8;
@@ -124,7 +192,9 @@ export function SyntagmSidebar(p: Props) {
   };
 
   const activate = (row: SideRow & { key: string }, viaKey = false) => {
-    if (row.t === "chain") p.onChain(row.chain);
+    if (row.t === "family") { if (!viaKey) expand(row.fam.id); else expand(row.fam.id); }
+    else if (row.t === "chain") p.onChain(row.chain);
+    else if (row.t === "chain-load") { const page = pages[row.famId]; if (page?.cursor) load(row.famId, page.cursor, true); }
     else if (row.t === "leaf") p.onLeaf(row.id);
     else if (row.t === "header") { /* labels are not interactive */ }
     else if (!viaKey) p.onToggle(row.block.id);
@@ -141,8 +211,8 @@ export function SyntagmSidebar(p: Props) {
       </div>
       <div className="sy-filter">
         <input
-          className="input sy-filter-input" placeholder="Filter chains and blocks" value={q} ref={filterRef}
-          onChange={(e) => { setQ(e.target.value); setActive(-1); }} onKeyDown={onKey} aria-label="Filter chains and blocks" data-testid="syntagm-filter"
+          className="input sy-filter-input" placeholder="Filter families and blocks" value={q} ref={filterRef}
+          onChange={(e) => { setQ(e.target.value); setActive(-1); }} onKeyDown={onKey} aria-label="Filter families and blocks" data-testid="syntagm-filter"
         />
       </div>
       <div className="sy-side-scroll" ref={scroll} tabIndex={0} onKeyDown={onKey} data-testid="syntagm-side-scroll">
@@ -155,13 +225,41 @@ export function SyntagmSidebar(p: Props) {
               if (row.t === "header") {
                 return <h3 key={row.key} data-row={idx} className="sy-section-label">{row.label}</h3>;
               }
+              if (row.t === "family") {
+                const f = row.fam;
+                const open = openFams.includes(f.id);
+                const src = p.leaves[f.source];
+                return (
+                  <div key={row.key} data-row={idx} className={`sy-row sy-family${sel}${act}`}>
+                    <button className="sy-twist" aria-label={open ? `Collapse ${row.name}` : `Expand ${row.name}`}
+                      aria-expanded={open} onClick={() => expand(f.id)}>
+                      <Icon.chevron />
+                    </button>
+                    <button className="sy-block-name" title={`${row.name} – ${fmtCount(f.count)} chains, len ${f.min_len}–${f.max_len}${f.exact ? "" : " (saturated)"}`}
+                      onClick={() => expand(f.id)}>
+                      <span className="mono sy-fam-name">{row.name}</span>
+                    </button>
+                    <span className="sy-row-meta">{fmtCount(f.count)} · len {f.min_len}–{f.max_len}</span>
+                    {/* the entry leaf's role, one-line rule as its title */}
+                    {src && <span className="sy-role" style={{ color: ROLE_COLOR[src.role] }} title={`${src.role} – ${ROLE_RULES[src.role]}`}>{ROLE_GLYPH[src.role]}</span>}
+                  </div>
+                );
+              }
               if (row.t === "chain") {
-                const crossed = row.chain.blocks.length;
                 return (
                   <button key={row.key} data-row={idx} className={`sy-row sy-chain${sel}${act}`} onClick={() => p.onChain(row.chain)}
-                    title={row.chain.steps.map((s) => p.leaves[s]?.name ?? s).join(" → ")}>
+                    title={row.chain.steps.map((s) => (typeof s === "number" ? p.leaves[s]?.name ?? s : s)).join(" → ")}>
                     <span className="sy-chain-name mono">{row.name}</span>
-                    <span className="sy-row-meta">len {row.chain.len} · {crossed} blocks</span>
+                    <span className="sy-row-meta">len {row.chain.len} · {row.chain.blocks.length} blocks</span>
+                  </button>
+                );
+              }
+              if (row.t === "chain-load") {
+                const page = pages[row.famId];
+                return (
+                  <button key={row.key} data-row={idx} className={`sy-row sy-chain-load${act}`} data-testid={`syntagm-chain-load-${row.famId}`}
+                    onClick={() => { if (page?.cursor) load(row.famId, page.cursor, true); }}>
+                    <span className="sy-row-meta">{page ? "+ load more chains" : "loading chains…"}</span>
                   </button>
                 );
               }
@@ -175,6 +273,8 @@ export function SyntagmSidebar(p: Props) {
                     </button>
                     <button className="sy-block-name" title={`${row.block.name} – ${row.block.summary}`} onClick={() => p.onZoom(row.block.id)}>
                       <span className={`sy-kind sy-k-${row.block.kind}`}>{row.block.kind}</span>
+                      <span className={`sy-role sy-role-${row.block.role}`} style={{ color: ROLE_COLOR[row.block.role] }}
+                        title={`${row.block.role} – ${ROLE_RULES[row.block.role]}`}>{ROLE_GLYPH[row.block.role]}</span>
                       <span className="sy-bname">{row.block.name}</span>
                     </button>
                     <span className="sy-row-meta">{leafy ? row.block.symbols.length : row.block.children.length}</span>

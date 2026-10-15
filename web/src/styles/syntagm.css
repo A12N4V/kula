@@ -148,3 +148,60 @@
    positioned 7px sliver is both a tiny hit target and an overlap with whatever
    sits under it. Static position keeps it in the gutter between the columns. */
 .sy-split > .grip { position: static; width: 28px; cursor: col-resize; }
+
+/* – U2 · Syntagm tab on the map: lens bar, role glyphs, families, loops –
+   Same rules as the header comment: hover is a background/border shift,
+   never a shadow, glow, scale. */
+
+/* lens switch: Functions / Utilities / All, one row above the split */
+.sy-lens { display: flex; align-items: center; gap: 8px; padding: 8px 14px 0; }
+.sy-lens-group { display: inline-flex; gap: 4px; }
+.sy-lens-btn { min-height: 28px; padding: 2px 10px; }
+.sy-lens-prog { font-size: 10.5px; color: var(--accent); margin-left: auto; }
+
+/* family rows in the CHAINS section: source → terminal, count, length range */
+.sy-family { gap: 2px; }
+.sy-fam-name { font-size: 11.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.sy-family.on .sy-fam-name { color: var(--accent); }
+.sy-chain-load { color: var(--text-3); padding-left: 34px; }
+.sy-chain-load:hover .sy-row-meta { color: var(--text); }
+
+/* role glyphs: one colored letter on every block node and family row */
+.sy-role { flex: none; width: 14px; text-align: center; font-size: 10px; font-weight: 600; }
+.sy-block .sy-role { cursor: help; }
+.sy-kid .sy-role { width: 12px; }
+
+/* theme chip: shown only on blocks formed with embeddings */
+.sy-theme { font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--green); flex: none; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* loop nodes: one box listing the cycle's members. Not content-visibility
+   collapsed: the generic 240px intrinsic size under-counts a box with many
+   members, and off-screen loop boxes then overlap each other. */
+.sy-loops { display: grid; gap: 12px; align-items: start; max-width: 760px; position: relative; z-index: 1; margin-top: 12px; }
+.sy-loop { background: var(--bg-2); border-style: dashed; content-visibility: visible; contain-intrinsic-size: auto; }
+.sy-loop-glyph { color: var(--accent); font-size: 13px; flex: none; }
+.sy-step-loop { border-style: dashed; }
+
+/* progress state: shown while the map runs, never an empty view */
+.sy-progress { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 10px; padding: 32px; max-width: 520px; }
+.sy-progress h2 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); }
+.sy-progress-bar { height: 4px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.sy-progress-fill { height: 100%; background: var(--accent); transition: width var(--dur) ease; }
+
+/* role filter: an inline panel under the lens bar – in flow, not floating:
+   a floating popover overlaps the controls beneath it, and the probe (and
+   any keyboard user) reads that as broken. Pushing the split down instead. */
+.sy-roles { width: auto; max-width: none; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 2px; margin: 6px 14px 0; }
+.sy-role-row { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+.sy-role-row:hover { background: var(--hover-bg); }
+.sy-role-row input { flex: none; }
+.sy-role-name { flex: none; width: 92px; font-size: 11px; color: var(--text); }
+.sy-role-rule { font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* phone: the lens bar wraps, every control a 40 px hit target */
+@media (max-width: 720px) {
+  .sy-lens { flex-wrap: wrap; }
+  .sy-lens-btn { min-height: 40px; }
+  .sy-theme { display: none; }
+  .sy-role-rule { white-space: normal; }
+}

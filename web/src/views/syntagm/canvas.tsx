@@ -1,16 +1,27 @@
 // Syntagm canvas: nested blocks as boxes inside boxes (CSS grid, not sigma).
 // Renders only the drilled level plus one below, so 4 000+ leaves never all
-// mount. A selected chain draws an ordered SVG path across the boxes it
-// crosses; selecting a leaf opens the shared CodePanel (handled by the parent).
+// mount. Every block node shows its role glyph (and its theme when embedded);
+// loop nodes render as one box listing their members. A selected chain draws
+// an ordered SVG path across the boxes it crosses; selecting a leaf opens the
+// shared CodePanel (handled by the parent).
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../../ui";
-import type { Block, Chain, Leaf, LeafKind } from "./types";
-import { KIND_GLYPH } from "./sidebar";
+import type { Block, Chain, Leaf, LeafKind, Loop, Role } from "./types";
+import { KIND_GLYPH, ROLE_GLYPH } from "./sidebar";
+import { ROLE_RULES } from "./types";
+
+const ROLE_COLOR: Record<Role, string> = {
+  entry: "var(--accent)", orchestrator: "var(--violet)", core: "var(--text-2)",
+  utility: "var(--green)", adapter: "var(--blue)", model: "var(--yellow)",
+  config: "var(--yellow)", test: "var(--red)", glue: "var(--text-3)",
+};
 
 type Props = {
   blocks: Record<string, Block>;
   leaves: Record<number, Leaf>;
+  loops: Loop[];
+  roles: Set<Role>;
   chain: Chain | null;
   path: string[];           // drilled block ids, root first
   onDrill: (id: string) => void;
@@ -20,12 +31,23 @@ type Props = {
 
 const MAX_ROWS = 40; // a sub-block never carries more leaves than this (contract)
 
-/** The boxes to show at this drill level: the children of the drilled block. */
-function level(blocks: Record<string, Block>, path: string[]) {
+/** The boxes to show at this drill level: the children of the drilled block,
+ *  filtered by role (a block shows when its role matches, or when any leaf
+ *  inside the filter matches). */
+function level(blocks: Record<string, Block>, leaves: Record<number, Leaf>, path: string[], roles: Set<Role>) {
   const cur = path.length ? blocks[path[path.length - 1]] : null;
   // Top level shows the sections, not the root again (the breadcrumb speaks for it).
-  const ids = cur ? cur.children : Object.values(blocks).filter((b) => b.depth === 0 && b.parent !== null).map((b) => b.id);
-  return { cur, ids: ids.filter((id) => blocks[id]) };
+  const raw = cur ? cur.children : Object.values(blocks).filter((b) => b.depth === 0 && b.parent !== null).map((b) => b.id);
+  const leafOK = (id: string) => {
+    const b = blocks[id];
+    if (!b) return false;
+    if (roles.has(b.role)) return true;
+    return b.symbols.some((sid) => {
+      const role = leaves[sid]?.role;
+      return role ? roles.has(role) : false;
+    });
+  };
+  return { cur, ids: raw.filter(leafOK) };
 }
 
 export function BlockCanvas(p: Props) {
@@ -33,12 +55,18 @@ export function BlockCanvas(p: Props) {
   const box = useRef<Record<string, HTMLElement | null>>({});
   const registerKid = useCallback((id: string, el: HTMLButtonElement | null) => { box.current[id] = el; }, []);
   const [seg, setSeg] = useState<{ x1: number; y1: number; x2: number; y2: number; i: number }[]>([]);
-  const { cur, ids } = level(p.blocks, p.path);
+  const { cur, ids } = level(p.blocks, p.leaves, p.path, p.roles);
   // On phones the single column is windowed: boxes far outside the viewport
   // are not mounted at all, so their rects can never reach the readout below.
   const [phone, setPhone] = useState(() => window.innerWidth <= 720);
   const [st, setSt] = useState(0);
   const [vh, setVh] = useState(600);
+  // Loop nodes: one box per cycle, its members listed; clicking expands the
+  // member list past the cap (100+ members never all mount at once).
+  const [openLoops, setOpenLoops] = useState<Set<string>>(new Set());
+  const toggleLoop = useCallback((id: string) => {
+    setOpenLoops((o) => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }, []);
   useEffect(() => {
     const onR = () => setPhone(window.innerWidth <= 720);
     window.addEventListener("resize", onR);
@@ -99,12 +127,15 @@ export function BlockCanvas(p: Props) {
   const chainBlocks = new Set(p.chain?.blocks ?? []);
   // Chain rail: the crossed blocks in order, consecutive repeats collapsed.
   const rail = (p.chain?.blocks ?? []).filter((id, i, a) => p.blocks[id] && a[i - 1] !== id);
-  // each crossed block shows the chain steps that live in it
-  const stepsIn: Record<string, number[]> = {};
+  // each crossed block shows the chain steps that live in it (loop steps are
+  // loop node ids, not leaves – they render as their loop label)
+  const stepsIn: Record<string, (number | string)[]> = {};
   if (p.chain) for (const sid of p.chain.steps) {
+    if (typeof sid !== "number") continue;
     const host = Object.values(p.blocks).find((b) => b.symbols.includes(sid));
     if (host) (stepsIn[host.id] ??= []).push(sid);
   }
+  const loopById = new Map(p.loops.map((l) => [l.id, l]));
 
   return (
     <div className="sy-canvas" data-testid="syntagm-canvas">
@@ -119,7 +150,7 @@ export function BlockCanvas(p: Props) {
             </span>
           );
         })}
-        {p.chain && <span className="sy-bread-chain mono" data-testid="syntagm-chain-label">{p.leaves[p.chain.entry]?.name} · {p.chain.len} steps</span>}
+        {p.chain && <span className="sy-bread-chain mono" data-testid="syntagm-chain-label">{p.leaves[p.chain.source]?.name ?? p.chain.source} · {p.chain.len} steps</span>}
       </div>
       <div className="sy-canvas-scroll" ref={wrap} style={{ position: "relative" }}>
         {seg.length > 0 && (
@@ -132,6 +163,15 @@ export function BlockCanvas(p: Props) {
         {p.chain && (
           <div className="sy-steps" data-testid="syntagm-steps">
             {p.chain.steps.map((id, i) => {
+              if (typeof id === "string") {
+                // a loop step: one chip for the whole cycle, not per member
+                const loop = loopById.get(id);
+                return (
+                  <button key={i} className="sy-step mono sy-step-loop" title={loop ? `${loop.members.length} members in the cycle` : id}>
+                    <span className="sy-step-n">{i + 1}</span>loop {id}
+                  </button>
+                );
+              }
               const l = p.leaves[id];
               return (
                 <button key={i} className="sy-step mono" onClick={() => l && p.onLeaf(id)} title={l?.path}>
@@ -157,6 +197,39 @@ export function BlockCanvas(p: Props) {
             ))}
           </div>
         )}
+        {!p.chain && p.loops.length > 0 && p.loops.some((l) => l.members.length > 0) && (
+          <div className="sy-loops" data-testid="syntagm-loops">
+            {p.loops.filter((l) => l.members.length > 0).map((loop) => {
+              const expanded = openLoops.has(loop.id);
+              const shown = expanded ? loop.members : loop.members.slice(0, 12);
+              return (
+                <div key={loop.id} className="sy-box sy-loop" data-testid={`syntagm-loop-${loop.id}`}>
+                  <div className="sy-box-head">
+                    <button className="sy-box-title" title="A cycle, condensed to one node – its members listed here">
+                      <span className="sy-loop-glyph" aria-hidden="true">↻</span>
+                      <span className="sy-bname">loop {loop.id}</span>
+                    </button>
+                    <span className="sy-box-meta">{loop.members.length} members</span>
+                  </div>
+                  <div className="sy-leafs">
+                    {shown.map((sid) => {
+                      const l = p.leaves[sid];
+                      if (!l) return null;
+                      return (
+                        <button key={sid} className="sy-leaf-row" data-leaf={sid} onClick={() => p.onLeaf(sid)} title={`${l.path}:${l.line}`}>
+                          <span className="sy-glyph">{KIND_GLYPH[l.kind as LeafKind] ?? "·"}</span>
+                          <span className="sy-leaf-name mono">{l.name}</span>
+                        </button>
+                      );
+                    })}
+                    {loop.members.length > shown.length &&
+                      <button className="sy-leaf-row sy-more" data-testid={`syntagm-loop-more-${loop.id}`} onClick={() => toggleLoop(loop.id)}>+ {loop.members.length - shown.length} more – expand</button>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {cur && cur.children.length === 0 && (
           <LeafList leaves={cur.symbols} map={p.leaves} onLeaf={p.onLeaf} />
         )}
@@ -176,8 +249,9 @@ function Box({ b, blocks, leaves, chainIds, onDrill, onLeaf, register, registerK
       the readout below. The header alone is enough of a preview. */
   preview?: boolean;
   /** chain mode: this block's step leaves, shown alone (marked) so the whole
-      rail stays on screen and the path can be drawn across all of it. */
-  stepLeaves?: number[];
+      rail stays on screen and the path can be drawn across all of it. A
+      string entry is a loop node id, rendered as its loop label. */
+  stepLeaves?: (number | string)[];
 }) {
   const chainMark = chainIds.has(b.id);
   const ref = useRef<HTMLDivElement>(null);
@@ -189,8 +263,11 @@ function Box({ b, blocks, leaves, chainIds, onDrill, onLeaf, register, registerK
       <div className="sy-box-head">
         <button className="sy-box-title" onClick={() => onDrill(b.id)} title={b.summary}>
           {b.children.length > 0 ? <Icon.chevron /> : null}
+          <span className={`sy-role sy-role-${b.role}`} style={{ color: ROLE_COLOR[b.role] }}
+            title={`${b.role} – ${ROLE_RULES[b.role]}`}>{ROLE_GLYPH[b.role]}</span>
           <span className="sy-bname">{b.name}</span>
         </button>
+        {b.theme && <span className="sy-theme" title={`theme – ${b.theme}`}>{b.theme}</span>}
         <span className="sy-box-meta">{b.files} files · {(b.cohesion * 100).toFixed(0)}%</span>
       </div>
       {preview && kids.length > 0 && (
@@ -199,6 +276,8 @@ function Box({ b, blocks, leaves, chainIds, onDrill, onLeaf, register, registerK
             const cb = blocks[c];
             return (
               <button key={c} ref={(el) => registerKid(c, el)} className={`sy-kid${chainIds.has(c) ? " sy-on-chain" : ""}`} data-block={c} onClick={() => onDrill(c)} title={cb.summary}>
+                <span className={`sy-role sy-role-${cb.role}`} style={{ color: ROLE_COLOR[cb.role] }}
+                  title={`${cb.role} – ${ROLE_RULES[cb.role]}`}>{ROLE_GLYPH[cb.role]}</span>
                 <span className="sy-kname">{cb.name}</span>
                 <span className="sy-row-meta">{cb.files}f · {(cb.cohesion * 100).toFixed(0)}%</span>
               </button>
@@ -211,11 +290,20 @@ function Box({ b, blocks, leaves, chainIds, onDrill, onLeaf, register, registerK
         <LeafList leaves={b.symbols.slice(0, MAX_ROWS)} map={leaves} onLeaf={onLeaf} more={Math.max(0, b.symbols.length - MAX_ROWS)} onDrill={onDrill} id={b.id} />}
       {preview && kids.length === 0 && stepLeaves !== undefined && (
         <div className="sy-leafs">
-          {stepLeaves.map((lid) => {
-            const l = leaves[lid];
+          {stepLeaves.map((sid) => {
+            if (typeof sid === "string") {
+              // a loop step inside this block: one row for the whole cycle
+              return (
+                <button key={sid} className="sy-leaf-row sy-on-chain" data-block={sid} title={`loop ${sid} – its members in the cycle`}>
+                  <span className="sy-loop-glyph" aria-hidden="true">↻</span>
+                  <span className="sy-leaf-name mono">loop {sid}</span>
+                </button>
+              );
+            }
+            const l = leaves[sid];
             if (!l) return null;
             return (
-              <button key={lid} className="sy-leaf-row sy-on-chain" data-leaf={lid} onClick={() => onLeaf(lid)} title={`${l.path}:${l.line}`}>
+              <button key={sid} className="sy-leaf-row sy-on-chain" data-leaf={sid} onClick={() => onLeaf(sid)} title={`${l.path}:${l.line}`}>
                 <span className="sy-glyph">{KIND_GLYPH[l.kind as LeafKind] ?? "·"}</span>
                 <span className="sy-leaf-name mono">{l.name}</span>
               </button>
