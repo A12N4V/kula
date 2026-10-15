@@ -19,6 +19,7 @@ mod lang_cmd;
 mod mcp;
 mod memory;
 mod meta;
+mod map_run;
 mod project;
 mod research;
 mod run;
@@ -143,6 +144,9 @@ enum Cmd {
         /// Print nothing.
         #[arg(short, long)]
         quiet: bool,
+        /// Skip the map (blocks and chains) after the graph builds.
+        #[arg(long)]
+        no_map: bool,
     },
     /// External packages: who imports them, and whether manifests declare them.
     #[command(after_help = "Examples:\n  kula deps --undeclared   ·  kula deps --unused")]
@@ -975,7 +979,7 @@ fn run(cli: Cli) -> Result<()> {
     let out = |v: &dyn erased::Json| println!("{}", v.to_json());
 
     match cmd {
-        Cmd::Index { if_stale, quiet } => {
+        Cmd::Index { if_stale, quiet, no_map } => {
             if if_stale && Store::freshness(&repo) == "current" {
                 return Ok(());
             }
@@ -983,6 +987,11 @@ fn run(cli: Cli) -> Result<()> {
                 eprint!("{} indexing {} …", accent("◯"), bold(&repo.name()));
             }
             let s = index::run(&repo, quiet)?;
+            // Map by default: blocks and chains after the graph builds, on a
+            // background thread – never in the command's critical path.
+            if !no_map {
+                map_run::spawn(repo.clone(), quiet);
+            }
             if quiet {
             } else if json {
                 out(&s);

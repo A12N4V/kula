@@ -5,7 +5,7 @@
 //! served page, so other websites cannot drive your repository.
 
 use crate::git::{validate_rev, Repo};
-use crate::{config, embed, graph, index, meta, store::Store, syntagm};
+use crate::{config, embed, graph, index, map_run, meta, store::Store, syntagm};
 use anyhow::anyhow;
 use axum::{
     body::Body,
@@ -172,7 +172,21 @@ async fn repo_info(State(s): State<AppState>) -> ApiResult {
 }
 
 async fn reindex(State(s): State<AppState>) -> ApiResult {
-    blocking(move || Ok(json!(index::run(&s.repo, true)?))).await
+    blocking(move || {
+        let v = json!(index::run(&s.repo, true)?);
+        // Map by default: a reindex (commit landed) remaps in the background.
+        // The engine's own incremental gate reuses the stored map when the
+        // graph is unchanged; singleflight keeps this from double-mapping
+        // with the auto-reindex loop.
+        map_run::spawn(s.repo.clone(), true);
+        Ok(v)
+    })
+    .await
+}
+
+/// GET /api/map/progress – where the background map run is.
+async fn map_progress() -> Json<Value> {
+    Json(serde_json::json!(map_run::state()))
 }
 
 /// Before editing a symbol: dependents, direct callers, tests that reach it, files that change with it, advice.
@@ -1113,12 +1127,15 @@ fn spawn_idle_clean(state: AppState) {
 
 pub fn router(repo: Repo, token: String) -> Router {
     let state = AppState {
-        repo,
+        repo: repo.clone(),
         token: Arc::new(token),
         snapshots: Default::default(),
         used: Arc::new(meta::now().max(0).try_into().unwrap_or(0).into()),
     };
     spawn_idle_clean(state.clone());
+    // Map by default at start-up: after the first index the map runs on its
+    // own thread, never blocking graph serving.
+    map_run::spawn(repo.clone(), true);
     Router::new()
         .route("/api/clean", get(clean_get).post(clean_set))
         .route("/api/langs", get(langs_get))
@@ -1126,6 +1143,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/clean/now", post(clean_now))
         .route("/api/repo", get(repo_info))
         .route("/api/index", post(reindex))
+        .route("/api/map/progress", get(map_progress))
         .route("/api/index/progress", get(index_progress))
         .route("/api/agent/pre_edit/{id}", get(agent_pre_edit))
         // A1: fence-path verdict endpoint (see the A1 block above).
@@ -1194,6 +1212,8 @@ fn spawn_auto_reindex(repo: Repo) {
             let _ = tokio::task::spawn_blocking(move || {
                 if Store::freshness(&r) != "current" {
                     let _ = index::run(&r, true);
+                    // Head moved – remap incrementally in the background.
+                    map_run::spawn(r.clone(), true);
                 }
             })
             .await;
