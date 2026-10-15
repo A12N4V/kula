@@ -1,9 +1,12 @@
-// Syntagm – code as blocks and chains. Route #/syntagm (deep link
+// Syntagm – code as blocks and chains, on the map. Route #/syntagm (deep link
 // #syntagm/<blockId> drills straight to a block). Three regions: a resizable
-// sidebar (chains + block tree, virtualised), the nested-box canvas with
-// breadcrumb and chain path, and the readout table with the embed chip.
-// Data comes from GET /api/syntagm when B1's API is live; until then the
-// fixture (same shapes) stands in, so the swap is a one-line change.
+// sidebar (chain families + block tree, virtualised), the nested-box canvas
+// with breadcrumb, role glyphs and chain path, and the readout table.
+// Data comes from GET /api/map in one payload; the lens (Functions /
+// Utilities / All) and the role filter are client-side, so switching is
+// instant. While the map runs, /api/map/progress drives the progress state –
+// never an empty view. Until M1's API lands, the fixture (same shapes) stands
+// in, so the swap is a one-line change.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
@@ -13,27 +16,51 @@ import { fixture } from "./syntagm/fixture";
 import { BlockCanvas } from "./syntagm/canvas";
 import { Readout } from "./syntagm/readout";
 import { SyntagmSidebar } from "./syntagm/sidebar";
-import type { Chain, SyntagmData } from "./syntagm/types";
+import type { Chain, ChainPage, Lens, MapData, MapProgress, Role } from "./syntagm/types";
+import { LENS_ROLES, ROLES, ROLE_RULES } from "./syntagm/types";
+
+const PROGRESS_LABEL: Record<MapProgress["phase"], string> = {
+  idle: "idle", scc: "condensing cycles", dp: "counting paths", blocks: "forming blocks",
+  families: "grouping families", done: "done",
+};
 
 // The view owns its own sidebar visibility on phones (390 px): a drawer.
 export default function Syntagm({ block }: { openSymbol?: (id: number) => void; version?: number; block?: string }) {
-  const [data, setData] = useState<SyntagmData | null>(null);
+  const [data, setData] = useState<MapData | null>(null);
+  const [prog, setProg] = useState<MapProgress | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [path, setPath] = useState<string[]>([]);
-  const [chainId, setChainId] = useState<string | null>(null);
+  const [selChain, setSelChain] = useState<Chain | null>(null);
   const [selLeaf, setSelLeaf] = useState<number | null>(null);
   const [openRoot, setOpenRoot] = useState<string[]>([]);
+  const [roles, setRoles] = useState<Set<Role>>(() => new Set(ROLES));
+  const [rolesOpen, setRolesOpen] = useState(false);
   const [side, setSide] = useState(false); // phone drawer
   const code = useCode();
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Live API first; the fixture stands in until B1 lands (or if it errors).
+  // Live API first. With no map yet, /api/map/progress says whether the map is
+  // still running – then the view shows its progress, not an empty state, and
+  // polls until it lands. With no API at all (pre-M1) the fixture stands in.
   useEffect(() => {
     let dead = false;
-    api.syntagm()
-      .then((d) => { if (!dead) setData(d); })
-      .catch(() => { if (!dead) setData(fixture); });
-    return () => { dead = true; };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const set = (d: MapData) => { if (!dead) setData(d); };
+    const loadMap = () => api.map().then(set).catch(() => set(fixture));
+    const poll = () => {
+      api.mapProgress()
+        .then((p) => {
+          if (dead) return;
+          setProg(p);
+          if (p.active) timer = setTimeout(poll, 500);
+          else loadMap();
+        })
+        .catch(() => set(fixture)); // no progress endpoint yet – fixture
+    };
+    api.map()
+      .then(set)
+      .catch(() => poll());
+    return () => { dead = true; clearTimeout(timer); };
   }, []);
 
   // The deep link arrives as the shell's target.block (the shell owns the
@@ -65,10 +92,12 @@ export default function Syntagm({ block }: { openSymbol?: (id: number) => void; 
   }, []);
   const home = useCallback(() => { setPath([]); history.replaceState(null, "", "#syntagm"); }, []);
 
-  const chain: Chain | null = useMemo(
-    () => (chainId ? data?.chains.find((c) => c.id === chainId) ?? null : null),
-    [data, chainId],
-  );
+  // The paged chain enumeration the sidebar expands: live API, with the
+  // fixture's deterministic stand-in (same paged shape) until M1 lands.
+  const loadChains = useCallback((family: string, cursor?: string): Promise<ChainPage> =>
+    api.mapChains(family, cursor).catch(() => fixtureChains(family, cursor ?? null)), []);
+
+  const chain: Chain | null = selChain;
 
   // The block the readout describes: the drilled block, or the chain's entry block.
   const readBlock = useMemo(() => {
@@ -84,9 +113,9 @@ export default function Syntagm({ block }: { openSymbol?: (id: number) => void; 
   }, [data, path, chain]);
 
   const selectChain = useCallback((c: Chain) => {
-    setChainId(c.id === chainId ? null : c.id);
+    setSelChain((cur) => (cur?.id === c.id ? null : c));
     setSelLeaf(null);
-  }, [chainId]);
+  }, []);
 
   const selectLeaf = useCallback((id: number) => {
     setSelLeaf(id);
@@ -100,30 +129,105 @@ export default function Syntagm({ block }: { openSymbol?: (id: number) => void; 
     setOpenRoot((o) => (o.includes(id) ? o.filter((x) => x !== id) : [...o, id]));
   }, []);
 
+  const setLens = useCallback((l: Lens) => {
+    setRoles(new Set(l === "all" ? ROLES : LENS_ROLES[l]));
+  }, []);
+  const toggleRole = useCallback((role: Role) => {
+    setRoles((prev) => {
+      const next = new Set(prev);
+      if (next.has(role)) {
+        next.delete(role);
+        if (next.size === 0) for (const r of ROLES) next.add(r); // never filter to nothing
+      } else next.add(role);
+      return next;
+    });
+  }, []);
+
+  const lens: Lens = useMemo(() => {
+    const f = LENS_ROLES.functions, u = LENS_ROLES.utilities;
+    const has = (arr: Role[]) => arr.every((r) => roles.has(r)) && roles.size === arr.length;
+    if (has(f)) return "functions";
+    if (has(u)) return "utilities";
+    return roles.size === ROLES.length ? "all" : "all"; // mixed custom set reads as All
+  }, [roles]);
+
   if (!data) {
-    return <div className="sy-root"><div className="view-loading" aria-live="polite">{err ?? "loading syntagm…"}</div></div>;
+    if (prog?.active) {
+      // The map is running – its progress, never an empty state.
+      const pct = prog.total > 0 ? Math.min(100, Math.round((prog.done / prog.total) * 100)) : 0;
+      return (
+        <div className="sy-root" data-testid="syntagm-view">
+          <div className="sy-progress" data-testid="syntagm-progress" aria-live="polite">
+            <h2>mapping</h2>
+            <div className="sy-progress-bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+              <div className="sy-progress-fill" style={{ width: `${pct}%` }} />
+            </div>
+            <table className="sy-t" data-testid="syntagm-progress-table">
+              <tbody>
+                <tr><th>phase</th><td>{PROGRESS_LABEL[prog.phase] ?? prog.phase}</td></tr>
+                <tr><th>done</th><td>{prog.done} / {prog.total}</td></tr>
+                <tr><th>elapsed</th><td>{(prog.elapsed_ms / 1000).toFixed(1)}s</td></tr>
+              </tbody>
+            </table>
+            <p className="sy-summary">the graph is usable – the map finishes in the background</p>
+          </div>
+        </div>
+      );
+    }
+    return <div className="sy-root"><div className="view-loading" aria-live="polite">{err ?? "loading map…"}</div></div>;
   }
+
+  // While a remap runs over live data, a slim strip reports it.
+  const mapping = prog?.active ?? false;
 
   return (
     <div className="sy-root" ref={rootRef} data-testid="syntagm-view">
+      <div className="sy-lens" data-testid="syntagm-lens" role="toolbar" aria-label="Lens and role filter">
+        <div className="sy-lens-group">
+          {(["functions", "utilities", "all"] as Lens[]).map((l) => (
+            <button key={l} className={`tab-btn sy-lens-btn${lens === l ? " on" : ""}`} data-testid={`syntagm-lens-${l}`}
+              aria-pressed={lens === l} onClick={() => setLens(l)}>{l}</button>
+          ))}
+        </div>
+        <button className={`tab-btn sy-lens-btn${rolesOpen ? " on" : ""}`} data-testid="syntagm-roles-btn"
+          aria-expanded={rolesOpen} aria-controls="syntagm-role-filter" onClick={() => setRolesOpen((o) => !o)}>roles</button>
+        {mapping && <span className="sy-lens-prog" data-testid="syntagm-remap">mapping…</span>}
+      </div>
+      {rolesOpen && (
+        <div className="sy-roles" id="syntagm-role-filter" data-testid="syntagm-role-filter" role="group" aria-label="Role filter">
+          {ROLES.map((role) => (
+            <label key={role} className="sy-role-row" title={ROLE_RULES[role]}>
+              <input type="checkbox" checked={roles.has(role)} onChange={() => toggleRole(role)} data-testid={`syntagm-role-${role}`} />
+              <span className="mono sy-role-name">{role}</span>
+              <span className="sy-role-rule">{ROLE_RULES[role]}</span>
+            </label>
+          ))}
+        </div>
+      )}
       <button className="btn sm sy-side-toggle" aria-expanded={side} aria-controls="syntagm-sidebar"
         onClick={() => setSide((s) => !s)} data-testid="syntagm-side-toggle">Chains & blocks</button>
       <div className="sy-split" style={listWidth("syntagm", 320)}>
         <div className={`sy-side-wrap${side ? " open" : ""}`}>
           <SyntagmSidebar
-            blocks={data.blocks} chains={data.chains} leaves={data.leaves}
-            selChain={chainId} selLeaf={selLeaf} openRoot={openRoot}
+            blocks={data.blocks} families={data.families} leaves={data.leaves} roles={roles}
+            selChain={selChain?.id ?? null} selLeaf={selLeaf} openRoot={openRoot}
+            loadChains={loadChains}
             onChain={selectChain} onLeaf={selectLeaf} onToggle={toggle} onZoom={drill}
             onClose={() => setSide(false)}
           />
         </div>
         <Grip id="syntagm" edge="right" target="prev" min={220} max={720} label="Resize sidebar" />
         {side && <div className="sy-scrim" onClick={() => setSide(false)} aria-hidden="true" />}
-        <BlockCanvas blocks={data.blocks} leaves={data.leaves} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
+        <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
         <div className="sy-readout-wrap">
           <Readout data={data} block={readBlock} onLeaf={selectLeaf} />
         </div>
       </div>
     </div>
   );
+}
+
+// Deterministic fixture enumeration with the same paged shape as the API.
+function fixtureChains(family: string, cursor: string | null): Promise<ChainPage> {
+  return import("./syntagm/fixture").then((m) => m.fixtureChains(family, cursor));
 }

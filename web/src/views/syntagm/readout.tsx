@@ -1,22 +1,22 @@
 // Syntagm readout: the right/foot panel. Block facts as a two-column table
-// (label left, value right – the house style), plus the embedding state chip.
-// The chip opens an inline check table with an Install button; the install
-// call goes to E1's API and never runs unless the check passes or the user
-// confirms explicitly.
+// (label left, value right – the house style): role, theme (when embedded),
+// and the chain flow through the block, plus the map stats. The embed chip
+// opens the Settings dialog, where the Embeddings section lives (the same
+// keydown-"," path the palette uses).
 
-import { useState } from "react";
-import { api } from "../../api";
-import type { Block, EmbedCheck, EmbedState, SyntagmData } from "./types";
+import { useMemo } from "react";
+import type { Block, EmbedState, MapData } from "./types";
+import { ROLE_RULES } from "./types";
 
 const EMBED_LABEL: Record<EmbedState, string> = { off: "off", on: "on", stale: "stale" };
 
-export function Readout({ data, block, onLeaf }: { data: SyntagmData; block: Block | null; onLeaf: (id: number) => void }) {
-  const [embedOpen, setEmbedOpen] = useState(false);
-  const [check, setCheck] = useState<EmbedCheck | null>(null);
-  const [checking, setChecking] = useState(false);
-  const [installMsg, setInstallMsg] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
+/** 12 340 stays 12 340; 8.4e17 saturates to exponent form. */
+function fmt(n: number): string {
+  if (n >= 1e15) return n.toExponential(1).replace("e+", "e");
+  return n.toLocaleString("en-US");
+}
 
+export function Readout({ data, block, onLeaf }: { data: MapData; block: Block | null; onLeaf: (id: number) => void }) {
   const counts = { fn: 0, class: 0, var: 0, type: 0 } as Record<string, number>;
   let leaves = 0;
   if (block) {
@@ -31,19 +31,19 @@ export function Readout({ data, block, onLeaf }: { data: SyntagmData; block: Blo
     }
   }
 
-  const runCheck = async () => {
-    setChecking(true); setInstallMsg(null);
-    try { setCheck(await api.embedCheck()); }
-    catch (e: unknown) { setCheck({ rows: [["error", (e as Error).message]], verdict: "refuse", reasons: ["embed API not available in this build"] }); }
-    finally { setChecking(false); }
-  };
-
-  const install = async () => {
-    try {
-      const r = await api.embedInstall();
-      setInstallMsg(r.ok ? "install started – progress on the index feed" : (r as { error?: string }).error ?? "refused");
-    } catch (e: unknown) { setInstallMsg((e as Error).message); }
-  };
+  // Chain flow through the block: the families whose chains cross it, and the
+  // chains they carry. Memoised – the family list can be 10^5+ long.
+  const flow = useMemo(() => {
+    if (!block) return { families: 0, chains: 0, exact: true };
+    let families = 0, chains = 0, exact = true;
+    for (const f of data.families) {
+      if (!f.blocks.includes(block.id)) continue;
+      families++;
+      chains += f.count;
+      if (!f.exact) exact = false;
+    }
+    return { families, chains, exact };
+  }, [data.families, block]);
 
   return (
     <aside className="sy-readout" data-testid="syntagm-readout" aria-label="Syntagm readout">
@@ -53,11 +53,15 @@ export function Readout({ data, block, onLeaf }: { data: SyntagmData; block: Blo
           <p className="sy-summary">{block.summary}</p>
           <table className="sy-t" data-testid="syntagm-block-table">
             <tbody>
+              <tr><th>role</th><td title={ROLE_RULES[block.role]}>{block.role}</td></tr>
+              {block.theme && <tr><th>theme</th><td>{block.theme}</td></tr>}
               <tr><th>kind</th><td>{block.kind}</td></tr>
               <tr><th>source</th><td>{block.source}</td></tr>
               <tr><th>files</th><td>{block.files}</td></tr>
               <tr><th>cohesion</th><td>{(block.cohesion * 100).toFixed(0)}%</td></tr>
               <tr><th>leaves</th><td>{block.children.length === 0 ? leaves : `${leaves} (one level down)`}</td></tr>
+              <tr><th>families through</th><td>{fmt(flow.families)}</td></tr>
+              <tr><th>chains through</th><td>{fmt(flow.chains)}{flow.exact ? "" : " (saturated)"}</td></tr>
               {block.children.length === 0 && (Object.keys(counts) as string[]).map((k) =>
                 counts[k] > 0 ? <tr key={k}><th>{k}</th><td>{counts[k]}</td></tr> : null)}
             </tbody>
@@ -67,43 +71,20 @@ export function Readout({ data, block, onLeaf }: { data: SyntagmData; block: Blo
       <table className="sy-t" data-testid="syntagm-stats-table">
         <tbody>
           <tr><th>build</th><td>{(data.stats.ms / 1000).toFixed(1)}s</td></tr>
-          <tr><th>batches</th><td>{data.stats.batches}</td></tr>
-          <tr><th>threads</th><td>{data.stats.threads}</td></tr>
-          <tr><th>chains</th><td>{data.chains.length}</td></tr>
+          <tr><th>chains</th><td>{fmt(data.stats.chains)}{data.stats.exact ? "" : " (saturated)"}</td></tr>
+          <tr><th>families</th><td>{fmt(data.families.length)}</td></tr>
+          <tr><th>loops</th><td>{data.loops.filter((l) => l.members.length > 0).length}</td></tr>
           <tr><th>blocks</th><td>{Object.keys(data.blocks).length}</td></tr>
+          <tr><th>threads</th><td>{data.stats.threads}</td></tr>
+          <tr><th>embedding</th><td>{EMBED_LABEL[data.stats.embed]}</td></tr>
         </tbody>
       </table>
       <button className={`chip-btn sy-embed-chip embed-${data.stats.embed}`} data-testid="syntagm-embed-chip"
-        aria-expanded={embedOpen} onClick={() => { setEmbedOpen((o) => !o); if (!embedOpen && !check) void runCheck(); }}>
-        embedding: {EMBED_LABEL[data.stats.embed]}
+        title="Embeddings – Settings (,)" aria-haspopup="dialog"
+        onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "," }))}>
+        embedding: {EMBED_LABEL[data.stats.embed]} – Settings →
       </button>
-      {embedOpen && (
-        <div className="sy-embed" data-testid="syntagm-embed">
-          {checking && <div className="muted">checking system…</div>}
-          {check && (
-            <>
-              <table className="sy-t">
-                <tbody>
-                  {check.rows.map(([k, v]) => <tr key={k}><th>{k}</th><td>{v}</td></tr>)}
-                  <tr><th>verdict</th><td className={`embed-verdict-${check.verdict}`}>{check.verdict}</td></tr>
-                </tbody>
-              </table>
-              {check.reasons.length > 0 && check.verdict !== "ok" && <div className="sy-embed-reasons">{check.reasons.join(" · ")}</div>}
-              {check.verdict === "ok" && <button className="btn primary sm" onClick={install}>Install</button>}
-              {check.verdict === "warn" && !confirming && <button className="btn sm" onClick={() => setConfirming(true)}>Install anyway…</button>}
-              {check.verdict === "warn" && confirming && (
-                <div className="sy-confirm">
-                  <span>warn: the check flagged this machine. Install?</span>
-                  <div><button className="btn sm danger" onClick={install}>Yes, install</button>
-                    <button className="btn sm ghost" onClick={() => setConfirming(false)}>No</button></div>
-                </div>
-              )}
-              {check.verdict === "refuse" && <div className="muted">install refused – see reasons above</div>}
-            </>
-          )}
-          {installMsg && <div className="sy-embed-msg" data-testid="syntagm-embed-msg">{installMsg}</div>}
-        </div>
-      )}
+      <p className="sy-summary">enable embeddings in Settings to re-form blocks thematically</p>
     </aside>
   );
 }
