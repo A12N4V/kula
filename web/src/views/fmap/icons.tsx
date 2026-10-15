@@ -8,7 +8,7 @@ import { ROLE_RULES } from "./types";
 
 /** The map's extra kinds, in the same one-or-two-character language. */
 const EXTRA: Record<string, string> = {
-  variable: "v", const: "k", constant: "k", type: "T", enum: "E", struct: "S", trait: "I", module: "▭", loop: "↻",
+  variable: "v", const: "k", constant: "k", type: "T", enum: "E", struct: "S", trait: "I", loop: "↻",
 };
 /** Fixture / short spellings onto the store's kind names. */
 const ALIAS: Record<string, string> = { fn: "function", var: "variable" };
