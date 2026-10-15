@@ -5,7 +5,7 @@
 //! served page, so other websites cannot drive your repository.
 
 use crate::git::{validate_rev, Repo};
-use crate::{graph, index, meta, store::Store};
+use crate::{config, embed, graph, index, meta, store::Store, syntagm};
 use anyhow::anyhow;
 use axum::{
     body::Body,
@@ -311,6 +311,29 @@ async fn scopes_action(State(s): State<AppState>, Path(action): Path<String>, Js
 
 async fn flows(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(graph::flows(&Store::open(&s.repo)?, 25)?))).await
+}
+
+/// GET /api/syntagm – blocks, chains, leaves and stats.
+async fn syntagm_all(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let store = Store::open(&s.repo)?;
+        // Wave-2 wiring: E1's embedding cache refines B1's blocks when it
+        // exists; full coverage reports "on", partial "stale".
+        let (idx, state) = embed::similarity_for(&s.repo, &store);
+        let sim = idx.as_ref().map(|i| i as &dyn syntagm::Similarity);
+        Ok(json!(syntagm::all_json_with(&s.repo, &store, sim, state).unwrap_or_else(|e| json!({ "error": e.to_string() }))))
+    })
+    .await
+}
+
+/// GET /api/syntagm/block/:id – a block, its children and its leaves.
+async fn syntagm_block(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || Ok(json!(syntagm::block_json(&s.repo, &Store::open(&s.repo)?, &id)?))).await
+}
+
+/// GET /api/syntagm/chain/:id – a chain and its resolved steps.
+async fn syntagm_chain(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || Ok(json!(syntagm::chain_json(&s.repo, &Store::open(&s.repo)?, &id)?))).await
 }
 
 async fn file(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
@@ -836,6 +859,69 @@ async fn kg_sparql(State(s): State<AppState>, Json(q): Json<SparqlReq>) -> ApiRe
     .await
 }
 
+async fn embed_status(State(s): State<AppState>) -> ApiResult {
+    Ok(Json(embed::api_status(&s.repo)?))
+}
+
+async fn embed_check(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        embed::api_check(&s.repo, &st)
+    })
+    .await
+}
+
+async fn embed_install(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        let cfg = config::Config::load(&s.repo.root)?.embed;
+        let verdict = embed::check(&s.repo, &st, &cfg)?;
+        embed::install_gate(&verdict, false)?;
+        Ok(serde_json::json!({ "installed": embed::install(&s.repo)? }))
+    })
+    .await
+}
+
+async fn embed_remove(State(s): State<AppState>) -> ApiResult {
+    Ok(Json(serde_json::json!({ "freed_mb": embed::remove(&s.repo)? / (1024 * 1024) })))
+}
+
+/// POST /api/embed/run – start an embedding run in the background (mock or
+/// real model per config); returns immediately, progress on /api/embed/status.
+async fn embed_run(State(s): State<AppState>) -> ApiResult {
+    if embed::status().running {
+        return Ok(Json(serde_json::json!({ "started": false, "reason": "already running" })));
+    }
+    let repo = s.repo.clone();
+    tokio::spawn(async move {
+        let st = Store::open(&repo).ok();
+        let cfg = config::Config::load(&repo.root).map(|c| c.embed).ok();
+        match (st, cfg) {
+            (Some(st), Some(cfg)) => {
+                let prov = match embed::provider_for(&cfg, false) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        embed::run_error(format!("{e:#}"));
+                        return;
+                    }
+                };
+                match embed::run(&repo, &st, &cfg, &prov, embed::cancel_requested) {
+                    Ok(_) => {}
+                    Err(e) => embed::run_error(format!("{e:#}")),
+                }
+            }
+            _ => embed::run_error("cannot open store or config".into()),
+        }
+    });
+    Ok(Json(serde_json::json!({ "started": true })))
+}
+
+/// POST /api/embed/cancel – ask the running job to stop between batches.
+async fn embed_cancel() -> ApiResult {
+    embed::cancel();
+    Ok(Json(serde_json::json!({ "cancelled": true })))
+}
+
 async fn kg_export(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let f = q.get("format").cloned().unwrap_or_else(|| "ttl".into());
@@ -1054,6 +1140,9 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/symbol/{id}", get(symbol))
         .route("/api/impact/{id}", get(impact))
         .route("/api/flows", get(flows))
+        .route("/api/syntagm", get(syntagm_all))
+        .route("/api/syntagm/block/{id}", get(syntagm_block))
+        .route("/api/syntagm/chain/{id}", get(syntagm_chain))
         .route("/api/isolate", post(isolate))
         .route("/api/scopes", get(scopes))
         .route("/api/scopes/{action}", post(scopes_action))
@@ -1079,6 +1168,12 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/kg/sparql", post(kg_sparql))
         .route("/api/kg/export", get(kg_export))
         .route("/api/kg/examples", get(kg_examples))
+        .route("/api/embed/status", get(embed_status))
+        .route("/api/embed/check", get(embed_check))
+        .route("/api/embed/install", post(embed_install))
+        .route("/api/embed/remove", post(embed_remove))
+        .route("/api/embed/run", post(embed_run))
+        .route("/api/embed/cancel", post(embed_cancel))
         .route("/api/meta/{kind}/{action}", post(meta_action))
         .fallback(static_file)
         .layer(middleware::from_fn_with_state(state.clone(), guard))

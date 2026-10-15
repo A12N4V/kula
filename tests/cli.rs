@@ -107,6 +107,45 @@ fn index_and_graph_queries() {
 }
 
 #[test]
+fn syntagm_blocks_and_chains_hold_the_contract() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+
+    let s = kula_json(d, &["blocks"]);
+    let blocks = s["blocks"].as_array().unwrap();
+    assert!(!blocks.is_empty(), "blocks exist");
+    // Every leaf-bearing block stays within the leaf cap.
+    for b in blocks {
+        if b["children"].as_array().unwrap().is_empty() {
+            let n = b["symbols"].as_array().unwrap().len();
+            assert!(n <= 40, "block {} holds {} leaves", b["name"], n);
+        }
+    }
+    // Names are segment-first and summaries are one line, no prose.
+    for b in blocks {
+        assert!(!b["name"].as_str().unwrap().is_empty());
+        assert!(!b["summary"].as_str().unwrap().contains('\n'));
+        assert_eq!(b["source"], "graph");
+    }
+    // Chains are deterministic across two runs and respect the depth cap.
+    let c1 = kula_json(d, &["chains"]);
+    let c2 = kula_json(d, &["chains"]);
+    assert_eq!(c1, c2, "chains are deterministic");
+    for c in c1.as_array().unwrap() {
+        let len = c["len"].as_u64().unwrap();
+        assert!(len >= 2 && len as usize <= 12);
+        assert!(!c["blocks"].as_array().unwrap().is_empty(), "chain lists the blocks it crosses");
+    }
+    // Incremental: a second blocks run reuses the stored tree unchanged
+    // (stats differ – batches 0 marks a cache hit – the tree does not).
+    let b2 = kula_json(d, &["blocks"]);
+    assert_eq!(s["blocks"], b2["blocks"], "unchanged files reuse the stored tree");
+    assert_eq!(s["chains"], b2["chains"]);
+    assert_eq!(b2["stats"]["batches"], 0, "cache hit is marked by batches 0");
+}
+
+#[test]
 fn compare_proposals_issues_notes() {
     let t = fixture();
     let d = t.path();
@@ -1066,7 +1105,8 @@ fn shell_bypasses_are_refused_in_a_fenced_repo() {
         let (_, why) = kula_code(d, &["guard", "hook"], Some(&bash(&cmd)), 2);
         assert!(why.contains("refused"), "{cmd} -> {why}");
     }
-    std::fs::remove_file(diff).unwrap();
+    // Cleanup, not coverage: another concurrent sweep may already have taken the file.
+    let _ = std::fs::remove_file(diff);
 
     // Legitimate look-alikes still pass.
     for cmd in [
@@ -1134,4 +1174,46 @@ fn research_revert_never_deletes_a_persons_files() {
     assert_eq!(e["kept"], true, "{e}");
     assert_eq!(std::fs::read_to_string(d.join("NOTES.txt")).unwrap(), "my scratch notes\n");
     kula(d, &["research", "stop"]);
+}
+
+#[test]
+fn embed_is_off_by_default_and_check_gates_install() {
+    let d = fixture();
+    kula(d.path(), &["index"]);
+    // status: off by default, nothing installed, no runtime linked in
+    let s = kula_json(d.path(), &["embed", "status", "--json"]);
+    assert_eq!(s["enabled"], false, "embeddings are opt-in");
+    assert_eq!(s["installed"], false);
+    assert_eq!(s["feature"], false, "default build has no ONNX runtime");
+    assert_eq!(s["run"]["running"], false);
+
+    // check: a two-column table with the verdict; JSON carries the stats
+    let table = kula(d.path(), &["embed", "check"]);
+    assert!(table.contains("RAM total"), "{table}");
+    assert!(table.contains("Verdict"), "{table}");
+    let c = kula_json(d.path(), &["embed", "check", "--json"]);
+    assert_eq!(c["verdict"], "refuse", "refuses while [embed] enabled = false");
+    assert!(c["reasons"].as_array().unwrap().iter().any(|r| r.as_str().unwrap().contains("enabled = false")));
+    assert!(c["symbols"].as_u64().unwrap() > 0, "it counts this repo's symbols");
+    assert_eq!(c["model_mb"], 210);
+
+    // install: the check is run first and its refusal is a real exit-code failure
+    let (_, err) = kula_code(d.path(), &["embed", "install"], None, 1);
+    assert!(err.contains("refuse") || err.contains("embed check"), "{err}");
+}
+
+#[test]
+fn embed_run_uses_the_mock_provider_and_remove_cleans_up() {
+    let d = fixture();
+    kula(d.path(), &["index"]);
+    // Without the feature and without a model, run falls back to the mock provider.
+    let r = kula_json(d.path(), &["embed", "run", "--json", "--mock"]);
+    assert_eq!(r["provider"], "mock");
+    assert_eq!(r["dim"], 256, "Matryoshka truncation");
+    assert!(r["symbols"].as_u64().unwrap() > 0);
+    assert!(d.path().join(".kula/embed/cache.json").exists(), "cache lands in .kula/embed");
+    // remove: deletes the cache (and the model dir when present)
+    let rm = kula_json(d.path(), &["embed", "remove", "--json"]);
+    assert!(rm["freed_mb"].as_u64().is_some());
+    assert!(!d.path().join(".kula/embed/cache.json").exists(), "cache is gone");
 }
