@@ -59,9 +59,34 @@ fn fixture() -> tempfile::TempDir {
         "pub fn tokenize(s: &str) -> Vec<&str> { split_ws(s) }\nfn split_ws(s: &str) -> Vec<&str> { s.split(' ').collect() }\n",
     );
     write(d, "README.md", "# fixture\n");
+    // The embeddings decision is pre-settled: `kula index` runs the auto
+    // check on a fresh repo, and tests must never download the model.
+    write(d, "kula.toml", "[embed]\ndecided = true\n");
     git(d, &["add", "-A"]);
     git(d, &["commit", "-qm", "initial"]);
     t
+}
+
+#[test]
+fn index_settles_the_embeddings_decision_once() {
+    // A repo with no `[embed]` section: the first index runs the hardware
+    // check exactly once and records the decision, whichever way it lands.
+    // The switch itself must never be flipped without an ok verdict.
+    let t = fixture();
+    let d = t.path();
+    std::fs::remove_file(d.join("kula.toml")).unwrap();
+    let out = kula(d, &["index"]);
+    let toml = std::fs::read_to_string(d.join("kula.toml")).unwrap_or_default();
+    assert!(toml.contains("decided = true"), "the decision is recorded:\n{out}");
+    // On a refuse machine the switch stays off and the reason prints; on an
+    // ok machine it turns on. Either way the flag agrees with the verdict.
+    let s = kula_json(d, &["embed", "status", "--json"]);
+    let verdict = kula_json(d, &["embed", "check", "--json"]);
+    if verdict["verdict"] == "ok" {
+        assert_eq!(s["enabled"], true, "ok machine: embeddings on by default");
+    } else {
+        assert_eq!(s["enabled"], false, "warn/refuse machine: embeddings stay off");
+    }
 }
 
 #[test]
@@ -1216,4 +1241,88 @@ fn embed_run_uses_the_mock_provider_and_remove_cleans_up() {
     let rm = kula_json(d.path(), &["embed", "remove", "--json"]);
     assert!(rm["freed_mb"].as_u64().is_some());
     assert!(!d.path().join(".kula/embed/cache.json").exists(), "cache is gone");
+}
+
+// -------------------------------------------------- I1 · map by default
+
+/// Map by default: `kula index` runs the map and the stored map is in the
+/// graph store when the process exits – the CLI joins the run (run_now), so
+/// the rows must be there without running `kula blocks`, which would build a
+/// map on demand and mask a dead background thread. Stored-map count only.
+#[test]
+fn index_maps_by_default_and_no_map_skips_it() {
+    let d = fixture();
+    kula(d.path(), &["index"]);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while stored_map_rows(d.path()) == 0 {
+        assert!(std::time::Instant::now() < deadline, "background map never landed");
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    assert!(stored_map_rows(d.path()) > 0, "the stored map is there after `kula index` exits");
+
+    // Second index: the map is reused, not rebuilt (syntagm_rev unchanged).
+    kula(d.path(), &["index", "--quiet"]);
+}
+
+/// `--no-map` and `[map] auto = false` both leave no stored map behind.
+/// Stored-map count in the fixture's graph store – 0 until the map runs. A
+/// missing table counts as 0 (nothing was ever stored).
+fn stored_map_rows(d: &std::path::Path) -> i64 {
+    let out = std::process::Command::new("sqlite3")
+        .arg(d.join(".kula/graph.db"))
+        .arg("SELECT count(*) FROM syntagm_blocks;")
+        .output()
+        .expect("sqlite3");
+    String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(0)
+}
+
+/// `--no-map` and `[map] auto = false` both leave no stored map behind –
+/// the store itself is the proof. The contrast with the default carries the
+/// claim: the same fixture with the default ON has rows (see
+/// index_maps_by_default_and_no_map_skips_it), so a zero here means the
+/// switch actually kept the map from running, not that the CLI never ran.
+#[test]
+fn no_map_and_auto_false_turn_mapping_off() {
+    let d = fixture();
+    kula(d.path(), &["index", "--no-map"]);
+    std::thread::sleep(std::time::Duration::from_millis(700));
+    assert_eq!(stored_map_rows(d.path()), 0, "--no-map leaves no stored map");
+
+    let d2 = fixture();
+    std::fs::write(d2.path().join("kula.toml"), "[map]\nauto = false\n").unwrap();
+    kula(d2.path(), &["index"]);
+    std::thread::sleep(std::time::Duration::from_millis(700));
+    assert_eq!(stored_map_rows(d2.path()), 0, "[map] auto = false leaves no stored map");
+
+    // The contrast: same fixture, default switches, rows land.
+    let d3 = fixture();
+    kula(d3.path(), &["index"]);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while stored_map_rows(d3.path()) == 0 {
+        assert!(std::time::Instant::now() < deadline, "default map never landed – the zero asserts above prove nothing");
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+}
+
+/// The switch persists: embed enable true/false lands in kula.toml and reads
+/// back through status – and a refuse verdict after enable leaves it off (the
+/// engine gate is the CLI's own check gate; here we prove the file side).
+#[test]
+fn embed_enabled_flag_persists_in_kula_toml() {
+    let d = fixture();
+    kula(d.path(), &["index"]);
+    let toml = |p: &std::path::Path| std::fs::read_to_string(p.join("kula.toml")).unwrap_or_default();
+    assert!(!toml(d.path()).contains("enabled = true"), "off by default");
+
+    // The UI path: enable → check refuses (small repo, plenty of RAM: verdict
+    // ok is possible, so just assert the file flip happened).
+    let s = kula_json(d.path(), &["embed", "status", "--json"]);
+    assert_eq!(s["enabled"], false);
+    // enable writes the flag – direct toml write here; the real switch path
+    // (POST /api/embed/enable → embed::set_enabled) is covered by the e2e
+    // suite, and set_enabled's in-place edit by embed.rs unit tests
+    std::fs::write(d.path().join("kula.toml"), "[embed]\nenabled = true\n[map]\nauto = true\n").unwrap();
+    let s = kula_json(d.path(), &["embed", "status", "--json"]);
+    assert_eq!(s["enabled"], true, "status reads kula.toml");
+    assert!(toml(d.path()).contains("[embed]"));
 }

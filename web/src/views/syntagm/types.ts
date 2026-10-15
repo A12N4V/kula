@@ -105,13 +105,14 @@ export interface ChainPage {
   done: boolean;
 }
 
-/** GET /api/map/progress – the map run, reported while it works. */
+/** GET /api/map/progress – the map run, reported while it works (map_run.rs state). */
 export interface MapProgress {
-  active: boolean;
-  phase: "idle" | "scc" | "dp" | "blocks" | "families" | "done";
-  done: number;
-  total: number;
-  elapsed_ms: number;
+  running: boolean;
+  phase: string;
+  blocks: number;
+  chains: number;
+  ms: number;
+  error: string;
 }
 
 /** Embed check output (E1 contract): a two-column table plus a verdict. */

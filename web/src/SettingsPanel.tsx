@@ -6,6 +6,170 @@ import { Icon } from "./ui";
 import { api, type LangRow } from "./api";
 import { hasCustomSizes, resetSizes } from "./resize";
 
+// I1 · Embeddings: the check table and the run state as the Rust side sends them.
+interface EmbedStats {
+  ram_total_gb: number; ram_free_gb: number; disk_free_gb: number; cores: number; arch: string;
+  symbols: number; model_mb: number; est_seconds: number; verdict: "ok" | "warn" | "refuse"; reasons: string[];
+}
+interface EmbedStatusFull { enabled: boolean; installed: boolean; feature: boolean; model_dir: string; run: { running: boolean; phase: string; done: number; total: number; batches: number; cancelled: boolean; provider: string; error: string } }
+
+/** The Embeddings section: one switch, then the state machine around it –
+ *  check (two-column table) → install (progress) → embed (batches) → remap.
+ *  Refuse verdicts explain why and leave the switch off. Cancel always works. */
+function EmbedRows({ q }: { q: string }) {
+  const [st, setSt] = useState<EmbedStatusFull | null>(null);
+  const [check, setCheck] = useState<EmbedStats | null>(null);
+  const [busy, setBusy] = useState<"" | "check" | "install" | "run">("");
+  const [note, setNote] = useState("");
+  const [confirmWarn, setConfirmWarn] = useState(false);
+  const [confirmOff, setConfirmOff] = useState(false);
+
+  // The Rust status payload is wider than api.ts's legacy EmbedStatus type –
+  // cast here rather than edit a type another module declared.
+  const loadStatus = () => api.embedStatus() as unknown as Promise<EmbedStatusFull>;
+  const load = () => loadStatus().then(setSt).catch(() => {});
+  useEffect(() => { load(); }, []);
+  // Poll while a run (embed or remap) is in flight so the bar moves.
+  const running = !!st && (st.run.running || busy === "run" || busy === "install");
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => { loadStatus().then(setSt).catch(() => {}); }, 700);
+    return () => clearInterval(t);
+  }, [running]);
+
+  if (!st) return null;
+  const on = st.enabled;
+  const awaitingWarn = check?.verdict === "warn" && confirmWarn && !busy && !st.run.running;
+
+  const installThenEmbed = () => {
+    setConfirmWarn(false);
+    setBusy("install"); setNote("");
+    api.embedInstall()
+      .then(() => { setBusy("run"); return api.embedRun(); })
+      .then(() => setNote("Embedding in batches – progress here, the map re-forms when it lands"))
+      .catch((e) => {
+        setNote(e.message);
+        // The pipeline did not start – embeddings stay opt-in: switch off.
+        api.embedEnable(false).then(load).catch(() => {});
+      })
+      .finally(() => setBusy(""));
+  };
+
+  const turnOn = () => {
+    // The server gates the flip: enable refuses when the check verdict is
+    // refuse, so kula.toml only ever turns true when the pipeline may run.
+    // One write, gated – no flip-and-flip-back here.
+    setBusy("check"); setNote(""); setConfirmWarn(false);
+    api.embedEnable(true)
+      .then(() => api.embedCheck() as unknown as Promise<EmbedStats>)
+      .then((c) => {
+        setCheck(c);
+        if (c.verdict === "ok") installThenEmbed();
+        else if (c.verdict === "warn") setConfirmWarn(true);
+        else {
+          // Refuse: explain why and leave the switch off.
+          api.embedEnable(false).then(load).catch(() => {});
+        }
+      })
+      .catch((e) => {
+        // The server refused the enable – the switch never flipped, so only
+        // the explanation is needed. Still show the check table for the why.
+        setNote(e.message);
+        api.embedCheck().then((c) => setCheck(c as unknown as EmbedStats)).catch(() => {});
+      })
+      .finally(() => setBusy(""));
+  };
+
+  const keepOff = () => {
+    setConfirmWarn(false);
+    api.embedEnable(false).then(load).catch(() => {});
+  };
+
+  const turnOff = () => {
+    setConfirmOff(false);
+    api.embedEnable(false)
+      .then(load)
+      .then(() => setNote(st.installed ? "Embeddings off – the model and cache stay on disk until removed" : "Embeddings off"))
+      .catch((e) => setNote(e.message));
+  };
+
+  const cancel = () => {
+    api.embedCancel().then(() => setNote("Cancelled between batches – what is embedded stays")).catch((e) => setNote(e.message));
+  };
+
+  const remove = () => {
+    setConfirmOff(false);
+    api.embedRemove()
+      .then((r) => setNote(`Model and cache removed – freed ${Math.round((r as unknown as { freed_bytes: number }).freed_bytes / (1 << 20))} MB`))
+      .catch((e) => setNote(e.message));
+  };
+
+  return (
+    <>
+      <label className="set-row toggle">
+        <div className="set-label">
+          <span>Enable embeddings</span>
+          <small>{st.run.error ? st.run.error : on ? (st.installed ? "Thematic blocks from the Gemma model" : "Enabled – install the model to embed") : "Off – blocks form from the call graph alone"}</small>
+        </div>
+        <button role="switch" aria-checked={on} aria-label="Enable embeddings"
+          className={`switch ${on ? "on" : ""}`}
+          disabled={busy !== "" || st.run.running}
+          onClick={() => (on ? setConfirmOff(st.installed) : turnOn())}><i /></button>
+      </label>
+      {busy === "check" && <div className="muted set-empty">Checking RAM, disk and cores…</div>}
+      {check && (
+        <div className="embed-check" data-testid="embed-check">
+          <Table rows={[
+            ["RAM free", `${check.ram_free_gb.toFixed(1)} GB`],
+            ["Disk free", `${check.disk_free_gb.toFixed(1)} GB`],
+            ["Cores", String(check.cores)],
+            ["Symbols", String(check.symbols)],
+            ["Model download", `~${check.model_mb} MB`],
+            ["Est embed time", `~${check.est_seconds} s`],
+            ["Verdict", check.verdict],
+          ]} />
+          {check.reasons.map((r) => <div key={r} className="muted set-empty">{r}</div>)}
+          {awaitingWarn && (
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <button className="btn sm" onClick={installThenEmbed}>Install anyway</button>
+              <button className="btn ghost sm" onClick={keepOff}>Keep off</button>
+            </div>
+          )}
+        </div>
+      )}
+      {(busy === "install" || st.run.running) && (
+        <div className="embed-progress" data-testid="embed-progress">
+          <div className="set-label"><span>{busy === "install" ? "Installing Gemma" : st.run.phase || "Embedding"}</span>
+            <small>{st.run.total ? `${st.run.done}/${st.run.total}` : "…"}</small></div>
+          <div className={"bar" + (st.run.total ? "" : " idle")}><i style={{ width: st.run.total ? `${Math.min(100, (st.run.done / st.run.total) * 100)}%` : "100%" }} /></div>
+          <button className="btn ghost sm" onClick={cancel}>Cancel</button>
+        </div>
+      )}
+      <Row label="Mapping" hint={note || (st.run.running ? st.run.phase : on ? "The map re-forms with themes when embeddings land" : "Map runs by default after every index")} q={q}>
+        <span className="mono">{st.run.running ? st.run.phase : note || (on ? "on" : "graph only")}</span>
+      </Row>
+      {confirmOff && (
+        <Row label="Remove the model and cache" hint="Frees disk on this machine – embeddings rebuild later if turned back on" q={q}>
+          <span style={{ display: "flex", gap: 6 }}>
+            <button className="btn sm" onClick={remove}>Remove</button>
+            <button className="btn ghost sm" onClick={() => setConfirmOff(false)}>Keep</button>
+          </span>
+        </Row>
+      )}
+    </>
+  );
+}
+
+function Table({ rows }: { rows: [string, string][] }) {
+  return (
+    <div className="kv two-col">
+      {rows.map(([k, v]) => (
+        <div key={k} className="kv-row"><span className="k">{k}</span><span className="v mono">{v}</span></div>
+      ))}
+    </div>
+  );
+}
+
 function Seg<T extends string | number>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
   return (
     <div className="seg full">
@@ -38,7 +202,7 @@ function Toggle({ k, label, hint, q }: { k: keyof Settings; label: string; hint?
   );
 }
 
-const SECTIONS = [["appearance", "Appearance"], ["graph", "Graph encoding"], ["dirs", "Directory colours"], ["langs", "Languages"], ["disk", "Disk"]] as const;
+const SECTIONS = [["appearance", "Appearance"], ["graph", "Graph encoding"], ["dirs", "Directory colours"], ["langs", "Languages"], ["embed", "Embeddings"], ["disk", "Disk"]] as const;
 
 const size = (b: number) => b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB` : b >= 1 << 20 ? `${(b / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
 
@@ -208,6 +372,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           </div>
           {(!q || fuzzyScore(q, "languages language packs grammars install") >= 0) && <div className="set-sec" id="set-langs">Languages</div>}
           <LangRows q={q} />
+          {(!q || fuzzyScore(q, "embeddings gemma model install enable thematic blocks switch") >= 0) && <div className="set-sec" id="set-embed">Embeddings</div>}
+          <EmbedRows q={q} />
           {(!q || fuzzyScore(q, "disk space clean cleanup idle timer storage") >= 0) && <div className="set-sec" id="set-disk">Disk</div>}
           <DiskRows q={q} />
           {noHits && <div className="muted set-empty">Nothing matches “{q}”.</div>}

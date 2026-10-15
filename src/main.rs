@@ -16,6 +16,7 @@ mod index;
 mod isolate;
 mod kg;
 mod lang_cmd;
+mod map_run;
 mod mcp;
 mod memory;
 mod meta;
@@ -143,6 +144,9 @@ enum Cmd {
         /// Print nothing.
         #[arg(short, long)]
         quiet: bool,
+        /// Skip the map (blocks and chains) after the graph builds.
+        #[arg(long)]
+        no_map: bool,
     },
     /// External packages: who imports them, and whether manifests declare them.
     #[command(after_help = "Examples:\n  kula deps --undeclared   ·  kula deps --unused")]
@@ -975,7 +979,7 @@ fn run(cli: Cli) -> Result<()> {
     let out = |v: &dyn erased::Json| println!("{}", v.to_json());
 
     match cmd {
-        Cmd::Index { if_stale, quiet } => {
+        Cmd::Index { if_stale, quiet, no_map } => {
             if if_stale && Store::freshness(&repo) == "current" {
                 return Ok(());
             }
@@ -983,6 +987,27 @@ fn run(cli: Cli) -> Result<()> {
                 eprint!("{} indexing {} …", accent("◯"), bold(&repo.name()));
             }
             let s = index::run(&repo, quiet)?;
+            // Map by default: blocks and chains after the graph builds. The
+            // CLI runs it on this thread (run_now) – the process ends when
+            // main returns, so a detached thread would be killed mid-run and
+            // the stored map would never land. The server spawns instead.
+            if !no_map {
+                map_run::run_now(repo.clone(), quiet);
+            }
+            // Embeddings on by default: a fresh repo (no `[embed] decided`)
+            // gets the hardware check exactly once. Ok installs and embeds
+            // inline – the process would otherwise exit before the download
+            // lands – then remaps thematically. Warn or refuse stays off and
+            // says why; the decision is recorded either way.
+            let auto_store = Store::open(&repo)?;
+            let rep = embed::auto(&repo, &auto_store, true);
+            if !quiet {
+                match rep.verdict.as_str() {
+                    "ok" => eprintln!("  {} embeddings on – {}", crate::term::dim("◇"), rep.reasons.join("; ")),
+                    "decided" | "busy" | "spawned" => {}
+                    v => eprintln!("  {} embeddings off – {}: {}", crate::term::dim("◆"), v, rep.reasons.join("; ")),
+                }
+            }
             if quiet {
             } else if json {
                 out(&s);

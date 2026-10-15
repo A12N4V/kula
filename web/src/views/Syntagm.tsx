@@ -19,10 +19,12 @@ import { SyntagmSidebar } from "./syntagm/sidebar";
 import type { Chain, ChainPage, Lens, MapData, MapProgress, Role } from "./syntagm/types";
 import { LENS_ROLES, ROLES, ROLE_RULES } from "./syntagm/types";
 
-const PROGRESS_LABEL: Record<MapProgress["phase"], string> = {
-  idle: "idle", scc: "condensing cycles", dp: "counting paths", blocks: "forming blocks",
-  families: "grouping families", done: "done",
+const PROGRESS_LABEL: Record<string, string> = {
+  idle: "idle", load: "loading graph", graph: "building graph", similarity: "measuring similarity",
+  map: "mapping", done: "done", error: "failed",
 };
+// The run reports phases as strings – the bar's percent follows the phase list.
+const PHASES = ["load", "graph", "similarity", "map", "done"];
 
 // The view owns its own sidebar visibility on phones (390 px): a drawer.
 export default function Syntagm({ block }: { openSymbol?: (id: number) => void; version?: number; block?: string }) {
@@ -42,17 +44,35 @@ export default function Syntagm({ block }: { openSymbol?: (id: number) => void; 
   // Live API first. With no map yet, /api/map/progress says whether the map is
   // still running – then the view shows its progress, not an empty state, and
   // polls until it lands. With no API at all (pre-M1) the fixture stands in.
+  // The API lists blocks (contract JSON); the view indexes them by id, so
+  // key them once – the fixture already has the Record shape.
   useEffect(() => {
     let dead = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const set = (d: MapData) => { if (!dead) setData(d); };
+    // The view hangs everything off a synthetic root keyed by id. If a payload
+    // ever ships blocks as a flat list (depth-0 sections carry parent null),
+    // rebuild the Record around the same root node the fixture uses.
+    const normalize = (d: MapData): MapData => {
+      if (!Array.isArray(d.blocks)) return d;
+      const root: MapData["blocks"][string] = {
+        id: "__root", parent: null, depth: 0, name: "repo", summary: "whole repo",
+        kind: "section", symbols: [], children: [], files: 0, cohesion: 1, source: "graph", role: "glue",
+      };
+      const byId: MapData["blocks"] = { __root: root };
+      for (const b of d.blocks) {
+        if (b.parent === null && b.depth === 0) { b.parent = "__root"; root.children.push(b.id); }
+        byId[b.id] = b;
+      }
+      return { ...d, blocks: byId };
+    };
+    const set = (d: MapData) => { if (!dead) setData(normalize(d)); };
     const loadMap = () => api.map().then(set).catch(() => set(fixture));
     const poll = () => {
       api.mapProgress()
         .then((p) => {
           if (dead) return;
           setProg(p);
-          if (p.active) timer = setTimeout(poll, 500);
+          if (p.running) timer = setTimeout(poll, 500);
           else loadMap();
         })
         .catch(() => set(fixture)); // no progress endpoint yet – fixture
@@ -152,9 +172,10 @@ export default function Syntagm({ block }: { openSymbol?: (id: number) => void; 
   }, [roles]);
 
   if (!data) {
-    if (prog?.active) {
+    if (prog?.running) {
       // The map is running – its progress, never an empty state.
-      const pct = prog.total > 0 ? Math.min(100, Math.round((prog.done / prog.total) * 100)) : 0;
+      const at = PHASES.indexOf(prog.phase);
+      const pct = at >= 0 ? Math.round(((at + 1) / PHASES.length) * 100) : 0;
       return (
         <div className="sy-root" data-testid="syntagm-view">
           <div className="sy-progress" data-testid="syntagm-progress" aria-live="polite">
@@ -165,8 +186,9 @@ export default function Syntagm({ block }: { openSymbol?: (id: number) => void; 
             <table className="sy-t" data-testid="syntagm-progress-table">
               <tbody>
                 <tr><th>phase</th><td>{PROGRESS_LABEL[prog.phase] ?? prog.phase}</td></tr>
-                <tr><th>done</th><td>{prog.done} / {prog.total}</td></tr>
-                <tr><th>elapsed</th><td>{(prog.elapsed_ms / 1000).toFixed(1)}s</td></tr>
+                <tr><th>blocks</th><td>{prog.blocks}</td></tr>
+                <tr><th>chains</th><td>{prog.chains}</td></tr>
+                <tr><th>elapsed</th><td>{(prog.ms / 1000).toFixed(1)}s</td></tr>
               </tbody>
             </table>
             <p className="sy-summary">the graph is usable – the map finishes in the background</p>
@@ -178,7 +200,7 @@ export default function Syntagm({ block }: { openSymbol?: (id: number) => void; 
   }
 
   // While a remap runs over live data, a slim strip reports it.
-  const mapping = prog?.active ?? false;
+  const mapping = prog?.running ?? false;
 
   return (
     <div className="sy-root" ref={rootRef} data-testid="syntagm-view">

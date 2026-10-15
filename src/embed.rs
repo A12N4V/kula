@@ -150,7 +150,10 @@ fn disk_free(path: &std::path::Path) -> f64 {
 }
 
 /// The check itself – no model needed, ships value even if the runtime stalls.
-pub fn check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<Stats> {
+/// Hardware only: RAM, disk, cores. The `[embed] enabled` gate lives in
+/// [`check`] so the automatic first-run decision can judge the machine before
+/// the person has touched the switch.
+pub fn hardware_check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<Stats> {
     let (ram_total, ram_free) = ram_stats();
     let disk_free = disk_free(&model_dir());
     let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
@@ -174,10 +177,6 @@ pub fn check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<
         verdict = if verdict == "refuse" { verdict } else { "warn" };
         reasons.push(format!("free disk {disk_free:.1} GB < 4 GB"));
     }
-    if !cfg.enabled {
-        verdict = "refuse";
-        reasons.push("[embed] enabled = false in kula.toml – turn it on before install".into());
-    }
     Ok(Stats {
         ram_total_gb: (ram_total * 10.0).round() / 10.0,
         ram_free_gb: (ram_free * 10.0).round() / 10.0,
@@ -190,6 +189,17 @@ pub fn check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<
         verdict: verdict.into(),
         reasons,
     })
+}
+
+/// The full check for the switch and CLI: hardware verdict plus the
+/// `[embed] enabled` gate – the switch must be on before anything installs.
+pub fn check(repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<Stats> {
+    let mut s = hardware_check(repo, store, cfg)?;
+    if !cfg.enabled {
+        s.verdict = "refuse".into();
+        s.reasons.push("[embed] enabled = false in kula.toml – turn it on before install".into());
+    }
+    Ok(s)
 }
 
 /// The two-column table `kula embed check` prints.
@@ -381,6 +391,97 @@ pub fn similarity_for(repo: &crate::git::Repo, store: &Store) -> (Option<EmbedIn
         Some(i) => (Some(i), "stale"),
         None => (None, "off"),
     }
+}
+
+// ------------------------------------------------- thematic map (I1 ↔ map)
+
+/// The role table's one-line rules – also the prototype texts the role
+/// cross-check embeds. Kept in step with the map's classify_role contract.
+// Consumed by the map engine at integration (see the plan's I1 note).
+#[allow(dead_code)]
+pub const ROLE_RULES: &[(&str, &str)] = &[
+    ("entry", "a source: nothing in the repo calls it, and it calls into the repo"),
+    ("orchestrator", "high fan-out into several blocks, low fan-in"),
+    ("core", "inside a block's chains, neither entry nor utility – the actual work"),
+    ("utility", "high fan-in from many distinct blocks, low fan-out, small"),
+    ("adapter", "touches the outside world: file, network, process, DB, env"),
+    ("model", "classes, structs, types, enums, constants read more than called"),
+    ("config", "settings, constants and loaders under config paths"),
+    ("test", "test code and fixtures"),
+    ("glue", "re-export barrels and module index files"),
+];
+
+/// Embed each role's rule as a prototype vector. The map's graph role wins
+/// unless the embedding cross-check is confident against these.
+// Consumed by the map engine at integration (see the plan's I1 note).
+#[allow(dead_code)]
+pub fn role_prototypes(prov: &dyn EmbedProvider) -> Vec<(String, Vec<f32>)> {
+    let texts: Vec<String> = ROLE_RULES.iter().map(|(r, rule)| format!("task: code retrieval | query: role {} – {}", r, rule)).collect();
+    match prov.embed(&texts) {
+        Ok(vs) => ROLE_RULES.iter().map(|(r, _)| r.to_string()).zip(vs).collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Mean of a block's member vectors – the point the theme terms are measured
+/// against. `None` when no member has a vector.
+// Consumed by the map engine at integration (see the plan's I1 note).
+#[allow(dead_code)]
+pub fn block_centroid(idx: &EmbedIndex, members: &[i64]) -> Option<Vec<f32>> {
+    let mut sum: Option<Vec<f32>> = None;
+    let mut n = 0usize;
+    for m in members {
+        if let Some(v) = idx.vectors.get(m) {
+            let s = sum.get_or_insert_with(|| vec![0.0; v.len()]);
+            for (a, b) in s.iter_mut().zip(v) {
+                *a += b;
+            }
+            n += 1;
+        }
+    }
+    if n == 0 {
+        return None;
+    }
+    sum.map(|s| s.into_iter().map(|x| x / n as f32).collect())
+}
+
+/// The block's theme: the 2–4 candidate terms (identifiers, docstring words)
+/// whose embeddings sit closest to the block centroid, joined with spaces.
+/// `None` when there is nothing to measure against.
+// Consumed by the map engine at integration (see the plan's I1 note).
+#[allow(dead_code)]
+pub fn theme_for_terms(prov: &dyn EmbedProvider, centroid: &[f32], terms: &[String]) -> Option<String> {
+    if centroid.is_empty() || terms.is_empty() {
+        return None;
+    }
+    let texts: Vec<String> = terms.iter().map(|t| format!("task: code retrieval | query: {}", t)).collect();
+    let vs = prov.embed(&texts).ok()?;
+    let mut scored: Vec<(f32, &str)> =
+        vs.iter().zip(terms).map(|(v, t)| (cosine(centroid, v), t.as_str())).filter(|(c, _)| *c > 0.0).collect();
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    if scored.is_empty() {
+        return None;
+    }
+    let take = scored.len().clamp(2, 4);
+    Some(scored[..take].iter().map(|(_, t)| *t).collect::<Vec<_>>().join(" "))
+}
+
+/// Cross-check a graph role against the prototype embeddings for `symbol_text`
+/// (the symbol's identifier plus first source lines). Returns
+/// `(suggested_role, confidence)` when a prototype is meaningfully close –
+/// `None` below the confidence bar (0.35), where the graph role stands.
+// Consumed by the map engine at integration (see the plan's I1 note).
+#[allow(dead_code)]
+pub fn role_cross_check(prov: &dyn EmbedProvider, symbol_text: &str) -> Option<(String, f64)> {
+    const BAR: f64 = 0.35;
+    let ps = role_prototypes(prov);
+    if ps.is_empty() {
+        return None;
+    }
+    let v = prov.embed(&[format!("task: code retrieval | query: {}", symbol_text)]).ok()?.pop()?;
+    let best =
+        ps.iter().map(|(r, p)| (r, cosine(&v, p) as f64)).max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?;
+    (best.1 >= BAR).then(|| (best.0.clone(), best.1))
 }
 
 // ------------------------------------------------------------------ cache
@@ -693,6 +794,200 @@ fn size_of(dir: &std::path::Path, seed: u64) -> u64 {
 
 // ------------------------------------------------------------------ API payloads
 
+/// Whether the embedding question has been settled: `[embed] decided = true`
+/// in kula.toml. Once set the automatic path never re-prompts – the switch is
+/// the person's, on or off, and it sticks.
+pub fn decided(repo: &crate::git::Repo) -> bool {
+    if let Ok(src) = std::fs::read_to_string(repo.root.join("kula.toml")) {
+        if let Ok(t) = src.parse::<toml::Table>() {
+            return t.get("embed").and_then(|e| e.get("decided")).and_then(|v| v.as_bool()).unwrap_or(false);
+        }
+    }
+    false
+}
+
+/// Write one boolean into `[embed]` in kula.toml in place, keeping every
+/// other comment and table untouched.
+fn toml_flag(repo: &crate::git::Repo, key: &str, value: bool) -> Result<()> {
+    let p = repo.root.join("kula.toml");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|_| crate::config::Config::default().render());
+    let mut doc: toml_edit::DocumentMut = text.parse().with_context(|| format!("reading {}", p.display()))?;
+    let t = doc.entry("embed").or_insert(toml_edit::table()).as_table_mut().context("[embed] must be a table")?;
+    t[key] = toml_edit::value(value);
+    let out = doc.to_string();
+    // Never write a file kula itself can't read back.
+    let _: crate::config::Config = toml::from_str(&out).context("the edit would make kula.toml invalid")?;
+    std::fs::write(&p, out)?;
+    Ok(())
+}
+
+/// Flip `[embed] enabled` in kula.toml in place, keeping every other comment
+/// and table untouched. This is the Settings switch's persistence: the
+/// server's `/api/embed/enable` calls it, so the run gate (`provider_for`)
+/// and `kula embed status` agree with what the UI shows. Any explicit flip –
+/// on or off – also records `decided = true`, so the automatic first-run
+/// path never overrides the person's choice.
+pub fn set_enabled(repo: &crate::git::Repo, on: bool) -> Result<()> {
+    let p = repo.root.join("kula.toml");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|_| crate::config::Config::default().render());
+    let mut doc: toml_edit::DocumentMut = text.parse().with_context(|| format!("reading {}", p.display()))?;
+    let t = doc.entry("embed").or_insert(toml_edit::table()).as_table_mut().context("[embed] must be a table")?;
+    t["enabled"] = toml_edit::value(on);
+    t["decided"] = toml_edit::value(true);
+    let out = doc.to_string();
+    // Never write a file kula itself can't read back.
+    let _: crate::config::Config = toml::from_str(&out).context("the edit would make kula.toml invalid")?;
+    std::fs::write(&p, out)?;
+    Ok(())
+}
+
+// ------------------------------------------------------------------ auto on
+
+/// What the automatic first-run decision did.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AutoReport {
+    /// ok | warn | refuse | decided | busy | error
+    pub verdict: String,
+    pub reasons: Vec<String>,
+    pub enabled: bool,
+}
+
+fn auto_running() -> &'static AtomicBool {
+    static A: OnceLock<AtomicBool> = OnceLock::new();
+    A.get_or_init(|| AtomicBool::new(false))
+}
+
+/// The automatic embeddings decision, run once per repo. On first index and
+/// at server start (when `[embed] decided` is absent) judge the machine with
+/// the hardware check: ok turns embeddings on and installs, embeds and remaps
+/// in the background at low priority; warn or refuse stays off and the
+/// reasons surface in Settings. Either way the decision is recorded – the
+/// person is never re-prompted, and the switch always wins afterwards.
+///
+/// `block = true` runs the pipeline on the calling thread (the CLI index,
+/// which would otherwise die mid-install); `block = false` spawns a
+/// low-priority background thread (the server).
+pub fn auto(repo: &crate::git::Repo, store: &Store, block: bool) -> AutoReport {
+    let cfg = crate::config::Config::load(&repo.root).map(|c| c.embed).unwrap_or_default();
+    if decided(repo) || cfg.enabled {
+        return AutoReport { verdict: "decided".into(), reasons: Vec::new(), enabled: cfg.enabled };
+    }
+    // Singleflight: one auto pipeline per process, and not while an explicit
+    // run (switch → install → embed) is already going.
+    if status().running || auto_running().swap(true, Ordering::SeqCst) {
+        return AutoReport { verdict: "busy".into(), reasons: Vec::new(), enabled: false };
+    }
+    if !block {
+        // Detached, low-priority: the server never waits for a download.
+        let repo = repo.clone();
+        let store = Store::open(&repo).ok();
+        let spawned = std::thread::Builder::new().name("kula-embed-auto".into()).spawn(move || {
+            lower_priority();
+            let r = match store {
+                Some(st) => auto_steps(&repo, &st, false),
+                None => AutoReport { verdict: "error".into(), reasons: vec!["store would not open".into()], enabled: false },
+            };
+            auto_running().store(false, Ordering::SeqCst);
+            if !r.enabled && r.verdict == "error" {
+                crate::embed::run_error(r.reasons.join("; "));
+            }
+            r
+        });
+        if spawned.is_err() {
+            auto_running().store(false, Ordering::SeqCst);
+            return AutoReport { verdict: "error".into(), reasons: vec!["could not spawn the auto thread".into()], enabled: false };
+        }
+        return AutoReport { verdict: "spawned".into(), reasons: Vec::new(), enabled: false };
+    }
+    let r = auto_steps(repo, store, true);
+    auto_running().store(false, Ordering::SeqCst);
+    r
+}
+
+/// The pipeline itself, on the caller's thread: check → install → embed →
+/// remap. Testable with a fake check and no-op model steps via [`auto_core`].
+fn auto_steps(repo: &crate::git::Repo, store: &Store, block: bool) -> AutoReport {
+    let cfg = crate::config::Config::load(&repo.root).map(|c| c.embed).unwrap_or_default();
+    let stats = hardware_check(repo, store, &cfg).unwrap_or_else(|e| {
+        // A failed check is a refuse with the reason on the record.
+        Stats { verdict: "refuse".into(), reasons: vec![format!("check failed – {e:#}")], ..default_stats() }
+    });
+    auto_core(repo, store, block, stats, install, |r, s| {
+        let cfg = crate::config::Config::load(&r.root)?.embed;
+        let prov = provider_for(&cfg, false)?;
+        let (_, n) = run(r, s, &cfg, &prov, cancel_requested)?;
+        Ok(n)
+    })
+}
+
+fn default_stats() -> Stats {
+    Stats {
+        ram_total_gb: 0.0,
+        ram_free_gb: 0.0,
+        disk_free_gb: 0.0,
+        cores: 0,
+        arch: String::new(),
+        symbols: 0,
+        model_mb: MODEL_MB,
+        est_seconds: 0,
+        verdict: "refuse".into(),
+        reasons: Vec::new(),
+    }
+}
+
+/// The decision logic with the machine's verdict and the model steps as
+/// inputs, so tests can drive ok / warn / refuse without hardware or a
+/// download. Records `decided` either way before anything else happens.
+fn auto_core(
+    repo: &crate::git::Repo,
+    store: &Store,
+    block: bool,
+    stats: Stats,
+    install_step: impl Fn(&crate::git::Repo) -> Result<bool>,
+    embed_step: impl Fn(&crate::git::Repo, &Store) -> Result<usize>,
+) -> AutoReport {
+    // The decision is recorded whatever the verdict – never re-prompt.
+    if let Err(e) = toml_flag(repo, "decided", true) {
+        return AutoReport { verdict: "error".into(), reasons: vec![format!("{e:#}")], enabled: false };
+    }
+    if stats.verdict != "ok" {
+        return AutoReport { verdict: stats.verdict, reasons: stats.reasons, enabled: false };
+    }
+    // Hardware says ok: turn the switch on, install, embed, remap. An install
+    // failure leaves the switch off – Settings explains, and the person can
+    // turn it on manually.
+    if let Err(e) = set_enabled(repo, true) {
+        return AutoReport { verdict: "error".into(), reasons: vec![format!("{e:#}")], enabled: false };
+    }
+    if let Err(e) = install_step(repo).and_then(|downloaded| {
+        if downloaded || installed() {
+            Ok(())
+        } else {
+            bail!("install reported nothing to do and the model is still missing")
+        }
+    }) {
+        let _ = set_enabled(repo, false);
+        return AutoReport { verdict: "error".into(), reasons: vec![format!("install failed – {e:#}")], enabled: false };
+    }
+    match embed_step(repo, store) {
+        Ok(n) => {
+            // Embeddings landed: remap so blocks re-form thematically. The
+            // CLI runs it inline (a spawned thread would die at exit); the
+            // server spawns on the background pool.
+            if block {
+                crate::map_run::run_now(repo.clone(), true);
+            } else {
+                crate::map_run::spawn(repo.clone(), true);
+            }
+            AutoReport { verdict: "ok".into(), reasons: vec![format!("embedded {n} symbols")], enabled: true }
+        }
+        Err(e) => {
+            let _ = set_enabled(repo, false);
+            AutoReport { verdict: "error".into(), reasons: vec![format!("embed failed – {e:#}")], enabled: false }
+        }
+    }
+}
+
 /// `GET /api/embed/status` – config, install state, live run.
 pub fn api_status(repo: &crate::git::Repo) -> Result<serde_json::Value> {
     let cfg = crate::config::Config::load(&repo.root)?.embed;
@@ -741,6 +1036,60 @@ mod tests {
         assert_eq!(v[0], w[0], "same text, same vector");
     }
 
+    // ------------------------------------------------– thematic map (I1)
+
+    #[test]
+    fn role_prototypes_cover_every_role_and_are_unit_vectors() {
+        let p = MockProvider::new();
+        let ps = role_prototypes(&p);
+        assert_eq!(ps.len(), ROLE_RULES.len(), "one prototype per role");
+        for (r, v) in &ps {
+            let n: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+            assert!((n - 1.0).abs() < 1e-3, "role {} prototype not unit length", r);
+        }
+        // Same provider, same prototypes – deterministic.
+        assert_eq!(role_prototypes(&p), ps);
+    }
+
+    #[test]
+    fn role_cross_check_accepts_the_exact_rule_and_drops_noise() {
+        let p = MockProvider::new();
+        // The prototype text itself must cross-check back to its role.
+        for (r, rule) in ROLE_RULES {
+            let (got, conf) = role_cross_check(&p, &format!("role {} – {}", r, rule)).expect("a confident match");
+            assert_eq!(got, *r, "exact rule text cross-checks to its own role");
+            assert!(conf > 0.9, "self-similarity is near 1, got {}", conf);
+        }
+        // A text that matches no rule closely still names some nearest role –
+        // but the mock's hash vectors keep confidence well under the bar for
+        // genuinely unrelated text, so just prove the shape of the answer.
+        if let Some((role, conf)) = role_cross_check(&p, "fn do_things(x: u8) -> u8 { x + 1 }") {
+            assert!(ROLE_RULES.iter().any(|(r, _)| r == &role), "the suggestion is a known role");
+            assert!((0.0..=1.0).contains(&conf), "confidence in 0..1");
+        }
+    }
+
+    #[test]
+    fn theme_for_terms_picks_the_closest_terms_to_the_centroid() {
+        let p = MockProvider::new();
+        // The members' vectors ARE the mock's embedding of one term's text, so
+        // the centroid equals that embedding and that term must win with a
+        // hash provider – deterministic, not hoping a hash vector is close.
+        let term_text = |t: &str| format!("task: code retrieval | query: {}", t);
+        let v_dicom = p.embed(&[term_text("dicom")]).unwrap().pop().unwrap();
+        let cs: HashMap<i64, Vec<f32>> = [(1i64, v_dicom.clone()), (2, v_dicom.clone())].into_iter().collect();
+        let ix = EmbedIndex { provider: "mock".into(), dim: DIM, vectors: cs };
+        let c = block_centroid(&ix, &[1, 2]).expect("centroid from members");
+        let theme = theme_for_terms(&p, &c, &["dicom".into(), "decode".into(), "pixel".into(), "render".into()]).expect("theme from terms");
+        let words: Vec<&str> = theme.split(' ').collect();
+        assert!((2..=4).contains(&words.len()), "theme is 2–4 words, got {:?}", words);
+        assert!(theme.contains("dicom"), "the dominant term leads the theme");
+        // Empty inputs give no theme.
+        assert!(theme_for_terms(&p, &[], &["x".into()]).is_none());
+        assert!(theme_for_terms(&p, &c, &[]).is_none());
+        assert!(block_centroid(&ix, &[99]).is_none(), "no vectors, no centroid");
+    }
+
     #[test]
     fn cosine_and_truncation() {
         let a = vec![1.0, 0.0, 0.0];
@@ -753,6 +1102,78 @@ mod tests {
         let t = truncate(&[3.0, 4.0, 99.0], 2);
         assert_eq!(t.len(), 2);
         assert!((cosine(&t, &[3.0, 4.0]) - 1.0).abs() < 1e-6);
+    }
+
+    // ------------------------------------------------– auto on (I1)
+
+    fn no_install(_r: &crate::git::Repo) -> Result<bool> {
+        Ok(true)
+    }
+    fn no_embed(_r: &crate::git::Repo, _s: &Store) -> Result<usize> {
+        Ok(0)
+    }
+
+    #[test]
+    fn auto_refuse_records_the_decision_and_stays_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = test_repo(dir.path());
+        std::fs::create_dir_all(repo.kula_dir()).unwrap();
+        std::fs::write(repo.root.join("kula.toml"), "[embed]\nenabled = false\n").unwrap();
+        let store = Store::create(&repo).unwrap();
+        store.publish().unwrap();
+        let st = Store::open(&repo).unwrap();
+        let low = Stats {
+            ram_free_gb: 1.0,
+            disk_free_gb: 1.0,
+            verdict: "refuse".into(),
+            reasons: vec!["free RAM 1.0 GB < 4 GB".into()],
+            ..default_stats()
+        };
+        let rep = auto_core(&repo, &st, true, low, no_install, no_embed);
+        assert_eq!(rep.verdict, "refuse");
+        assert!(!rep.enabled, "a refuse verdict never flips the switch");
+        let cfg = crate::config::Config::load(&repo.root).unwrap().embed;
+        assert!(!cfg.enabled);
+        assert!(decided(&repo), "the decision is recorded either way");
+        // A second run never re-prompts – the marker short-circuits.
+        let again = auto(&repo, &st, true);
+        assert_eq!(again.verdict, "decided");
+        assert!(!again.enabled);
+    }
+
+    #[test]
+    fn auto_ok_flips_the_switch_and_runs_the_pipeline() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = test_repo(dir.path());
+        std::fs::create_dir_all(repo.kula_dir()).unwrap();
+        std::fs::write(repo.root.join("kula.toml"), "[embed]\nenabled = false\n").unwrap();
+        let store = Store::create(&repo).unwrap();
+        store.publish().unwrap();
+        let st = Store::open(&repo).unwrap();
+        let ok = Stats { verdict: "ok".into(), reasons: Vec::new(), ..default_stats() };
+        let rep = auto_core(&repo, &st, true, ok.clone(), no_install, |_, _| Ok(5));
+        assert_eq!(rep.verdict, "ok");
+        assert!(rep.enabled, "an ok verdict turns embeddings on in the background path");
+        let text = std::fs::read_to_string(repo.root.join("kula.toml")).unwrap();
+        assert!(text.contains("enabled = true"));
+        assert!(text.contains("decided = true"));
+        // An install failure leaves the switch off but the decision recorded.
+        let fail = auto_core(&repo, &st, true, ok.clone(), |_r| bail!("download died"), no_embed);
+        assert_eq!(fail.verdict, "error");
+        assert!(fail.reasons[0].contains("download died"));
+        let cfg = crate::config::Config::load(&repo.root).unwrap().embed;
+        assert!(!cfg.enabled, "install failure flips the switch back off");
+        assert!(decided(&repo));
+    }
+
+    #[test]
+    fn set_enabled_also_records_the_decision() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = test_repo(dir.path());
+        std::fs::create_dir_all(repo.kula_dir()).unwrap();
+        std::fs::write(repo.root.join("kula.toml"), "[embed]\nenabled = false\n").unwrap();
+        set_enabled(&repo, false).unwrap();
+        assert!(decided(&repo), "any explicit flip sticks – auto never re-prompts");
     }
 
     #[test]
@@ -906,5 +1327,59 @@ mod tests {
         let (idx, fresh) = run(&repo, &st, &cfg, &prov, || false).unwrap();
         assert_eq!(fresh, 0, "empty repo, nothing to embed");
         assert_eq!(idx.dim, DIM, "Matryoshka truncation to 256");
+    }
+
+    // -------------------------------------------------- I1 · the switch
+
+    /// set_enabled writes `[embed] enabled` in place, keeping the rest of
+    /// kula.toml – and status reads it back. This is the Settings switch's
+    /// whole persistence story.
+    #[test]
+    fn set_enabled_flips_the_switch_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = test_repo(dir.path());
+        std::fs::create_dir_all(repo.kula_dir()).unwrap();
+        std::fs::write(repo.root.join("kula.toml"), "# top comment\n[agents]\nmemory = true\n").unwrap();
+
+        set_enabled(&repo, true).unwrap();
+        let text = std::fs::read_to_string(repo.root.join("kula.toml")).unwrap();
+        assert!(text.contains("enabled = true"), "{text}");
+        assert!(text.contains("[agents]"), "other tables kept: {text}");
+        assert!(text.contains("# top comment"), "comments kept: {text}");
+        let cfg = crate::config::Config::load(&repo.root).unwrap().embed;
+        assert!(cfg.enabled);
+
+        set_enabled(&repo, false).unwrap();
+        let cfg = crate::config::Config::load(&repo.root).unwrap().embed;
+        assert!(!cfg.enabled, "flips back off");
+    }
+
+    /// The wiring test that runs without the model: the mock provider rides
+    /// similarity_for into the map (once M1 lands the thematic pass, this is
+    /// the same path), and the stored map records the embed state.
+    #[test]
+    fn mock_similarity_rides_the_map_via_similarity_for() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = test_repo(dir.path());
+        std::fs::create_dir_all(repo.kula_dir()).unwrap();
+        // Two files with calls between them: something for the cache to hold.
+        std::fs::create_dir_all(repo.root.join("src")).unwrap();
+        std::fs::write(repo.root.join("src/a.ts"), "export function ping() { return pong(); }\n").unwrap();
+        std::fs::write(repo.root.join("src/b.ts"), "export function pong() { return 1; }\n").unwrap();
+        crate::index::run(&repo, true).unwrap();
+        let st = Store::open(&repo).unwrap();
+        // Nothing embedded: similarity_for reports "off" and hands back no index.
+        let (idx, state) = similarity_for(&repo, &st);
+        assert!(idx.is_none(), "no cache, no index");
+        assert_eq!(state, "off");
+        // After a mock run the cache exists and similarity_for serves it.
+        let cfg = EmbedCfg { enabled: true, threads: 1, batch: 2 };
+        run(&repo, &st, &cfg, &(std::sync::Arc::new(MockProvider::new()) as std::sync::Arc<dyn EmbedProvider>), || false).unwrap();
+        let (idx, state) = similarity_for(&repo, &st);
+        assert!(idx.is_some(), "cache present after a run");
+        assert_eq!(state, "on", "full coverage reports on");
+        // And the map engine accepts the provider through the trait.
+        let s = crate::syntagm::build_with(&repo, &st, idx.as_ref().map(|i| i as &dyn crate::syntagm::Similarity), state).unwrap();
+        assert!(!s.blocks.is_empty() || s.chains.is_empty(), "map built with the mock provider");
     }
 }
