@@ -14,10 +14,12 @@ import { useCode } from "../CodePanel";
 import { Grip, listWidth } from "../resize";
 import { fixture } from "./map/fixture";
 import { BlockCanvas } from "./map/canvas";
-import { Readout } from "./map/readout";
+import { Readout, SubwayStrip } from "./map/readout";
 import { MapViewSidebar } from "./map/sidebar";
 import { FlowView } from "./map/flow";
+import { CapsView, ChainsStrips } from "./map/caps";
 import { ProgressStrip, useMapProgress } from "./map/progress";
+import { focusOf } from "./map/chainFocus";
 import type { Chain, ChainPage, Lens, MapData, MapProgress, Role } from "./map/types";
 import { LENS_ROLES, ROLES, ROLE_RULES } from "./map/types";
 
@@ -40,8 +42,17 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
   const [roles, setRoles] = useState<Set<Role>>(() => new Set(ROLES));
   const [rolesOpen, setRolesOpen] = useState(false);
   const [side, setSide] = useState(false); // phone drawer
-  // The landing view is the functional flow; "blocks" is the nested-box drill.
-  const [view, setView] = useState<"flow" | "blocks">("flow");
+  // The landing view is the functional flow; "capabilities" reads the repo as
+  // what you can do with it; "blocks" is the nested-box drill; "chains" the
+  // top chain families as strips.
+  const [view, setView] = useState<"flow" | "capabilities" | "blocks" | "chains">("flow");
+  // The selected block fills the sidebar (the flow canvas selects, not drills);
+  // a re-layout key and a pinned selection are the tinker levers.
+  const [selBlock, setSelBlock] = useState<string | null>(null);
+  const [layoutKey, setLayoutKey] = useState(0);
+  // Focus mode: the selected chain stays on the flow canvas and dims everything
+  // it does not cross. Plain chain selection still draws the blocks-canvas path.
+  const [focusMode, setFocusMode] = useState(false);
   const code = useCode();
   const live = useMapProgress();
   const wasActive = useRef(false);
@@ -129,7 +140,7 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || (e.target as HTMLElement)?.closest?.("input, textarea, [role=dialog]")) return;
-      if (path.length || selChain) { home(); setSelChain(null); }
+      if (path.length || selChain) { home(); setSelChain(null); setFocusMode(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -158,6 +169,7 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
   const selectChain = useCallback((c: Chain) => {
     setSelChain((cur) => (cur?.id === c.id ? null : c));
     setSelLeaf(null);
+    setFocusMode(false);
   }, []);
 
   const selectLeaf = useCallback((id: number) => {
@@ -193,6 +205,23 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
     if (has(u)) return "utilities";
     return "all"; // mixed custom set reads as All
   }, [roles]);
+
+  // Tinker: testing code is one toggle off, not a role chip hunt.
+  const [hideTests, setHideTests] = useState(false);
+  useEffect(() => {
+    setRoles((prev) => {
+      const next = new Set(prev);
+      if (hideTests) next.delete("test"); else next.add("test");
+      return next;
+    });
+  }, [hideTests]);
+  // Pinned selection survives a re-render of the canvas (localStorage, wrapped).
+  const [pinned, setPinned] = useState<string | null>(() => {
+    try { return JSON.parse(localStorage.getItem("kula.map.pin") ?? "null"); } catch { return null; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("kula.map.pin", JSON.stringify(pinned)); } catch { /* private window */ }
+  }, [pinned]);
 
   if (!data) {
     if (prog?.running) {
@@ -234,13 +263,19 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
           ))}
         </div>
         <div className="sy-lens-group" role="group" aria-label="View">
-          {(["flow", "blocks"] as const).map((v) => (
+          {(["flow", "capabilities", "blocks", "chains"] as const).map((v) => (
             <button key={v} className={`tab-btn sy-lens-btn${view === v ? " on" : ""}`} data-testid={`map-view-${v}`}
               aria-pressed={view === v} onClick={() => { setView(v); if (v === "flow") { home(); setSelChain(null); } }}>{v}</button>
           ))}
         </div>
         <button className={`tab-btn sy-lens-btn${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn"
           aria-expanded={rolesOpen} aria-controls="map-role-filter" onClick={() => setRolesOpen((o) => !o)}>roles</button>
+        <button className={`tab-btn sy-lens-btn${hideTests ? " on" : ""}`} data-testid="map-hide-tests" aria-pressed={hideTests}
+          onClick={() => setHideTests((t) => !t)}>hide tests</button>
+        <button className="tab-btn sy-lens-btn" data-testid="map-relayout" title="re-run the layout"
+          onClick={() => setLayoutKey((k) => k + 1)}>re-layout</button>
+        <button className={`tab-btn sy-lens-btn${selBlock && pinned === selBlock ? " on" : ""}`} data-testid="map-pin" aria-pressed={!!selBlock && pinned === selBlock} title="pin this selection"
+          onClick={() => setPinned((p) => (selBlock && p !== selBlock ? selBlock : null))}>pin</button>
       </div>
       {live?.running && <ProgressStrip p={live} />}
       {rolesOpen && (
@@ -257,16 +292,31 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
       <button className="btn sm sy-side-toggle" aria-expanded={side} aria-controls="map-sidebar"
         onClick={() => setSide((s) => !s)} data-testid="map-side-toggle">Structure</button>
       <div className="sy-split" style={listWidth("map", 360)}>
-        {view === "flow" && !chain && !path.length
-          ? <FlowView data={data} roles={roles} onDrill={drill} onLeaf={selectLeaf} />
-          : <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />}
+        {view === "capabilities" && <CapsView data={data} roles={roles} onSelect={setSelBlock} selection={selBlock} onFile={(p) => code.open({ path: p })} />}
+        {view === "chains" && <ChainsStrips data={data} roles={roles} onChain={selectChain} selChain={selChain?.id ?? null} loadChains={loadChains} onLeaf={selectLeaf} />}
+        {view === "flow" && (!chain || focusMode) && !path.length
+          ? <FlowView data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} />
+          : (view === "blocks" || chain || path.length) && view !== "capabilities" && view !== "chains"
+            ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
+            : null}
         {side && <div className="sy-scrim" onClick={() => setSide(false)} aria-hidden="true" />}
         {/* Right-hand structure panel, sized and resized like Graph's inspector. */}
         <aside className={`sy-side-wrap fm-right${side ? " open" : ""}`} id="map-sidebar" aria-label="map structure">
           <Grip id="map" edge="left" min={280} max={720} label="Resize structure panel" />
-          <details className="fm-details" open={!!readBlock && path.length > 0}>
+          <details className="fm-details" open={!!readBlock && (path.length > 0 || !!selChain || !!selBlock)}>
             <summary className="fm-details-sum">{readBlock?.name ?? "map"} – details</summary>
-            <Readout data={data} block={readBlock} onLeaf={selectLeaf} />
+            {selChain && (
+              <div className="fm-chain-card" data-testid="map-chain-card">
+                <div className="fm-chain-card-head">
+                  <span className="sy-section-label">chain</span>
+                  <button className="tab-btn sy-lens-btn" data-testid="map-focus-chain" aria-pressed={focusMode} title="dim everything this chain does not cross"
+                    onClick={() => setFocusMode((f) => !f)}>{focusMode ? "unfocus" : "focus"}</button>
+                </div>
+                <p className="sy-summary">{data.leaves[selChain.source]?.name} → {data.leaves[selChain.terminal]?.name} · {selChain.len} steps</p>
+                <SubwayStrip data={data} chain={selChain} onStep={(s) => typeof s === "number" ? selectLeaf(s) : undefined} />
+              </div>
+            )}
+            <Readout data={data} block={readBlock} onLeaf={selectLeaf} onFamily={(famId) => { loadChains(famId).then((p) => { const c = p.chains[0]; if (c) selectChain(c); }).catch(() => { /* no chains pageable */ }); }} />
           </details>
           <MapViewSidebar
             blocks={data.blocks} families={data.families} leaves={data.leaves} roles={roles}
