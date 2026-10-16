@@ -22,6 +22,9 @@ export const Icon = {
   box: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="7" width="17" height="10" /><path d="M7 7v10" /></svg>),
   home: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="4" y="4" width="7" height="7" fill="currentColor" /><rect x="13" y="4" width="7" height="7" /><rect x="4" y="13" width="7" height="7" /><rect x="13" y="13" width="7" height="7" /></svg>),
   graph: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 12 5.5 6.5M12 12l6.5-5.5M12 12v7" /><rect x="9.5" y="9.5" width="5" height="5" fill="currentColor" /><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="20" r="2" /></svg>),
+  // map – the flow canvas: three nodes and two edges, left to right; the
+  // entry node carries the accent
+  flowMap: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="4.5" cy="7" r="2.5" stroke="var(--accent)" /><circle cx="19" cy="12" r="2.5" /><rect x="9" y="14.5" width="5" height="5" rx="1" /><path d="M7 7.7c2.6.8 4 2.3 4.6 4.5M16.6 11.6c-1.3-1-2.6-1.4-4.1-1.2" /></svg>),
   changes: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="4" y="4" width="16" height="16" /><path d="M12 7.5v6M9 10.5h6M9 16.5h6" /></svg>),
   history: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 3v5.5M12 10.5v3M12 15.5V21" /><circle cx="12" cy="9.5" r="1.1" fill="currentColor" /><circle cx="12" cy="14.5" r="1.1" fill="currentColor" /><circle cx="12" cy="9.5" r="2.5" /><circle cx="12" cy="14.5" r="2.5" /></svg>),
   branches: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="7" cy="5" r="2" /><circle cx="7" cy="19" r="2" /><rect x="15" y="6" width="4" height="4" /><path d="M7 7v10M17 10c0 4-3 5-10 7" /></svg>),

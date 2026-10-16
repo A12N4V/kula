@@ -50,7 +50,7 @@ const GROUPS: Rail[][] = [
     { id: "graph", label: "Graph", icon: Icon.graph, key: "2" },
     { id: "flows", label: "Flows", icon: Icon.flows, key: "3" },
     // `s` stages files in Changes, so map takes `y` instead.
-    { id: "map", label: "map", icon: Icon.box, key: "y" },
+    { id: "map", label: "map", icon: Icon.flowMap, key: "y" },
   ],
   [
     { id: "changes", label: "Changes", icon: Icon.changes, key: "4" },
