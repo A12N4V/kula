@@ -2133,6 +2133,19 @@ test.describe("map", () => {
     await expect(page).toHaveURL(/#map/);
   });
 
+  test("grouping depth collapses sections to single nodes and back", async ({ page }) => {
+    await open(page, "map");
+    // the fixture's sections are leaf blocks, so frames keep one node each;
+    // the control flips the grouping mode and the canvas repaints either way
+    await page.locator("[data-testid=map-depth]").click();
+    await expect(page.locator("[data-testid=map-depth]")).toHaveText("depth 1");
+    await expect(page.locator(".fm-section .fm-flow-box").first()).toBeVisible();
+    await expect(page.locator(".fm-section-head .fm-section-name").first()).toBeVisible();
+    await page.locator("[data-testid=map-depth]").click();
+    await expect(page.locator("[data-testid=map-depth]")).toHaveText("depth 2");
+    await expect(page.locator(".fm-flow-box").first()).toBeVisible();
+  });
+
   test("the capabilities lens shows one swimlane per entry family", async ({ page }) => {
     await open(page, "map");
     await page.locator("[data-testid=map-view-capabilities]").click();

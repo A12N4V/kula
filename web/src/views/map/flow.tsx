@@ -31,6 +31,8 @@ type Props = {
   onDrill: (id: string) => void;
   onLeaf: (id: number) => void;
   onClearFocus?: () => void;
+  /** Grouping depth: 1 = one node per section, 2 = child blocks inside each frame. */
+  depth?: number;
   layoutKey?: number;
 };
 
@@ -45,7 +47,7 @@ function symbolsUnder(blocks: Record<string, Block>, id: string, out: number[] =
   return out;
 }
 
-export function FlowView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, layoutKey = 0 }: Props) {
+export function FlowView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0 }: Props) {
   const { sections, layers, labels, band, flows, headline } = useMemo(() => layout(data), [data, layoutKey]);
   const wrap = useRef<HTMLDivElement>(null);
   const [arrows, setArrows] = useState<{ d: string; w: number; key: string; hot: boolean }[]>([]);
@@ -99,6 +101,7 @@ export function FlowView({ data, roles, focus, selection, onSelect, onDrill, onL
 
   // The nodes inside one section's frame: its child blocks, or itself.
   const members = (s: Block): Block[] => {
+    if (depth < 2) return [s];
     const kids = s.children.map((c) => data.blocks[c]).filter((x): x is Block => !!x);
     return kids.length ? kids : [s];
   };

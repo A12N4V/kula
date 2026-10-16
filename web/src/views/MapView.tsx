@@ -53,6 +53,8 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
   // Focus mode: the selected chain stays on the flow canvas and dims everything
   // it does not cross. Plain chain selection still draws the blocks-canvas path.
   const [focusMode, setFocusMode] = useState(false);
+  // Grouping depth on the flow canvas: sections as single nodes, or their blocks inside.
+  const [depth, setDepth] = useState(2);
   const code = useCode();
   const live = useMapProgress();
   const wasActive = useRef(false);
@@ -268,6 +270,8 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
               aria-pressed={view === v} onClick={() => { setView(v); if (v === "flow") { home(); setSelChain(null); } }}>{v}</button>
           ))}
         </div>
+        <button className="tab-btn sy-lens-btn" data-testid="map-depth" title="grouping depth: sections as single nodes, or their blocks inside the frames"
+          onClick={() => setDepth((d) => (d === 2 ? 1 : 2))}>depth {depth}</button>
         <button className={`tab-btn sy-lens-btn${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn"
           aria-expanded={rolesOpen} aria-controls="map-role-filter" onClick={() => setRolesOpen((o) => !o)}>roles</button>
         <button className={`tab-btn sy-lens-btn${hideTests ? " on" : ""}`} data-testid="map-hide-tests" aria-pressed={hideTests}
@@ -295,7 +299,7 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
         {view === "capabilities" && <CapsView data={data} roles={roles} onSelect={setSelBlock} selection={selBlock} onFile={(p) => code.open({ path: p })} />}
         {view === "chains" && <ChainsStrips data={data} roles={roles} onChain={selectChain} selChain={selChain?.id ?? null} loadChains={loadChains} onLeaf={selectLeaf} />}
         {view === "flow" && (!chain || focusMode) && !path.length
-          ? <FlowView data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} />
+          ? <FlowView data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} depth={depth} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} />
           : (view === "blocks" || chain || path.length) && view !== "capabilities" && view !== "chains"
             ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
             : null}
