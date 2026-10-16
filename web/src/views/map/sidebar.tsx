@@ -1,4 +1,4 @@
-// Syntagm sidebar: CHAINS (chain families, searchable) and BLOCKS (tree),
+// MapView sidebar: CHAINS (chain families, searchable) and BLOCKS (tree),
 // one filter on top. A family expands to page its chains in from
 // /api/map/chains. The flat row list is virtualised – 10^5+ families stay
 // smooth because only the slice on screen (plus overscan) is in the DOM, and
@@ -9,19 +9,7 @@ import { Icon } from "../../ui";
 import type { Block, Chain, ChainPage, Family, Leaf, LeafKind, Role } from "./types";
 import { ROLE_RULES } from "./types";
 
-/** Kind glyphs, same language as colors.ts – fn / class / var / type. */
-export const KIND_GLYPH: Record<LeafKind, string> = { fn: "ƒ", class: "C", var: "·", type: "▭" };
-const GLYPH_COLOR: Record<LeafKind, string> = { fn: "var(--accent)", class: "var(--blue)", var: "var(--green)", type: "var(--violet)" };
-/** Role glyphs: one letter, colored, on every block node. */
-export const ROLE_GLYPH: Record<Role, string> = {
-  entry: "e", orchestrator: "o", core: "c", utility: "u", adapter: "a",
-  model: "m", config: "k", test: "t", glue: "g",
-};
-const ROLE_COLOR: Record<Role, string> = {
-  entry: "var(--accent)", orchestrator: "var(--violet)", core: "var(--text-2)",
-  utility: "var(--green)", adapter: "var(--blue)", model: "var(--yellow)",
-  config: "var(--yellow)", test: "var(--red)", glue: "var(--text-3)",
-};
+import { KindIcon, RoleMark } from "./icons";
 
 export type SideRow =
   | { t: "header"; key: string; label: string }
@@ -60,8 +48,10 @@ export function fmtCount(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-export function SyntagmSidebar(p: Props) {
+export function MapViewSidebar(p: Props) {
   const [q, setQ] = useState("");
+  // One list at a time: the block tree, every function flat, or the chain families.
+  const [sect, setSect] = useState<"blocks" | "functions" | "chains">("blocks");
   const [active, setActive] = useState(-1);
   const scroll = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
@@ -73,7 +63,7 @@ export function SyntagmSidebar(p: Props) {
   const [pages, setPages] = useState<Record<string, ChainPage>>({});
   const [loadingFam, setLoadingFam] = useState<string | null>(null);
   // Row height follows the hit-target floor: 28px on desktop, 40px on phones
-  // (the CSS in syntagm.css does the same under the same query).
+  // (the CSS in map.css does the same under the same query).
   const [rowH, setRowH] = useState(() => (window.innerWidth <= 720 ? 40 : 28));
   useEffect(() => {
     const onR = () => setRowH(window.innerWidth <= 720 ? 40 : 28);
@@ -105,6 +95,8 @@ export function SyntagmSidebar(p: Props) {
     (f: Family) => `${p.leaves[f.source]?.name ?? f.source} → ${p.leaves[f.terminal]?.name ?? f.terminal}`,
     [p.leaves]);
 
+  const allLeaves = useMemo(() => Object.entries(p.leaves).map(([k, l]) => [Number(k), l] as const).sort((a, b) => a[1].name.localeCompare(b[1].name)), [p.leaves]);
+
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase();
     const hit = (t: string) => !s || t.toLowerCase().includes(s);
@@ -115,7 +107,7 @@ export function SyntagmSidebar(p: Props) {
     const out: SideRow[] = [];
     // CHAINS: every family, filtered by role (both ends) and search.
     const famRows: SideRow[] = [];
-    for (const f of p.families) {
+    if (sect === "chains") for (const f of p.families) {
       if (!roleOK(f.source) || !roleOK(f.terminal)) continue;
       const name = famName(f);
       if (!hit(name)) continue;
@@ -128,7 +120,6 @@ export function SyntagmSidebar(p: Props) {
         if (page && !page.done && page.cursor) famRows.push({ t: "chain-load", famId: f.id });
       }
     }
-    if (famRows.length) out.push({ t: "header", key: "h-chains", label: "Chains" }, ...famRows);
     // BLOCKS tree, filtered: a block shows when the role filter passes for it
     // (its own role, or any leaf inside), AND the search hits it or its
     // subtree. The two filters compose – the role check never bypasses search.
@@ -150,10 +141,17 @@ export function SyntagmSidebar(p: Props) {
         }
       }
     };
-    for (const c of p.openRoot.filter((id) => p.blocks[id]?.depth === 0)) walk(c, true);
+    if (sect === "blocks") for (const c of p.openRoot.filter((id) => p.blocks[id]?.depth === 0)) walk(c, true);
     if (out.length > blockStart) out.splice(blockStart, 0, { t: "header", key: "h-blocks", label: "Blocks" });
+    // FUNCTIONS: every symbol in the repo, flat and sorted – single-function
+    // blocks included, so nothing is only reachable by drilling.
+    const fnStart = out.length;
+    if (sect === "functions") for (const [sid, l] of allLeaves) if (roleOK(sid) && hit(l.name)) out.push({ t: "leaf", id: sid, name: l.name, kind: l.kind, path: l.path });
+    if (out.length > fnStart) out.splice(fnStart, 0, { t: "header", key: "h-fns", label: `Functions · ${out.length - fnStart}` });
+    // CHAINS last: the family list can run to 10^5 rows.
+    if (famRows.length) out.push({ t: "header", key: "h-chains", label: `Chains · ${p.families.length}` }, ...famRows);
     return flatten(out);
-  }, [p.blocks, p.families, p.leaves, p.roles, p.openRoot, q, openFams, pages, loadingFam, famName]);
+  }, [sect, allLeaves, p.blocks, p.families, p.leaves, p.roles, p.openRoot, q, openFams, pages, loadingFam, famName]);
 
   // Windowing: only rows near the viewport exist in the DOM.
   const ROW = rowH, OVER = 8;
@@ -206,18 +204,26 @@ export function SyntagmSidebar(p: Props) {
   };
 
   return (
-    <div className="sy-side" data-testid="syntagm-sidebar">
+    <div className="sy-side" data-testid="map-sidebar">
       <div className="sy-side-head">
-        <h2>Syntagm</h2>
-        {p.onClose && <button className="btn sm ghost icon-only sy-side-close" data-testid="syntagm-side-close" aria-label="Hide sidebar" onClick={p.onClose}><Icon.sidebar /></button>}
+        <h2>Structure</h2>
+        {p.onClose && <button className="btn sm ghost icon-only sy-side-close" data-testid="map-side-close" aria-label="Hide sidebar" onClick={p.onClose}><Icon.sidebar /></button>}
       </div>
       <div className="sy-filter">
         <input
-          className="input sy-filter-input" placeholder="Filter families and blocks" value={q} ref={filterRef}
-          onChange={(e) => { setQ(e.target.value); setActive(-1); }} onKeyDown={onKey} aria-label="Filter families and blocks" data-testid="syntagm-filter"
+          className="input sy-filter-input" placeholder="Filter chains, blocks, functions" value={q} ref={filterRef}
+          onChange={(e) => { setQ(e.target.value); setActive(-1); }} onKeyDown={onKey} aria-label="Filter chains, blocks, functions" data-testid="map-filter"
         />
       </div>
-      <div className="sy-side-scroll" ref={scroll} tabIndex={0} onKeyDown={onKey} data-testid="syntagm-side-scroll">
+      <div className="sy-lens-group fm-sects" role="tablist" aria-label="Structure list">
+        {(["blocks", "functions", "chains"] as const).map((k) => (
+          <button key={k} role="tab" aria-selected={sect === k} className={`tab-btn sy-lens-btn${sect === k ? " on" : ""}`}
+            data-testid={`map-sect-${k}`} onClick={() => { setSect(k); setActive(-1); scroll.current?.scrollTo({ top: 0 }); }}>
+            {k} <span className="sy-row-meta">{k === "blocks" ? Object.keys(p.blocks).length : k === "functions" ? allLeaves.length : fmtCount(p.families.length)}</span>
+          </button>
+        ))}
+      </div>
+      <div className="sy-side-scroll" ref={scroll} tabIndex={0} onKeyDown={onKey} data-testid="map-side-scroll">
         <div style={{ height: visible.length * ROW, position: "relative" }}>
           <div style={{ position: "absolute", top: start * ROW, left: 0, right: 0 }}>
             {slice.map((row, i) => {
@@ -243,7 +249,7 @@ export function SyntagmSidebar(p: Props) {
                     </button>
                     <span className="sy-row-meta">{fmtCount(f.count)} · len {f.min_len}–{f.max_len}</span>
                     {/* the entry leaf's role, one-line rule as its title */}
-                    {src && <span className="sy-role" style={{ color: ROLE_COLOR[src.role] }} title={`${src.role} – ${ROLE_RULES[src.role]}`}>{ROLE_GLYPH[src.role]}</span>}
+                    {src && <RoleMark role={src.role} />}
                   </div>
                 );
               }
@@ -259,7 +265,7 @@ export function SyntagmSidebar(p: Props) {
               if (row.t === "chain-load") {
                 const page = pages[row.famId];
                 return (
-                  <button key={row.key} data-row={idx} className={`sy-row sy-chain-load${act}`} data-testid={`syntagm-chain-load-${row.famId}`}
+                  <button key={row.key} data-row={idx} className={`sy-row sy-chain-load${act}`} data-testid={`map-chain-load-${row.famId}`}
                     onClick={() => { if (page?.cursor) load(row.famId, page.cursor, true); }}>
                     <span className="sy-row-meta">{page ? "+ load more chains" : "loading chains…"}</span>
                   </button>
@@ -275,8 +281,7 @@ export function SyntagmSidebar(p: Props) {
                     </button>
                     <button className="sy-block-name" title={`${row.block.name} – ${row.block.summary}`} onClick={() => p.onZoom(row.block.id)}>
                       <span className={`sy-kind sy-k-${row.block.kind}`}>{row.block.kind}</span>
-                      <span className={`sy-role sy-role-${row.block.role}`} style={{ color: ROLE_COLOR[row.block.role] }}
-                        title={`${row.block.role} – ${ROLE_RULES[row.block.role]}`}>{ROLE_GLYPH[row.block.role]}</span>
+                      <RoleMark role={row.block.role} />
                       <span className="sy-bname">{row.block.name}</span>
                     </button>
                     <span className="sy-row-meta">{leafy ? row.block.symbols.length : row.block.children.length}</span>
@@ -285,7 +290,7 @@ export function SyntagmSidebar(p: Props) {
               }
               return (
                 <button key={row.key} data-row={idx} className={`sy-row sy-leaf${sel}${act}`} title={`${row.path}`} onClick={() => p.onLeaf(row.id)}>
-                  <span className="sy-glyph" style={{ color: GLYPH_COLOR[row.kind] }}>{KIND_GLYPH[row.kind]}</span>
+                  <KindIcon kind={row.kind} />
                   <span className="sy-leaf-name mono">{row.name}</span>
                 </button>
               );

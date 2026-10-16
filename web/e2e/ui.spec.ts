@@ -1783,27 +1783,32 @@ test.describe("isolate from the map", () => {
   });
 });
 
-test.describe("Syntagm", () => {
-  // The repo server has no /api/syntagm until B1 lands; the view falls back to
-  // its fixture, which is exactly what U1 ships against (wave 2 swaps it).
+test.describe("map", () => {
+  // The repo server has no /api/map until M1 lands; the view falls back to
+  // its fixture. The landing view is the functional flow; the nested-box drill
+  // is the "blocks" view, and the right panel lists blocks / functions / chains.
+  const blocksView = (page: Page) => page.locator("[data-testid=map-view-blocks]").click();
+  const chainsList = (page: Page) => page.locator("[data-testid=map-sect-chains]").click();
   test("tab loads with sidebar, canvas and readout", async ({ page }) => {
-    await open(page, "syntagm");
-    await expect(page.locator("[data-testid=syntagm-view]")).toBeVisible();
-    await expect(page.locator("[data-testid=syntagm-filter]")).toBeVisible();
-    await expect(page.locator("[data-testid=syntagm-canvas]")).toBeVisible();
-    await expect(page.locator("[data-testid=syntagm-readout]")).toBeVisible();
-    // fixture data is in: families listed, the readout table filled
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-view]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-filter]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-readout]")).toBeAttached();
+    // the panel opens on the block tree; chains are one tab away
+    await expect(page.locator("[data-testid=map-sidebar] .sy-section-label").first()).toHaveText(/blocks/i);
+    await chainsList(page);
     await expect(page.locator(".sy-family").first()).toBeVisible();
-    await expect(page.locator(".sy-section-label").first()).toHaveText(/chains/i);
-    await expect(page.locator("[data-testid=syntagm-stats-table]")).toContainText("families");
+    await expect(page.locator("[data-testid=map-stats-table]")).toContainText("families");
     // the lens bar is in: Functions / Utilities / All, plus the roles legend
-    await expect(page.locator("[data-testid=syntagm-lens-functions]")).toBeVisible();
-    await expect(page.locator("[data-testid=syntagm-lens-utilities]")).toBeVisible();
-    await expect(page.locator("[data-testid=syntagm-lens-all]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-lens-functions]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-lens-utilities]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-lens-all]")).toBeVisible();
   });
 
   test("expanding a family pages its chains; selecting one draws the path", async ({ page }) => {
-    await open(page, "syntagm");
+    await open(page, "map");
+    await chainsList(page);
     await expect(page.locator(".sy-family").first()).toBeVisible();
     // narrow to the family with the most chains – a small family pages out
     // in one pass and never shows the load-more row
@@ -1815,7 +1820,7 @@ test.describe("Syntagm", () => {
         Number(f.count) > Number(a.count) ? { count: f.count, s: byId.get(String(f.source)) ?? "", t: byId.get(String(f.terminal)) ?? "" } : a, { count: "0", s: "", t: "" });
       return `${fam.s} → ${fam.t}`;
     });
-    await page.fill("[data-testid=syntagm-filter]", big);
+    await page.fill("[data-testid=map-filter]", big);
     const famRows = await page.locator(".sy-family").count();
     expect(famRows).toBeGreaterThan(0);
     for (const row of await page.locator(".sy-family .sy-fam-name").all()) {
@@ -1829,13 +1834,13 @@ test.describe("Syntagm", () => {
     expect(first).toBeGreaterThan(0);
     // "+ load more chains" pages the next cursor in – more chain rows appear.
     // The row is below the fold and windowed out of the DOM: scroll to it.
-    await page.locator("[data-testid=syntagm-side-scroll]").evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await page.locator("[data-testid=map-side-scroll]").evaluate((el) => { el.scrollTop = el.scrollHeight; });
     await page.locator(".sy-chain-load").first().click();
     await expect.poll(async () => chains.count()).toBeGreaterThan(first);
     await expect(chains.nth(first)).toBeVisible();
     // selecting a chain draws the path and lists the steps
     await chains.first().click();
-    const steps = page.locator("[data-testid=syntagm-steps] .sy-step");
+    const steps = page.locator("[data-testid=map-steps] .sy-step");
     const n = await steps.count();
     expect(n).toBeGreaterThan(0);
     // one path segment per consecutive pair of measured boxes – a chain that
@@ -1845,7 +1850,7 @@ test.describe("Syntagm", () => {
     // number depends on how many boxes the window rendered.
     const crossed = await page.locator(".sy-rail .sy-box").count();
     expect(crossed).toBeGreaterThan(1);
-    const lines = page.locator("[data-testid=syntagm-path] line");
+    const lines = page.locator("[data-testid=map-path] line");
     await expect
       .poll(async () => lines.count())
       .toBeGreaterThanOrEqual(1);
@@ -1855,28 +1860,29 @@ test.describe("Syntagm", () => {
     await expect(page.locator(".sy-rail .sy-box")).toHaveCount(crossed);
     // steps carry their 1-based order
     await expect(steps.first()).toContainText("1");
-    // toggling again returns to the block grid – click the selected chain
+    // toggling again returns to the flow – click the selected chain
     // (after paging, the first .sy-chain in the DOM is a windowed row, not
     // necessarily the one that is on)
     await page.locator(".sy-chain.on").click();
-    await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
 
   test("drill in and out with the breadcrumb, deep link restores the path", async ({ page }) => {
-    await open(page, "syntagm");
+    await open(page, "map");
+    await blocksView(page);
     // top level: the map's depth-0 sections, no breadcrumb trail beyond "repo"
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
     const top = await page.locator(".sy-grid .sy-box").count();
     expect(top).toBeGreaterThan(0);
-    await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(1);
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(1);
     // drill: click a section box that nests further (a single-file section
     // shows only leaves), walking boxes until the next level renders
     let drilled = -1;
     for (let i = 0; i < 6; i++) {
       await page.locator(".sy-box-title").nth(i).click();
-      await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(2);
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
       if ((await page.locator(".sy-grid .sy-box").count()) > 0) { drilled = i; break; }
-      await page.locator("[data-testid=syntagm-breadcrumb] .crumb-link").first().click();
+      await page.locator("[data-testid=map-breadcrumb] .crumb-link").first().click();
     }
     expect(drilled).toBeGreaterThanOrEqual(0);
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
@@ -1885,76 +1891,79 @@ test.describe("Syntagm", () => {
     // drill deeper until leaf rows appear (the tree's depth varies by repo)
     for (let i = 0; i < 5 && (await page.locator(".sy-leaf-row").count()) === 0; i++) {
       await page.locator(".sy-box-title").first().click();
-      await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(2 + i + 1);
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2 + i + 1);
     }
     await expect(page.locator(".sy-leaf-row").first()).toBeVisible();
     // breadcrumb climbs back out one level – the parent crumb is the
     // second-to-last link (the last is the level we are on)
-    const crumbs = await page.locator("[data-testid=syntagm-breadcrumb] .crumb-link").count();
-    await page.locator("[data-testid=syntagm-breadcrumb] .crumb-link").nth(crumbs - 2).click();
-    await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(crumbs - 1);
+    const crumbs = await page.locator("[data-testid=map-breadcrumb] .crumb-link").count();
+    await page.locator("[data-testid=map-breadcrumb] .crumb-link").nth(crumbs - 2).click();
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(crumbs - 1);
     // hash tracks the drill path – after the climb it may be back at the top
     // (no sub-path), so the slash is optional here
-    await expect(page).toHaveURL(/#syntagm(\/|$)/);
+    await expect(page).toHaveURL(/#map(\/|$)/);
     await page.locator(".sy-box-title").first().click();
     const h = await page.evaluate(() => location.hash);
     await page.goto("/?fresh=1");
     await open(page, h.replace(/^#\/?/, ""));
-    await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(2);
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
   });
 
   test("selecting a leaf opens the code panel with its source", async ({ page }) => {
-    await open(page, "syntagm");
+    await open(page, "map");
+    await blocksView(page);
     // drill until leaves hang off the level below (depth varies by repo)
     for (let i = 0; i < 6 && (await page.locator(".sy-leaf-row").count()) === 0; i++) {
       await page.locator(".sy-box-title").first().click();
-      await expect(page.locator("[data-testid=syntagm-breadcrumb] .crumb-link")).toHaveCount(2 + i);
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2 + i);
     }
     const leaf = page.locator(".sy-leaf-row").first();
     await leaf.click();
     await expect(page.locator(".code-panel")).toBeVisible();
     // the panel shows the leaf's file
     await expect(page.locator(".code-panel")).toContainText(".rs");
-    // the code panel is an overlay – the tab must stay on Syntagm
-    await expect(page).toHaveURL(/#syntagm/);
+    // the code panel is an overlay – the tab must stay on MapView
+    await expect(page).toHaveURL(/#map/);
   });
 
   test("sidebar filter narrows chains and blocks", async ({ page }) => {
-    await open(page, "syntagm");
+    await open(page, "map");
+    await blocksView(page);
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
     // the first box's name span – textContent would glue the role glyph to
     // the name ("ocore"), so read .sy-bname, the name the sidebar filters on
     const name = (await page.locator(".sy-box-title .sy-bname").first().textContent()) ?? "server";
-    await page.fill("[data-testid=syntagm-filter]", name);
+    await page.fill("[data-testid=map-filter]", name);
     await expect(page.locator(".sy-block").first()).toBeVisible();
-    await page.fill("[data-testid=syntagm-filter]", "zzzznope");
+    await page.fill("[data-testid=map-filter]", "zzzznope");
     await expect(page.locator(".sy-empty")).toBeVisible();
   });
 
-  test("@responsive syntagm fits without sideways scroll", async ({ page }, info) => {
-    await open(page, "syntagm");
-    await expect(page.locator("[data-testid=syntagm-view]")).toBeVisible();
+  test("@responsive map fits without sideways scroll", async ({ page }, info) => {
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-view]")).toBeVisible();
     await page.waitForTimeout(300);
     const over = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
     expect(over).toBeLessThanOrEqual(0);
-    await page.screenshot({ path: `test-results/${info.project.name}-syntagm.png` });
+    await page.screenshot({ path: `test-results/${info.project.name}-map.png` });
   });
 
   test("@mobile the sidebar is a drawer, summoned and dismissed", async ({ page }, info) => {
     test.skip(info.project.name !== "phone", "phones only");
-    await open(page, "syntagm");
-    const side = page.locator("[data-testid=syntagm-sidebar]");
+    await open(page, "map");
+    const side = page.locator("[data-testid=map-sidebar]");
     await expect(side).toBeHidden();
-    await page.locator("[data-testid=syntagm-side-toggle]").click();
+    await page.locator("[data-testid=map-side-toggle]").click();
     await expect(side).toBeVisible();
-    await expect(page.locator("[data-testid=syntagm-filter]")).toBeVisible();
-    await page.locator("[data-testid=syntagm-side-close]").click();
+    await expect(page.locator("[data-testid=map-filter]")).toBeVisible();
+    await page.locator("[data-testid=map-side-close]").click();
     await expect(side).toBeHidden();
   });
 
   test("keyboard moves through sidebar rows and opens with enter", async ({ page }) => {
-    await open(page, "syntagm");
-    await page.locator("[data-testid=syntagm-side-scroll]").focus();
+    await open(page, "map");
+    await chainsList(page);
+    await page.locator("[data-testid=map-side-scroll]").focus();
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("ArrowDown");
     // the first active row is a family: ↵ expands it and its chains page in
@@ -1963,7 +1972,8 @@ test.describe("Syntagm", () => {
   });
 
   test("the lens switch filters the view (Functions / Utilities / All)", async ({ page }) => {
-    await open(page, "syntagm");
+    await open(page, "map");
+    await chainsList(page);
     // All: families listed whole (wait for the payload to land first)
     await expect(page.locator(".sy-family").first()).toBeVisible();
     const all = await page.locator(".sy-family").count();
@@ -1971,37 +1981,39 @@ test.describe("Syntagm", () => {
     // Utilities: only families whose ends carry a utilities-lens role – the
     // glyph shows the family's source role, so on live data model ("m") and
     // config ("k") sources appear beside utility ("u") ones
-    await page.locator("[data-testid=syntagm-lens-utilities]").click();
+    await page.locator("[data-testid=map-lens-utilities]").click();
     const glyphs = await page.locator(".sy-family .sy-role").allTextContents();
     expect(glyphs.length).toBeGreaterThan(0);
     expect(glyphs.every((g) => ["u", "m", "k"].includes(g))).toBe(true);
     // the role legend explains each role's one-line rule
-    await page.locator("[data-testid=syntagm-roles-btn]").click();
+    await page.locator("[data-testid=map-roles-btn]").click();
     for (const role of ["entry", "orchestrator", "core", "utility", "adapter", "model", "config", "test", "glue"]) {
-      await expect(page.locator(`[data-testid=syntagm-role-${role}]`)).toBeVisible();
+      await expect(page.locator(`[data-testid=map-role-${role}]`)).toBeVisible();
     }
     await expect(page.locator(".sy-role-rule", { hasText: "high fan-in from ≥ 3 distinct blocks" })).toBeVisible();
     // back to All: the full list returns – non-utility entries are visible again
-    await page.locator("[data-testid=syntagm-lens-all]").click();
+    await page.locator("[data-testid=map-lens-all]").click();
     const allGlyphs = await page.locator(".sy-family .sy-role").allTextContents();
-    expect(allGlyphs.length).toBeGreaterThan(glyphs.length);
+    // (no count comparison: the list is windowed, so rendered rows ≠ matches)
     expect(allGlyphs.some((g) => g !== "u")).toBe(true);
   });
 
   test("the role filter narrows families and blocks", async ({ page }) => {
-    await open(page, "syntagm");
+    await open(page, "map");
+    await chainsList(page);
     // count only after the data has landed, so `all` is not 0
     await expect(page.locator(".sy-family").first()).toBeVisible();
     const all = await page.locator(".sy-family").count();
-    await page.locator("[data-testid=syntagm-roles-btn]").click();
-    await page.locator("[data-testid=syntagm-role-test]").click();
+    await page.locator("[data-testid=map-roles-btn]").click();
+    await page.locator("[data-testid=map-role-test]").click();
     const fewer = await page.locator(".sy-family").count();
     expect(fewer).toBeLessThanOrEqual(all);
     // blocks carry their role glyph, one-line rule as its title
+    await blocksView(page);
     await expect(page.locator(".sy-box .sy-role").first()).toBeVisible();
     // unchecking the last role never filters to nothing
     for (const role of ["entry", "orchestrator", "core", "utility", "adapter", "model", "config", "glue"]) {
-      await page.locator(`[data-testid=syntagm-role-${role}]`).click();
+      await page.locator(`[data-testid=map-role-${role}]`).click();
     }
     await expect(page.locator(".sy-family").first()).toBeVisible();
   });
@@ -2015,16 +2027,68 @@ test.describe("Syntagm", () => {
       status: 200, contentType: "application/json",
       body: JSON.stringify({ running: true, phase: "map", blocks: 1200, chains: 3400, ms: 4210, error: "" }),
     }));
-    await open(page, "syntagm");
-    await expect(page.locator("[data-testid=syntagm-progress]")).toBeVisible();
-    await expect(page.locator("[data-testid=syntagm-progress-table]")).toContainText("mapping");
-    await expect(page.locator("[data-testid=syntagm-progress-table]")).toContainText("1200");
-    await expect(page.locator("[data-testid=syntagm-progress-table]")).toContainText("3400");
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-progress]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-progress-table]")).toContainText("mapping");
+    await expect(page.locator("[data-testid=map-progress-table]")).toContainText("1200");
+    await expect(page.locator("[data-testid=map-progress-table]")).toContainText("3400");
     // the map landing (progress goes idle) swaps in the fixture stand-in
     await page.route("**/api/map/progress", (r) => r.fulfill({
       status: 200, contentType: "application/json",
       body: JSON.stringify({ running: false, phase: "done", blocks: 3400, chains: 9000, ms: 9000, error: "" }),
     }));
-    await expect(page.locator("[data-testid=syntagm-sidebar]")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("[data-testid=map-sidebar]")).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("the old #syntagm link lands on map", async ({ page }) => {
+    await open(page, "syntagm");
+    await expect(page.locator("[data-testid=map-view]")).toBeVisible();
+    await expect(page.locator(".rail button[aria-current=page]")).toHaveAttribute("aria-label", "map");
+  });
+
+  test("the flow is the default: columns, a headline, arrows, and boxes with the graph's kind icons", async ({ page }) => {
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-headline]")).toContainText("executes");
+    await expect(page.locator("[data-testid=map-headline] .fm-headline-v")).not.toHaveText("–");
+    await expect(page.locator(".fm-flow-box").first()).toBeVisible();
+    // each box lists its top functions with the graph's glyphs (ƒ m C I …)
+    const icon = page.locator(".fm-flow-box .fm-kind").first();
+    await expect(icon).toBeVisible();
+    expect(["ƒ", "m", "C", "I", "v", "k", "T", "E", "S", "▭", "·"]).toContain((await icon.textContent())?.trim());
+    // clicking a box drills into the blocks view; Esc returns to the flow
+    await page.locator(".fm-flow-title").first().click();
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+    await page.locator("body").press("Escape");
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+  });
+
+  test("the right panel lists every function, single-function blocks included", async ({ page }) => {
+    await open(page, "map");
+    const panel = page.locator("[data-testid=map-sidebar]");
+    // it sits on the right, like Graph's inspector
+    const box = await page.locator("#map-sidebar").boundingBox();
+    const vw = page.viewportSize()!.width;
+    test.skip(vw <= 720, "phones use the drawer");
+    expect(box!.x + box!.width).toBeGreaterThan(vw - 4);
+    await page.locator("[data-testid=map-sect-functions]").click();
+    await expect(panel.locator(".sy-section-label").first()).toHaveText(/functions · \d+/i);
+    await expect(panel.locator(".sy-leaf .fm-kind").first()).toBeVisible();
+  });
+
+  test("a running map pass shows the progress strip and the nav busy mark, then clears", async ({ page }) => {
+    let active = true;
+    await page.route("**/api/map/progress", (r) => r.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify(active ? { running: true, phase: "embed", blocks: 40, chains: 300, ms: 8000, error: "" } : { running: false, phase: "done", blocks: 255, chains: 2598, ms: 20000, error: "" }),
+    }));
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-progress-strip]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-progress-strip]")).toContainText("mapping in progress");
+    await expect(page.locator("[data-testid=map-progress-strip]")).toContainText("40 blocks");
+    await expect(page.locator("[data-testid=map-nav-busy]")).toBeAttached();
+    active = false;
+    await expect(page.locator("[data-testid=map-progress-strip]")).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator("[data-testid=map-nav-busy]")).toHaveCount(0);
   });
 });

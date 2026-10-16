@@ -200,9 +200,9 @@ export const api = {
     get<ChainPage>(`/api/map/chains?${q({ family, cursor, limit })}`),
   mapProgress: () => get<MapProgress>("/api/map/progress"),
 
-  // U1 · Syntagm: blocks and chains (+ E1's embed endpoints)
+  // U1 · MapView: blocks and chains (+ E1's embed endpoints)
   syntagm: () => get<SyntagmData>("/api/syntagm"),
-  syntagmBlock: (id: string) => get<SyntagmBlock>(`/api/syntagm/block/${encodeURIComponent(id)}`),
+  syntagmBlock: (id: string) => get<MapViewBlock>(`/api/syntagm/block/${encodeURIComponent(id)}`),
   syntagmChain: (id: string) => get<Chain>(`/api/syntagm/chain/${encodeURIComponent(id)}`),
   embedStatus: () => get<EmbedStatus>("/api/embed/status"),
   embedCheck: () => get<EmbedCheck>("/api/embed/check"),
@@ -247,11 +247,10 @@ export function relTime(ts: number) {
 // Cluster colours share the graph palette (see colors.ts).
 export { hue as colorFor } from "./colors";
 
-// U1 · Syntagm shared types (the contract shapes live in views/syntagm/types.ts).
-import type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/syntagm/types";
-export type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/syntagm/types";
-export interface SyntagmBlock { block: import("./views/syntagm/types").Block }
-// The /api/map/progress shape is MapProgress in views/syntagm/types.ts (map_run.rs state).
+// U1 · MapView shared types (the contract shapes live in views/map/types.ts).
+import type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/map/types";
+export type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/map/types";
+export interface MapViewBlock { block: import("./views/map/types").Block }
 export interface EmbedStatus { state: "off" | "on" | "stale"; installed: boolean; model: string | null; ms: number }
 export interface EmbedInstall { ok: boolean; phase?: string; done?: number; total?: number }
 // I1 · the /api/map/progress payload (map_run.rs state) – re-exported from types.ts.

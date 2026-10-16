@@ -1,9 +1,9 @@
-/* syntagm.css – U1 · Syntagm tab: sidebar, nested-block canvas, readout.
+/* map.css – U1 · MapView tab: sidebar, nested-block canvas, readout.
    Design language: absolute black, warm 1px lines, cream text, one orange
    accent. Hover is a background/border shift, never a shadow, glow, scale. */
 
 .sy-root { height: 100%; display: flex; flex-direction: column; }
-.sy-split { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: var(--size-syntagm, 320px) 28px 1fr minmax(230px, 300px); }
+.sy-split { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: var(--size-map, 320px) 28px 1fr minmax(230px, 300px); }
 .sy-side-wrap { display: flex; flex-direction: column; min-height: 0; background: var(--bg-2); border-right: 1px solid var(--line); }
 .sy-side { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .sy-side-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
@@ -149,7 +149,7 @@
    sits under it. Static position keeps it in the gutter between the columns. */
 .sy-split > .grip { position: static; width: 28px; cursor: col-resize; }
 
-/* – U2 · Syntagm tab on the map: lens bar, role glyphs, families, loops –
+/* – U2 · MapView tab on the map: lens bar, role glyphs, families, loops –
    Same rules as the header comment: hover is a background/border shift,
    never a shadow, glow, scale. */
 
@@ -205,3 +205,76 @@
   .sy-theme { display: none; }
   .sy-role-rule { white-space: normal; }
 }
+
+/* – map (owner-built): right structure panel, flow view, icons, progress –
+   Same rules: 1px warm lines, no glow, no gradients, en dashes in copy. */
+
+/* layout: canvas left, the structure panel on the right like Graph's inspector */
+.sy-split { grid-template-columns: minmax(0, 1fr) var(--size-map, 360px); }
+.fm-right { position: relative; border-right: 0; border-left: 1px solid var(--line); }
+.fm-right > .grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 3; }
+.fm-details { border-bottom: 1px solid var(--line); flex: none; max-height: 45%; overflow: auto; }
+.fm-details-sum { cursor: pointer; padding: 10px 12px; font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); list-style: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-details-sum::-webkit-details-marker { display: none; }
+.fm-details[open] .fm-details-sum { color: var(--text); }
+.fm-right .sy-side { flex: 1; min-height: 0; height: auto; }
+
+/* kind icons: the graph's glyphs, fixed cell so names line up */
+.fm-kind { display: inline-grid; place-items: center; flex: none; min-width: 16px; height: 16px; font: 700 11px var(--mono); line-height: 1; }
+
+/* flow view */
+.fm-flow { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.fm-headline { display: flex; align-items: baseline; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.fm-headline-k { flex: none; font: 500 10.5px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); }
+.fm-headline-v { font: 500 13px var(--mono); color: var(--text); overflow-wrap: anywhere; }
+.fm-flow-scroll { position: relative; overflow: auto; flex: 1; padding: 16px; }
+.fm-arrows { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.fm-arrow { fill: none; stroke: var(--line-2); opacity: .9; }
+.fm-arrow.hot { stroke: var(--accent); opacity: 1; }
+.fm-arrow-head { fill: var(--line-2); }
+.fm-layers { position: relative; display: flex; gap: 56px; align-items: flex-start; }
+.fm-layer { display: flex; flex-direction: column; gap: 12px; width: 240px; flex: none; }
+.fm-band { position: relative; margin-top: 32px; padding-top: 12px; border-top: 1px dashed var(--line-2); }
+.fm-band-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.fm-band .fm-flow-box { width: 220px; }
+.fm-flow-box { position: relative; background: var(--bg-2, #0a0908); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px 6px; }
+.fm-flow-box.hot { border-color: var(--accent); }
+.fm-role-entry { border-left: 2px solid var(--accent); }
+.fm-flow-title { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: 0; padding: 0; color: var(--text); cursor: pointer; text-align: left; font: 600 12px var(--mono); }
+.fm-flow-title:hover .fm-flow-name { color: var(--accent); }
+.fm-flow-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-flow-sub { display: block; margin: 2px 0 0 18px; font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-flow-fns { display: flex; flex-direction: column; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 4px; }
+.fm-fn, .fm-flow-more { display: flex; align-items: center; gap: 6px; min-height: 24px; background: none; border: 0; padding: 0 2px; color: var(--text-2); cursor: pointer; text-align: left; border-radius: 4px; }
+.fm-fn:hover, .fm-flow-more:hover { background: var(--panel-2); color: var(--text); }
+.fm-fn-name { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-flow-more { font: 400 11px var(--mono); color: var(--text-3); }
+
+/* mapping in progress: strip on the view, mark on the nav entry */
+.fm-strip { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 6px 16px; border-bottom: 1px solid var(--line); font: 400 11.5px var(--mono); color: var(--text-2); }
+.fm-strip-k { text-transform: uppercase; letter-spacing: .12em; font-size: 10.5px; color: var(--accent); }
+.fm-strip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: fm-pulse 1.2s ease-in-out infinite; }
+.fm-strip-bar { position: relative; flex: 1; min-width: 80px; max-width: 240px; height: 2px; background: var(--line); }
+.fm-strip-bar > span { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.fm-strip-note { color: var(--text-3); }
+.rail-busy { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: fm-pulse 1.2s ease-in-out infinite; }
+@keyframes fm-pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .fm-strip-dot, .rail-busy { animation: none; } }
+
+/* phone: the structure panel is a drawer from the right, flow stacks */
+@media (max-width: 720px) {
+  .sy-split { grid-template-columns: 1fr; }
+  .fm-right { position: absolute; left: auto; right: 0; border-left: 1px solid var(--line); }
+  .fm-right > .grip { display: none; }
+  .fm-layers { flex-direction: column; gap: 16px; }
+  .fm-layer, .fm-band .fm-flow-box { width: 100%; }
+  .fm-arrows { display: none; }
+  .fm-fn, .fm-flow-more, .fm-flow-title, .fm-details-sum { min-height: 40px; }
+  .fm-strip-note { display: none; }
+}
+.fm-sects { display: flex; gap: 2px; padding: 0 10px 8px; }
+.fm-sects .sy-lens-btn { flex: 1; justify-content: center; gap: 6px; }
+.fm-strip-bar.indeterminate { overflow: hidden; }
+.fm-strip-bar.indeterminate > span { width: 30%; animation: fm-strip-slide 1.4s ease-in-out infinite; }
+@keyframes fm-strip-slide { from { left: -30%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .fm-strip-bar.indeterminate > span { animation: none; width: 100%; opacity: .4; } }
