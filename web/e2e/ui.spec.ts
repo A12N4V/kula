@@ -1805,10 +1805,22 @@ test.describe("Syntagm", () => {
   test("expanding a family pages its chains; selecting one draws the path", async ({ page }) => {
     await open(page, "syntagm");
     await expect(page.locator(".sy-family").first()).toBeVisible();
-    // narrow to one family so every row is on screen (the list is windowed)
-    const name = await page.locator(".sy-family .sy-fam-name").first().textContent();
-    await page.fill("[data-testid=syntagm-filter]", name ?? "");
-    await expect(page.locator(".sy-family")).toHaveCount(1);
+    // narrow to the family with the most chains – a small family pages out
+    // in one pass and never shows the load-more row
+    const big = await page.evaluate(async () => {
+      const tok = document.querySelector('meta[name="kula-token"]')?.content ?? "";
+      const map = await (await fetch("/api/map", { headers: { "x-kula-token": tok } })).json();
+      const byId = new Map(Object.entries(map.leaves).map(([id, l]) => [id, l.name]));
+      const fam = map.families.reduce((a: { count: number; s: string; t: string }, f: { count: string; source: number; terminal: number }) =>
+        Number(f.count) > Number(a.count) ? { count: f.count, s: byId.get(String(f.source)) ?? "", t: byId.get(String(f.terminal)) ?? "" } : a, { count: "0", s: "", t: "" });
+      return `${fam.s} → ${fam.t}`;
+    });
+    await page.fill("[data-testid=syntagm-filter]", big);
+    const famRows = await page.locator(".sy-family").count();
+    expect(famRows).toBeGreaterThan(0);
+    for (const row of await page.locator(".sy-family .sy-fam-name").all()) {
+      await expect(row).toHaveText(big);
+    }
     await page.locator(".sy-family .sy-twist").first().click();
     // the family pages its chains in (fixture enumeration, same paged shape)
     const chains = page.locator(".sy-chain");
@@ -1949,12 +1961,13 @@ test.describe("Syntagm", () => {
     await expect(page.locator(".sy-family").first()).toBeVisible();
     const all = await page.locator(".sy-family").count();
     expect(all).toBeGreaterThan(0);
-    // Utilities: only families whose both ends are utility-role leaves – every
-    // visible family's entry glyph is "u" (windowing-agnostic assertion)
+    // Utilities: only families whose ends carry a utilities-lens role – the
+    // glyph shows the family's source role, so on live data model ("m") and
+    // config ("k") sources appear beside utility ("u") ones
     await page.locator("[data-testid=syntagm-lens-utilities]").click();
     const glyphs = await page.locator(".sy-family .sy-role").allTextContents();
     expect(glyphs.length).toBeGreaterThan(0);
-    expect(glyphs.every((g) => g === "u")).toBe(true);
+    expect(glyphs.every((g) => ["u", "m", "k"].includes(g))).toBe(true);
     // the role legend explains each role's one-line rule
     await page.locator("[data-testid=syntagm-roles-btn]").click();
     for (const role of ["entry", "orchestrator", "core", "utility", "adapter", "model", "config", "test", "glue"]) {

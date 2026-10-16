@@ -19,24 +19,21 @@ pub(crate) async fn map_all(State(s): State<AppState>) -> ApiResult {
 
 #[derive(Deserialize)]
 pub struct ChainsQuery {
-    pub from: Option<i64>,
-    pub to: Option<i64>,
+    /// The family id, `f{index}` as listed in /api/map.
+    pub family: Option<String>,
     pub cursor: Option<String>,
     pub limit: Option<usize>,
 }
 
-/// GET /api/map/chains?from=&to=&cursor=&limit= – one lazy page of a family.
-/// `from`/`to` are the family's source and terminal symbol ids, both listed
-/// in `/api/map`'s families; `cursor` resumes where the last page stopped.
+/// GET /api/map/chains?family=&cursor=&limit= – one lazy page of a family.
+/// `cursor` resumes where the last page stopped; `cursor: null` in the reply
+/// (and `done: true`) means the family is spent.
 pub(crate) async fn map_chains(State(s): State<AppState>, Query(q): Query<ChainsQuery>) -> ApiResult {
     blocking(move || {
         let store = crate::store::Store::open(&s.repo)?;
-        let (from, to) = match (q.from, q.to) {
-            (Some(f), Some(t)) => (f, t),
-            _ => anyhow::bail!("from and to are required – pick a family from /api/map"),
-        };
-        let page = map::chain_family_page(&s.repo, &store, from, to, q.cursor.as_deref(), q.limit.unwrap_or(50).clamp(1, 500))?;
-        Ok(serde_json::json!({ "chains": page.chains, "cursor": page.cursor }))
+        let family = q.family.as_deref().ok_or_else(|| anyhow::anyhow!("family is required – pick one from /api/map"))?;
+        let page = map::chain_family_page(&s.repo, &store, family, q.cursor.as_deref(), q.limit.unwrap_or(50).clamp(1, 500))?;
+        Ok(serde_json::json!({ "chains": page.chains, "cursor": page.cursor, "done": page.done }))
     })
     .await
 }

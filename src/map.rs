@@ -1148,16 +1148,17 @@ pub fn condense(call_adj: &[Vec<usize>]) -> Condensation {
     }
     // Kahn topological order, deterministic by component id.
     let mut order: Vec<usize> = Vec::with_capacity(m);
-    let mut ready: Vec<usize> = (0..m).filter(|&c| in_deg[c] == 0).collect();
+    // Smallest component id first – deterministic. A BTreeSet keeps every
+    // pop O(log m) instead of rescanning for the minimum each round.
+    let mut ready: std::collections::BTreeSet<usize> = (0..m).filter(|&c| in_deg[c] == 0).collect();
     let mut deg = in_deg.clone();
-    while let Some(pos) = ready.iter().position(|&c| c == *ready.iter().min().unwrap()) {
-        // smallest component id first – deterministic
-        let c = ready.remove(pos);
+    while let Some(&c) = ready.iter().next() {
+        ready.remove(&c);
         order.push(c);
         for &b in &dag[c] {
             deg[b] -= 1;
             if deg[b] == 0 {
-                ready.push(b);
+                ready.insert(b);
             }
         }
     }
@@ -1878,21 +1879,23 @@ pub fn graph_condensation(store: &Store) -> Result<(Condensation, Vec<i64>)> {
 pub struct FamilyPage {
     pub chains: Vec<Chain>,
     pub cursor: Option<String>, // None when the family is spent
+    pub done: bool,
 }
 
-/// Page `limit` chains of the (source, terminal) family starting at `cursor`
-/// (None = from the start). The count itself never drops – this only
-/// materialises the page that was asked for. `Ok(None)` cursor = family spent.
-pub fn chain_family_page(
-    _repo: &Repo,
-    store: &Store,
-    source: i64,
-    terminal: i64,
-    cursor: Option<&str>,
-    limit: usize,
-) -> Result<FamilyPage> {
+/// Page `limit` chains of the family `family` (`f{index}`, as listed in
+/// `/api/map`) starting at `cursor` (None = from the start). The count itself
+/// never drops – this only materialises the page that was asked for. The
+/// family index is resolved by replaying build_all_chains' deterministic
+/// (source, sink) order, stopping as soon as the requested pair is reached.
+pub fn chain_family_page(_repo: &Repo, store: &Store, family: &str, cursor: Option<&str>, limit: usize) -> Result<FamilyPage> {
     // Rebuild the condensation – O(V+E), no blocks needed for enumeration.
     let (cond, node_ids) = graph_condensation(store)?;
+    // The stored families table holds the id → (source, terminal) mapping
+    // from the last full build – a direct lookup, no DP replay.
+    let (source, terminal): (i64, i64) = store
+        .conn
+        .query_row("SELECT source, terminal FROM syntagm_families WHERE id = ?1", [family], |r| Ok((r.get(0)?, r.get(1)?)))
+        .map_err(|_| anyhow::anyhow!("no family {family} – the map may have been rebuilt"))?;
     let nodes: Vec<crate::store::Node> = store.nodes_where("kind != 'file'", [])?;
     let idx: HashMap<i64, usize> = nodes.iter().enumerate().map(|(i, n)| (n.id, i)).collect();
     let src_sym = idx.get(&source).ok_or_else(|| anyhow::anyhow!("no symbol {source}"))?;
@@ -1902,7 +1905,7 @@ pub fn chain_family_page(
 
     // Resumable DFS: the cursor is the stack of (component, next-child) plus
     // the path, exactly as ChainCursor serialises it – pinned to this family.
-    let (mut stack, mut path) = match cursor {
+    let (mut stack, mut path, mut seq) = match cursor {
         Some(s) if !s.is_empty() => {
             let v: serde_json::Value = serde_json::from_str(s)?;
             let st: Vec<(usize, usize)> = v["stack"]
@@ -1918,12 +1921,22 @@ pub fn chain_family_page(
                 .unwrap_or_default();
             let p: Vec<usize> =
                 v["path"].as_array().map(|a| a.iter().filter_map(|x| x.as_u64().map(|n| n as usize)).collect()).unwrap_or_default();
-            (st, p)
+            let n = v.get("n").and_then(|x| x.as_u64()).unwrap_or(0);
+            (st, p, n)
         }
-        _ => (vec![(src_c, 0)], vec![src_c]),
+        _ => (vec![(src_c, 0)], vec![src_c], 0u64),
     };
+    // The blocks a chain crosses come from the stored map – the deepest block
+    // per symbol, shallowest as fallback, exactly as chains are built.
+    let block_map: std::collections::HashMap<i64, String> = match load_stored(store, "off")? {
+        Some(s) => {
+            let (deep, any) = block_maps(&s.blocks);
+            deep.into_iter().chain(any.into_iter()).collect()
+        }
+        None => std::collections::HashMap::new(),
+    };
+    let block_of = |s: i64| block_map.get(&s).cloned().unwrap_or_default();
     let mut chains: Vec<Chain> = Vec::new();
-    let mut seq: u64 = 0;
     while chains.len() < limit {
         let Some(&(top, ci)) = stack.last() else { break };
         let children = &cond.dag[top];
@@ -1934,14 +1947,10 @@ pub fn chain_family_page(
             stack.push((child, 0));
             if child == term_c {
                 let steps: Vec<i64> = path.iter().flat_map(|&c| cond.members[c].iter().map(|&m| node_ids[m])).collect();
-                chains.push(Chain {
-                    id: format!("f{source}:{terminal}-{seq}"),
-                    source,
-                    terminal,
-                    blocks: Vec::new(),
-                    len: steps.len(),
-                    steps,
-                });
+                let source = node_ids[cond.members[src_c][0]];
+                let terminal = node_ids[cond.members[term_c][0]];
+                let blocks = crossed_blocks(&block_of, &steps);
+                chains.push(Chain { id: format!("f{family}-{seq}"), source, terminal, blocks, len: steps.len(), steps });
                 seq += 1;
                 stack.pop();
                 path.pop();
@@ -1951,8 +1960,9 @@ pub fn chain_family_page(
             path.pop();
         }
     }
-    let next_cursor = if stack.is_empty() { None } else { Some(serde_json::json!({ "stack": stack, "path": path }).to_string()) };
-    Ok(FamilyPage { chains, cursor: next_cursor })
+    let done = stack.is_empty();
+    let next_cursor = if done { None } else { Some(serde_json::json!({ "stack": stack, "path": path, "n": seq }).to_string()) };
+    Ok(FamilyPage { chains, cursor: next_cursor, done })
 }
 
 /// `GET /api/syntagm/block/:id` shape – the block, its children and its leaves.

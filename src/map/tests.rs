@@ -405,3 +405,19 @@ fn subtree_symbols(blocks: &[Block], b: &Block) -> Vec<i64> {
         b.children.iter().filter_map(|c| blocks.iter().find(|x| x.id == *c)).flat_map(|c| subtree_symbols(blocks, c)).collect()
     }
 }
+
+#[test]
+fn chain_family_page_enumerates_a_stored_family() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = crate::git::Repo { root: dir.path().to_path_buf() };
+    let store = Store::create(&repo).unwrap();
+    fixture(&store);
+    let t0 = std::time::Instant::now();
+    let s = Builder::default().compute(&store);
+    store_stored(&store, &s, &file_rev(&store).unwrap()).unwrap();
+    let t1 = std::time::Instant::now();
+    let n: i64 = store.conn.query_row("SELECT count(*) FROM syntagm_families", [], |r| r.get(0)).unwrap_or(-1);
+    let p = chain_family_page(&repo, &store, "f0", None, 10).expect("page");
+    let t2 = std::time::Instant::now();
+    let _ = chain_family_page(&repo, &store, "f0", p.cursor.as_deref(), 10).expect("page2");
+}
