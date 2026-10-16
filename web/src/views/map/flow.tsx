@@ -66,7 +66,6 @@ export function FlowView({ data, roles, focus, selection, onSelect, onDrill, onL
   };
   // Collapse every frame – classic tinker; expanding one is the drill path.
   const collapseAll = () => setExpanded(new Set());
-  (FlowView as { collapseAll?: () => void }).collapseAll = collapseAll;
 
   // Arrows are measured from the laid-out boxes, after layout and on resize.
   useLayoutEffect(() => {

@@ -212,7 +212,11 @@
 /* layout: canvas left, the structure panel on the right like Graph's inspector */
 .sy-split { grid-template-columns: minmax(0, 1fr) var(--size-map, 360px); }
 .fm-right { position: relative; border-right: 0; border-left: 1px solid var(--line); }
-.fm-right > .grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 3; }
+/* The right panel's grip is a full-height 28px strip reaching out from the
+   panel's left edge – a real grab target, like the sidebar's own grip. */
+.fm-right > .grip { position: absolute; left: -26px; top: 0; bottom: 0; width: 28px; cursor: col-resize; z-index: 3; }
+/* the accent hint stays on the panel edge, not mid-canvas */
+.fm-right > .grip.grip-left::after { left: auto; right: 0; }
 .fm-details { border-bottom: 1px solid var(--line); flex: none; max-height: 45%; overflow: auto; }
 .fm-details-sum { cursor: pointer; padding: 10px 12px; font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); list-style: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fm-details-sum::-webkit-details-marker { display: none; }

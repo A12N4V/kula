@@ -155,10 +155,13 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
 
   const chain: Chain | null = selChain;
 
-  // The block the readout describes: the drilled block, or the chain's entry block.
+  // The block the readout describes: the drilled block, the selected block
+  // (the flow canvas selects rather than drills), the chain's entry block,
+  // else the repo root.
   const readBlock = useMemo(() => {
     if (!data) return null;
     if (path.length) return data.blocks[path[path.length - 1]] ?? null;
+    if (selBlock && data.blocks[selBlock]) return data.blocks[selBlock];
     const root = Object.values(data.blocks).find((b) => b.parent === null);
     if (root) return root;
     if (chain) {
@@ -166,7 +169,7 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
       return leafBlock ? data.blocks[leafBlock] : null;
     }
     return null;
-  }, [data, path, chain]);
+  }, [data, path, chain, selBlock]);
 
   const selectChain = useCallback((c: Chain) => {
     setSelChain((cur) => (cur?.id === c.id ? null : c));
@@ -224,6 +227,15 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
   useEffect(() => {
     try { localStorage.setItem("kula.map.pin", JSON.stringify(pinned)); } catch { /* private window */ }
   }, [pinned]);
+  // A pin is read back as well as written: on the first load, the stored block
+  // fills the sidebar again (silently dropped when the map no longer has it).
+  const restored = useRef(false);
+  useEffect(() => {
+    if (!data || restored.current) return;
+    restored.current = true;
+    if (pinned && data.blocks[pinned]) setSelBlock(pinned);
+    else if (pinned) setPinned(null);
+  }, [data, pinned]);
 
   if (!data) {
     if (prog?.running) {

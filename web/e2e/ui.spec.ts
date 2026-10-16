@@ -2102,11 +2102,21 @@ test.describe("map", () => {
     // every frame is titled and carries role-glyph nodes
     await expect(page.locator(".fm-section-head .fm-section-name").first()).toBeVisible();
     await expect(page.locator(".fm-section .fm-flow-box").first()).toBeVisible();
-    // selecting a block node marks it and fills the details table
+    // selecting a block node marks it and fills the details table with THAT
+    // block – not the repo root the table falls back to (the root reads
+    // "whole repo", a selected block carries its own name or theme)
     const box = page.locator(".fm-section .fm-flow-box").first();
+    // the box shows its embedding theme as the title; the readout heads with
+    // the block's own name – take whichever the box actually displays
+    const sub = (await box.locator(".fm-flow-sub").count()) ? (await box.locator(".fm-flow-sub").first().textContent())?.trim() : null;
+    const picked = sub ?? (await box.locator(".fm-flow-name").first().textContent())?.trim() ?? "";
+    expect(picked.length).toBeGreaterThan(0);
+    expect(picked.toLowerCase()).not.toContain("whole repo");
     await box.click({ position: { x: 4, y: 4 } }); // the box selects; the title drills
     await expect(page.locator("[data-testid=map-readout] [data-testid=map-block-table]")).toBeVisible();
     await expect(page.locator("[data-testid=map-block-table] [data-testid=map-role-line]")).toContainText(/entry|orchestrator|core|utility|adapter|model|config|test|glue/);
+    // the readout describes the selected block, not the repo root
+    await expect(page.locator("[data-testid=map-readout] h2")).toContainText(picked.split(/\s+/)[0]);
     // the tinker rail: hide tests, re-layout, pin
     await page.locator("[data-testid=map-hide-tests]").click();
     await expect(page.locator("[data-testid=map-hide-tests]")).toHaveAttribute("aria-pressed", "true");
