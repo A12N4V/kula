@@ -1,4 +1,4 @@
-// Fmap sidebar: CHAINS (chain families, searchable) and BLOCKS (tree),
+// MapView sidebar: CHAINS (chain families, searchable) and BLOCKS (tree),
 // one filter on top. A family expands to page its chains in from
 // /api/map/chains. The flat row list is virtualised – 10^5+ families stay
 // smooth because only the slice on screen (plus overscan) is in the DOM, and
@@ -48,7 +48,7 @@ export function fmtCount(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-export function FmapSidebar(p: Props) {
+export function MapViewSidebar(p: Props) {
   const [q, setQ] = useState("");
   // One list at a time: the block tree, every function flat, or the chain families.
   const [sect, setSect] = useState<"blocks" | "functions" | "chains">("blocks");
@@ -63,7 +63,7 @@ export function FmapSidebar(p: Props) {
   const [pages, setPages] = useState<Record<string, ChainPage>>({});
   const [loadingFam, setLoadingFam] = useState<string | null>(null);
   // Row height follows the hit-target floor: 28px on desktop, 40px on phones
-  // (the CSS in fmap.css does the same under the same query).
+  // (the CSS in map.css does the same under the same query).
   const [rowH, setRowH] = useState(() => (window.innerWidth <= 720 ? 40 : 28));
   useEffect(() => {
     const onR = () => setRowH(window.innerWidth <= 720 ? 40 : 28);
@@ -204,26 +204,26 @@ export function FmapSidebar(p: Props) {
   };
 
   return (
-    <div className="sy-side" data-testid="fmap-sidebar">
+    <div className="sy-side" data-testid="map-sidebar">
       <div className="sy-side-head">
         <h2>Structure</h2>
-        {p.onClose && <button className="btn sm ghost icon-only sy-side-close" data-testid="fmap-side-close" aria-label="Hide sidebar" onClick={p.onClose}><Icon.sidebar /></button>}
+        {p.onClose && <button className="btn sm ghost icon-only sy-side-close" data-testid="map-side-close" aria-label="Hide sidebar" onClick={p.onClose}><Icon.sidebar /></button>}
       </div>
       <div className="sy-filter">
         <input
           className="input sy-filter-input" placeholder="Filter chains, blocks, functions" value={q} ref={filterRef}
-          onChange={(e) => { setQ(e.target.value); setActive(-1); }} onKeyDown={onKey} aria-label="Filter chains, blocks, functions" data-testid="fmap-filter"
+          onChange={(e) => { setQ(e.target.value); setActive(-1); }} onKeyDown={onKey} aria-label="Filter chains, blocks, functions" data-testid="map-filter"
         />
       </div>
       <div className="sy-lens-group fm-sects" role="tablist" aria-label="Structure list">
         {(["blocks", "functions", "chains"] as const).map((k) => (
           <button key={k} role="tab" aria-selected={sect === k} className={`tab-btn sy-lens-btn${sect === k ? " on" : ""}`}
-            data-testid={`fmap-sect-${k}`} onClick={() => { setSect(k); setActive(-1); scroll.current?.scrollTo({ top: 0 }); }}>
+            data-testid={`map-sect-${k}`} onClick={() => { setSect(k); setActive(-1); scroll.current?.scrollTo({ top: 0 }); }}>
             {k} <span className="sy-row-meta">{k === "blocks" ? Object.keys(p.blocks).length : k === "functions" ? allLeaves.length : fmtCount(p.families.length)}</span>
           </button>
         ))}
       </div>
-      <div className="sy-side-scroll" ref={scroll} tabIndex={0} onKeyDown={onKey} data-testid="fmap-side-scroll">
+      <div className="sy-side-scroll" ref={scroll} tabIndex={0} onKeyDown={onKey} data-testid="map-side-scroll">
         <div style={{ height: visible.length * ROW, position: "relative" }}>
           <div style={{ position: "absolute", top: start * ROW, left: 0, right: 0 }}>
             {slice.map((row, i) => {
@@ -265,7 +265,7 @@ export function FmapSidebar(p: Props) {
               if (row.t === "chain-load") {
                 const page = pages[row.famId];
                 return (
-                  <button key={row.key} data-row={idx} className={`sy-row sy-chain-load${act}`} data-testid={`fmap-chain-load-${row.famId}`}
+                  <button key={row.key} data-row={idx} className={`sy-row sy-chain-load${act}`} data-testid={`map-chain-load-${row.famId}`}
                     onClick={() => { if (page?.cursor) load(row.famId, page.cursor, true); }}>
                     <span className="sy-row-meta">{page ? "+ load more chains" : "loading chains…"}</span>
                   </button>

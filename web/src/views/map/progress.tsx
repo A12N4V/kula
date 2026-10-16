@@ -1,5 +1,5 @@
 // Mapping progress, shared: one poller of /api/map/progress feeds both the
-// fmap strip and the busy mark on the FMAP nav entry, so the person sees a
+// map strip and the busy mark on the MAP nav entry, so the person sees a
 // map (or embedding) pass running from any tab. Polls fast while a pass is
 // active, slowly while idle, and stops if the endpoint does not exist.
 
@@ -42,11 +42,11 @@ export function pokeMapProgress() {
   tick();
 }
 
-/** The strip on the fmap view while a pass runs: phase, batch n/N, elapsed. */
+/** The strip on the map view while a pass runs: phase, batch n/N, elapsed. */
 export function ProgressStrip({ p }: { p: MapProgress }) {
   const pct = p.total > 0 ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
   return (
-    <div className="fm-strip" role="status" aria-live="polite" data-testid="fmap-progress-strip">
+    <div className="fm-strip" role="status" aria-live="polite" data-testid="map-progress-strip">
       <span className="fm-strip-dot" aria-hidden="true" />
       <span className="fm-strip-k">mapping in progress</span>
       <span className="fm-strip-v">{PHASE_LABEL[p.phase] ?? p.phase}</span>

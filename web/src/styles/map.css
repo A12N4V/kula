@@ -1,9 +1,9 @@
-/* fmap.css – U1 · Fmap tab: sidebar, nested-block canvas, readout.
+/* map.css – U1 · MapView tab: sidebar, nested-block canvas, readout.
    Design language: absolute black, warm 1px lines, cream text, one orange
    accent. Hover is a background/border shift, never a shadow, glow, scale. */
 
 .sy-root { height: 100%; display: flex; flex-direction: column; }
-.sy-split { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: var(--size-fmap, 320px) 28px 1fr minmax(230px, 300px); }
+.sy-split { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: var(--size-map, 320px) 28px 1fr minmax(230px, 300px); }
 .sy-side-wrap { display: flex; flex-direction: column; min-height: 0; background: var(--bg-2); border-right: 1px solid var(--line); }
 .sy-side { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .sy-side-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
@@ -149,7 +149,7 @@
    sits under it. Static position keeps it in the gutter between the columns. */
 .sy-split > .grip { position: static; width: 28px; cursor: col-resize; }
 
-/* – U2 · Fmap tab on the map: lens bar, role glyphs, families, loops –
+/* – U2 · MapView tab on the map: lens bar, role glyphs, families, loops –
    Same rules as the header comment: hover is a background/border shift,
    never a shadow, glow, scale. */
 
@@ -206,11 +206,11 @@
   .sy-role-rule { white-space: normal; }
 }
 
-/* – fmap (owner-built): right structure panel, flow view, icons, progress –
+/* – map (owner-built): right structure panel, flow view, icons, progress –
    Same rules: 1px warm lines, no glow, no gradients, en dashes in copy. */
 
 /* layout: canvas left, the structure panel on the right like Graph's inspector */
-.sy-split { grid-template-columns: minmax(0, 1fr) var(--size-fmap, 360px); }
+.sy-split { grid-template-columns: minmax(0, 1fr) var(--size-map, 360px); }
 .fm-right { position: relative; border-right: 0; border-left: 1px solid var(--line); }
 .fm-right > .grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 3; }
 .fm-details { border-bottom: 1px solid var(--line); flex: none; max-height: 45%; overflow: auto; }

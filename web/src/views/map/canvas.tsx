@@ -1,4 +1,4 @@
-// Fmap canvas: nested blocks as boxes inside boxes (CSS grid, not sigma).
+// MapView canvas: nested blocks as boxes inside boxes (CSS grid, not sigma).
 // Renders only the drilled level plus one below, so 4 000+ leaves never all
 // mount. Every block node shows its role glyph (and its theme when embedded);
 // loop nodes render as one box listing their members. A selected chain draws
@@ -131,8 +131,8 @@ export function BlockCanvas(p: Props) {
   const loopById = new Map(p.loops.map((l) => [l.id, l]));
 
   return (
-    <div className="sy-canvas" data-testid="fmap-canvas">
-      <div className="sy-bread" data-testid="fmap-breadcrumb">
+    <div className="sy-canvas" data-testid="map-canvas">
+      <div className="sy-bread" data-testid="map-breadcrumb">
         <button className="crumb-link" onClick={p.onHome} aria-label="Top of the block tree">repo</button>
         {p.path.map((id, i) => {
           const b = p.blocks[id];
@@ -143,18 +143,18 @@ export function BlockCanvas(p: Props) {
             </span>
           );
         })}
-        {p.chain && <span className="sy-bread-chain mono" data-testid="fmap-chain-label">{p.leaves[p.chain.source]?.name ?? p.chain.source} · {p.chain.len} steps</span>}
+        {p.chain && <span className="sy-bread-chain mono" data-testid="map-chain-label">{p.leaves[p.chain.source]?.name ?? p.chain.source} · {p.chain.len} steps</span>}
       </div>
       <div className="sy-canvas-scroll" ref={wrap} style={{ position: "relative" }}>
         {seg.length > 0 && (
-          <svg className="sy-path" data-figure data-testid="fmap-path" width="100%" height="100%" aria-hidden="true">
+          <svg className="sy-path" data-figure data-testid="map-path" width="100%" height="100%" aria-hidden="true">
             {seg.map((s) => (
               <line key={s.i} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} />
             ))}
           </svg>
         )}
         {p.chain && (
-          <div className="sy-steps" data-testid="fmap-steps">
+          <div className="sy-steps" data-testid="map-steps">
             {p.chain.steps.map((id, i) => {
               if (typeof id === "string") {
                 // a loop step: one chip for the whole cycle, not per member
@@ -176,7 +176,7 @@ export function BlockCanvas(p: Props) {
         )}
         {p.chain ? (
           // Chain mode: the boxes the chain crosses, in order, joined by the path.
-          <div className="sy-rail" data-testid="fmap-rail">
+          <div className="sy-rail" data-testid="map-rail">
             {rail.map((id) => (
               <Box key={id} b={p.blocks[id]} blocks={p.blocks} leaves={p.leaves} chainIds={chainBlocks} stepLeaves={stepsIn[id]} onDrill={p.onDrill} onLeaf={p.onLeaf} register={(el) => { box.current[id] = el; }} registerKid={registerKid} />
             ))}
@@ -191,12 +191,12 @@ export function BlockCanvas(p: Props) {
           </div>
         )}
         {!p.chain && p.loops.length > 0 && p.loops.some((l) => l.members.length > 0) && (
-          <div className="sy-loops" data-testid="fmap-loops">
+          <div className="sy-loops" data-testid="map-loops">
             {p.loops.filter((l) => l.members.length > 0).map((loop) => {
               const expanded = openLoops.has(loop.id);
               const shown = expanded ? loop.members : loop.members.slice(0, 12);
               return (
-                <div key={loop.id} className="sy-box sy-loop" data-testid={`fmap-loop-${loop.id}`}>
+                <div key={loop.id} className="sy-box sy-loop" data-testid={`map-loop-${loop.id}`}>
                   <div className="sy-box-head">
                     <button className="sy-box-title" title="A cycle, condensed to one node – its members listed here">
                       <KindIcon kind="loop" />
@@ -216,7 +216,7 @@ export function BlockCanvas(p: Props) {
                       );
                     })}
                     {loop.members.length > shown.length &&
-                      <button className="sy-leaf-row sy-more" data-testid={`fmap-loop-more-${loop.id}`} onClick={() => toggleLoop(loop.id)}>+ {loop.members.length - shown.length} more – expand</button>}
+                      <button className="sy-leaf-row sy-more" data-testid={`map-loop-more-${loop.id}`} onClick={() => toggleLoop(loop.id)}>+ {loop.members.length - shown.length} more – expand</button>}
                   </div>
                 </div>
               );
@@ -252,7 +252,7 @@ function Box({ b, blocks, leaves, chainIds, onDrill, onLeaf, register, registerK
   useLayoutEffect(() => { register(ref.current); return () => register(null); }, [register]);
   const kids = b.children.filter((c) => blocks[c]).slice(0, 12);
   return (
-    <div ref={ref} className={`sy-box sy-box-${b.kind}${chainMark ? " sy-on-chain" : ""}`} data-block={b.id} data-testid={`fmap-box-${b.id}`}>
+    <div ref={ref} className={`sy-box sy-box-${b.kind}${chainMark ? " sy-on-chain" : ""}`} data-block={b.id} data-testid={`map-box-${b.id}`}>
       <div className="sy-box-head">
         <button className="sy-box-title" onClick={() => onDrill(b.id)} title={b.summary}>
           {b.children.length > 0 ? <Icon.chevron /> : null}

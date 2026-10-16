@@ -1,4 +1,4 @@
-// fmap flow – the default view: the whole codebase as a left-to-right
+// map flow – the default view: the whole codebase as a left-to-right
 // functional flow. Sections are laid out in layers – entry points on the
 // left, then whatever execution reaches next, out to terminals and adapters
 // on the right – with utilities, models and config in a band underneath.
@@ -79,7 +79,7 @@ export function FlowView({ data, roles, onDrill, onLeaf }: Props) {
     const rank = (id: number) => { const r = data.leaves[id]?.role; return r === "entry" ? 0 : r === "orchestrator" ? 1 : r === "core" ? 2 : 3; };
     const top = [...syms].filter((id) => data.leaves[id]).sort((x, y) => rank(x) - rank(y)).slice(0, TOP_FNS);
     return (
-      <div key={b.id} className={`fm-flow-box fm-role-${b.role}${hover === b.id ? " hot" : ""}`} data-flow-box={b.id} data-testid={`fmap-flow-${b.id}`}
+      <div key={b.id} className={`fm-flow-box fm-role-${b.role}${hover === b.id ? " hot" : ""}`} data-flow-box={b.id} data-testid={`map-flow-${b.id}`}
         onMouseEnter={() => setHover(b.id)} onMouseLeave={() => setHover(null)}>
         <button className="fm-flow-title" onClick={() => onDrill(b.id)} title={b.summary}>
           <RoleMark role={b.role} />
@@ -96,13 +96,13 @@ export function FlowView({ data, roles, onDrill, onLeaf }: Props) {
   };
 
   return (
-    <div className="sy-canvas fm-flow" data-testid="fmap-flow">
-      <div className="fm-headline" data-testid="fmap-headline">
+    <div className="sy-canvas fm-flow" data-testid="map-flow">
+      <div className="fm-headline" data-testid="map-headline">
         <span className="fm-headline-k">executes</span>
         <span className="fm-headline-v">{headline || "–"}</span>
       </div>
       <div className="sy-canvas-scroll fm-flow-scroll" ref={wrap}>
-        <svg className="fm-arrows" data-figure aria-hidden="true" data-testid="fmap-arrows" width={dim.w} height={dim.h}>
+        <svg className="fm-arrows" data-figure aria-hidden="true" data-testid="map-arrows" width={dim.w} height={dim.h}>
           <defs>
             <marker id="fm-head" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M0,0 L8,4 L0,8 z" className="fm-arrow-head" />
@@ -115,7 +115,7 @@ export function FlowView({ data, roles, onDrill, onLeaf }: Props) {
             const bs = ids.map((id) => sections[id]).filter(shown);
             if (!bs.length) return null;
             return (
-              <div key={i} className="fm-layer" data-testid={`fmap-layer-${i}`}>
+              <div key={i} className="fm-layer" data-testid={`map-layer-${i}`}>
                 <h3 className="sy-section-label">{labels[i]}</h3>
                 {bs.map(card)}
               </div>
@@ -123,7 +123,7 @@ export function FlowView({ data, roles, onDrill, onLeaf }: Props) {
           })}
         </div>
         {band.some((id) => shown(sections[id])) && (
-          <div className="fm-band" data-testid="fmap-band">
+          <div className="fm-band" data-testid="map-band">
             <h3 className="sy-section-label">utilities · models · config</h3>
             <div className="fm-band-row">{band.map((id) => sections[id]).filter(shown).map(card)}</div>
           </div>

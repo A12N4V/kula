@@ -1,4 +1,4 @@
-// fmap icons – the graph's own kind glyphs and colours (colors.ts GLYPH /
+// map icons – the graph's own kind glyphs and colours (colors.ts GLYPH /
 // kindColor), extended with the kinds the map adds, plus one role mark per
 // role. Every row, box and chain step uses these; no per-view copies.
 

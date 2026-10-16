@@ -200,9 +200,9 @@ export const api = {
     get<ChainPage>(`/api/map/chains?${q({ family, cursor, limit })}`),
   mapProgress: () => get<MapProgress>("/api/map/progress"),
 
-  // U1 · Fmap: blocks and chains (+ E1's embed endpoints)
+  // U1 · MapView: blocks and chains (+ E1's embed endpoints)
   syntagm: () => get<SyntagmData>("/api/syntagm"),
-  syntagmBlock: (id: string) => get<FmapBlock>(`/api/syntagm/block/${encodeURIComponent(id)}`),
+  syntagmBlock: (id: string) => get<MapViewBlock>(`/api/syntagm/block/${encodeURIComponent(id)}`),
   syntagmChain: (id: string) => get<Chain>(`/api/syntagm/chain/${encodeURIComponent(id)}`),
   embedStatus: () => get<EmbedStatus>("/api/embed/status"),
   embedCheck: () => get<EmbedCheck>("/api/embed/check"),
@@ -242,10 +242,10 @@ export function relTime(ts: number) {
 // Cluster colours share the graph palette (see colors.ts).
 export { hue as colorFor } from "./colors";
 
-// U1 · Fmap shared types (the contract shapes live in views/fmap/types.ts).
-import type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/fmap/types";
-export type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/fmap/types";
-export interface FmapBlock { block: import("./views/fmap/types").Block }
+// U1 · MapView shared types (the contract shapes live in views/map/types.ts).
+import type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/map/types";
+export type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/map/types";
+export interface MapViewBlock { block: import("./views/map/types").Block }
 export interface EmbedStatus { state: "off" | "on" | "stale"; installed: boolean; model: string | null; ms: number }
 export interface EmbedInstall { ok: boolean; phase?: string; done?: number; total?: number }
 

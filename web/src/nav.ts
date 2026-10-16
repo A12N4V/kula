@@ -1,6 +1,6 @@
 // Cross-view navigation: any view can send the user somewhere specific.
 
-export type View = "overview" | "graph" | "fmap" | "changes" | "history" | "branches" | "proposals" | "issues" | "notes" | "flows" | "agents" | "query" | "console";
+export type View = "overview" | "graph" | "map" | "changes" | "history" | "branches" | "proposals" | "issues" | "notes" | "flows" | "agents" | "query" | "console";
 
 export interface Target {
   issue?: number;
@@ -15,7 +15,7 @@ export interface Target {
   fences?: string;
   /** A tab inside a view (Agents: workflows, fences, memory, docs, connect). */
   tab?: string;
-  /** Fmap: the drilled block for a deep link (#fmap/<blockId>). */
+  /** MapView: the drilled block for a deep link (#map/<blockId>). */
   block?: string;
 }
 /** Contrast shows two revisions overlaid, side by side, or as a textual report. */
