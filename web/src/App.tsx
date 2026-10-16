@@ -6,6 +6,7 @@ import type { ContrastMode, Go, Target, View } from "./nav";
 import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, fuzzyScore } from "./nav";
 // Heavy views load on demand: the first paint ships the shell + Overview only,
 // the rest arrive as their own chunks (prefetched on idle – see PREFETCH below).
+import { useMapProgress } from "./views/map/progress";
 const GraphView = lazy(() => import("./views/GraphView"));
 const Agents = lazy(() => import("./views/Agents"));
 const Query = lazy(() => import("./views/Query"));
@@ -14,6 +15,7 @@ const History = lazy(() => import("./views/GitViews").then((m) => ({ default: m.
 const Branches = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Branches })));
 const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
 const Flows = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Flows })));
+const MapView = lazy(() => import("./views/MapView"));
 const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
 const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
 const Proposals = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Proposals })));
@@ -47,6 +49,8 @@ const GROUPS: Rail[][] = [
     { id: "overview", label: "Overview", icon: Icon.home, key: "1" },
     { id: "graph", label: "Graph", icon: Icon.graph, key: "2" },
     { id: "flows", label: "Flows", icon: Icon.flows, key: "3" },
+    // `s` stages files in Changes, so map takes `y` instead.
+    { id: "map", label: "map", icon: Icon.box, key: "y" },
   ],
   [
     { id: "changes", label: "Changes", icon: Icon.changes, key: "4" },
@@ -70,7 +74,9 @@ type Contrast = { base: string; head: string; mode?: ContrastMode } | null;
 
 /** URL ⇄ state: #overview · #graph/<id>/<tab> · #graph/contrast/<base>/<head> · #issues/<id> … */
 function parseHash() {
-  const [v, a, b, c, d] = location.hash.slice(1).split("/").map(decodeURIComponent);
+  const parts = location.hash.slice(1).split("/").map(decodeURIComponent);
+  if (parts[0] === "syntagm" || parts[0] === "fmap") parts[0] = "map"; // the tab's old names
+  const [v, a, b, c, d] = parts;
   const view = (VIEWS.some((x) => x.id === v) ? v : "overview") as View;
   const contrast: Contrast = view === "graph" && a === "contrast" && b && c ? { base: b, head: c, mode: (["overlay", "split", "report"].includes(d) ? d : undefined) as ContrastMode | undefined } : null;
   const focus = view === "graph" && !contrast && Number(a) > 0 ? Number(a) : null;
@@ -79,11 +85,13 @@ function parseHash() {
   if (view === "proposals" && Number(a)) target.proposal = Number(a);
   if (view === "history" && a) target.sha = a;
   if (view === "agents" && a) target.tab = a;
+  if (view === "map" && a) target.block = a;
   if (view === "graph" && a === "fences") target.fences = b ?? "";
   return { view, contrast, focus, target };
 }
 
 export default function App() {
+  const mapBusy = !!useMapProgress()?.running;
   const initial = useRef(parseHash()).current;
   const [view, setView] = useState<View>(initial.view);
   const [target, setTarget] = useState<Target>(initial.target);
@@ -139,6 +147,7 @@ export default function App() {
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
     else if (view === "agents" && target.tab && target.tab !== "overview") h += `/${target.tab}`;
+    else if (view === "map" && target.block) h += `/${target.block}`;
     if (`#${h}` === location.hash) return;
     if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
     else history.pushState(null, "", `#${h}`);
@@ -222,6 +231,7 @@ export default function App() {
               <button key={v.id} className={view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
                 <v.icon />
                 <span className="rail-label">{v.label}</span>
+                {v.id === "map" && mapBusy && <span className="rail-busy" data-testid="map-nav-busy" title="mapping in progress" aria-label="mapping in progress" />}
                 {!!badge[v.id] && <span className="badge">{badge[v.id]}</span>}
               </button>
             ))}
@@ -263,6 +273,7 @@ export default function App() {
             {view === "issues" && <Issues {...nav} />}
             {view === "notes" && <Notes {...nav} />}
             {view === "flows" && <Flows {...nav} />}
+            {view === "map" && <MapView openSymbol={(id) => go("graph", { symbol: id })} version={version} block={target.block} />}
             {view === "agents" && <Agents {...nav} />}
             {view === "query" && <Query {...nav} />}
             {view === "console" && <Console {...nav} />}

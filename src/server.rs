@@ -5,7 +5,7 @@
 //! served page, so other websites cannot drive your repository.
 
 use crate::git::{validate_rev, Repo};
-use crate::{graph, index, meta, store::Store};
+use crate::{config, embed, graph, index, map_api, map_run, meta, store::Store, syntagm};
 use anyhow::anyhow;
 use axum::{
     body::Body,
@@ -27,8 +27,8 @@ use std::sync::Arc;
 struct Assets;
 
 #[derive(Clone)]
-struct AppState {
-    repo: Repo,
+pub(crate) struct AppState {
+    pub(crate) repo: Repo,
     token: Arc<String>,
     /// Revision graphs by commit sha, for fast repeated branch contrasts.
     snapshots: Arc<std::sync::Mutex<HashMap<String, Arc<index::Built>>>>,
@@ -64,7 +64,7 @@ impl AppState {
     }
 }
 
-struct ApiErr(anyhow::Error);
+pub(crate) struct ApiErr(anyhow::Error);
 impl IntoResponse for ApiErr {
     fn into_response(self) -> Response {
         (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("{:#}", self.0) }))).into_response()
@@ -75,10 +75,10 @@ impl<E: Into<anyhow::Error>> From<E> for ApiErr {
         ApiErr(e.into())
     }
 }
-type ApiResult = Result<Json<Value>, ApiErr>;
+pub(crate) type ApiResult = Result<Json<Value>, ApiErr>;
 
 /// Run blocking repository work off the async executor.
-async fn blocking<F>(f: F) -> ApiResult
+pub(crate) async fn blocking<F>(f: F) -> ApiResult
 where
     F: FnOnce() -> anyhow::Result<Value> + Send + 'static,
 {
@@ -172,7 +172,24 @@ async fn repo_info(State(s): State<AppState>) -> ApiResult {
 }
 
 async fn reindex(State(s): State<AppState>) -> ApiResult {
-    blocking(move || Ok(json!(index::run(&s.repo, true)?))).await
+    blocking(move || {
+        let v = json!(index::run(&s.repo, true)?);
+        // Map by default: a reindex (commit landed) remaps in the background.
+        // The engine's own incremental gate reuses the stored map when the
+        // graph is unchanged; singleflight keeps this from double-mapping
+        // with the auto-reindex loop.
+        map_run::spawn(s.repo.clone(), true);
+        // A fresh repo's first index may have happened here rather than via
+        // the CLI: settle the embeddings decision once if it is still open.
+        embed::auto(&s.repo, &Store::open(&s.repo)?, false);
+        Ok(v)
+    })
+    .await
+}
+
+/// GET /api/map/progress – where the background map run is.
+async fn map_progress() -> Json<Value> {
+    Json(serde_json::json!(map_run::state()))
 }
 
 /// Before editing a symbol: dependents, direct callers, tests that reach it, files that change with it, advice.
@@ -311,6 +328,29 @@ async fn scopes_action(State(s): State<AppState>, Path(action): Path<String>, Js
 
 async fn flows(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(graph::flows(&Store::open(&s.repo)?, 25)?))).await
+}
+
+/// GET /api/syntagm – blocks, chains, leaves and stats.
+async fn syntagm_all(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let store = Store::open(&s.repo)?;
+        // Wave-2 wiring: E1's embedding cache refines B1's blocks when it
+        // exists; full coverage reports "on", partial "stale".
+        let (idx, state) = embed::similarity_for(&s.repo, &store);
+        let sim = idx.as_ref().map(|i| i as &dyn syntagm::Similarity);
+        Ok(json!(syntagm::all_json_with(&s.repo, &store, sim, state).unwrap_or_else(|e| json!({ "error": e.to_string() }))))
+    })
+    .await
+}
+
+/// GET /api/syntagm/block/:id – a block, its children and its leaves.
+async fn syntagm_block(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || Ok(json!(syntagm::block_json(&s.repo, &Store::open(&s.repo)?, &id)?))).await
+}
+
+/// GET /api/syntagm/chain/:id – a chain and its resolved steps.
+async fn syntagm_chain(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || Ok(json!(syntagm::chain_json(&s.repo, &Store::open(&s.repo)?, &id)?))).await
 }
 
 async fn file(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
@@ -836,6 +876,101 @@ async fn kg_sparql(State(s): State<AppState>, Json(q): Json<SparqlReq>) -> ApiRe
     .await
 }
 
+async fn embed_status(State(s): State<AppState>) -> ApiResult {
+    Ok(Json(embed::api_status(&s.repo)?))
+}
+
+/// POST /api/embed/enable – flip `[embed] enabled` in kula.toml (the Settings
+/// switch's persistence) and return the new status. Gated server-side: a
+/// `refuse` verdict never flips the flag, so kula.toml only ever says
+/// enabled = true when the pipeline may actually run.
+async fn embed_enable(State(s): State<AppState>, Json(v): Json<Value>) -> ApiResult {
+    let on = v.get("enabled").and_then(|b| b.as_bool()).ok_or_else(|| anyhow!("enabled boolean required"))?;
+    blocking(move || {
+        if on {
+            // Run the check against the config the switch would produce
+            // (enabled = true): the file only flips when the verdict allows.
+            let mut cfg = config::Config::load(&s.repo.root)?.embed;
+            cfg.enabled = true;
+            let st = Store::open(&s.repo)?;
+            let verdict = embed::check(&s.repo, &st, &cfg)?;
+            if verdict.verdict == "refuse" {
+                anyhow::bail!("embed check says refuse – {}", verdict.reasons.join("; "));
+            }
+        }
+        embed::set_enabled(&s.repo, on)?;
+        if on {
+            // The switch turned on: map again so the engine picks the
+            // embedding cache up when the model finishes embedding.
+            map_run::spawn(s.repo.clone(), true);
+        }
+        Ok(json!(embed::api_status(&s.repo)?))
+    })
+    .await
+}
+
+async fn embed_check(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        embed::api_check(&s.repo, &st)
+    })
+    .await
+}
+
+async fn embed_install(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        let cfg = config::Config::load(&s.repo.root)?.embed;
+        let verdict = embed::check(&s.repo, &st, &cfg)?;
+        embed::install_gate(&verdict, false)?;
+        Ok(serde_json::json!({ "installed": embed::install(&s.repo)? }))
+    })
+    .await
+}
+
+async fn embed_remove(State(s): State<AppState>) -> ApiResult {
+    Ok(Json(serde_json::json!({ "freed_mb": embed::remove(&s.repo)? / (1024 * 1024) })))
+}
+
+/// POST /api/embed/run – start an embedding run in the background (mock or
+/// real model per config); returns immediately, progress on /api/embed/status.
+async fn embed_run(State(s): State<AppState>) -> ApiResult {
+    if embed::status().running {
+        return Ok(Json(serde_json::json!({ "started": false, "reason": "already running" })));
+    }
+    let repo = s.repo.clone();
+    tokio::spawn(async move {
+        let st = Store::open(&repo).ok();
+        let cfg = config::Config::load(&repo.root).map(|c| c.embed).ok();
+        match (st, cfg) {
+            (Some(st), Some(cfg)) => {
+                let prov = match embed::provider_for(&cfg, false) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        embed::run_error(format!("{e:#}"));
+                        return;
+                    }
+                };
+                match embed::run(&repo, &st, &cfg, &prov, embed::cancel_requested) {
+                    // Embeddings changed – remap so blocks re-form thematically.
+                    Ok(_) => {
+                        map_run::spawn(repo.clone(), true);
+                    }
+                    Err(e) => embed::run_error(format!("{e:#}")),
+                }
+            }
+            _ => embed::run_error("cannot open store or config".into()),
+        }
+    });
+    Ok(Json(serde_json::json!({ "started": true })))
+}
+
+/// POST /api/embed/cancel – ask the running job to stop between batches.
+async fn embed_cancel() -> ApiResult {
+    embed::cancel();
+    Ok(Json(serde_json::json!({ "cancelled": true })))
+}
+
 async fn kg_export(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let f = q.get("format").cloned().unwrap_or_else(|| "ttl".into());
@@ -1027,12 +1162,22 @@ fn spawn_idle_clean(state: AppState) {
 
 pub fn router(repo: Repo, token: String) -> Router {
     let state = AppState {
-        repo,
+        repo: repo.clone(),
         token: Arc::new(token),
         snapshots: Default::default(),
         used: Arc::new(meta::now().max(0).try_into().unwrap_or(0).into()),
     };
     spawn_idle_clean(state.clone());
+    // Map by default at start-up: after the first index the map runs on its
+    // own thread, never blocking graph serving.
+    map_run::spawn(repo.clone(), true);
+    // Embeddings on by default, decided once: a fresh repo (no `[embed]
+    // decided`) gets the hardware check in the background at low priority –
+    // ok installs and embeds, warn or refuse stays off. Never on the request
+    // path.
+    if let Ok(st) = Store::open(&repo) {
+        embed::auto(&repo, &st, false);
+    }
     Router::new()
         .route("/api/clean", get(clean_get).post(clean_set))
         .route("/api/langs", get(langs_get))
@@ -1040,6 +1185,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/clean/now", post(clean_now))
         .route("/api/repo", get(repo_info))
         .route("/api/index", post(reindex))
+        .route("/api/map/progress", get(map_progress))
         .route("/api/index/progress", get(index_progress))
         .route("/api/agent/pre_edit/{id}", get(agent_pre_edit))
         // A1: fence-path verdict endpoint (see the A1 block above).
@@ -1054,6 +1200,12 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/symbol/{id}", get(symbol))
         .route("/api/impact/{id}", get(impact))
         .route("/api/flows", get(flows))
+        .route("/api/map", get(map_api::map_all))
+        .route("/api/map/chains", get(map_api::map_chains))
+        .route("/api/map/block/{id}", get(map_api::map_block))
+        .route("/api/syntagm", get(syntagm_all))
+        .route("/api/syntagm/block/{id}", get(syntagm_block))
+        .route("/api/syntagm/chain/{id}", get(syntagm_chain))
         .route("/api/isolate", post(isolate))
         .route("/api/scopes", get(scopes))
         .route("/api/scopes/{action}", post(scopes_action))
@@ -1079,6 +1231,13 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/kg/sparql", post(kg_sparql))
         .route("/api/kg/export", get(kg_export))
         .route("/api/kg/examples", get(kg_examples))
+        .route("/api/embed/status", get(embed_status))
+        .route("/api/embed/enable", post(embed_enable))
+        .route("/api/embed/check", get(embed_check))
+        .route("/api/embed/install", post(embed_install))
+        .route("/api/embed/remove", post(embed_remove))
+        .route("/api/embed/run", post(embed_run))
+        .route("/api/embed/cancel", post(embed_cancel))
         .route("/api/meta/{kind}/{action}", post(meta_action))
         .fallback(static_file)
         .layer(middleware::from_fn_with_state(state.clone(), guard))
@@ -1099,6 +1258,8 @@ fn spawn_auto_reindex(repo: Repo) {
             let _ = tokio::task::spawn_blocking(move || {
                 if Store::freshness(&r) != "current" {
                     let _ = index::run(&r, true);
+                    // Head moved – remap incrementally in the background.
+                    map_run::spawn(r.clone(), true);
                 }
             })
             .await;
