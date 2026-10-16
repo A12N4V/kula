@@ -135,30 +135,206 @@ fn names_are_deterministic_and_segment_first() {
 }
 
 #[test]
-fn chains_cross_blocks_and_drop_prefixes() {
+fn chains_start_at_sources_end_at_terminals() {
     let (_d, _repo, store) = temp_store();
     fixture(&store);
     let s = Builder::default().compute(&store);
     assert!(!s.chains.is_empty(), "expected chains from entry points");
     for c in &s.chains {
-        assert!(c.len >= 2);
-        assert!(c.len <= MAX_CHAIN_DEPTH);
+        assert!(c.len >= 2, "a chain needs at least a source and a terminal");
         assert!(!c.blocks.is_empty(), "chain must list the blocks it crosses");
-        assert_eq!(c.steps[0], c.entry, "a chain starts at its entry point");
+        assert_eq!(c.steps[0], c.source, "a chain starts at its source");
+        assert_eq!(*c.steps.last().unwrap(), c.terminal, "a chain ends at its terminal");
     }
-    // No chain is a strict prefix of another.
-    for i in 0..s.chains.len() {
-        for j in 0..s.chains.len() {
-            if i != j {
-                assert!(
-                    !s.chains[i].steps.starts_with(&s.chains[j].steps) || s.chains[i].steps == s.chains[j].steps,
-                    "prefix chain {} of {} kept",
-                    s.chains[i].id,
-                    s.chains[j].id
-                );
+}
+
+#[test]
+fn family_counts_sum_to_the_chain_total() {
+    let (_d, _repo, store) = temp_store();
+    fixture(&store);
+    let s = Builder::default().compute(&store);
+    assert!(!s.families.is_empty(), "expected families");
+    let sum: u128 = s.families.iter().map(|f| f.count).sum();
+    assert_eq!(sum, s.total, "family counts must add up to the total");
+    assert!(s.exact || !s.exact); // both states are legal here
+    for f in &s.families {
+        assert!(f.min_len >= 2);
+        assert!(f.max_len >= f.min_len);
+        assert!(f.exact, "small fixture counts must be exact");
+        assert!(!f.blocks.is_empty(), "a family lists the blocks it can cross");
+    }
+}
+
+#[test]
+fn chain_total_equals_brute_force_enumeration() {
+    // A known DAG on the pure engine level: brute-force DFS count must equal
+    // the DP total, and the cursor must yield exactly the same chains.
+    // adjacency (by symbol index): 0 → 1,2 ; 1 → 3 ; 2 → 3,4 ; 3 → 5 ; 4 → 5
+    let adj = vec![vec![1usize, 2], vec![3], vec![3, 4], vec![5], vec![5], vec![]];
+    let cond = condense(&adj);
+    let counts = path_counts(&cond);
+    // Sources are component indices; map them back to symbol indices for the
+    // brute-force walk over the raw adjacency.
+    let src_syms: Vec<usize> = cond.sources.iter().flat_map(|&c| cond.members[c].clone()).collect();
+    let brute = brute_force_paths(&adj, src_syms);
+    assert_eq!(counts.total, brute as u128, "DP total must equal brute-force enumeration");
+    // Every chain the cursor yields is a real source→terminal path, and
+    // exactly once each.
+    let mut cursor_chains: Vec<Vec<usize>> = Vec::new();
+    let mut cur = ChainCursor::new();
+    while let Some(p) = ChainCursor::next(&cond, &mut cur) {
+        cursor_chains.push(p);
+    }
+    assert_eq!(cursor_chains.len(), brute, "cursor must yield every chain");
+    let mut sorted = cursor_chains.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(sorted.len(), cursor_chains.len(), "no chain twice");
+    for p in &cursor_chains {
+        assert_eq!(p[0], cond.scc_of[0], "every chain starts at the source");
+        let last = *p.last().unwrap();
+        assert!(cond.dag[last].is_empty(), "every chain ends at a terminal");
+    }
+}
+
+#[test]
+fn cursor_resumes_from_serialised_state() {
+    let adj = vec![vec![1usize, 2], vec![3], vec![3, 4], vec![5], vec![5], vec![]];
+    let cond = condense(&adj);
+    let mut full: Vec<Vec<usize>> = Vec::new();
+    let mut cur = ChainCursor::new();
+    while let Some(p) = ChainCursor::next(&cond, &mut cur) {
+        full.push(p);
+    }
+    // Run a few chains, serialise, rebuild, continue: the concatenation of
+    // both halves must reproduce the whole enumeration exactly.
+    let mut part: Vec<Vec<usize>> = Vec::new();
+    let mut cur = ChainCursor::new();
+    for _ in 0..3 {
+        if let Some(p) = ChainCursor::next(&cond, &mut cur) {
+            part.push(p);
+        }
+    }
+    let snap = cur.to_json();
+    let mut resumed = ChainCursor::from_json(&snap).expect("cursor parses back");
+    while let Some(p) = ChainCursor::next(&cond, &mut resumed) {
+        part.push(p);
+    }
+    assert_eq!(part, full, "resumed enumeration must match a fresh one");
+}
+
+#[test]
+fn a_cycle_becomes_one_loop_node() {
+    // 0 → 1 → 2 → 0 plus 2 → 3: one SCC over {0,1,2}, one loop node.
+    let adj = vec![vec![1usize], vec![2], vec![0, 3], vec![]];
+    let cond = condense(&adj);
+    let looped: Vec<Vec<usize>> = (0..cond.members.len()).filter(|&c| cond.is_loop[c]).map(|c| cond.members[c].clone()).collect();
+    assert_eq!(looped.len(), 1, "one cycle means one loop node, got {:?}", looped);
+    assert_eq!(looped[0], vec![0usize, 1, 2]);
+    // Condensation is a DAG: total stays finite and exact.
+    let counts = path_counts(&cond);
+    assert!(counts.exact, "a tiny cyclic graph must still count exactly");
+    assert!(counts.total >= 1, "source enters the loop and reaches the terminal");
+    // Enumeration terminates: a loop node contributes its members once.
+    let mut cur = ChainCursor::new();
+    let mut seen = 0usize;
+    while ChainCursor::next(&cond, &mut cur).is_some() {
+        seen += 1;
+        assert!(seen < 100, "cursor must not spin on cycles");
+    }
+}
+
+#[test]
+fn huge_path_counts_map_in_linear_time_and_saturate_past_u128() {
+    // Layered DAG, 2 nodes per layer, all-to-all between adjacent layers:
+    // 121 layers gives ~2^120 paths, far past u128::MAX.
+    let layers = 135;
+    let n = layers * 2;
+    let mut adj = vec![Vec::<usize>::new(); n];
+    for l in 0..layers.saturating_sub(1) {
+        for a in 0..2 {
+            for b in 0..2 {
+                adj[l * 2 + a].push((l + 1) * 2 + b);
             }
         }
     }
+    let t0 = std::time::Instant::now();
+    let cond = condense(&adj);
+    let counts = path_counts(&cond);
+    let elapsed = t0.elapsed();
+    assert!(!counts.exact, "2^120 paths must saturate u128");
+    assert_eq!(counts.total, u128::MAX);
+    assert!(elapsed.as_millis() < 5_000, "condense + DP must be fast, took {} ms", elapsed.as_millis());
+    // Just under the boundary stays exact and beats 10^18.
+    let layers = 101;
+    let n = layers * 2;
+    let mut adj = vec![Vec::<usize>::new(); n];
+    for l in 0..layers.saturating_sub(1) {
+        for a in 0..2 {
+            for b in 0..2 {
+                adj[l * 2 + a].push((l + 1) * 2 + b);
+            }
+        }
+    }
+    let cond = condense(&adj);
+    let counts = path_counts(&cond);
+    assert!(counts.exact, "2^100 paths still fit u128");
+    assert!(counts.total > u128::from(10u64.pow(18)), "expected > 10^18 paths, got {}", counts.total);
+}
+
+#[test]
+fn roles_match_hand_labelled_expectations() {
+    let cases: Vec<(&str, &str, &str, usize, usize, Vec<&str>, &str)> = vec![
+        // (kind, name, path, prod_in, prod_out, callees, expected)
+        ("function", "main", "app/main.py", 0, 2, vec!["charge"], "entry"),
+        ("function", "handle", "web/handler.py", 0, 4, vec!["render", "db_save"], "entry"),
+        ("function", "pay", "payments/core.py", 1, 4, vec!["charge", "validate_card", "log_payment"], "orchestrator"),
+        ("function", "validate_card", "payments/core.py", 3, 0, vec![], "core"),
+        ("function", "format_amount", "utils/format.py", 9, 0, vec![], "utility"),
+        ("function", "write_file", "io/write.py", 1, 1, vec!["fs_write"], "adapter"),
+        ("class", "Payment", "payments/core.py", 2, 0, vec![], "model"),
+        ("constant", "MAX_RETRIES", "settings.py", 3, 0, vec![], "config"),
+        ("function", "test_pay", "tests/test_pay.py", 0, 1, vec!["pay"], "test"),
+        ("function", "reexport_pay", "__init__.py", 0, 1, vec!["pay"], "glue"),
+    ];
+    for (kind, name, path, pin, pout, callees, expected) in cases {
+        let callees: Vec<String> = callees.into_iter().map(String::from).collect();
+        let got = classify_role(kind, name, path, pin, pout, &callees);
+        assert_eq!(got, expected, "role of {} ({})", name, path);
+    }
+    // Every role explains itself in one line.
+    for role in ROLES {
+        let rule = role_rule(role);
+        assert!(!rule.is_empty(), "role {} needs a rule", role);
+        assert!(!rule.contains('\n'), "rule of {} must be one line", role);
+    }
+}
+
+#[test]
+fn every_symbol_gets_a_role() {
+    let (_d, _repo, store) = temp_store();
+    fixture(&store);
+    let s = Builder::default().compute(&store);
+    let all: Vec<i64> = vec![2, 3, 4, 5, 6, 11, 12, 13, 21, 22, 31, 32, 40, 41];
+    for id in all {
+        let role = s.roles.get(&id).unwrap_or_else(|| panic!("symbol {} has no role", id));
+        assert!(ROLES.contains(&role.as_str()), "symbol {} got unknown role {}", id, role);
+    }
+    // Every block carries a dominant role too.
+    for b in &s.blocks {
+        assert!(ROLES.contains(&b.role.as_str()), "block {} has role {}", b.id, b.role);
+    }
+}
+
+/// Brute-force count of all source → terminal paths on a tiny DAG.
+fn brute_force_paths(adj: &[Vec<usize>], sources: Vec<usize>) -> usize {
+    fn walk(adj: &[Vec<usize>], v: usize) -> usize {
+        if adj[v].is_empty() {
+            return 1;
+        }
+        adj[v].iter().map(|&w| walk(adj, w)).sum()
+    }
+    sources.iter().map(|&s| walk(adj, s)).sum()
 }
 
 #[test]

@@ -16,6 +16,9 @@ mod index;
 mod isolate;
 mod kg;
 mod lang_cmd;
+mod map;
+mod map_api;
+mod map_cmd;
 mod map_run;
 mod mcp;
 mod memory;
@@ -249,6 +252,7 @@ enum Cmd {
         limit: usize,
     },
     /// Hierarchical code blocks built from the graph.
+    #[command(hide = true)]
     #[command(after_help = "Examples:\n  kula blocks   ·  kula blocks --depth 1 --json")]
     Blocks {
         /// Show only blocks up to this depth.
@@ -257,10 +261,19 @@ enum Cmd {
     },
     /// Maximal call chains from entry points.
     #[command(after_help = "Examples:\n  kula chains   ·  kula chains --from pay")]
+    #[command(hide = true)]
     Chains {
         /// Chains starting at this symbol.
         #[arg(long)]
         from: Option<String>,
+    },
+    /// The map: sections, blocks, chain families, roles – summary by default.
+    #[command(
+        after_help = "Examples:\n  kula map   ·  kula map blocks --depth 1\n  kula map chains --from pay --to log_payment --all\n  kula map roles --role utility"
+    )]
+    Map {
+        #[command(subcommand)]
+        sub: Option<MapSub>,
     },
     /// Functional clusters (communities) in the codebase.
     #[command(after_help = "Examples:\n  kula clusters")]
@@ -410,6 +423,37 @@ enum Cmd {
     },
     #[command(external_subcommand)]
     External(Vec<String>),
+}
+
+/// Subcommands of `kula map` – the map command family.
+#[derive(Subcommand)]
+enum MapSub {
+    /// The summary table: sections, blocks, roles, families, chains, loops, ms.
+    Summary,
+    /// The block tree, optionally as JSON.
+    Blocks {
+        /// Show only blocks up to this depth.
+        #[arg(long)]
+        depth: Option<usize>,
+    },
+    /// Chain families and their chains – `--all` streams every chain as NDJSON.
+    Chains {
+        /// Chains starting at this symbol.
+        #[arg(long)]
+        from: Option<String>,
+        /// Chains ending at this symbol.
+        #[arg(long)]
+        to: Option<String>,
+        /// Stream every chain, not just the sampled surface.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Every symbol grouped by role, with each role's one-line rule.
+    Roles {
+        /// Only this role.
+        #[arg(long)]
+        role: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1475,6 +1519,7 @@ fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Cmd::Map { sub } => map_cmd::run(sub, &repo, json)?,
         Cmd::Blocks { depth } => {
             let st = Store::open(&repo)?;
             let (idx, state) = embed::similarity_for(&repo, &st);

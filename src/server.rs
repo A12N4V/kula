@@ -5,7 +5,7 @@
 //! served page, so other websites cannot drive your repository.
 
 use crate::git::{validate_rev, Repo};
-use crate::{config, embed, graph, index, map_run, meta, store::Store, syntagm};
+use crate::{config, embed, graph, index, map_api, map_run, meta, store::Store, syntagm};
 use anyhow::anyhow;
 use axum::{
     body::Body,
@@ -27,8 +27,8 @@ use std::sync::Arc;
 struct Assets;
 
 #[derive(Clone)]
-struct AppState {
-    repo: Repo,
+pub(crate) struct AppState {
+    pub(crate) repo: Repo,
     token: Arc<String>,
     /// Revision graphs by commit sha, for fast repeated branch contrasts.
     snapshots: Arc<std::sync::Mutex<HashMap<String, Arc<index::Built>>>>,
@@ -64,7 +64,7 @@ impl AppState {
     }
 }
 
-struct ApiErr(anyhow::Error);
+pub(crate) struct ApiErr(anyhow::Error);
 impl IntoResponse for ApiErr {
     fn into_response(self) -> Response {
         (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("{:#}", self.0) }))).into_response()
@@ -75,10 +75,10 @@ impl<E: Into<anyhow::Error>> From<E> for ApiErr {
         ApiErr(e.into())
     }
 }
-type ApiResult = Result<Json<Value>, ApiErr>;
+pub(crate) type ApiResult = Result<Json<Value>, ApiErr>;
 
 /// Run blocking repository work off the async executor.
-async fn blocking<F>(f: F) -> ApiResult
+pub(crate) async fn blocking<F>(f: F) -> ApiResult
 where
     F: FnOnce() -> anyhow::Result<Value> + Send + 'static,
 {
@@ -1200,6 +1200,9 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/symbol/{id}", get(symbol))
         .route("/api/impact/{id}", get(impact))
         .route("/api/flows", get(flows))
+        .route("/api/map", get(map_api::map_all))
+        .route("/api/map/chains", get(map_api::map_chains))
+        .route("/api/map/block/{id}", get(map_api::map_block))
         .route("/api/syntagm", get(syntagm_all))
         .route("/api/syntagm/block/{id}", get(syntagm_block))
         .route("/api/syntagm/chain/{id}", get(syntagm_chain))
