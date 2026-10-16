@@ -79,7 +79,11 @@ fn chains(repo: &git::Repo, json: bool, from: Option<&str>, to: Option<&str>, al
             if let (Some(f), Some(t)) = (from, to) {
                 let fid = names.get(&source).map(|n| n.as_str());
                 let tid = names.get(&terminal).map(|n| n.as_str());
-                if fid != Some(f) && tid != Some(t) {
+                // Both filters given: stream the single (source, terminal)
+                // family. The cursor walks every source lazily and skips
+                // the rest, so this is O(chains of that family) amortised
+                // but still visits the cursor state of all sources.
+                if !(fid == Some(f) && tid == Some(t)) {
                     continue;
                 }
             } else if from.is_some() && names.get(&source).map(|n| n.as_str()) != from {

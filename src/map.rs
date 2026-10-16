@@ -1454,7 +1454,7 @@ impl Builder<'_> {
     fn build_all_chains(
         &self,
         cond: &Condensation,
-        counts: &PathCounts,
+        _counts: &PathCounts,
         _nodes: &[crate::store::Node],
         node_ids: &[i64],
         block_of: &impl Fn(i64) -> String,
@@ -1469,23 +1469,32 @@ impl Builder<'_> {
 
         // Per-source forward DP: g[u] counts the paths this source reaches u
         // by. Summing the predecessors of each sink gives the exact family
-        // count for (source, sink).
+        // count for (source, sink). The predecessor lists are built once
+        // here – hoisting them keeps the whole family pass O(S·(V+E)) with
+        // O(V+E) setup instead of O(S·(V+E)) matrix rebuilds.
         let sinks: Vec<usize> = (0..cond.members.len()).filter(|&c| cond.dag[c].is_empty()).collect();
+        let mut preds: Vec<Vec<usize>> = vec![Vec::new(); cond.members.len()];
+        for (p, row) in cond.dag.iter().enumerate() {
+            for &b in row {
+                preds[b].push(p);
+            }
+        }
         let mut families: Vec<ChainFamily> = Vec::new();
         for &src in &cond.sources {
             let mut g = vec![0u128; cond.members.len()];
             g[src] = 1;
             let start = cond.order.iter().position(|&c| c == src).unwrap_or(0);
-            let mut preds: Vec<Vec<usize>> = vec![Vec::new(); cond.members.len()];
-            for (p, row) in cond.dag.iter().enumerate() {
-                for &b in row {
-                    preds[b].push(p);
-                }
-            }
+            // Saturation is tracked per source: a family whose own DP never
+            // overflows stays exact even when the global total saturated.
+            let mut exact = true;
             for &c in &cond.order[start + 1..] {
                 let mut v = 0u128;
                 for &p in &preds[c] {
-                    v = v.saturating_add(g[p]);
+                    let (sum, overflow) = v.overflowing_add(g[p]);
+                    if overflow {
+                        exact = false;
+                    }
+                    v = if overflow { u128::MAX } else { sum };
                 }
                 if v > 0 {
                     g[c] = v;
@@ -1494,7 +1503,11 @@ impl Builder<'_> {
             for &sink in &sinks {
                 let mut count = 0u128;
                 for &p in &preds[sink] {
-                    count = count.saturating_add(g[p]);
+                    let (sum, overflow) = count.overflowing_add(g[p]);
+                    if overflow {
+                        exact = false;
+                    }
+                    count = if overflow { u128::MAX } else { sum };
                 }
                 if count == 0 {
                     continue;
@@ -1519,7 +1532,7 @@ impl Builder<'_> {
                     source: node_ids[cond.members[src][0]],
                     terminal: node_ids[cond.members[sink][0]],
                     count,
-                    exact: counts.exact,
+                    exact,
                     min_len: lens.iter().copied().min().unwrap_or(0),
                     max_len: lens.iter().copied().max().unwrap_or(0),
                     blocks,
@@ -1931,7 +1944,7 @@ pub fn chain_family_page(_repo: &Repo, store: &Store, family: &str, cursor: Opti
     let block_map: std::collections::HashMap<i64, String> = match load_stored(store, "off")? {
         Some(s) => {
             let (deep, any) = block_maps(&s.blocks);
-            deep.into_iter().chain(any.into_iter()).collect()
+            deep.into_iter().chain(any).collect()
         }
         None => std::collections::HashMap::new(),
     };

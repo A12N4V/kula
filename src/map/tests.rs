@@ -41,19 +41,47 @@ fn fixture(store: &Store) {
     add_node(store, 11, "function", "record", "ledgers/book.py", 10);
     add_node(store, 12, "function", "append_line", "ledgers/book.py", 40);
     add_node(store, 13, "function", "rotate_file", "ledgers/book.py", 70);
+    add_node(store, 14, "function", "stamp_entry", "ledgers/book.py", 100);
+    add_node(store, 15, "function", "sum_lines", "ledgers/book.py", 120);
+    add_node(store, 16, "function", "rotate_backup", "ledgers/book.py", 140);
     // Module ingest: parse_stream → decode_frame
     add_node(store, 20, "file", "wire.py", "ingest/wire.py", 1);
     add_node(store, 21, "function", "parse_stream", "ingest/wire.py", 10);
     add_node(store, 22, "function", "decode_frame", "ingest/wire.py", 50);
+    add_node(store, 23, "function", "parse_header", "ingest/wire.py", 80);
+    add_node(store, 24, "function", "parse_footer", "ingest/wire.py", 100);
+    add_node(store, 25, "function", "decode_meta", "ingest/wire.py", 120);
     // Barrel re-export hub: __init__ "calls" everything (the giant-cluster trap).
     add_node(store, 30, "file", "__init__.py", "__init__.py", 1);
     add_node(store, 31, "function", "reexport_pay", "__init__.py", 5);
     add_node(store, 32, "function", "reexport_record", "__init__.py", 9);
+    // Module export: render_report → three renderers
+    add_node(store, 50, "file", "render.py", "export/render.py", 1);
+    add_node(store, 51, "function", "render_report", "export/render.py", 10);
+    add_node(store, 52, "function", "render_table", "export/render.py", 40);
+    add_node(store, 53, "function", "render_legend", "export/render.py", 70);
+    add_node(store, 54, "function", "render_footer", "export/render.py", 100);
     // Tests: call production code.
     add_node(store, 40, "function", "test_pay", "tests/test_pay.py", 1);
     add_node(store, 41, "function", "test_record", "tests/test_ledger.py", 1);
 
-    for (a, b) in [(2, 3), (3, 4), (3, 5), (11, 12), (12, 13), (21, 22)] {
+    for (a, b) in [
+        (2, 3),
+        (3, 4),
+        (3, 5),
+        (11, 12),
+        (12, 13),
+        (12, 14),
+        (12, 15),
+        (13, 16),
+        (21, 22),
+        (21, 23),
+        (21, 24),
+        (21, 25),
+        (51, 52),
+        (51, 53),
+        (51, 54),
+    ] {
         add_edge(store, a, b, "CALLS", 1.0);
     }
     // Barrel hub calls many things.
@@ -65,7 +93,30 @@ fn fixture(store: &Store) {
     add_edge(store, 40, 2, "CALLS", 1.0);
     add_edge(store, 41, 11, "CALLS", 1.0);
     // CONTAINS file → symbol.
-    for (f, s) in [(1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (10, 11), (10, 12), (10, 13), (20, 21), (20, 22), (30, 31), (30, 32)] {
+    for (f, s) in [
+        (1, 2),
+        (1, 3),
+        (1, 4),
+        (1, 5),
+        (1, 6),
+        (10, 11),
+        (10, 12),
+        (10, 13),
+        (10, 14),
+        (10, 15),
+        (10, 16),
+        (20, 21),
+        (20, 22),
+        (20, 23),
+        (20, 24),
+        (20, 25),
+        (50, 51),
+        (50, 52),
+        (50, 53),
+        (50, 54),
+        (30, 31),
+        (30, 32),
+    ] {
         add_edge(store, f, s, "CONTAINS", 1.0);
     }
 }
@@ -101,9 +152,9 @@ fn barrel_reexport_hub_does_not_glue_modules() {
     assert!(sections.len() >= 2, "expected separate sections, got {:?}", sections.iter().map(|b| b.name.clone()).collect::<Vec<_>>());
     let total: usize = sections.iter().map(|b| subtree_leaves(&s.blocks, b)).sum();
     let largest = sections.iter().map(|b| subtree_leaves(&s.blocks, b)).max().unwrap();
-    assert!(largest * 4 >= total || largest < total, "sanity");
-    // The largest section must hold well under everything.
-    assert!(largest < total, "one section holds every symbol");
+    // The largest section must hold well under everything – the 25 % rule
+    // from the brief, encoded: largest leaves ≤ a quarter of all leaves.
+    assert!(largest * 4 <= total, "largest section holds {} of {} leaves – over 25 %", largest, total);
 }
 
 #[test]
@@ -412,12 +463,45 @@ fn chain_family_page_enumerates_a_stored_family() {
     let repo = crate::git::Repo { root: dir.path().to_path_buf() };
     let store = Store::create(&repo).unwrap();
     fixture(&store);
-    let t0 = std::time::Instant::now();
     let s = Builder::default().compute(&store);
     store_stored(&store, &s, &file_rev(&store).unwrap()).unwrap();
-    let t1 = std::time::Instant::now();
     let n: i64 = store.conn.query_row("SELECT count(*) FROM syntagm_families", [], |r| r.get(0)).unwrap_or(-1);
-    let p = chain_family_page(&repo, &store, "f0", None, 10).expect("page");
-    let t2 = std::time::Instant::now();
-    let _ = chain_family_page(&repo, &store, "f0", p.cursor.as_deref(), 10).expect("page2");
+    assert!(n > 0, "the fixture should store families, got {n}");
+    // Pick a small family so paging to exhaustion is cheap.
+    let (fid, want): (String, u128) = store
+        .conn
+        .query_row("SELECT id, count FROM syntagm_families ORDER BY count ASC LIMIT 1", [], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?.parse().unwrap()))
+        })
+        .unwrap();
+    assert!(want >= 1, "families always have at least one chain");
+    // Page one: at most `limit` chains, not done unless the family fits.
+    let p1 = chain_family_page(&repo, &store, &fid, None, 2).expect("page1");
+    assert!(p1.chains.len() <= 2 && !p1.chains.is_empty(), "page1 holds 1..=2 chains, got {}", p1.chains.len());
+    assert_eq!(p1.chains.len(), want.min(2) as usize, "page1 holds the family up to the limit");
+    if p1.chains.len() == 2 {
+        assert!(!p1.done && p1.cursor.is_some(), "a full page continues with a cursor");
+    } else {
+        assert!(p1.done && p1.cursor.is_none(), "a short page is the last one");
+    }
+    // Page two resumes the cursor: new chains only, no overlap.
+    let mut all: Vec<i64> = p1.chains.iter().map(|c| c.steps[0] * 1_000_000 + c.len as i64).collect();
+    let mut pages = 1;
+    let mut cur = p1.cursor;
+    while let Some(c) = cur.clone() {
+        let p = chain_family_page(&repo, &store, &fid, Some(&c), 2).expect("page next");
+        pages += 1;
+        for ch in &p.chains {
+            let key = ch.steps[0] * 1_000_000 + ch.len as i64;
+            assert!(!all.contains(&key), "chain re-delivered across pages: steps0={} len={}", ch.steps[0], ch.len);
+            all.push(key);
+        }
+        if p.done {
+            assert!(p.cursor.is_none(), "done clears the cursor");
+            break;
+        }
+        cur = p.cursor;
+        assert!(pages < 100, "paging never terminates on family {fid}");
+    }
+    assert_eq!(all.len() as u128, want, "pages must union to the family's stored count");
 }
