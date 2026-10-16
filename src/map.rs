@@ -417,7 +417,7 @@ impl Builder<'_> {
         let (deep, any) = block_maps(&blocks);
         let block_lookup = |s: i64| deep.get(&s).cloned().or_else(|| any.get(&s).cloned()).unwrap_or_default();
         let (chains, families, loops) = self.build_all_chains(&cond, &counts, &nodes, &node_ids, &block_lookup);
-        let flows = self.flow_edges(&cond, &counts, &edges, &idx, &block_lookup);
+        let flows = Self::flow_edges(&cond, &counts, &edges, &idx, &block_lookup);
         let roles_map: BTreeMap<i64, String> = node_ids.iter().enumerate().map(|(i, id)| (*id, roles[i].clone())).collect();
         let _ = store.set_meta("syntagm_embed", &self.embed_state);
         Syntagm { blocks, chains, stats, families, loops, roles: roles_map, flows, total: counts.total, exact: counts.exact }
@@ -1549,8 +1549,7 @@ impl Builder<'_> {
 
     /// Block-pair chain flow for /api/map and the fmap readout: the summed
     /// `ln(1 + into · out)` of the production call edges between two blocks.
-    fn flow_edges(
-        &self,
+    pub(crate) fn flow_edges(
         cond: &Condensation,
         counts: &PathCounts,
         edges: &[crate::store::Edge],
@@ -1720,8 +1719,7 @@ fn load_stored(store: &Store, embed_state: &str) -> Result<Option<Syntagm>> {
     }
     // A map stored before families, loops and roles existed is incomplete –
     // rebuild rather than serve a summary of zeros.
-    let fams =
-        store.conn.query_row("SELECT count(*) FROM syntagm_families", [], |r| r.get::<_, i64>(0)).unwrap_or(0);
+    let fams = store.conn.query_row("SELECT count(*) FROM syntagm_families", [], |r| r.get::<_, i64>(0)).unwrap_or(0);
     let role_rows = store.conn.query_row("SELECT count(*) FROM syntagm_roles", [], |r| r.get::<_, i64>(0)).unwrap_or(0);
     if fams == 0 && role_rows == 0 {
         return Ok(None);
@@ -1778,6 +1776,22 @@ fn load_stored(store: &Store, embed_state: &str) -> Result<Option<Syntagm>> {
             roles.extend(rows.filter_map(|x| x.ok()));
         }
     }
+    // The stored shape keeps the structure; the totals and block-pair flows
+    // are recomputed from it – both O(V+E) against the loaded graph.
+    let total: u128 = families.iter().map(|f| f.count).sum();
+    let exact = families.iter().all(|f| f.exact) && !families.is_empty();
+    let flows = if families.is_empty() {
+        Vec::new()
+    } else {
+        let (cond, _node_ids) = graph_condensation(store)?;
+        let nodes = store.nodes_where("kind != 'file'", [])?;
+        let edges = store.all_edges()?;
+        let idx: HashMap<i64, usize> = nodes.iter().enumerate().map(|(i, n)| (n.id, i)).collect();
+        let counts = path_counts(&cond);
+        let (deep, any) = block_maps(&blocks);
+        let block_of = |s: i64| deep.get(&s).cloned().or_else(|| any.get(&s).cloned()).unwrap_or_default();
+        Builder::flow_edges(&cond, &counts, &edges, &idx, &block_of)
+    };
     Ok(Some(Syntagm {
         blocks,
         chains,
@@ -1785,9 +1799,9 @@ fn load_stored(store: &Store, embed_state: &str) -> Result<Option<Syntagm>> {
         families,
         loops,
         roles,
-        flows: Vec::new(),
-        total: 0,
-        exact: true,
+        flows,
+        total,
+        exact,
     }))
 }
 

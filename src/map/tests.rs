@@ -284,7 +284,8 @@ fn huge_path_counts_map_in_linear_time_and_saturate_past_u128() {
 
 #[test]
 fn roles_match_hand_labelled_expectations() {
-    let cases: Vec<(&str, &str, &str, usize, usize, Vec<&str>, &str)> = vec![
+    type RoleCase<'a> = (&'a str, &'a str, &'a str, usize, usize, Vec<&'a str>, &'a str);
+    let cases: Vec<RoleCase> = vec![
         // (kind, name, path, prod_in, prod_out, callees, expected)
         ("function", "main", "app/main.py", 0, 2, vec!["charge"], "entry"),
         ("function", "handle", "web/handler.py", 0, 4, vec!["render", "db_save"], "entry"),
