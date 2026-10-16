@@ -194,6 +194,26 @@ export const api = {
   metaAction: <T = unknown>(kind: "issues" | "proposals" | "notes", action: string | number, body: Record<string, unknown>) =>
     post<T>(`/api/meta/${kind}/${action}`, body),
 
+  // U2 · map: the whole map in one payload, paged family chains, progress
+  map: () => get<MapData>("/api/map"),
+  mapChains: (family: string, cursor?: string, limit = 40) =>
+    get<ChainPage>(`/api/map/chains?${q({ family, cursor, limit })}`),
+  mapProgress: () => get<MapProgress>("/api/map/progress"),
+
+  // U1 · MapView: blocks and chains (+ E1's embed endpoints)
+  syntagm: () => get<SyntagmData>("/api/syntagm"),
+  syntagmBlock: (id: string) => get<MapViewBlock>(`/api/syntagm/block/${encodeURIComponent(id)}`),
+  syntagmChain: (id: string) => get<Chain>(`/api/syntagm/chain/${encodeURIComponent(id)}`),
+  embedStatus: () => get<EmbedStatus>("/api/embed/status"),
+  embedCheck: () => get<EmbedCheck>("/api/embed/check"),
+  embedInstall: () => post<EmbedInstall>("/api/embed/install"),
+  embedRemove: () => post<EmbedInstall>("/api/embed/remove"),
+
+  // I1 · Embeddings switch: persist the switch, run and cancel a batch embed
+  embedEnable: (enabled: boolean) => post<EmbedStatusFull>("/api/embed/enable", { enabled }),
+  embedRun: () => post<{ started: boolean; reason?: string }>("/api/embed/run", {}),
+  embedCancel: () => post<{ cancelled: boolean }>("/api/embed/cancel", {}),
+
   // K2 · unified agent config: skills, rules, MCP, memory layers
   configMatrix: () => get<ConfigMatrix>("/api/agent/config_matrix"),
   skillDetail: (name: string) => get<SkillDetail>(`/api/agent/skill_detail?${q({ name })}`),
@@ -226,5 +246,17 @@ export function relTime(ts: number) {
 
 // Cluster colours share the graph palette (see colors.ts).
 export { hue as colorFor } from "./colors";
+
+// U1 · MapView shared types (the contract shapes live in views/map/types.ts).
+import type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/map/types";
+export type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/map/types";
+export interface MapViewBlock { block: import("./views/map/types").Block }
+export interface EmbedStatus { state: "off" | "on" | "stale"; installed: boolean; model: string | null; ms: number }
+export interface EmbedInstall { ok: boolean; phase?: string; done?: number; total?: number }
+// I1 · the /api/map/progress payload (map_run.rs state) – re-exported from types.ts.
+
+// I1 · the real /api/embed/status payload (embed.rs api_status) and /api/map/progress (map_run.rs).
+export interface EmbedRun { running: boolean; phase: string; done: number; total: number; batches: number; cancelled: boolean; provider: string; error: string }
+export interface EmbedStatusFull { enabled: boolean; installed: boolean; feature: boolean; model_dir: string; run: EmbedRun }
 
 export type LangRow = { id: string; name: string; files: number; indexed: boolean; builtin: boolean; tier: string };

@@ -43,3 +43,6 @@ metric = "wc -l src/app.rs"
 goal = "min"
 scope = ["src/**"]
 budget = 5
+
+[embed]
+decided = true

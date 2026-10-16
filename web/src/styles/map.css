@@ -1,0 +1,353 @@
+/* map.css – U1 · MapView tab: sidebar, nested-block canvas, readout.
+   Design language: absolute black, warm 1px lines, cream text, one orange
+   accent. Hover is a background/border shift, never a shadow, glow, scale. */
+
+.sy-root { height: 100%; display: flex; flex-direction: column; }
+.sy-split { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: var(--size-map, 320px) 28px 1fr minmax(230px, 300px); }
+.sy-side-wrap { display: flex; flex-direction: column; min-height: 0; background: var(--bg-2); border-right: 1px solid var(--line); }
+.sy-side { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.sy-side-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+.sy-side-head h2 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted, var(--text-3)); }
+.sy-side-close { margin-left: auto; }
+
+.sy-filter { padding: 4px 10px 8px; }
+.sy-filter-input { width: 100%; }
+.sy-side-scroll { flex: 1; overflow-y: auto; outline-offset: -2px; }
+.sy-side-scroll:focus-visible { outline: 2px solid var(--accent); }
+
+.sy-row { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 28px; padding: 0 10px; border: 0; background: none; color: var(--text-2); text-align: left; cursor: pointer; transition: background var(--dur), color var(--dur); }
+.sy-row:hover { background: var(--hover-bg); color: var(--text); }
+.sy-row.on { background: var(--sel-bg); color: var(--text); }
+.sy-row.act { outline: 1px dashed var(--line-2); outline-offset: -1px; }
+.sy-row-meta { margin-left: auto; font-size: 10.5px; color: var(--text-3); flex: none; }
+.sy-empty { padding: 14px 12px; color: var(--text-3); }
+
+.sy-chain { flex-direction: column; align-items: flex-start; gap: 1px; padding: 5px 10px; }
+.sy-chain-name { font-size: 12px; color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sy-chain.on .sy-chain-name { color: var(--accent); }
+.sy-section-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); padding: 8px 10px 2px; }
+
+.sy-block { gap: 2px; }
+.sy-d1 { padding-left: 16px; }
+.sy-d2 { padding-left: 34px; }
+.sy-twist { flex: none; width: 28px; height: 28px; border: 0; background: none; color: var(--text-3); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.sy-twist svg { width: 12px; height: 12px; transition: transform 120ms ease; transform: rotate(-90deg); }
+.sy-twist[aria-expanded="true"] svg { transform: rotate(0deg); }
+.sy-twist:hover { color: var(--text); }
+.sy-block-name { min-height: 28px; display: flex; align-items: center; gap: 6px; min-width: 0; border: 0; background: none; color: inherit; cursor: pointer; padding: 0; flex: 1; }
+.sy-bname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sy-kind { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); flex: none; }
+.sy-glyph { flex: none; width: 14px; text-align: center; color: var(--accent); }
+
+.sy-leaf { gap: 6px; padding-left: 48px; }
+.sy-leaf-name { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* – canvas – */
+.sy-canvas { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.sy-bread { display: flex; align-items: center; gap: 2px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.sy-bread-sep { color: var(--text-3); margin: 0 4px; display: inline-flex; }
+.sy-bread-sep svg { width: 12px; height: 12px; transform: rotate(-90deg); }
+.crumb-link { border: 0; background: none; color: var(--text-2); cursor: pointer; padding: 2px 8px; min-height: 28px; }
+.crumb-link:hover { background: var(--hover-bg); color: var(--text); }
+.crumb-link.on { color: var(--accent); }
+.sy-bread-chain { margin-left: auto; font-size: 11px; color: var(--accent); }
+
+.sy-canvas-scroll { flex: 1; overflow: auto; padding: 14px; }
+.sy-path { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.sy-path line { stroke: var(--accent); stroke-width: 1.5; }
+.sy-rail { display: flex; flex-direction: column; gap: 24px; max-width: 760px; position: relative; z-index: 1; }
+.sy-grid { display: grid; gap: 12px; align-items: start; position: relative; z-index: 1; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+
+.sy-box { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; min-width: 0; position: relative;
+  /* skip off-screen boxes entirely: keeps 4 000+ leaves cheap, and keeps
+     off-screen rects from colliding with panels below the scroll */
+  content-visibility: auto; contain-intrinsic-size: auto 240px; }
+.sy-box-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 10px; border-bottom: 1px solid var(--line); }
+.sy-box-title { min-height: 28px; display: flex; align-items: center; gap: 5px; min-width: 0; border: 0; background: none; color: var(--text); cursor: pointer; padding: 2px 4px; flex: 1; text-align: left; }
+.sy-box-title:hover { background: var(--hover-bg); }
+.sy-box-title svg { width: 12px; height: 12px; color: var(--text-3); flex: none; }
+.sy-box-meta { font-size: 10.5px; color: var(--text-3); flex: none; }
+.sy-box-block { border-radius: 6px; }
+.sy-box-sub { border-radius: 4px; background: var(--bg-2); }
+.sy-on-chain { border-color: var(--accent); }
+
+.sy-box-kids { padding: 8px; display: grid; gap: 6px; }
+.sy-kid { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); background: none; color: var(--text-2); cursor: pointer; padding: 5px 8px; border-radius: 4px; min-height: 28px; transition: background var(--dur), border-color var(--dur); }
+.sy-kid:hover { background: var(--hover-bg); border-color: var(--hover-line); color: var(--text); }
+.sy-kid.sy-on-chain { border-color: var(--accent); }
+.sy-kid-more { justify-content: center; color: var(--text-3); }
+.sy-kname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.sy-leafs { padding: 6px 4px; }
+.sy-leaf-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 0 8px; border: 0; background: none; color: var(--text-2); cursor: pointer; text-align: left; transition: background var(--dur); }
+.sy-leaf-row:hover { background: var(--hover-bg); color: var(--text); }
+.sy-leaf-row .sy-glyph { color: var(--text-3); }
+.sy-leaf-row:hover .sy-glyph { color: var(--accent); }
+.sy-more { color: var(--text-3); justify-content: center; }
+
+.sy-steps { position: relative; z-index: 4; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 2px; }
+.sy-step { min-height: 28px; height: 28px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text-2); cursor: pointer; padding: 3px 8px; border-radius: 4px; font-size: 11px; max-width: 100%; }
+.sy-step:hover { background: var(--hover-bg); color: var(--text); }
+.sy-step-n { color: var(--accent); }
+
+/* – readout – */
+.sy-readout-wrap { border-left: 1px solid var(--line); background: var(--bg-2); overflow: auto; min-width: 0; }
+.sy-readout { padding: 14px 16px; }
+.sy-readout h2 { margin: 0 0 4px; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.sy-summary { margin: 0 0 12px; color: var(--text-3); font-size: 11.5px; }
+.sy-t { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 14px; }
+.sy-t th, .sy-t td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.sy-t th { color: var(--text-3); font-weight: 400; width: 45%; }
+.sy-t td { text-align: right; color: var(--text); }
+
+.sy-embed-chip { width: 100%; min-height: 28px; justify-content: flex-start; }
+.sy-embed-chip.embed-on { border-color: var(--green); color: var(--green); }
+.sy-embed-chip.embed-stale { border-color: var(--yellow); color: var(--yellow); }
+.sy-embed { margin-top: 10px; display: grid; gap: 8px; }
+.sy-embed-reasons { font-size: 11px; color: var(--yellow); }
+.sy-embed-msg { font-size: 11.5px; color: var(--accent); }
+.sy-confirm { display: grid; gap: 6px; font-size: 11.5px; }
+.sy-confirm > div { display: flex; gap: 8px; }
+.embed-verdict-ok { color: var(--green); }
+.embed-verdict-warn { color: var(--yellow); }
+.embed-verdict-refuse { color: var(--red); }
+
+.sy-scrim { display: none; }
+
+/* – phone (390 px): the sidebar is a drawer, the readout stacks under the canvas – */
+@media (max-width: 720px) {
+  .sy-split { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  .sy-split > .grip { display: none; }
+  .sy-side-wrap { position: absolute; z-index: 20; top: 0; bottom: 0; left: 0; width: min(320px, 84vw); border-right: 1px solid var(--line); background: var(--bg-2); }
+  /* the closed drawer is display:none, not translated: an off-canvas box is
+     still an off-screen control to the probe, and transitions are moot */
+  .sy-side-wrap:not(.open) { display: none; }
+  .sy-scrim { display: block; position: absolute; inset: 0; z-index: 15; background: rgba(0, 0, 0, 0.5); }
+  .sy-root { position: relative; }
+  .sy-side-toggle { display: inline-flex; }
+  .sy-readout-wrap { border-left: 0; border-top: 1px solid var(--line); max-height: 40vh; }
+}
+@media (min-width: 721px) {
+  .sy-side-toggle { display: none; }
+}
+
+/* phone floor: every control is a 40 px hit target */
+@media (max-width: 720px) {
+  .sy-row, .sy-twist, .sy-block-name, .sy-leaf-row, .sy-kid, .sy-step,
+  .sy-embed-chip, .crumb-link, .sy-box-title, .sy-side-close { min-height: 40px; }
+  /* fixed kid rows keep the windowed column's offsets exact */
+  .sy-kid { height: 40px; }
+  .sy-kid .sy-kname, .sy-kid .sy-row-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sy-row { min-height: 40px; }
+  .sy-twist { width: 40px; }
+  .sy-filter-input { min-height: 40px; }
+  .crumb-link { min-width: 40px; }
+}
+
+/* the sidebar grip is a real 28px grid column, not an overlay: an absolutely
+   positioned 7px sliver is both a tiny hit target and an overlap with whatever
+   sits under it. Static position keeps it in the gutter between the columns. */
+.sy-split > .grip { position: static; width: 28px; cursor: col-resize; }
+
+/* – U2 · MapView tab on the map: lens bar, role glyphs, families, loops –
+   Same rules as the header comment: hover is a background/border shift,
+   never a shadow, glow, scale. */
+
+/* lens switch: Functions / Utilities / All, one row above the split */
+.sy-lens { display: flex; align-items: center; gap: 8px; padding: 8px 14px 0; }
+.sy-lens-group { display: inline-flex; gap: 4px; }
+.sy-lens-btn { min-height: 28px; padding: 2px 10px; }
+.sy-lens-prog { font-size: 10.5px; color: var(--accent); margin-left: auto; }
+
+/* family rows in the CHAINS section: source → terminal, count, length range */
+.sy-family { gap: 2px; }
+.sy-fam-name { font-size: 11.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.sy-family.on .sy-fam-name { color: var(--accent); }
+.sy-chain-load { color: var(--text-3); padding-left: 34px; }
+.sy-chain-load:hover .sy-row-meta { color: var(--text); }
+
+/* role glyphs: one colored letter on every block node and family row */
+.sy-role { flex: none; width: 14px; text-align: center; font-size: 10px; font-weight: 600; }
+.sy-block .sy-role { cursor: help; }
+.sy-kid .sy-role { width: 12px; }
+
+/* theme chip: shown only on blocks formed with embeddings */
+.sy-theme { font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--green); flex: none; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* loop nodes: one box listing the cycle's members. Not content-visibility
+   collapsed: the generic 240px intrinsic size under-counts a box with many
+   members, and off-screen loop boxes then overlap each other. */
+.sy-loops { display: grid; gap: 12px; align-items: start; max-width: 760px; position: relative; z-index: 1; margin-top: 12px; }
+.sy-loop { background: var(--bg-2); border-style: dashed; content-visibility: visible; contain-intrinsic-size: auto; }
+.sy-loop-glyph { color: var(--accent); font-size: 13px; flex: none; }
+.sy-step-loop { border-style: dashed; }
+
+/* progress state: shown while the map runs, never an empty view */
+.sy-progress { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 10px; padding: 32px; max-width: 520px; }
+.sy-progress h2 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); }
+.sy-progress-bar { height: 4px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.sy-progress-fill { height: 100%; background: var(--accent); transition: width var(--dur) ease; }
+
+/* role filter: an inline panel under the lens bar – in flow, not floating:
+   a floating popover overlaps the controls beneath it, and the probe (and
+   any keyboard user) reads that as broken. Pushing the split down instead. */
+.sy-roles { width: auto; max-width: none; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 2px; margin: 6px 14px 0; }
+.sy-role-row { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+.sy-role-row:hover { background: var(--hover-bg); }
+.sy-role-row input { flex: none; }
+.sy-role-name { flex: none; width: 92px; font-size: 11px; color: var(--text); }
+.sy-role-rule { font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* phone: the lens bar wraps, every control a 40 px hit target */
+@media (max-width: 720px) {
+  .sy-lens { flex-wrap: wrap; }
+  .sy-lens-btn { min-height: 40px; }
+  .sy-theme { display: none; }
+  .sy-role-rule { white-space: normal; }
+}
+
+/* – map (owner-built): right structure panel, flow view, icons, progress –
+   Same rules: 1px warm lines, no glow, no gradients, en dashes in copy. */
+
+/* layout: canvas left, the structure panel on the right like Graph's inspector */
+.sy-split { grid-template-columns: minmax(0, 1fr) var(--size-map, 360px); }
+.fm-right { position: relative; border-right: 0; border-left: 1px solid var(--line); }
+/* The right panel's grip is a full-height 28px strip reaching out from the
+   panel's left edge – a real grab target, like the sidebar's own grip. */
+.fm-right > .grip { position: absolute; left: -26px; top: 0; bottom: 0; width: 28px; cursor: col-resize; z-index: 3; }
+/* the accent hint stays on the panel edge, not mid-canvas */
+.fm-right > .grip.grip-left::after { left: auto; right: 0; }
+.fm-details { border-bottom: 1px solid var(--line); flex: none; max-height: 45%; overflow: auto; }
+.fm-details-sum { cursor: pointer; padding: 10px 12px; font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); list-style: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-details-sum::-webkit-details-marker { display: none; }
+.fm-details[open] .fm-details-sum { color: var(--text); }
+.fm-right .sy-side { flex: 1; min-height: 0; height: auto; }
+
+/* kind icons: the graph's glyphs, fixed cell so names line up */
+.fm-kind { display: inline-grid; place-items: center; flex: none; min-width: 16px; height: 16px; font: 700 11px var(--mono); line-height: 1; }
+
+/* flow view */
+.fm-flow { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.fm-headline { display: flex; align-items: baseline; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.fm-headline-k { flex: none; font: 500 10.5px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); }
+.fm-headline-v { font: 500 13px var(--mono); color: var(--text); overflow-wrap: anywhere; }
+.fm-flow-scroll { position: relative; overflow: auto; flex: 1; padding: 16px; }
+.fm-arrows { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.fm-arrow { fill: none; stroke: var(--line-2); opacity: .9; }
+.fm-arrow.hot { stroke: var(--accent); opacity: 1; }
+.fm-arrow-head { fill: var(--line-2); }
+.fm-layers { position: relative; display: flex; gap: 56px; align-items: flex-start; }
+.fm-layer { display: flex; flex-direction: column; gap: 12px; width: 240px; flex: none; }
+.fm-band { position: relative; margin-top: 32px; padding-top: 12px; border-top: 1px dashed var(--line-2); }
+.fm-band-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.fm-band .fm-flow-box { width: 220px; }
+.fm-flow-box { position: relative; background: var(--bg-2, #0a0908); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px 6px; }
+.fm-flow-box.hot { border-color: var(--accent); }
+.fm-role-entry { border-left: 2px solid var(--accent); }
+.fm-flow-title { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: 0; padding: 0; color: var(--text); cursor: pointer; text-align: left; font: 600 12px var(--mono); }
+.fm-flow-title:hover .fm-flow-name { color: var(--accent); }
+.fm-flow-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-flow-sub { display: block; margin: 2px 0 0 18px; font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-flow-fns { display: flex; flex-direction: column; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 4px; }
+.fm-fn, .fm-flow-more { display: flex; align-items: center; gap: 6px; min-height: 24px; background: none; border: 0; padding: 0 2px; color: var(--text-2); cursor: pointer; text-align: left; border-radius: 4px; }
+.fm-fn:hover, .fm-flow-more:hover { background: var(--panel-2); color: var(--text); }
+.fm-fn-name { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-flow-more { font: 400 11px var(--mono); color: var(--text-3); }
+
+/* mapping in progress: strip on the view, mark on the nav entry */
+.fm-strip { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 6px 16px; border-bottom: 1px solid var(--line); font: 400 11.5px var(--mono); color: var(--text-2); }
+.fm-strip-k { text-transform: uppercase; letter-spacing: .12em; font-size: 10.5px; color: var(--accent); }
+.fm-strip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: fm-pulse 1.2s ease-in-out infinite; }
+.fm-strip-bar { position: relative; flex: 1; min-width: 80px; max-width: 240px; height: 2px; background: var(--line); }
+.fm-strip-bar > span { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.fm-strip-note { color: var(--text-3); }
+.rail-busy { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: fm-pulse 1.2s ease-in-out infinite; }
+@keyframes fm-pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .fm-strip-dot, .rail-busy { animation: none; } }
+
+/* phone: the structure panel is a drawer from the right, flow stacks */
+@media (max-width: 720px) {
+  .sy-split { grid-template-columns: 1fr; }
+  .fm-right { position: absolute; left: auto; right: 0; border-left: 1px solid var(--line); }
+  .fm-right > .grip { display: none; }
+  .fm-layers { flex-direction: column; gap: 16px; }
+  .fm-layer, .fm-band .fm-flow-box { width: 100%; }
+  .fm-arrows { display: none; }
+  .fm-fn, .fm-flow-more, .fm-flow-title, .fm-details-sum { min-height: 40px; }
+  .fm-strip-note { display: none; }
+}
+.fm-sects { display: flex; gap: 2px; padding: 0 10px 8px; }
+.fm-sects .sy-lens-btn { flex: 1; justify-content: center; gap: 6px; }
+.fm-strip-bar.indeterminate { overflow: hidden; }
+.fm-strip-bar.indeterminate > span { width: 30%; animation: fm-strip-slide 1.4s ease-in-out infinite; }
+@keyframes fm-strip-slide { from { left: -30%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .fm-strip-bar.indeterminate > span { animation: none; width: 100%; opacity: .4; } }
+
+/* m2 – flow canvas: group frames, focus, capabilities lanes, subway strip */
+.fm-section { position: relative; background: color-mix(in srgb, var(--panel) 60%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 0; }
+.fm-section.sel, .fm-section:has(.fm-flow-box.sel) { border-color: var(--accent); }
+.fm-section-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.fm-section-head:hover .fm-section-name { color: var(--accent); }
+.fm-section-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); }
+.fm-section-body { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+.fm-section .fm-flow-box { border-radius: 6px; }
+.fm-flow-box.sel { border-color: var(--accent); background: var(--accent-soft); }
+.fm-section.dim, .fm-flow-box.dim, .fm-lane.dim, .fm-arrow.dim { opacity: .25; }
+.fm-headline-tools { margin-left: auto; display: flex; gap: 8px; }
+.fm-focus-badge { position: absolute; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; font-size: 11.5px; z-index: 3; }
+
+/* capabilities + chains lenses */
+.fm-caps { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.fm-caps-scroll { flex: 1; padding: 16px; }
+.fm-lanes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.fm-lane { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--panel); }
+.fm-lane-head { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; padding: 2px 0 8px; color: var(--text); cursor: pointer; text-align: left; }
+.fm-lane-n { color: var(--text-3); font-size: 10.5px; width: 16px; }
+.fm-lane-label { font-size: 12px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-lane-track { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
+.fm-lane-track::after { content: ""; flex: none; width: 24px; height: 1px; }
+.fm-lane-stop { flex: none; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; background: var(--bg-2, #0a0908); color: var(--text-2); cursor: pointer; max-width: 200px; scroll-snap-align: start; }
+button.fm-lane-stop:hover, .fm-lane-stop.sel { border-color: var(--accent); color: var(--text); }
+span.fm-lane-stop { cursor: default; }
+.fm-lane-stop-name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-lane-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.fm-lane-files .fm-fn { min-height: 20px; font-size: 10.5px; color: var(--text-3); }
+
+/* chain card + subway strip in the sidebar */
+.fm-chain-card { border-top: 1px solid var(--line); padding: 10px 0; }
+.fm-chain-card-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.fm-subway { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.fm-subway-stop { position: relative; padding-left: 12px; }
+.fm-subway-stop::before { content: ""; position: absolute; left: 4px; top: -2px; bottom: -2px; width: 2px; background: var(--line-2); }
+.fm-subway-stop:first-child::before { top: 50%; }
+.fm-subway-stop:last-child::before { bottom: 50%; }
+.fm-subway-btn { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; padding: 3px 6px; color: var(--text-2); cursor: pointer; text-align: left; border-radius: 4px; }
+.fm-subway-btn:hover { background: var(--panel-2); color: var(--text); }
+.fm-subway-btn.loop .fm-subway-name { color: var(--yellow); }
+.fm-subway-name { flex: 1; min-width: 0; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-subway-n { font-size: 10px; color: var(--text-3); }
+
+/* mini bar – the flow-weight gauge in the sidebar table */
+.fm-minibar { display: inline-flex; gap: 2px; margin-left: 6px; vertical-align: middle; }
+.fm-minibar i { width: 8px; height: 8px; border: 1px solid var(--line-2); border-radius: 2px; }
+.fm-minibar i.on { background: var(--accent); border-color: var(--accent); }
+.fm-top-chains .sy-section-label { display: block; margin: 10px 0 4px; }
+.sy-t-like { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; border-bottom: 1px dashed var(--line); padding: 4px 0; color: var(--text-2); font-size: 11.5px; cursor: pointer; text-align: left; }
+.sy-t-like:hover { color: var(--accent); }
+
+/* focused walk animation – frozen under prefers-reduced-motion */
+@media (prefers-reduced-motion: no-preference) {
+  .fm-arrow.hot { stroke-dasharray: 6 4; animation: fm-walk .8s linear infinite; }
+  .fm-arrow-head.hot { fill: var(--accent); }
+}
+@keyframes fm-walk { to { stroke-dashoffset: -20; } }
+@media (prefers-reduced-motion: reduce) {
+  .fm-arrow, .fm-arrow.hot { animation: none; stroke-dasharray: none; }
+}
+
+/* m2 – probe fixes: every interactive row is at least a 28px target
+   (phones keep the 40px targets from the mobile rules below) */
+@media (min-width: 721px) {
+  .fm-flow-title, .fm-fn, .fm-flow-more, .fm-section-head, .fm-lane-head, .fm-subway-btn, .fm-lane-stop { min-height: 28px; }
+}
+.fm-flow-title { padding-top: 2px; padding-bottom: 2px; }
