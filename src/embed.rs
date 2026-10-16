@@ -794,9 +794,10 @@ fn size_of(dir: &std::path::Path, seed: u64) -> u64 {
 
 // ------------------------------------------------------------------ API payloads
 
-/// Whether the embedding question has been settled: `[embed] decided = true`
-/// in kula.toml. Once set the automatic path never re-prompts – the switch is
-/// the person's, on or off, and it sticks.
+/// Whether the embedding question has been settled for the person: an explicit
+/// flip records `decided = true` in kula.toml. The automatic first-run decision
+/// records its marker in the store instead (see [`store_decided`]) – kula index
+/// must never dirty a fenced kula.toml. Both short-circuit the auto path.
 pub fn decided(repo: &crate::git::Repo) -> bool {
     if let Ok(src) = std::fs::read_to_string(repo.root.join("kula.toml")) {
         if let Ok(t) = src.parse::<toml::Table>() {
@@ -806,19 +807,12 @@ pub fn decided(repo: &crate::git::Repo) -> bool {
     false
 }
 
-/// Write one boolean into `[embed]` in kula.toml in place, keeping every
-/// other comment and table untouched.
-fn toml_flag(repo: &crate::git::Repo, key: &str, value: bool) -> Result<()> {
-    let p = repo.root.join("kula.toml");
-    let text = std::fs::read_to_string(&p).unwrap_or_else(|_| crate::config::Config::default().render());
-    let mut doc: toml_edit::DocumentMut = text.parse().with_context(|| format!("reading {}", p.display()))?;
-    let t = doc.entry("embed").or_insert(toml_edit::table()).as_table_mut().context("[embed] must be a table")?;
-    t[key] = toml_edit::value(value);
-    let out = doc.to_string();
-    // Never write a file kula itself can't read back.
-    let _: crate::config::Config = toml::from_str(&out).context("the edit would make kula.toml invalid")?;
-    std::fs::write(&p, out)?;
-    Ok(())
+/// The automatic first-run decision's marker, in the store's meta table –
+/// not kula.toml, which is fenced (kula's own config): writing it during
+/// `kula index` would leave the person's worktree dirty and hold a fenced
+/// change in their next commit.
+pub fn store_decided(store: &Store) -> bool {
+    store.meta("embed.decided").as_deref() == Some("true")
 }
 
 /// Flip `[embed] enabled` in kula.toml in place, keeping every other comment
@@ -858,18 +852,19 @@ fn auto_running() -> &'static AtomicBool {
 }
 
 /// The automatic embeddings decision, run once per repo. On first index and
-/// at server start (when `[embed] decided` is absent) judge the machine with
-/// the hardware check: ok turns embeddings on and installs, embeds and remaps
-/// in the background at low priority; warn or refuse stays off and the
-/// reasons surface in Settings. Either way the decision is recorded – the
-/// person is never re-prompted, and the switch always wins afterwards.
+/// at server start (when no decision is recorded – store marker or a person
+/// flip in kula.toml) judge the machine with the hardware check: ok turns
+/// embeddings on and installs, embeds and remaps in the background at low
+/// priority; warn or refuse stays off and the reasons surface in Settings.
+/// Either way the decision is recorded – the person is never re-prompted, and
+/// the switch always wins afterwards.
 ///
 /// `block = true` runs the pipeline on the calling thread (the CLI index,
 /// which would otherwise die mid-install); `block = false` spawns a
 /// low-priority background thread (the server).
 pub fn auto(repo: &crate::git::Repo, store: &Store, block: bool) -> AutoReport {
     let cfg = crate::config::Config::load(&repo.root).map(|c| c.embed).unwrap_or_default();
-    if decided(repo) || cfg.enabled {
+    if store_decided(store) || decided(repo) || cfg.enabled {
         return AutoReport { verdict: "decided".into(), reasons: Vec::new(), enabled: cfg.enabled };
     }
     // Singleflight: one auto pipeline per process, and not while an explicit
@@ -946,8 +941,11 @@ fn auto_core(
     install_step: impl Fn(&crate::git::Repo) -> Result<bool>,
     embed_step: impl Fn(&crate::git::Repo, &Store) -> Result<usize>,
 ) -> AutoReport {
-    // The decision is recorded whatever the verdict – never re-prompt.
-    if let Err(e) = toml_flag(repo, "decided", true) {
+    // The decision is recorded whatever the verdict – never re-prompt. The
+    // store carries it, not kula.toml: kula's own config is fenced, and a
+    // write during `kula index` would hold a fenced change in the person's
+    // next commit.
+    if let Err(e) = store.set_meta("embed.decided", "true") {
         return AutoReport { verdict: "error".into(), reasons: vec![format!("{e:#}")], enabled: false };
     }
     if stats.verdict != "ok" {
@@ -1134,7 +1132,10 @@ mod tests {
         assert!(!rep.enabled, "a refuse verdict never flips the switch");
         let cfg = crate::config::Config::load(&repo.root).unwrap().embed;
         assert!(!cfg.enabled);
-        assert!(decided(&repo), "the decision is recorded either way");
+        assert_eq!(st.meta("embed.decided").as_deref(), Some("true"), "the decision is recorded either way");
+        // The automatic path never dirties kula.toml – it is fenced, and the
+        // person's next commit must not hold a fenced change.
+        assert_eq!(std::fs::read_to_string(repo.root.join("kula.toml")).unwrap(), "[embed]\nenabled = false\n");
         // A second run never re-prompts – the marker short-circuits.
         let again = auto(&repo, &st, true);
         assert_eq!(again.verdict, "decided");
@@ -1157,6 +1158,7 @@ mod tests {
         let text = std::fs::read_to_string(repo.root.join("kula.toml")).unwrap();
         assert!(text.contains("enabled = true"));
         assert!(text.contains("decided = true"));
+        assert_eq!(st.meta("embed.decided").as_deref(), Some("true"));
         // An install failure leaves the switch off but the decision recorded.
         let fail = auto_core(&repo, &st, true, ok.clone(), |_r| bail!("download died"), no_embed);
         assert_eq!(fail.verdict, "error");
