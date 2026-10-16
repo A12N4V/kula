@@ -994,7 +994,7 @@ fn run(cli: Cli) -> Result<()> {
             if !no_map {
                 map_run::run_now(repo.clone(), quiet);
             }
-            // Embeddings on by default: a fresh repo (no `[embed] decided`)
+            // Embeddings on by default: a fresh repo (no recorded decision)
             // gets the hardware check exactly once. Ok installs and embeds
             // inline – the process would otherwise exit before the download
             // lands – then remaps thematically. Warn or refuse stays off and

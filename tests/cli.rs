@@ -71,21 +71,35 @@ fn fixture() -> tempfile::TempDir {
 fn index_settles_the_embeddings_decision_once() {
     // A repo with no `[embed]` section: the first index runs the hardware
     // check exactly once and records the decision, whichever way it lands.
-    // The switch itself must never be flipped without an ok verdict.
+    // The decision marker lives in the store – never in kula.toml, which is
+    // fenced and must stay clean after an index. The switch itself must
+    // never be flipped without an ok verdict.
     let t = fixture();
     let d = t.path();
     std::fs::remove_file(d.join("kula.toml")).unwrap();
     let out = kula(d, &["index"]);
+    let marker = |p: &std::path::Path| {
+        let o = std::process::Command::new("sqlite3")
+            .arg(p.join(".kula/graph.db"))
+            .arg("SELECT value FROM meta WHERE key='embed.decided';")
+            .output()
+            .expect("sqlite3");
+        String::from_utf8_lossy(&o.stdout).trim().to_string()
+    };
+    assert_eq!(marker(d), "true", "the decision is recorded:\n{out}");
     let toml = std::fs::read_to_string(d.join("kula.toml")).unwrap_or_default();
-    assert!(toml.contains("decided = true"), "the decision is recorded:\n{out}");
-    // On a refuse machine the switch stays off and the reason prints; on an
-    // ok machine it turns on. Either way the flag agrees with the verdict.
+    // On a refuse machine the switch stays off, the reason prints and the
+    // automatic path leaves kula.toml missing; on an ok machine it turns on
+    // and records the switch in kula.toml. Either way the flag agrees with
+    // the verdict.
     let s = kula_json(d, &["embed", "status", "--json"]);
     let verdict = kula_json(d, &["embed", "check", "--json"]);
     if verdict["verdict"] == "ok" {
         assert_eq!(s["enabled"], true, "ok machine: embeddings on by default");
+        assert!(toml.contains("enabled = true"), "ok machine records the switch");
     } else {
         assert_eq!(s["enabled"], false, "warn/refuse machine: embeddings stay off");
+        assert_eq!(toml, "", "refuse machine: no fenced kula.toml write");
     }
 }
 
@@ -1039,7 +1053,10 @@ fn symbol_fences_are_enforced_at_commit_verify_and_check() {
 fn pre_commit_fails_closed_and_the_hook_catches_tampering() {
     let t = fixture();
     let d = t.path();
-    write(d, "kula.toml", "[[guard]]\npaths = [\"src/util/**\"]\nlevel = \"locked\"\n");
+    // The machine's embedding state is pre-settled: `kula index` would run
+    // the auto check otherwise, and on an ok machine that records the switch
+    // in kula.toml – a fenced change that would hold this commit.
+    write(d, "kula.toml", "[[guard]]\npaths = [\"src/util/**\"]\nlevel = \"locked\"\n[embed]\ndecided = true\n");
     git(d, &["add", "-A"]);
     git(d, &["commit", "-qm", "fences"]);
     kula(d, &["index"]);
@@ -1304,9 +1321,10 @@ fn no_map_and_auto_false_turn_mapping_off() {
     }
 }
 
-/// The switch persists: embed enable true/false lands in kula.toml and reads
-/// back through status – and a refuse verdict after enable leaves it off (the
-/// engine gate is the CLI's own check gate; here we prove the file side).
+/// A refuse verdict after the flag flip leaves nothing to prove here – this
+/// test claims only the file side: status reads `enabled` out of kula.toml.
+/// The real switch path (POST /api/embed/enable → embed::set_enabled) is
+/// covered by the e2e suite and by set_enabled's in-place unit tests.
 #[test]
 fn embed_enabled_flag_persists_in_kula_toml() {
     let d = fixture();
@@ -1314,13 +1332,8 @@ fn embed_enabled_flag_persists_in_kula_toml() {
     let toml = |p: &std::path::Path| std::fs::read_to_string(p.join("kula.toml")).unwrap_or_default();
     assert!(!toml(d.path()).contains("enabled = true"), "off by default");
 
-    // The UI path: enable → check refuses (small repo, plenty of RAM: verdict
-    // ok is possible, so just assert the file flip happened).
-    let s = kula_json(d.path(), &["embed", "status", "--json"]);
-    assert_eq!(s["enabled"], false);
-    // enable writes the flag – direct toml write here; the real switch path
-    // (POST /api/embed/enable → embed::set_enabled) is covered by the e2e
-    // suite, and set_enabled's in-place edit by embed.rs unit tests
+    // Enable writes the flag – direct toml write here; the assertions above
+    // prove status reads it, nothing more.
     std::fs::write(d.path().join("kula.toml"), "[embed]\nenabled = true\n[map]\nauto = true\n").unwrap();
     let s = kula_json(d.path(), &["embed", "status", "--json"]);
     assert_eq!(s["enabled"], true, "status reads kula.toml");
