@@ -371,48 +371,77 @@ type CapsProps = {
   roles: Set<Role>;
   selection: string | null;
   onSelect: (id: string | null) => void;
+  /** A lane's files open the (editable) code panel, as the old lane rows did. */
+  onFile?: (path: string) => void;
 };
 
 /** One swimlane group per entry family (heaviest first), the lane's blocks
     as tile nodes chained left to right. Node ids are lane-scoped – a block
-    can appear in several lanes – and selections map back to the block. */
-export function CapsKitView({ data, roles, selection, onSelect }: CapsProps) {
+    can appear in several lanes – and selections map back to the block.
+    The graph is memoised on the lanes only and the layout key stays stable:
+    selection must NOT ride either, or the kit's re-layout would replace the
+    nodes, React Flow would deselect them and the echo would clear the very
+    selection the click just made (the details panel closed and stayed
+    closed). The selected stop's accent border comes from React Flow's own
+    click selection instead. */
+export function CapsKitView({ data, roles, selection, onSelect, onFile }: CapsProps) {
   const lanes = useMemo(() => capabilities(data, 24, roles), [data, roles]);
-  const nodes: FlowNode[] = [];
-  const edges: FlowEdge[] = [];
-  const groups: FlowGroup[] = [];
-  lanes.forEach((l, i) => {
-    const gid = `lane:${l.famId}`;
-    const members: string[] = [];
-    l.stops.forEach((s, j) => {
-      const id = `lane:${l.famId}:${s.id}`;
-      members.push(id);
-      nodes.push({
-        id, kind: "tile", title: s.name, icon: <RoleMark role={s.role} />,
-        color: ROLE_COLOR[s.role], entry: j === 0, dim: !!selection && selection !== s.id,
+  const [selLane, setSelLane] = useState<string | null>(null);
+  const { nodes, edges, groups } = useMemo((): { nodes: FlowNode[]; edges: FlowEdge[]; groups: FlowGroup[] } => {
+    const nodes: FlowNode[] = [];
+    const edges: FlowEdge[] = [];
+    const groups: FlowGroup[] = [];
+    lanes.forEach((l, i) => {
+      const gid = `lane:${l.famId}`;
+      const members: string[] = [];
+      l.stops.forEach((s, j) => {
+        const id = `lane:${l.famId}:${s.id}`;
+        members.push(id);
+        nodes.push({
+          id, kind: "tile", title: s.name, icon: <RoleMark role={s.role} />,
+          color: ROLE_COLOR[s.role], entry: j === 0,
+        });
+        if (j > 0) {
+          const prev = `lane:${l.famId}:${l.stops[j - 1].id}`;
+          edges.push({ id: `${gid}:${j}`, source: prev, target: id, weight: 2 });
+        }
       });
-      if (j > 0) {
-        const prev = `lane:${l.famId}:${l.stops[j - 1].id}`;
-        edges.push({ id: `${gid}:${j}`, source: prev, target: id, weight: 2 });
-      }
+      groups.push({ id: gid, label: `${i + 1} · ${l.label}`, members });
     });
-    groups.push({ id: gid, label: `${i + 1} · ${l.label}`, members });
-  });
+    return { nodes, edges, groups };
+  }, [lanes]);
+  // The controlled selection is a node id; resolve the selected block to the
+  // first lane stop that shows it so the kit paints the accent border.
+  const selNode = selection ? nodes.find((n) => n.id.endsWith(`:${selection}`))?.id ?? null : null;
   const select = (id: string | null) => {
-    if (!id) { onSelect(null); return; }
-    // lane:<fam>:<block> | lane:<fam> (frame) – both resolve to the block
+    if (!id) { setSelLane(null); onSelect(null); return; }
+    // lane:<fam>:<block> | lane:<fam> (frame) – stops resolve to the block,
+    // a frame selects the lane (its files list opens the code panel).
     const parts = id.split(":");
-    onSelect(parts.length >= 3 ? parts[2] : null);
+    if (parts.length >= 3) { setSelLane(null); onSelect(parts[2]); }
+    else { setSelLane(id.slice(5)); onSelect(null); }
   };
+  const lane = selLane != null ? lanes.find((l) => String(l.famId) === selLane) : null;
+  if (!lanes.length)
+    return <div className="sy-canvas fm-caps" data-testid="map-caps"><div className="view-loading">no capability families under this filter</div></div>;
   return (
     <div className="sy-canvas fm-caps" data-testid="map-caps">
       <div className="fm-headline" data-testid="map-caps-headline">
         <span className="fm-headline-k">capabilities</span>
         <span className="fm-headline-v">{lanes.length} lanes – one per entry family, heaviest first</span>
+        {lane && lane.files.length > 0 && (
+          <span className="fm-headline-tools" data-testid="map-caps-files">
+            {lane.files.map((p) => (
+              <button key={p} className="fm-fn" onClick={() => onFile?.(p)} title={p}>
+                <span className="mono fm-fn-name">{p.split("/").pop()}</span>
+              </button>
+            ))}
+          </span>
+        )}
       </div>
       <FlowCanvas
         nodes={nodes} edges={edges} groups={groups}
-        selection={null} onSelect={select}
+        selection={selNode} onSelect={select}
         layoutKey={`map-caps-${nodes.length}`} ns="map" testId="map-caps-canvas"
       />
     </div>

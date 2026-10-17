@@ -319,7 +319,8 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
       <button className="btn sm sy-side-toggle" aria-expanded={side} aria-controls="map-sidebar"
         onClick={() => setSide((s) => !s)} data-testid="map-side-toggle">Structure</button>
       <div className="sy-split" style={listWidth("map", 360)}>
-        {view === "capabilities" && <CapsKitView data={data} roles={roles} selection={selBlock} onSelect={setSelBlock} />}
+        {view === "capabilities" && <CapsKitView data={data} roles={roles} selection={selBlock} onSelect={setSelBlock}
+          onFile={(p) => code.open({ path: p, name: p.split("/").pop() })} />}
         {view === "chains" && <ChainsStrips data={data} roles={roles} onChain={selectChain} selChain={selChain?.id ?? null} loadChains={loadChains} onLeaf={selectLeaf} />}
         {view === "flow" && (!chain || focusMode) && !path.length
           ? <FlowKitView data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} depth={depth} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} expanded={expanded} onToggleExpand={toggleExpand} onClearExpand={() => setExpanded(new Set())} />

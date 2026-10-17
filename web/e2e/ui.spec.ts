@@ -2198,6 +2198,12 @@ test.describe("map", () => {
     // a lane stop selects its block into the sidebar (last tile: on top)
     await page.locator(".fc-tile").last().click({ position: { x: 24, y: 48 } });
     await expect(page.locator("[data-testid=map-readout] [data-testid=map-block-table]")).toBeVisible();
+    // the selection is visible on the canvas: the canvas reports the picked
+    // lane stop (its accent border is React Flow's click selection, the
+    // layout stays put – no re-layout, so the selection is never echoed away)
+    const capsCanvas = page.locator("[data-testid=map-caps-canvas] .fc-canvas");
+    await expect(capsCanvas).not.toHaveAttribute("data-fc-selection", "");
+    await expect(capsCanvas.getAttribute("data-fc-selection")).resolves.toMatch(/lane:/);
     // the switch keeps the other lenses working
     await page.locator("[data-testid=map-view-flow]").click();
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
@@ -2250,6 +2256,85 @@ test.describe("map", () => {
     await expect(stops.first()).toBeVisible();
     await stops.first().click();
     await expect(page.locator(".code-panel")).toBeVisible();
+  });
+
+  test("keyboard traversal works on the flow canvas: arrows walk edges, Enter opens, Esc clears", async ({ page }) => {
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    const canvas = page.locator("[data-testid=map-flow-canvas] .fc-canvas");
+    const selOf = () => canvas.getAttribute("data-fc-selection");
+    // seed the walk from a tile with an outgoing main edge: tiles are tried
+    // from the top of the stacking order down (sibling frames cover earlier
+    // groups' children), each probed with one ArrowRight
+    const tiles = page.locator(".fc-tile");
+    const n = await tiles.count();
+    let start = "", moved = "";
+    for (let i = n - 1; i >= 0 && !moved; i--) {
+      await tiles.nth(i).click({ position: { x: 24, y: 48 } });
+      await canvas.focus();
+      await expect.poll(selOf).not.toBe("");
+      start = await selOf();
+      await page.keyboard.press("ArrowRight");
+      await page.waitForTimeout(200);
+      moved = (await selOf()) ?? "";
+      if (moved === start) {
+        moved = "";
+        await page.keyboard.press("Escape"); // clear and try the next tile
+        await expect.poll(selOf).toBe("");
+      }
+    }
+    expect(moved).toBeTruthy();
+    // ArrowLeft walks back along a main edge to a predecessor
+    await page.keyboard.press("ArrowLeft");
+    await expect.poll(selOf).not.toBe(moved);
+    // ArrowRight again, then Enter opens the selection (a block drills in)
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(selOf).not.toBe(start);
+    await page.keyboard.press("Enter");
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+  });
+
+  test("the canvas kit works on the map: drag persists, tidy, fit and the minimap", async ({ page }) => {
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    // the kit controls are present on the map canvas
+    await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-tidy]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-fit]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-minimap-toggle]")).toBeVisible();
+    // the minimap starts hidden and toggles on
+    await expect(page.locator("[data-testid=map-flow-canvas] .fc-minimap")).toHaveCount(0);
+    await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-minimap-toggle]").click();
+    await expect(page.locator("[data-testid=map-flow-canvas] .fc-minimap")).toBeVisible();
+    // drag a node and the position persists to localStorage. Drags inside
+    // group frames are not persisted (kit limitation) – drag at depth 1,
+    // where every section is one unparented wide node.
+    await page.locator("[data-testid=map-depth]").click();
+    await expect(page.locator("[data-testid=map-depth]")).toHaveText("depth 1");
+    const wide = page.locator(".fc-wide").first();
+    await wide.hover();
+    const before = await wide.boundingBox();
+    await page.mouse.down();
+    await page.mouse.move(before!.x + before!.width / 2 - 120, before!.y + before!.height / 2 - 60, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    const after = await wide.boundingBox();
+    expect(Math.abs(after!.x - before!.x) + Math.abs(after!.y - before!.y)).toBeGreaterThan(40);
+    const persisted = await page.evaluate(() => {
+      const keys = Object.keys(localStorage).filter((k) => k.startsWith("kula.flow.pos.v1.map."));
+      return keys.length > 0 && keys.some((k) => Object.keys(JSON.parse(localStorage.getItem(k) || "{}")).length > 0);
+    });
+    expect(persisted).toBe(true);
+    // tidy re-runs dagre and clears persisted drags; fit recentres the view
+    await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-tidy]").click();
+    await page.waitForTimeout(600);
+    expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("kula.flow.pos.v1.map.")).length)).toBe(0);
+    const zoomBefore = Number((await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom]").textContent())?.replace("%", ""));
+    await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-fit]").click();
+    await page.waitForTimeout(400);
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    expect(zoomBefore).toBeGreaterThanOrEqual(0);
   });
 
   test("the map rail icon is the flow schematic", async ({ page }) => {
