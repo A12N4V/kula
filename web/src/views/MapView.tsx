@@ -16,8 +16,8 @@ import { fixture } from "./map/fixture";
 import { BlockCanvas } from "./map/canvas";
 import { Readout, SubwayStrip } from "./map/readout";
 import { MapViewSidebar } from "./map/sidebar";
-import { FlowView } from "./map/flow";
-import { CapsView, ChainsStrips } from "./map/caps";
+import { FlowKitView, CapsKitView } from "./map/flowKit";
+import { ChainsStrips } from "./map/caps";
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf } from "./map/chainFocus";
 import type { Chain, ChainPage, Lens, MapData, MapProgress, Role } from "./map/types";
@@ -308,10 +308,10 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
       <button className="btn sm sy-side-toggle" aria-expanded={side} aria-controls="map-sidebar"
         onClick={() => setSide((s) => !s)} data-testid="map-side-toggle">Structure</button>
       <div className="sy-split" style={listWidth("map", 360)}>
-        {view === "capabilities" && <CapsView data={data} roles={roles} onSelect={setSelBlock} selection={selBlock} onFile={(p) => code.open({ path: p })} />}
+        {view === "capabilities" && <CapsKitView data={data} roles={roles} selection={selBlock} onSelect={setSelBlock} />}
         {view === "chains" && <ChainsStrips data={data} roles={roles} onChain={selectChain} selChain={selChain?.id ?? null} loadChains={loadChains} onLeaf={selectLeaf} />}
         {view === "flow" && (!chain || focusMode) && !path.length
-          ? <FlowView data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} depth={depth} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} />
+          ? <FlowKitView data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} depth={depth} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} />
           : (view === "blocks" || chain || path.length) && view !== "capabilities" && view !== "chains"
             ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
             : null}
