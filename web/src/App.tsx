@@ -16,6 +16,7 @@ const Branches = lazy(() => import("./views/GitViews").then((m) => ({ default: m
 const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
 const Flows = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Flows })));
 const MapView = lazy(() => import("./views/MapView"));
+const FlowLab = lazy(() => import("./flow/FlowLab")); // F1 · dev-only #flow-lab
 const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
 const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
 const Proposals = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Proposals })));
@@ -75,9 +76,10 @@ type Contrast = { base: string; head: string; mode?: ContrastMode } | null;
 /** URL ⇄ state: #overview · #graph/<id>/<tab> · #graph/contrast/<base>/<head> · #issues/<id> … */
 function parseHash() {
   const parts = location.hash.slice(1).split("/").map(decodeURIComponent);
+  while (parts.length > 1 && parts[0] === "") parts.shift(); // tolerate a leading slash (#/map/x ≡ #map/x)
   if (parts[0] === "syntagm" || parts[0] === "fmap") parts[0] = "map"; // the tab's old names
   const [v, a, b, c, d] = parts;
-  const view = (VIEWS.some((x) => x.id === v) ? v : "overview") as View;
+  const view = (v === "flow-lab" ? v : VIEWS.some((x) => x.id === v) ? v : "overview") as View; // F1 · dev-only #flow-lab, not in the nav
   const contrast: Contrast = view === "graph" && a === "contrast" && b && c ? { base: b, head: c, mode: (["overlay", "split", "report"].includes(d) ? d : undefined) as ContrastMode | undefined } : null;
   const focus = view === "graph" && !contrast && Number(a) > 0 ? Number(a) : null;
   const target: Target = {};
@@ -203,7 +205,7 @@ export default function App() {
   const openPrs = meta?.proposals.filter((p) => p.status === "open").length ?? 0;
   const badge: Partial<Record<View, number>> = { changes, issues: openIssues, proposals: openPrs };
   const nav = { onChanged, openSymbol: (id: number) => go("graph", { symbol: id }), version, go, target };
-  const current = VIEWS.find((v) => v.id === view)!;
+  const current = VIEWS.find((v) => v.id === view) ?? { id: view, label: "Flow lab", icon: Icon.flows, key: "" }; // F1 · the dev-only lab is not in VIEWS
 
   return (
     <CodeProvider onLocate={(id) => go("graph", { symbol: id })}>
@@ -274,6 +276,7 @@ export default function App() {
             {view === "notes" && <Notes {...nav} />}
             {view === "flows" && <Flows {...nav} />}
             {view === "map" && <MapView openSymbol={(id) => go("graph", { symbol: id })} version={version} block={target.block} />}
+            {view === "flow-lab" && <FlowLab />}
             {view === "agents" && <Agents {...nav} />}
             {view === "query" && <Query {...nav} />}
             {view === "console" && <Console {...nav} />}
