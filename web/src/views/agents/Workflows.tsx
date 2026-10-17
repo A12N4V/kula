@@ -7,7 +7,7 @@
 
 // Workflows tab: the list and the editor for kula.toml's work modes (module S1).
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AgentsInfo, GuardLevel, Workflow } from "../../api";
 import { Mark } from "../../brands";
 import { Chips } from "../../Autofill";
@@ -173,7 +173,12 @@ function WorkflowGraph({ draft, set, isNew }: { draft: Workflow; set: (k: keyof 
   const fences: [string, string[] | undefined][] = [
     ["scope", draft.scope], ["lock", draft.lock], ["hide", draft.hide], ["review", draft.review], ["docs", draft.docs],
   ];
-  const nodes = [
+  // Identity-stable canvas props: the kit re-layouts whenever `nodes` changes
+  // identity, and a re-layout during the click's React Flow echo would clear
+  // the selection again. The draft is the only real input (selection lives in
+  // its own state and rides the kit's controlled selection).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const nodes = useMemo(() => [
     { id: "wf-root", kind: "tile" as const, entry: true, title: draft.name || "workflow", subtitle: draft.about || undefined, color: "var(--accent)", hasSub: fences.some(([, v]) => v?.length), size: { w: 96, h: 128 } },
     ...steps.map((s, i) => ({
       id: `step:${i}`, kind: "tile" as const, title: s || `step ${i + 1}`,
@@ -183,12 +188,13 @@ function WorkflowGraph({ draft, set, isNew }: { draft: Workflow; set: (k: keyof 
       id: `fence:${level}`, kind: "circle" as const, sub: true, parent: "wf-root", title: level,
       subtitle: `${vals.length} path${vals.length === 1 ? "" : "s"}`, color: level === "docs" ? "var(--blue)" : "var(--yellow)", noOut: true,
     }] : [])),
-  ];
-  const edges = [
+  ], [draft]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const edges = useMemo(() => [
     ...steps.map((_, i) => ({ id: `s:${i}`, source: i === 0 ? "wf-root" : `step:${i - 1}`, target: `step:${i}`, main: true })),
     ...fences.flatMap(([level]) => (draft[level as keyof Workflow] as string[] | undefined)?.length
       ? [{ id: `f:${level}`, source: "wf-root", target: `fence:${level}`, main: false }] : []),
-  ];
+  ], [draft]);
   const selStep = sel?.startsWith("step:") ? Number(sel.slice(5)) : -1;
   const selFence = sel?.startsWith("fence:") ? sel.slice(6) : "";
   const selVals = selFence ? (draft[selFence as keyof Workflow] as string[] | undefined) ?? [] : [];

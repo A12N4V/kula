@@ -36,6 +36,12 @@ export function MemoryGraph({ mems, allMems, sel, onPickMem, onOpen }: {
   const allIds = allMems.map((m) => m.id).join(",");
   useEffect(() => { api.memoryLayers().then(setLayers).catch(() => {}); }, [allIds]); // eslint-disable-line react-hooks/exhaustive-deps
   const layerOf = (m: Memory) => layers.find((l) => l.id === m.id);
+  // The canvas props must be identity-stable across selection renders: the
+  // parent refilters `mems` on every keystroke and the 5 s poll hands back a
+  // fresh array, and a re-layout during the click's React Flow echo would
+  // clear the selection again. Key the memos on the content, not the identity.
+  const memSig = useMemo(() => mems.map((m) => `${m.id}:${m.stale}:${m.target}:${m.author}:${m.body}`).join("|"), [mems]);
+  const layerSig = useMemo(() => layers.map((l) => `${l.id}:${l.scope}:${l.scope_name ?? ""}:${l.agent}:${l.commit ?? ""}`).join("|"), [layers]);
 
   const built = useMemo(() => {
     const nodes = [], edges = [];
@@ -90,7 +96,7 @@ export function MemoryGraph({ mems, allMems, sel, onPickMem, onOpen }: {
           edges.push({ id: `h:${holders[i]}:${holders[j]}`, source: holders[i], target: holders[j], main: false });
     return { nodes, edges, perLayer, perStale, anchorsCovered: anchorsCovered.size, stale: mems.filter((m) => m.stale).length };
     // layerOf closes over layers; the allIds key covers it.
-  }, [mems, allIds, layers]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [memSig, layerSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // One group frame per scope layer, framing its memories.
   const groups = useMemo(() => {
@@ -100,7 +106,7 @@ export function MemoryGraph({ mems, allMems, sel, onPickMem, onOpen }: {
       per.set(scope, [...(per.get(scope) ?? []), `mem:${m.id}`]);
     }
     return [...per.entries()].map(([scope, members]) => ({ id: `scope:${scope}`, label: scope, members }));
-  }, [mems, layers]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [memSig, layerSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selId = sel >= 0 && mems[sel] ? `mem:${mems[sel].id}` : null;
   const selMem = sel >= 0 ? mems[sel] : undefined;

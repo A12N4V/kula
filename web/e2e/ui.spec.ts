@@ -1563,8 +1563,11 @@ test.describe("agents A2", () => {
     await expect(facts).toBeVisible();
     await expect(facts).toContainText("explore");
     await expect(facts).toContainText("no skills carried");
-    // The inspector coexists with drag rewiring: the org card is still draggable.
-    await expect(page.locator('[data-org="codex"]')).toHaveAttribute("draggable", "true");
+    // Rewiring moved from a drag gesture to the canvas sidebar's tinker
+    // (the kit has no edge-connect): the card is not natively draggable, the
+    // sidebar carries the answers-to control.
+    await expect(page.locator('[data-org="codex"]')).not.toHaveAttribute("draggable", "true");
+    await expect(page.locator(".fc-sidebar").getByLabel("Answers to")).toBeVisible();
   });
 });
 
@@ -2245,5 +2248,100 @@ test.describe("map", () => {
     expect(await btn.locator("rect").count()).toBe(1);
     const acc = await btn.locator("[stroke='var(--accent)']").count();
     expect(acc).toBeGreaterThanOrEqual(1);
+  });
+});
+
+test.describe("agents on the flow canvas (A3)", () => {
+  test.describe.configure({ mode: "serial" });
+  test.use({ baseURL: ({ fx }, use) => use(fx) });
+  const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
+
+  test("A3.1 teams: a canvas seat fills the sidebar; an answers-to edit round-trips teams_save", async ({ page, request }, info) => {
+    desktopOnly(info);
+    test.setTimeout(90_000);
+    await open(page, "agents/teams");
+    // Select a seat on the canvas: the kit sidebar explains it, the selection
+    // is on the canvas, and the seat's card exists (the DOM contract).
+    const card = page.locator(".react-flow__node .org-card").nth(1);
+    await expect(card).toBeVisible();
+    await card.click();
+    const side = page.locator(".fc-sidebar");
+    await expect(page.locator(".fc-canvas")).not.toHaveAttribute("data-fc-selection", "");
+    // The sidebar tinker changes answers-to through the same onReport the old
+    // drag used; Save writes teams_save – assert the request payload, not pixels.
+    const orgSel = side.getByLabel("Answers to");
+    await expect(orgSel).toBeVisible();
+    const before = await orgSel.inputValue();
+    const options = await orgSel.locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    const to = options.find((v) => v !== before && v !== "") ?? "";
+    const saveReq = page.waitForRequest((r) => r.url().includes("/api/agents/teams_save") && r.method() === "POST");
+    await orgSel.selectOption(to);
+    await page.locator(".team-card").getByRole("button", { name: "Save", exact: true }).click();
+    const body = (await saveReq).postDataJSON() as { teams: { name: string; members: Record<string, unknown>[] }[] };
+    const seat = await card.getAttribute("data-org");
+    const team = body.teams.find((t) => t.members.some((m) => (m.name ?? m.agent) === seat));
+    const member = team?.members.find((m) => (m.name ?? m.agent) === seat);
+    expect(member?.reports_to, `teams_save carries reports_to=${to}`).toBe(to);
+    void request;
+  });
+
+  test("A3.2 workflows: a canvas step fills the sidebar; a reorder round-trips workflows_save", async ({ page, request }, info) => {
+    desktopOnly(info);
+    test.setTimeout(90_000);
+    await open(page, "agents/workflows");
+    // The task's workflow (fix) is selected by default; make sure of it.
+    await page.locator(".wf-tabs [role=tab]").filter({ hasText: /^fix$/ }).click();
+    const info0 = await (await request.get("/api/agents")).json();
+    const steps0: string[] = info0.workflow.steps;
+    expect(steps0.length).toBeGreaterThan(1);
+    // Select step 2 on the canvas; the sidebar explains it and tinkers.
+    await page.locator('.react-flow__node[data-id="step:1"]').click();
+    await expect(page.locator(".fc-sidebar")).toContainText("step 2");
+    // Move it down, save, assert the same workflows_save payload shape the
+    // form always wrote (kula.toml, so CLI, MCP and kula check see it).
+    const saveReq = page.waitForRequest((r) => r.url().includes("/api/agents/workflows_save") && r.method() === "POST");
+    await page.locator(".fc-sidebar").getByRole("button", { name: /down/ }).click();
+    await page.locator(".wf-actions").getByRole("button", { name: "Save" }).click();
+    const body = (await saveReq).postDataJSON() as { workflows: { name: string; steps: string[] }[] };
+    const wf = body.workflows.find((w) => w.name === "fix");
+    expect(wf?.steps.slice(0, 2)).toEqual([steps0[1], steps0[0]]);
+  });
+
+  test("A3.3 memory: a canvas node fills the sidebar and the list row follows", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
+    await open(page, "agents/memory");
+    const node = page.locator('.react-flow__node[data-id^="mem:"]').first();
+    await expect(node).toBeVisible();
+    await node.click();
+    const side = page.locator(".fc-sidebar");
+    await expect(side).toContainText(/#\d+/);
+    await expect(side).toContainText("layer");
+    // one truth, two views: the list row is selected too
+    await expect(page.locator(".ag-mem.kb-sel")).toHaveCount(1);
+  });
+
+  test("A3.4 research: the run pipeline renders on the canvas; an attempt fills the sidebar", async ({ page }) => {
+    // The fixture has no finished run; inject one the way A2.2 does.
+    const now = Date.now(), min = 60_000;
+    const run = {
+      workflow: "explore", metric: "cargo test --quiet count", goal: "min", budget: 5, branch: "main", base: "main",
+      baseline: 12, best: 10, started: now - 40 * min, by: "agent:claude", active: false,
+      experiments: [
+        { n: 1, hypothesis: "index once per blob", value: 11, best_before: 12, kept: true, commit: "abc1234def", files: ["src/store.rs"], by: "agent:claude", at: now - 35 * min },
+        { n: 2, hypothesis: "borrow the graph", value: 10.5, best_before: 11, kept: false, files: ["src/graph.rs"], by: "agent:cursor", at: now - 28 * min },
+      ],
+    };
+    await page.route("**/api/agents", (route) => route.fetch().then((r) => r.json()).then((j) => route.fulfill({
+      json: { ...j, research: [run], workflows: [...j.workflows, { name: "explore", about: "loop", builtin: false, research: { metric: run.metric, goal: "min", budget: 5 } }] },
+    })));
+    await open(page, "agents/research");
+    await page.getByRole("tab", { name: "explore", exact: true }).click();
+    // The pipeline is on the canvas: stages left to right, sub-nodes below.
+    await expect(page.locator(".rf-canvas .react-flow__node")).toHaveCount(6);
+    await expect(page.locator('.rf-canvas .react-flow__node[data-id="st:gate"]')).toBeVisible();
+    // Selecting an attempt on the canvas fills the sidebar and lights the list.
+    await page.locator('.rf-canvas .react-flow__node[data-id="try:2"]').click();
+    await expect(page.locator(".fc-sidebar")).toContainText("attempt 2");
+    await expect(page.locator(".rf-try").filter({ hasText: "borrow the graph" })).toHaveClass(/sel/);
   });
 });

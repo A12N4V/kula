@@ -84,7 +84,12 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
   const stage = (id: string, title: string, sub: number, entry = false) => ({
     id, kind: "wide" as const, title, subtitle: sub ? `${sub} below` : undefined, entry, size: { w: 160, h: 64 },
   });
-  const nodes = [
+  // Identity-stable canvas props: the kit re-layouts whenever `nodes` changes
+  // identity, and a re-layout during the click's React Flow echo would clear
+  // the selection again. Selection (focus) is a real input here – it dims the
+  // non-matching nodes – so the memo keys on the focus, not the render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const nodes = useMemo(() => [
     stage("st:solvers", "solvers", solvers.length, true),
     stage("st:attempts", "attempts", vis.length),
     stage("st:gate", "gate", 0),
@@ -105,14 +110,14 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
       title: num(e.value!), subtitle: `#${e.n} ${e.commit?.slice(0, 7) ?? ""}`,
       color: "var(--accent)", dim: anyFocus && !on(e),
     })),
-  ];
-  const edges = [
+  ], [run, exps, solvers, focus, all, tries.filter]);
+  const edges = useMemo(() => [
     { id: "p1", source: "st:solvers", target: "st:attempts", main: true },
     { id: "p2", source: "st:attempts", target: "st:gate", main: true },
     { id: "p3", source: "st:gate", target: "st:frontier", main: true },
     // every attempt starts from the frontier: the loop runs back
     { id: "loop", source: "st:frontier", target: "st:solvers", main: false, label: "builds on the best" },
-  ];
+  ], [run, exps, solvers]);
   const canvasSel = focus.n !== undefined ? `try:${focus.n}`
     : focus.solver ? `solver:${focus.solver}` : null;
   const onCanvasSel = (id: string | null) => {
@@ -144,7 +149,11 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
 
   return (
     <div className={`rf ${anyFocus ? "focused" : ""}`}>
-      <div className="rf-filter"><ListFilter inputRef={tries.inputRef} value={tries.filter} onChange={tries.setFilter} label="Filter attempts" placeholder="/ filter attempts" /></div>
+      <div className="rf-filter">
+        <ListFilter inputRef={tries.inputRef} value={tries.filter} onChange={tries.setFilter} label="Filter attempts" placeholder="/ filter attempts" />
+        <button className="btn sm ghost rf-more" aria-pressed={all} title={all ? "show the last 18 attempts" : "show every attempt"}
+          onClick={() => setAll((v) => !v)}>{all ? `last ${SHOW}` : `all ${exps.length}`}</button>
+      </div>
       <RunTimeline run={run} onPick={(n) => toggleFocus(n)} picked={focus.n} />
 
       <div className="rf-canvas" data-testid="research-canvas">

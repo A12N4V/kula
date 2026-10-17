@@ -16,6 +16,7 @@
 import { useMemo } from "react";
 import type { Team, Workflow } from "../../api";
 import { hue } from "../../colors";
+import { Icon } from "../../ui";
 import { AGENT_NAME } from "./data";
 import { SeatMark, keyName, seatName } from "./parts";
 import { seatKey, titleFor } from "../../roster";
@@ -86,8 +87,25 @@ export function TeamOrg({ team, info, selected, onSelect, problems, onReport, on
   // a member cannot answer to someone who (eventually) answers to it
   const under = (a: string, top: string) => { let c = team.members.find((x) => seatKey(x) === a)?.reports_to, n = 0; while (c && n++ < 50) { if (c === top) return true; c = team.members.find((x) => seatKey(x) === c)?.reports_to; } return false; };
   const rows = useMemo(() => orgRows(team.members), [team.members]);
+  // Reorder the hands-off list through the same onHand toggles the chips use:
+  // drop every hand-off, then re-add in the wanted order. A beat between calls
+  // lets the parent re-render so the next toggle reads fresh state (each
+  // onHand is a setM on the parent, which lands as one teams_save on Save).
+  const reorderHands = async (order: string[]) => {
+    if (!onHand || !selected) return;
+    const tick = () => new Promise<void>((r) => window.setTimeout(r, 30));
+    for (const h of sel?.hands_off ?? []) { onHand(selected, h); await tick(); }
+    for (const h of order) { onHand(selected, h); await tick(); }
+  };
+  // The canvas props must be identity-stable across selection renders: the kit
+  // re-layouts whenever `nodes` changes identity, and a re-layout during the
+  // click's React Flow echo clears the selection again. Key the memo on the
+  // content (the 5 s agents poll hands back a fresh `team` object every time).
+  const probSig = useMemo(() => JSON.stringify(problems), [problems]);
+  const wfSig = useMemo(() => info.workflows.map((w) => w.name).join(","), [info.workflows]);
+  const liveSig = live ? "1" : "0";
 
-  const nodes = rows.map(({ m, orphan }) => {
+  const nodes = useMemo(() => rows.map(({ m, orphan }) => {
     const key = seatKey(m);
     const errs = problems[key] ?? [];
     const others = team.members.map(seatKey).filter((k) => k && k !== key);
@@ -101,11 +119,11 @@ export function TeamOrg({ team, info, selected, onSelect, problems, onReport, on
       hasSub: !!m.hands_off?.length,
       // Explicit size: kit layout + React Flow visibility both need it.
       size: { w: 232, h: 152 },
-      // The card rides inside the tile box; the canvas owns the click, the
-      // classes keep the DOM contract the tests and the drag gestures had.
+      // The card rides inside the tile box; the canvas owns the click and the
+      // selection highlight (the node gets the kit's selected border); the
+      // classes keep the DOM contract the tests had.
       icon: (
-        <div className={`org-card${selected === key ? " sel" : ""}`} data-org={key}
-          role="option" aria-selected={selected === key} draggable="true">
+        <div className="org-card" data-org={key}>
           <span className="org-name"><SeatMark m={m} size={16} live={live} />{seatName(m) || "unnamed"}</span>
           <span className="org-role">{titleFor(m.role || (m.reports_to ? "member" : "lead"))}<span className="org-runner"> · {m.agent ? AGENT_NAME[m.agent] ?? m.agent : "any agent"}</span></span>
           <span className="org-wf"><i style={{ background: workflowColor(info.workflows, m.workflow) }} />{m.workflow || "no workflow"}</span>
@@ -119,9 +137,10 @@ export function TeamOrg({ team, info, selected, onSelect, problems, onReport, on
         </div>
       ),
     };
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [rows, probSig, wfSig, liveSig]);
 
-  const edges = [
+  const edges = useMemo(() => [
     // answers-to: the main org flow, lead to member
     ...rows.flatMap(({ m }) => (m.reports_to && rows.some((r) => seatKey(r.m) === m.reports_to)
       ? [{ id: `rep:${seatKey(m)}`, source: seatId(m.reports_to), target: seatId(seatKey(m)), main: true }] : [])),
@@ -129,12 +148,13 @@ export function TeamOrg({ team, info, selected, onSelect, problems, onReport, on
     ...rows.flatMap(({ m }) => (m.hands_off ?? []).filter((h) => rows.some((r) => seatKey(r.m) === h)).map((h) => ({
       id: `hand:${seatKey(m)}:${h}`, source: seatId(seatKey(m)), target: seatId(h), main: false, label: "hands off",
     }))),
-  ];
+  ], [rows]);
 
   // Each workflow draws a group frame around its seats.
-  const groups = [...new Set(team.members.map((m) => m.workflow ?? ""))].filter((w) => w).map((w) => ({
+  const groups = useMemo(() => [...new Set(team.members.map((m) => m.workflow ?? ""))].filter((w) => w).map((w) => ({
     id: `wf:${w}`, label: w, members: team.members.filter((m) => m.workflow === w).map((m) => seatId(seatKey(m))),
-  }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  })), [rows]);
 
   const sel = selected ? team.members.find((m) => seatKey(m) === selected) : undefined;
   const others = sel ? team.members.map(seatKey).filter((k) => k && k !== selected) : [];
@@ -174,6 +194,23 @@ export function TeamOrg({ team, info, selected, onSelect, problems, onReport, on
               })}
             </div>
           </div>
+          {(sel.hands_off ?? []).length > 1 && (
+            <div className="mi-field"><span>hand-off order</span>
+              <ol className="team-hand-order" aria-label="Hand-off order">
+                {(sel.hands_off ?? []).map((h, i) => (
+                  <li key={h}>
+                    <span className="mono">{String(i + 1).padStart(2, "0")}</span>
+                    <span>{keyName(team.members, h)}</span>
+                    <span className="spacer" />
+                    <button type="button" className="btn sm ghost icon-only" disabled={i === 0}
+                      aria-label={`Move ${keyName(team.members, h)} up`} onClick={() => { const v = [...sel.hands_off!]; [v[i - 1], v[i]] = [v[i], v[i - 1]]; reorderHands(v); }}><Icon.up /></button>
+                    <button type="button" className="btn sm ghost icon-only" disabled={i === sel.hands_off!.length - 1}
+                      aria-label={`Move ${keyName(team.members, h)} down`} onClick={() => { const v = [...sel.hands_off!]; [v[i + 1], v[i]] = [v[i], v[i + 1]]; reorderHands(v); }}><Icon.down /></button>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
       ) : undefined}
       related={sel ? (sel.scope?.length ? sel.scope.map((s) => <span key={s} className="mono org-rel">{s}</span>) : <span className="muted">no scope fence – the whole repo</span>) : undefined}
