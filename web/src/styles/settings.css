@@ -64,6 +64,10 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
    here – git.css's older override is gone. */
 .split > .grip { right: auto; width: 28px; left: calc(var(--list-w, 340px) + 1px); }
 .split > .grip::after { right: auto; left: 2px; }
+/* Query – the 28px strip reaches the results table's first cell (its button
+   starts at 12px of cell padding); a hairline grip keeps the list side clear
+   and the row buttons clickable. */
+.split.kq > .grip { width: 8px; }
 
 .inspector { width: var(--size-inspector, 380px); }
 .graph-wrap.inspecting .zoom { right: calc(var(--size-inspector, 380px) + 24px); }

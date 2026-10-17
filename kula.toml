@@ -46,3 +46,4 @@ budget = 5
 
 [embed]
 decided = true
+enabled = false

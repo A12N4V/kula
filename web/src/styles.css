@@ -14,6 +14,7 @@
 @import "./styles/type.css";
 @import "./styles/sweep.css";
 @import "./styles/map.css"; /* U1 · MapView */
+@import "./styles/flow.css"; /* F1 · flow canvas kit */
 
 /* ------------------------------------------------------------------ K2 · unified agent config (skills, rules, MCP, memory layers) */
 .sk-diff { margin-top: var(--gap); border-top: 1px solid var(--line); padding-top: var(--gap); }
