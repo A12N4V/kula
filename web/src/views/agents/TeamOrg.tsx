@@ -182,7 +182,11 @@ export function TeamOrg({ team, info, selected, onSelect, problems, onReport, on
           <label className="mi-field"><span>answers to</span>
             <select className="input" value={sel.reports_to ?? ""} onChange={(e) => onReport(selected!, e.target.value)} aria-label="Answers to">
               <option value="">nobody – leads</option>
-              {others.filter((o) => o === "" || !under(selected!, o)).map((o) => <option key={o} value={o}>{keyName(team.members, o)}</option>)}
+              {/* Exclude the member's own descendants (their chains contain
+                  the member) – picking one would form a cycle. Ancestors stay:
+                  re-picking the current lead must remain possible, or the
+                  select falls back to the empty option and shows blank. */}
+              {others.filter((o) => o === "" || !under(o, selected!)).map((o) => <option key={o} value={o}>{keyName(team.members, o)}</option>)}
             </select>
           </label>
           <div className="mi-field"><span>hands off to</span>

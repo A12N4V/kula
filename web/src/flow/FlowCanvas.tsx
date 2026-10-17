@@ -327,9 +327,13 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             onNodeMouseEnter={(_, n) => setHovered(n.id)}
             onNodeMouseLeave={() => setHovered(null)}
             onSelectionChange={(objs) => {
+              // Only forward additions: React Flow fires an empty selection
+              // echo while the controlled selection syncs (and when it clears
+              // its internal set on a re-render). Forwarding that echo would
+              // clear a selection the app just set programmatically; user
+              // clearing is onPaneClick and the Escape handler, not here.
               const first = objs.nodes[0];
               if (first && first.id !== sel) select(first.id);
-              if (!objs.nodes.length && sel) select(null);
             }}
             onNodeDragStop={(_, n, nodes2) => {
               const rfNodesNow = rf.getNodes() as unknown as RfNode[];
@@ -372,7 +376,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
           )}
         </div>
         {sidebar && (
-          <aside className={`fc-side${sideOpen ? " fc-side-open" : ""}`} data-testid="fc-sidebar">{sidebar}</aside>
+          <aside className={`fc-side fc-sidebar${sideOpen ? " fc-side-open" : ""}`} data-testid="fc-sidebar">{sidebar}</aside>
         )}
       </div>
     </FcCtx.Provider>

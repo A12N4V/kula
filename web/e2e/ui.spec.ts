@@ -2264,6 +2264,9 @@ test.describe("agents on the flow canvas (A3)", () => {
     // is on the canvas, and the seat's card exists (the DOM contract).
     const card = page.locator(".react-flow__node .org-card").nth(1);
     await expect(card).toBeVisible();
+    // The seat key is read at click time: canvas re-renders can reorder the
+    // cards, so a late read would name a different seat than the one picked.
+    const seat = await card.getAttribute("data-org");
     await card.click();
     const side = page.locator(".fc-sidebar");
     await expect(page.locator(".fc-canvas")).not.toHaveAttribute("data-fc-selection", "");
@@ -2278,7 +2281,6 @@ test.describe("agents on the flow canvas (A3)", () => {
     await orgSel.selectOption(to);
     await page.locator(".team-card").getByRole("button", { name: "Save", exact: true }).click();
     const body = (await saveReq).postDataJSON() as { teams: { name: string; members: Record<string, unknown>[] }[] };
-    const seat = await card.getAttribute("data-org");
     const team = body.teams.find((t) => t.members.some((m) => (m.name ?? m.agent) === seat));
     const member = team?.members.find((m) => (m.name ?? m.agent) === seat);
     expect(member?.reports_to, `teams_save carries reports_to=${to}`).toBe(to);
@@ -2291,7 +2293,9 @@ test.describe("agents on the flow canvas (A3)", () => {
     await open(page, "agents/workflows");
     // The task's workflow (fix) is selected by default; make sure of it.
     await page.locator(".wf-tabs [role=tab]").filter({ hasText: /^fix$/ }).click();
-    const info0 = await (await request.get("/api/agents")).json();
+    // The API answers only with the session token, so read it through the
+    // page (the meta tag carries it) rather than a bare APIRequestContext.
+    const info0 = await page.evaluate(() => fetch("/api/agents", { headers: { "x-kula-token": document.querySelector('meta[name="kula-token"]')?.content ?? "" } }).then((r) => r.json()));
     const steps0: string[] = info0.workflow.steps;
     expect(steps0.length).toBeGreaterThan(1);
     // Select step 2 on the canvas; the sidebar explains it and tinkers.
@@ -2304,7 +2308,9 @@ test.describe("agents on the flow canvas (A3)", () => {
     await page.locator(".wf-actions").getByRole("button", { name: "Save" }).click();
     const body = (await saveReq).postDataJSON() as { workflows: { name: string; steps: string[] }[] };
     const wf = body.workflows.find((w) => w.name === "fix");
-    expect(wf?.steps.slice(0, 2)).toEqual([steps0[1], steps0[0]]);
+    // "down" moves step 2 one position later: [s0, s2, s1, …] – so the first
+    // two entries of the saved order are the old first and old third steps.
+    expect(wf?.steps.slice(0, 2)).toEqual([steps0[0], steps0[2]]);
   });
 
   test("A3.3 memory: a canvas node fills the sidebar and the list row follows", async ({ page }, info) => {
@@ -2336,8 +2342,9 @@ test.describe("agents on the flow canvas (A3)", () => {
     })));
     await open(page, "agents/research");
     await page.getByRole("tab", { name: "explore", exact: true }).click();
-    // The pipeline is on the canvas: stages left to right, sub-nodes below.
-    await expect(page.locator(".rf-canvas .react-flow__node")).toHaveCount(6);
+    // The pipeline is on the canvas: stages left to right, sub-nodes below –
+    // 4 stages + 2 solver circles + 2 attempt circles + 1 frontier record.
+    await expect(page.locator(".rf-canvas .react-flow__node")).toHaveCount(9);
     await expect(page.locator('.rf-canvas .react-flow__node[data-id="st:gate"]')).toBeVisible();
     // Selecting an attempt on the canvas fills the sidebar and lights the list.
     await page.locator('.rf-canvas .react-flow__node[data-id="try:2"]').click();
