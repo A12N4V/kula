@@ -100,8 +100,13 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
   const [busy, setBusy] = useState(false);
   const body = useRef<HTMLDivElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
+  // The load session's guard verdict: undefined = not asked yet, null = asked
+  // and open, otherwise the fence. The row is only ever a display – the gate
+  // lives here, so dismissing it (Esc, Cancel) cannot sneak a save through.
+  const guard = useRef<Verdict | null | undefined>(undefined);
   const load = useCallback((path: string) => {
     setSrc(null); setErr(null); setNote(null); setFenced(false); setBusy(false);
+    guard.current = undefined;
     get<{ path: string; content: string; base_hash: string }>(`/api/file?path=${encodeURIComponent(path)}`)
       .then((f) => { setSrc(f.content); setText(f.content); setHash(f.base_hash); })
       .catch((e) => setErr(e.message));
@@ -116,6 +121,7 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
       const r = await putFile(t.path, text, hash);
       if (r.kind === "ok") {
         setSrc(text); setHash(r.hash); setNote(null); setFenced(false);
+        guard.current = undefined;
       } else {
         setNote({ kind: "conflict", current: r.current, hash: r.hash });
       }
@@ -126,17 +132,21 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
   const save = useCallback(async () => {
     if (!dirty || busy) return;
     // Fences first: a locked file may still be saved by a person, but only
-    // once they own the choice ("I know this is fenced").
-    if (!note) {
+    // once they own the choice ("I know this is fenced"). The verdict is
+    // cached for the load session, so re-showing the row costs nothing and a
+    // dismissed row comes straight back on the next save attempt.
+    if (guard.current === undefined) {
       try {
         const v = await get<{ path: string; task: Verdict | null }>(`/api/agent/guard_path?path=${encodeURIComponent(t.path)}`);
-        if (v.task && v.task.level !== "open") { setNote({ kind: "fence", verdict: v.task }); setFenced(false); return; }
+        guard.current = v.task ?? null;
       } catch { /* a dead guard endpoint must not block a save */ }
     }
+    const f = guard.current;
+    if (f && f.level !== "open" && !fenced) { setNote({ kind: "fence", verdict: f }); return; }
     doSave();
-  }, [dirty, busy, note, t.path, doSave]);
+  }, [dirty, busy, fenced, t.path, doSave]);
 
-  const revert = useCallback(() => { if (src != null) { setText(src); setNote(null); setFenced(false); } }, [src]);
+  const revert = useCallback(() => { if (src != null) { setText(src); setNote(null); setFenced(false); guard.current = undefined; } }, [src]);
 
   // Reload (after a conflict): take what is on disk now.
   const reload = useCallback(() => { load(t.path); }, [load, t.path]);
@@ -145,7 +155,7 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
   const overwrite = useCallback(async () => {
     const n = note;
     if (n?.kind !== "conflict") return;
-    setNote(null); setFenced(false);
+    setNote(null); setFenced(false); guard.current = undefined;
     const r = await putFile(t.path, text, n.hash);
     if (r.kind === "ok") { setSrc(text); setHash(r.hash); }
     else setNote({ kind: "conflict", current: r.current, hash: r.hash });

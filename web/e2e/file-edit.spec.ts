@@ -22,18 +22,30 @@ const api = (page: Page, method: string, u: string, body?: unknown) =>
 
 async function openPanel(page: Page, name: string, fn: string) {
   // Workers share this fixture: wait until our symbol is searchable (another
-  // worker's reindex can briefly hold the store), indexing again if needed.
+  // worker's reindex can briefly hold the store), indexing again every few
+  // rounds in case our pass raced another worker's.
   for (let i = 0; i < 30; i++) {
     const [, s] = await api(page, "GET", `/api/search?q=${encodeURIComponent(fn)}`);
     if (Array.isArray(s) && s.length) break;
-    if (i === 9) await api(page, "POST", "/api/index");
+    if (i % 3 === 2) await api(page, "POST", "/api/index");
     await page.waitForTimeout(1_000);
   }
   await page.getByRole("button", { name: /search/i }).first().click();
   await expect(page.locator(".palette input")).toBeVisible({ timeout: 10_000 });
   await page.keyboard.type(fn);
-  const hit = page.locator(".palette .res").filter({ hasText: fn }).first();
-  await expect(hit).toBeVisible({ timeout: 15_000 });
+  // A parallel worker's reindex can swap the store mid-typing and empty the
+  // palette: retype a few times before giving up.
+  let hit = page.locator(".palette .res").filter({ hasText: fn }).first();
+  for (let a = 0; a < 4; a++) {
+    try {
+      await expect(hit).toBeVisible({ timeout: 6_000 });
+      break;
+    } catch (e) {
+      if (a === 3) throw e;
+      await page.locator(".palette input").fill("");
+      await page.keyboard.type(fn);
+    }
+  }
   await hit.click();
   // The graph focuses the symbol; the inspector's source row (labelled
   // "<file>:<line>") opens the code panel.
@@ -160,6 +172,33 @@ test.describe("e1: editable code panel", () => {
     await fence.locator("[data-testid=cp-save-anyway]").click();
     await expect(panel.locator("[data-testid=cp-save]")).toHaveCount(0);
     expect(fs.readFileSync(file, "utf8")).toBe(base + "// behind a fence\n");
+  });
+
+  test("dismissing the fence row cannot sneak an unticked save through", async ({ page }) => {
+    await openPanel(page, name, fnName);
+    const panel = page.locator(".code-panel");
+    await panel.locator("[data-testid=cp-area]").fill(base + "// fence dodge\n");
+    await panel.locator("[data-testid=cp-save]").click();
+    const fence = panel.locator("[data-testid=cp-note-fence]");
+    await expect(fence).toBeVisible();
+    // Esc dismisses the row, but the verdict is remembered: the next save
+    // re-raises it, and nothing reaches disk.
+    await page.keyboard.press("Escape");
+    await expect(fence).toHaveCount(0);
+    await page.keyboard.press("ControlOrMeta+s");
+    await expect(fence).toBeVisible();
+    expect(fs.readFileSync(file, "utf8")).toBe(base);
+    // Cancel behaves the same way.
+    await fence.locator("button", { hasText: "Cancel" }).click();
+    await expect(fence).toHaveCount(0);
+    await panel.locator("[data-testid=cp-save]").click();
+    await expect(fence).toBeVisible();
+    expect(fs.readFileSync(file, "utf8")).toBe(base);
+    // The tick is still the only way forward.
+    await fence.locator("[data-testid=cp-fence-tick]").check();
+    await fence.locator("[data-testid=cp-save-anyway]").click();
+    await expect(panel.locator("[data-testid=cp-save]")).toHaveCount(0);
+    expect(fs.readFileSync(file, "utf8")).toBe(base + "// fence dodge\n");
   });
 
   test("a change on disk while editing shows the conflict row", async ({ page }) => {

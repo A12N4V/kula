@@ -288,7 +288,29 @@ test.describe("graph chrome", () => {
     // The map row states what the map does with (or without) embeddings.
     await expect(page.locator(".settings .set-row", { hasText: "Mapping" })).toBeVisible();
     // Leave the setting as we found it so other tests see the default repo.
-    if ((await sw.getAttribute("aria-checked")) === "true") await sw.click();
+    // A warn verdict parks the switch behind a confirm row, where a plain
+    // click on the switch is a no-op and the flag leaks into kula.toml –
+    // turn it off through the API instead of fighting that row.
+    if ((await sw.getAttribute("aria-checked")) === "true" || !(await sw.getAttribute("aria-checked"))) {
+      await page.evaluate(() =>
+        fetch("/api/embed/enable", {
+          method: "POST",
+          headers: { "x-kula-token": document.querySelector('meta[name="kula-token"]')?.content ?? "test", "content-type": "application/json" },
+          body: JSON.stringify({ enabled: false }),
+        }));
+    }
+    // Turn it off and keep turning it off until the server itself agrees –
+    // a warn verdict parks the switch behind a confirm row (a plain click on
+    // the switch is a no-op there) and the flag must not leak into kula.toml.
+    await page.waitForFunction(async () => {
+      const t = document.querySelector('meta[name="kula-token"]')?.content ?? "test";
+      await fetch("/api/embed/enable", { method: "POST", headers: { "x-kula-token": t, "content-type": "application/json" }, body: JSON.stringify({ enabled: false }) });
+      return (await (await fetch("/api/embed/status", { headers: { "x-kula-token": t } })).json()).enabled === false;
+    }, undefined, { timeout: 20_000, polling: 1_500 });
+    await page.reload();
+    await page.keyboard.press(",");
+    const sw2 = page.getByRole("switch", { name: "Enable embeddings" });
+    await expect(sw2).toHaveAttribute("aria-checked", "false", { timeout: 15_000 });
   });
 
   test("languages settings: indexed languages and install buttons for detected-but-missing ones", async ({ page }) => {
