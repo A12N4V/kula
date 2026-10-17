@@ -66,7 +66,8 @@ export const TILE = { w: 96, h: 128 }; // 96×96 tile + 32 of title/subtitle und
 export const WIDE = { w: 256, h: 96 };
 export const CIRCLE = { w: 80, h: 80 };
 export const CHIP = { w: 256, h: 48 };
-export const GROUP_PAD = 32;
+/** Frame padding around members – room for the 33 px group head row. */
+export const GROUP_PAD = 48;
 export const RANK_STEP = 128;
 
 export function nodeSize(n: Pick<FlowNode, "kind" | "size">): { w: number; h: number } {

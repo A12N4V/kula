@@ -202,6 +202,7 @@ let workerUsed = false;
 type Job = { nodes: FlowNode[]; edges: FlowEdge[]; groups: FlowGroup[] };
 
 const cache = new Map<string, LaidOut>();
+const inflight = new Map<string, Promise<LaidOut>>();
 const WORKER_MS = 30;
 let worker: Worker | null = null;
 let seq = 0;
@@ -238,36 +239,47 @@ export async function layout(nodes: FlowNode[], edges: FlowEdge[], groups: FlowG
   const key = `${cacheKey}:${hash}`;
   const hit = cache.get(key);
   if (hit) return { ...hit, nodes: rebasePinned(hit.nodes, nodes) };
+  // Two identical calls in the same tick (React StrictMode double effect) must
+  // not both pay the worker – share the in-flight job.
+  const inflightHit = inflight.get(key);
+  if (inflightHit) return inflightHit.then((r) => ({ ...r, nodes: rebasePinned(r.nodes, nodes) }));
   const job: Job = { nodes: nodes.map((n) => ({ ...n, pos: undefined })), edges, groups };
-  const w = getWorker();
-  if (w) {
-    const id = ++seq;
-    let result: LaidOut;
-    try {
-      result = await new Promise<LaidOut>((resolve, reject) => {
-        pending.set(id, { resolve, reject });
-        workerUsed = true;
-        w.postMessage({ id, ...job });
-      });
-    } catch {
-      // Worker failed mid-job – fall back to the main thread, once, uncached.
-      const w2 = getWorker();
-      if (w2 && w2 !== w) return layout(nodes, edges, groups, cacheKey);
-      result = layoutSync(job.nodes, job.edges, job.groups);
+  const run = async (): Promise<LaidOut> => {
+    const w = getWorker();
+    if (w) {
+      const id = ++seq;
+      try {
+        const result = await new Promise<LaidOut>((resolve, reject) => {
+          pending.set(id, { resolve, reject });
+          workerUsed = true;
+          w.postMessage({ id, ...job });
+        });
+        cache.set(key, result);
+        return result;
+      } catch {
+        // Worker failed mid-job – fall back to the main thread, once, uncached.
+        const w2 = getWorker();
+        if (w2 && w2 !== w) return run();
+      }
+    }
+    const result = layoutSync(job.nodes, job.edges, job.groups);
+    // Learned cost: once a synchronous run proved expensive, route the next big
+    // one through the worker (the first expensive run is the price of measuring).
+    if (result.ms > WORKER_MS && !getWorker()) {
+      cache.delete(key);
+      return run();
     }
     cache.set(key, result);
+    return result;
+  };
+  const promise = run();
+  inflight.set(key, promise);
+  try {
+    const result = await promise;
     return { ...result, nodes: rebasePinned(result.nodes, nodes) };
+  } finally {
+    inflight.delete(key);
   }
-  const result = layoutSync(job.nodes, job.edges, job.groups);
-  // Learned cost: once a synchronous run proved expensive, route the next big
-  // one through the worker (the first expensive run is the price of measuring).
-  if (result.ms > WORKER_MS && !w) {
-    cache.delete(key);
-    const w2 = getWorker();
-    if (w2) return layout(nodes, edges, groups, cacheKey);
-  }
-  cache.set(key, result);
-  return { ...result, nodes: rebasePinned(result.nodes, nodes) };
 }
 
 /** Caller-pinned positions survive a cached (or fresh) layout. */
