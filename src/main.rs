@@ -9,6 +9,7 @@ mod config;
 mod embed;
 #[cfg(feature = "embed")]
 mod embed_ort;
+mod file_write;
 mod git;
 mod graph;
 mod guard;
