@@ -14,6 +14,7 @@ import { layout, layoutWorkerUsed } from "./layout";
 import { applyPersisted, clearPersisted, persist } from "./positions";
 import { CHIP, nodeSize, snap, type FlowEdge, type FlowGroup, type FlowNode } from "./types";
 import { nodeTypes } from "./nodes";
+import { Icon } from "../ui";
 
 export type FlowCanvasProps = {
   nodes: FlowNode[];
@@ -354,12 +355,12 @@ function FlowCanvasInner(props: FlowCanvasProps) {
               <button className="fc-ctl" data-testid="fc-tidy" onClick={tidy} title="Tidy (T)">⌗</button>
               <button className="fc-ctl" data-testid="fc-reset" onClick={resetLayout} title="Reset layout">⟲</button>
               <button className={`fc-ctl${locked ? " on" : ""}`} data-testid="fc-lock" onClick={() => setLocked((v) => !v)} title={locked ? "Unlock drag" : "Lock drag"} aria-pressed={locked}>⊘</button>
-              <button className={`fc-ctl${showMini ? " on" : ""}`} data-testid="fc-minimap-toggle" onClick={() => setShowMini((v) => !v)} title="Minimap" aria-pressed={showMini}>▦</button>
+              <button className={`fc-ctl${showMini ? " on" : ""}`} data-testid="fc-minimap-toggle" onClick={() => setShowMini((v) => !v)} title="Minimap" aria-pressed={showMini}><Icon.home /></button>
               <span className="fc-zoom mono" data-testid="fc-zoom">{zoomPct}%</span>
             </Panel>
           </ReactFlow>
           {sidebar && (
-            <button className="fc-side-toggle" data-testid="fc-side-toggle" onClick={() => setSideOpen((v) => !v)} aria-expanded={sideOpen} title="Details">◧</button>
+            <button className="fc-side-toggle" data-testid="fc-side-toggle" onClick={() => setSideOpen((v) => !v)} aria-expanded={sideOpen} title="Details"><Icon.sidebar /></button>
           )}
         </div>
         {sidebar && (
