@@ -63,16 +63,16 @@ export function layoutSync(nodes: FlowNode[], edges: FlowEdge[], groups: FlowGro
   const pos = new Map<string, FlowNode>(nodes.map((n) => [n.id, n]));
   const mains = nodes.filter((n) => !n.sub);
   const subs = nodes.filter((n) => n.sub);
-  const mainEdges = edges.filter((e) => e.main !== false && !nodes.find((n) => n.id === e.target && n.sub));
+  const subIds = new Set(subs.map((n) => n.id));
+  const mainEdges = edges.filter((e) => e.main !== false && !subIds.has(e.target));
   const out = new Map<string, { x: number; y: number }>();
 
-  // Main flow: components are batched into large dagre runs (one run per
-  // ~700 nodes – dagre pays a fixed cost per run, but huge single runs risk
-  // stack overflow on the recursion in its ranking), then shelf-packed so
-  // sections read as distinct islands instead of one tangle.
+  // Main flow: components are batched into dagre runs (dagre cost grows
+  // superlinearly with run size, so ~250-node runs beat one huge run), then
+  // shelf-packed so sections read as distinct islands instead of one tangle.
   const comps = components(mains.map((n) => n.id), mainEdges);
   comps.sort((a, b) => b.length - a.length);
-  const BATCH = 700;
+  const BATCH = 250;
   const batches: string[][] = [];
   let cur: string[] = [];
   for (const comp of comps) {
@@ -152,11 +152,13 @@ export function layoutSync(nodes: FlowNode[], edges: FlowEdge[], groups: FlowGro
 
   // Group frames: bounding box of members + padding, behind them.
   const memberOf = new Map<string, string[]>();
-  for (const grp of groups) memberOf.set(grp.id, grp.members.filter((m) => laid.some((n) => n.id === m && !n.sub)));
+  const laidIds = new Set(laid.map((n) => n.id));
+  for (const grp of groups) memberOf.set(grp.id, grp.members.filter((m) => laidIds.has(m) && !subIds.has(m)));
   const groupsOut: FlowGroup[] = groups.map((g) => ({ ...g }));
   const groupNodes: FlowNode[] = [];
   for (const g of groups) {
-    const members = laid.filter((n) => g.members.includes(n.id) && !n.sub);
+    const memberIds = new Set(g.members);
+    const members = laid.filter((n) => memberIds.has(n.id) && !n.sub);
     if (!members.length) continue;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const m of members) {
@@ -278,6 +280,12 @@ function rebasePinned(laid: FlowNode[], original: FlowNode[]): FlowNode[] {
 export function clearLayoutCache() {
   cache.clear();
 }
+
+// Pre-warm the Worker at module load – the first layout call must not pay the
+// worker-script spawn (guidance-f1 risk 2; critic: worker spawn raced the
+// first layout on first paint). Main thread only: layoutWorker imports this
+// module, and a worker that pre-warms a worker recurses until the tab dies.
+if (typeof window !== "undefined" && typeof Worker !== "undefined") getWorker();
 
 /* Size sanity for tests: every supported kind maps to a grid size. */
 export const SIZE_OF = { tile: TILE, wide: WIDE, circle: CIRCLE, chip: CHIP, grid: GRID };

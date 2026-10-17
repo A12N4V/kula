@@ -5,13 +5,20 @@ const LAB = "/#/flow-lab";
 const READY = '[data-testid="flow-canvas"][data-fc-ready="1"]';
 const HYDRATED = '[data-testid="flow-canvas"][data-fc-hydrated="1"]';
 
-/** fitView clamps at minZoom and centers, so edge nodes sit partly under the
-    shell chrome – pick a node comfortably inside the viewport for drags. */
+/** fitView clamps at minZoom and centers, so edge nodes sit partly outside the
+    visible canvas (clipped by .main) – pick a node fully inside .main's rect
+    for drags and clicks (critic: intersect the real client rect, not constants). */
 async function pickInside(page, selector = ".react-flow__node") {
+  const main = await page.locator(".main").boundingBox();
   const all = await page.locator(selector).all();
   for (const h of all) {
     const b = await h.boundingBox();
-    if (b && b.y > 120 && b.y + b.height < 800 && b.x > 80 && b.x + b.width < 1360) return h;
+    if (!b || !main) continue;
+    const inside =
+      b.x >= main.x + 4 && b.y >= main.y + 4 &&
+      b.x + b.width <= main.x + main.width - 4 &&
+      b.y + b.height <= main.y + main.height - 4;
+    if (inside) return h;
   }
   return all[0];
 }
@@ -40,6 +47,15 @@ test.describe("flow canvas kit", () => {
     const zoom = await page.getByTestId("fc-zoom").textContent();
     expect(Number(zoom?.replace("%", ""))).toBeGreaterThanOrEqual(50);
     expect(Number(zoom?.replace("%", ""))).toBeLessThanOrEqual(200);
+    // Nodes are not tabbable controls – keyboard lives on the wrapper only.
+    expect(await page.locator(".react-flow__node[tabindex]").count()).toBe(0);
+  });
+
+  test("the big layout runs in the Worker and is fast", async ({ page }) => {
+    const info = await page.evaluate(() => (window as unknown as { __fcLayout?: { ms: number; nodes: number; worker: boolean } }).__fcLayout);
+    expect(info?.nodes).toBe(2600);
+    expect(info?.worker).toBe(true); // 2 600 nodes never lay out on the main thread
+    expect(info?.ms ?? 9999).toBeLessThan(300); // the synchronous path stays cheap
   });
 
   test("drag moves a node and persists it; reset layout clears it", async ({ page }) => {
@@ -90,20 +106,33 @@ test.describe("flow canvas kit", () => {
     await expect(page.locator('[data-testid$="::chip"]')).toHaveCount(0);
   });
 
-  test("keyboard: arrows walk connected nodes, F fits, T tidies, +/- zoom, Esc clears", async ({ page }) => {
+  test("keyboard: arrows walk connected nodes along edges, F fits, T tidies, +/- zoom, Esc clears", async ({ page }) => {
     await page.locator(".fc-canvas").click({ position: { x: 200, y: 200 } });
     await page.locator(".fc-canvas").focus();
+    // Start on a node that has a main-edge predecessor so ArrowLeft must walk back.
+    const startId = await page.evaluate(() => {
+      const g = (window as unknown as { __fcLayout?: { mainEdges: [string, string][] } }).__fcLayout;
+      return g?.mainEdges.find(([s, t]) => s !== t)?.[1] ?? null;
+    });
+    expect(startId).toBeTruthy();
+    const start = page.locator(`.react-flow__node[data-id="${startId}"]`);
+    await start.click({ force: true });
+    await expect(page.locator(`.react-flow__node[data-id="${startId}"] .fc-sel, .react-flow__node[data-id="${startId}"].fc-sel`).first()).toBeVisible();
+    // ArrowRight walks forward along a main edge…
     await page.keyboard.press("ArrowRight");
     await page.waitForTimeout(150);
-    await expect(page.locator(".fc-sel").first()).toBeVisible();
-    const selected = await page.locator(".fc-sel").first().getAttribute("data-testid");
-    // walking again lands on a different connected node
+    const rightId = (await page.locator(".fc-sel").first().getAttribute("data-testid"))?.replace(/^fc-node-/, "");
+    expect(rightId).toBeTruthy();
+    expect(rightId).not.toBe(startId);
+    // …and ArrowLeft walks back to a main-edge predecessor of that node.
     await page.keyboard.press("ArrowLeft");
     await page.waitForTimeout(150);
-    const left = await page.locator(".fc-sel").first().getAttribute("data-testid");
-    // either moved back to a predecessor or stayed (no predecessor) – assert selection survived
-    expect(selected).toBeTruthy();
-    expect(left).toBeTruthy();
+    const leftId = (await page.locator(".fc-sel").first().getAttribute("data-testid"))?.replace(/^fc-node-/, "");
+    const walkedBack = await page.evaluate(([l, r]) => {
+      const g = (window as unknown as { __fcLayout?: { mainEdges: [string, string][] } }).__fcLayout;
+      return g?.mainEdges.some(([s, t]) => s === l && t === r) ?? false;
+    }, [leftId, rightId]);
+    expect(walkedBack).toBe(true);
     await page.keyboard.press("f");
     await page.keyboard.press("t");
     await page.waitForTimeout(400);
@@ -149,14 +178,21 @@ test.describe("flow canvas kit", () => {
     expect(stroke).toBeLessThanOrEqual(5); // 2px base / 0.5 zoom = 4 style units, rendered at ~2px
   });
 
-  test("reduced motion stops the status pulse", async ({ page }) => {
+  test("reduced motion: the runtime flag stops the status pulse too", async ({ page }) => {
     // The fixture marks n0_3 in every 5th section as running.
     const pulse = page.locator(".fc-st-run").first();
     if (await pulse.count()) {
-      const anim = await pulse.evaluate((el) => getComputedStyle(el).animationName);
-      expect(anim).toBe("fc-pulse");
+      expect(await pulse.evaluate((el) => getComputedStyle(el).animationName)).toBe("fc-pulse");
+      // The tinker flag (html[data-rm="1"]) must stop it – CSS and JS both.
+      await page.evaluate(() => { document.documentElement.dataset.rm = "1"; });
+      await expect.poll(() => pulse.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+    } else {
+      // no running node in view – assert the runtime-flag rule is loaded.
+      const hasRule = await page.evaluate(() => Array.from(document.styleSheets).some((s) => {
+        try { return Array.from(s.cssRules).some((r) => r.selectorText?.startsWith('html[data-rm="1"]')); } catch { return false; }
+      }));
+      expect(hasRule).toBe(true);
     }
-    await page.evaluate(() => { document.documentElement.dataset.rm = "1"; });
   });
 });
 

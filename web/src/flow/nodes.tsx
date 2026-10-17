@@ -17,20 +17,22 @@ function Glyph({ icon, size }: { icon?: string | React.ReactNode; size: number }
   return C ? <C size={size} /> : <span className="fc-glyph-letter">{icon.slice(0, 1)}</span>;
 }
 
-/** The hover/selection toolbar: one per active node, never always-on. */
+/** The hover/selection toolbar: one per active node, never always-on.
+    Renders nothing when the slot is empty – no dead chrome. */
 function TBar({ id, data }: { id: string; data: FcData }) {
   const { open, toggleGroup, activeId } = useFc();
+  if (activeId !== id) return null;
+  const content = data.toolbar ?? (
+    data.kind === "group" && toggleGroup ? (
+      <button className="fc-tool" data-testid="fc-tool-collapse" onClick={(e) => { e.stopPropagation(); toggleGroup(data.id); }} title="Collapse group">−</button>
+    ) : open ? (
+      <button className="fc-tool" data-testid="fc-tool-open" onClick={() => open(data.id)} title="Open">↗</button>
+    ) : null
+  );
+  if (!content) return null;
   return (
-    <NodeToolbar isVisible={activeId === id} className="fc-toolbar-wrap">
-      <div className="fc-toolbar" role="toolbar" aria-label={`${data.title} actions`}>
-        {data.toolbar ?? (
-          data.kind === "group" && toggleGroup ? (
-            <button className="fc-tool" data-testid="fc-tool-collapse" onClick={(e) => { e.stopPropagation(); toggleGroup(data.id); }} title="Collapse group">−</button>
-          ) : (
-            open && <button className="fc-tool" data-testid="fc-tool-open" onClick={() => open(data.id)} title="Open">↗</button>
-          )
-        )}
-      </div>
+    <NodeToolbar isVisible className="fc-toolbar-wrap">
+      <div className="fc-toolbar" role="toolbar" aria-label={`${data.title} actions`}>{content}</div>
     </NodeToolbar>
   );
 }

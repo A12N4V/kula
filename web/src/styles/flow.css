@@ -110,7 +110,7 @@
 .fc-controls {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm, 6px);
   display: flex; flex-direction: column; gap: 2px; padding: 4px; box-shadow: none;
-  z-index: 10; /* above the background svg, which otherwise intercepts clicks */
+  z-index: 50; /* above nodes, which React Flow lifts while dragging */
 }
 .fc-ctl {
   width: 32px; height: 32px; border: 0; background: none; color: var(--text-2);
@@ -162,7 +162,7 @@
   .fc-side.fc-side-open { transform: none; visibility: visible; }
   .fc-side-toggle {
     display: block; position: absolute; right: 8px; top: 8px; z-index: 31;
-    width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--radius-xs, 4px);
+    width: 40px; height: 40px; border: 1px solid var(--line); border-radius: var(--radius-xs, 4px);
     background: var(--panel); color: var(--text-2); cursor: pointer;
   }
 }
@@ -172,3 +172,9 @@
   .fc-st-run { animation: none; }
   .fc-side, .fc-tile-box, .fc-wide-in, .fc-circle-in, .fc-dot { transition: none; }
 }
+/* The same stop, honoured for an explicit runtime flag – views (M3, A3) can
+   tinker-motion off without the OS setting; the e2e asserts it. */
+html[data-rm="1"] .fc-st-run { animation: none; }
+html[data-rm="1"] .fc-side, html[data-rm="1"] .fc-tile-box,
+html[data-rm="1"] .fc-wide-in, html[data-rm="1"] .fc-circle-in,
+html[data-rm="1"] .fc-dot { transition: none; }

@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Background, BackgroundVariant, MiniMap, Panel, ReactFlow, ReactFlowProvider,
-  applyNodeChanges, useReactFlow, type Edge, type Node, type NodeChange,
+  applyNodeChanges, useReactFlow, useStore, type Edge, type Node, type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { FcCtx } from "./fcContext";
@@ -48,7 +48,10 @@ const toRf = (n: FlowNode, sel: string | null, collapsed: Set<string>, chipIds: 
     extent: n.parent ? "parent" : undefined,
     hidden: collapsed.has(n.parent ?? ""),
     selected: sel === n.id,
-    draggable: !isChip,
+    // Per-node `draggable: true` would override the global nodesDraggable,
+    // so chips set false and everything else stays undefined (global wins,
+    // which is what the lock control flips).
+    draggable: isChip ? false : undefined,
   } as RfNode;
 };
 
@@ -81,7 +84,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       const effectiveKey = tidySeq.current ? `${layoutKey}:tidy${tidySeq.current}` : layoutKey;
       const res = await layout(nodes, edges, groups, effectiveKey);
       performance.mark("fc:layout-done");
-      (window as unknown as { __fcLayout?: { ms: number; nodes: number; worker: boolean } }).__fcLayout = { ms: res.ms, nodes: res.nodes.length, worker: !!layoutWorkerUsed() };
+      (window as unknown as { __fcLayout?: { ms: number; nodes: number; worker: boolean; mainEdges: [string, string][] } }).__fcLayout = { ms: res.ms, nodes: res.nodes.filter((n) => n.kind !== "group").length, worker: !!layoutWorkerUsed(), mainEdges: edges.filter((e) => e.main !== false).map((e) => [e.source, e.target]) };
       if (!live) return;
       const withDrags = applyPersisted(ns, layoutKey, res.nodes);
       // Progressive hydration: paint the first chunk now (the ready marker and
@@ -98,7 +101,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
         return d;
       };
       const sorted = [...withDrags].sort((a, b) => depth(a) - depth(b) || (a.pos!.x - b.pos!.x) || (a.pos!.y - b.pos!.y));
-      const FIRST = 600;
+      const FIRST = 400;
       setRfNodes(sorted.slice(0, FIRST).map((n) => toRf(n, null, new Set(), new Set())));
       setRfEdges(edges.map((e) => ({
         id: e.id, source: e.source, target: e.target, type: "flow-edge",
@@ -255,7 +258,8 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     })();
   }, [nodes, edges, groups, layoutKey, ns, rf, collapsed]);
 
-  const zoomPct = Math.round((rf.getZoom?.() ?? 1) * 100);
+  // Live zoom readout (the store subscription keeps it current between zooms).
+  const zoomPct = Math.round(useStore((s) => s.transform[2]) * 100);
 
   return (
     <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel }}>
@@ -284,6 +288,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
               if (dragged.length) persist(ns, layoutKey, dragged, allAbs);
             }}
             nodesDraggable={!locked}
+            nodesFocusable={false} // keyboard lives on the wrapper; nodes are not tabbable controls
             edgesFocusable={false}
             snapToGrid
             snapGrid={[16, 16]}
@@ -312,12 +317,12 @@ function FlowCanvasInner(props: FlowCanvasProps) {
               <span className="fc-zoom mono" data-testid="fc-zoom">{zoomPct}%</span>
             </Panel>
           </ReactFlow>
+          {sidebar && (
+            <button className="fc-side-toggle" data-testid="fc-side-toggle" onClick={() => setSideOpen((v) => !v)} aria-expanded={sideOpen} title="Details">◧</button>
+          )}
         </div>
         {sidebar && (
-          <>
-            <button className="fc-side-toggle" data-testid="fc-side-toggle" onClick={() => setSideOpen((v) => !v)} aria-expanded={sideOpen} title="Details">◧</button>
-            <aside className={`fc-side${sideOpen ? " fc-side-open" : ""}`} data-testid="fc-sidebar">{sidebar}</aside>
-          </>
+          <aside className={`fc-side${sideOpen ? " fc-side-open" : ""}`} data-testid="fc-sidebar">{sidebar}</aside>
         )}
       </div>
     </FcCtx.Provider>
