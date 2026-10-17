@@ -17,14 +17,21 @@ function Glyph({ icon, size }: { icon?: string | React.ReactNode; size: number }
   return C ? <C size={size} /> : <span className="fc-glyph-letter">{icon.slice(0, 1)}</span>;
 }
 
-function FcToolbar({ data }: { data: FcData }) {
-  const { open } = useFc();
+/** The hover/selection toolbar: one per active node, never always-on. */
+function TBar({ id, data }: { id: string; data: FcData }) {
+  const { open, toggleGroup, activeId } = useFc();
   return (
-    <div className="fc-toolbar" role="toolbar" aria-label={`${data.title} actions`}>
-      {data.toolbar ?? (open && (
-        <button className="fc-tool" data-testid="fc-tool-open" onClick={() => open(data.id)} title="Open">↗</button>
-      ))}
-    </div>
+    <NodeToolbar isVisible={activeId === id} className="fc-toolbar-wrap">
+      <div className="fc-toolbar" role="toolbar" aria-label={`${data.title} actions`}>
+        {data.toolbar ?? (
+          data.kind === "group" && toggleGroup ? (
+            <button className="fc-tool" data-testid="fc-tool-collapse" onClick={(e) => { e.stopPropagation(); toggleGroup(data.id); }} title="Collapse group">−</button>
+          ) : (
+            open && <button className="fc-tool" data-testid="fc-tool-open" onClick={() => open(data.id)} title="Open">↗</button>
+          )
+        )}
+      </div>
+    </NodeToolbar>
   );
 }
 
@@ -48,7 +55,7 @@ const TileNode = memo(({ data, selected, id }: NodeProps & { data: FcData }) => 
   const h = data.size?.h ?? TILE.h;
   return (
     <div className={`fc-node fc-tile${data.entry ? " fc-entry" : ""}${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}`} style={{ width: w, height: h }} data-testid={`fc-node-${id}`}>
-      <NodeToolbar isVisible className="fc-toolbar-wrap"><FcToolbar data={data} /></NodeToolbar>
+      <TBar id={id ?? data.id} data={data} />
       <div className="fc-tile-box" style={{ ["--fc-role" as string]: data.color }}>
         <Glyph icon={data.icon} size={32} />
         {data.status && <span className={`fc-status fc-st-${STATUS_MARK[data.status] ?? data.status}`} title={data.status} />}
@@ -67,6 +74,7 @@ const WideNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
   const h = data.size?.h ?? WIDE.h;
   return (
     <div className={`fc-node fc-wide${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}`} style={{ width: w, height: h }} data-testid={`fc-node-${data.id}`}>
+      <TBar id={data.id} data={data} />
       <div className="fc-wide-in" style={{ ["--fc-role" as string]: data.color }}>
         <Glyph icon={data.icon} size={24} />
         <div className="fc-wide-text">
@@ -93,15 +101,14 @@ const CircleNode = memo(({ data, selected }: NodeProps & { data: FcData }) => (
 CircleNode.displayName = "CircleNode";
 
 const GroupNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
-  const { toggleGroup } = useFc();
   const w = data.size?.w ?? 256;
   const h = data.size?.h ?? 128;
   return (
     <div className={`fc-node fc-group${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}`} style={{ width: w, height: h }} data-testid={`fc-node-${data.id}`}>
+      <TBar id={data.id} data={data} />
       <div className="fc-group-head">
         <span className="fc-group-label">{data.title}</span>
         <span className="fc-group-count">{data.subtitle}</span>
-        {toggleGroup && <button className="fc-collapse" data-testid="fc-collapse" aria-label={`Collapse ${data.title}`} onClick={(e) => { e.stopPropagation(); toggleGroup(data.id); }}>−</button>}
       </div>
       <Handles data={data} nodeW={w} nodeH={h} />
     </div>
@@ -111,6 +118,7 @@ GroupNode.displayName = "GroupNode";
 
 const LoopNode = memo(({ data, selected }: NodeProps & { data: FcData }) => (
   <div className={`fc-node fc-loop${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}`} style={{ width: TILE.w, height: TILE.h }} data-testid={`fc-node-${data.id}`}>
+    <TBar id={data.id} data={data} />
     <div className="fc-tile-box fc-loop-box" style={{ ["--fc-role" as string]: data.color }}>
       <span className="fc-loop-glyph">↻</span>
       {data.status && <span className={`fc-status fc-st-${STATUS_MARK[data.status] ?? data.status}`} title={data.status} />}
@@ -123,8 +131,3 @@ const LoopNode = memo(({ data, selected }: NodeProps & { data: FcData }) => (
 LoopNode.displayName = "LoopNode";
 
 export const nodeTypes = { tile: TileNode, wide: WideNode, circle: CircleNode, group: GroupNode, loop: LoopNode };
-
-/** The hover-toolbar slot: every node type renders the same shared toolbar. */
-export function NodeToolbarSlot({ children, visible }: { children: React.ReactNode; visible: boolean }) {
-  return <NodeToolbar isVisible={visible} className="fc-toolbar-wrap"><div className="fc-toolbar" role="toolbar">{children}</div></NodeToolbar>;
-}

@@ -4,7 +4,7 @@ export { FlowSidebar, type FlowSidebarProps } from "./FlowSidebar";
 export { layout, layoutSync, clearLayoutCache, type LaidOut } from "./layout";
 export { applyPersisted, persist, clearPersisted } from "./positions";
 export { backwardPath, roundedPath, edgeTypes } from "./edges";
-export { nodeTypes, NodeToolbarSlot } from "./nodes";
+export { nodeTypes } from "./nodes";
 export { FcCtx, useFc } from "./fcContext";
 export { flowLabFixture, type FlowLabCounts } from "./fixture";
 export {

@@ -2,6 +2,9 @@
    gradient or hover scale. Radii 8/6/4. */
 
 .fc-wrap { display: flex; height: 100%; min-height: 320px; width: 100%; }
+
+/* The lab fills .main absolutely (main is position:relative, overflow:hidden). */
+.view-flow-lab { position: absolute; inset: 0; }
 .fc-with-side .fc-canvas { flex: 1; min-width: 0; }
 .fc-canvas { position: relative; height: 100%; min-height: 320px; outline: none; }
 .fc-canvas:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
@@ -76,11 +79,6 @@
 }
 .fc-group-label { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); }
 .fc-group-count { font-size: 11px; color: var(--text-3); }
-.fc-collapse {
-  margin-left: auto; width: 24px; height: 24px; border: 0; background: none;
-  color: var(--text-3); cursor: pointer; font-size: 14px; padding: 0; border-radius: var(--radius-xs, 4px);
-}
-.fc-collapse:hover { color: var(--accent); background: var(--hover-bg, var(--bg-2)); }
 .fc-group .fc-node, .fc-group .react-flow__node { z-index: auto; }
 
 /* Handles: 8 px dots with a 2 px ground ring; diamonds for sub-node edges. */
@@ -112,6 +110,7 @@
 .fc-controls {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm, 6px);
   display: flex; flex-direction: column; gap: 2px; padding: 4px; box-shadow: none;
+  z-index: 10; /* above the background svg, which otherwise intercepts clicks */
 }
 .fc-ctl {
   width: 32px; height: 32px; border: 0; background: none; color: var(--text-2);
@@ -153,6 +152,8 @@
 /* ---- Phone: the sidebar becomes a drawer over the canvas ------------- */
 @media (max-width: 600px) {
   .fc-wrap { position: relative; }
+  .fc-ctl { width: 40px; height: 40px; }
+  .fc-side-toggle { width: 40px; height: 40px; }
   .fc-side {
     position: absolute; inset: 0 0 0 auto; width: min(320px, 88vw); z-index: 30;
     transform: translateX(100%); visibility: hidden; transition: transform var(--dur) var(--ease);

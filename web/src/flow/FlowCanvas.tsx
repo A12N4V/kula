@@ -5,8 +5,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Background, BackgroundVariant, MiniMap, Panel, ReactFlow, ReactFlowProvider,
-  useReactFlow, type Edge, type Node,
+  applyNodeChanges, useReactFlow, type Edge, type Node, type NodeChange,
 } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import { FcCtx } from "./fcContext";
 import { edgeTypes } from "./edges";
 import { layout, layoutWorkerUsed } from "./layout";
@@ -61,6 +62,8 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   const [showMini, setShowMini] = useState(false); // default off – rendering 2 600 mini-rects costs the first paint
   const [sideOpen, setSideOpen] = useState(false);
   const [internalSel, setInternalSel] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const sel = selection !== undefined ? selection : internalSel;
   const didFit = useRef(false);
   const nodesRef = useRef<RfNode[]>([]);
@@ -109,6 +112,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
         if (!live) return;
         if (done >= sorted.length) {
           performance.mark("fc:hydrate");
+          setHydrated(true);
           rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 });
           return;
         }
@@ -164,14 +168,16 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rfNodes, rfEdges, collapsed, groups, sel]);
 
-  const toggleGroup = useCallback((id: string) => {
+  const toggleGroup = useCallback((id?: string) => {
+    const gid = id ?? groups.find((g) => g.id === sel || g.members.includes(sel ?? ""))?.id;
+    if (!gid) return;
     setCollapsed((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(gid)) next.delete(gid);
+      else next.add(gid);
       return next;
     });
-  }, []);
+  }, [groups, sel]);
 
   const select = useCallback((id: string | null) => {
     setInternalSel(id);
@@ -252,25 +258,30 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   const zoomPct = Math.round((rf.getZoom?.() ?? 1) * 100);
 
   return (
-    <FcCtx.Provider value={{ open: onOpen, toggleGroup }}>
-      <div className={`fc-wrap${sidebar ? " fc-with-side" : ""}`} data-testid={testId} data-fc-ready={rfNodes.length > 0 ? "1" : "0"}>
+    <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel }}>
+      <div className={`fc-wrap${sidebar ? " fc-with-side" : ""}`} data-testid={testId} data-fc-ready={rfNodes.length > 0 ? "1" : "0"} data-fc-hydrated={hydrated ? "1" : "0"}>
         <div className="fc-canvas" tabIndex={0} onKeyDown={onKeyDown} aria-label="Flow canvas">
           <ReactFlow
             nodes={view.nodes}
             edges={view.edges}
+            onNodesChange={(changes: NodeChange[]) => setRfNodes((prev) => applyNodeChanges(changes, prev) as RfNode[])}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             onNodeClick={(_, n) => { if (n.id.endsWith("::chip")) { toggleGroup(n.id.replace(/::chip$/, "")); return; } select(n.id); }}
             onPaneClick={() => select(null)}
             onNodeDoubleClick={(_, n) => onOpen?.(n.id)}
+            onNodeMouseEnter={(_, n) => setHovered(n.id)}
+            onNodeMouseLeave={() => setHovered(null)}
             onSelectionChange={(objs) => {
               const first = objs.nodes[0];
               if (first && first.id !== sel) select(first.id);
               if (!objs.nodes.length && sel) select(null);
             }}
             onNodeDragStop={(_, n, nodes2) => {
-              const dragged = nodes2.filter((x) => !x.parentId).map((x) => ({ id: x.id, kind: (x.data as FlowNode).kind, title: "", pos: { x: snap(x.position.x), y: snap(x.position.y) } }) as FlowNode);
-              if (dragged.length) persist(ns, layoutKey, dragged);
+              const rfNodesNow = rf.getNodes() as unknown as RfNode[];
+              const allAbs = rfNodesNow.map((x) => ({ id: x.id, kind: (x.data as FlowNode).kind, title: "", parent: x.parentId, pos: { x: x.position.x, y: x.position.y } }) as FlowNode);
+              const dragged = nodes2.map((x) => ({ id: x.id, kind: (x.data as FlowNode).kind, title: "", parent: x.parentId, pos: { x: snap(x.position.x), y: snap(x.position.y) } }) as FlowNode);
+              if (dragged.length) persist(ns, layoutKey, dragged, allAbs);
             }}
             nodesDraggable={!locked}
             edgesFocusable={false}
