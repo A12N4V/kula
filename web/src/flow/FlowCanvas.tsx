@@ -206,8 +206,9 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       return next;
     });
     // New/changed nodes (the chip among them) need a forced re-measure, or
-    // React Flow's virtualization keeps them visibility:hidden.
-    window.setTimeout(() => updateInternals(), 50);
+    // React Flow's virtualization keeps them visibility:hidden. The hook in
+    // 12.12.0 takes the ids to re-measure – pass them all.
+    window.setTimeout(() => updateInternals(nodesRef.current.map((n) => n.id)), 50);
   }, [groups, sel, collapsed, rf, updateInternals]);
 
   const select = useCallback((id: string | null) => {
