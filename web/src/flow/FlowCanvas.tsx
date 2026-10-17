@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Background, BackgroundVariant, MiniMap, Panel, ReactFlow, ReactFlowProvider,
-  applyNodeChanges, useReactFlow, useStore, type Edge, type Node, type NodeChange,
+  applyNodeChanges, useReactFlow, useStore, useUpdateNodeInternals, type Edge, type Node, type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { FcCtx } from "./fcContext";
@@ -43,6 +43,11 @@ const toRf = (n: FlowNode, sel: string | null, collapsed: Set<string>, chipIds: 
     type: isChip ? "wide" : n.kind,
     position: { x: n.pos?.x ?? 0, y: n.pos?.y ?? 0 },
     data: isChip ? { ...n, size: CHIP } : n,
+    // Explicit dimensions: React Flow marks nodes without them
+    // visibility:hidden until its ResizeObserver measures them, which never
+    // fires for nodes mounted outside the viewport under
+    // onlyRenderVisibleElements (the collapse chip was stuck invisible).
+    width: s.w, height: s.h,
     style: { width: s.w, height: s.h },
     parentId: n.parent,
     extent: n.parent ? "parent" : undefined,
@@ -58,9 +63,13 @@ const toRf = (n: FlowNode, sel: string | null, collapsed: Set<string>, chipIds: 
 function FlowCanvasInner(props: FlowCanvasProps) {
   const { nodes, edges, groups = [], selection, onSelect, layoutKey = "default", ns = "lab", sidebar, onOpen, testId = "flow-canvas" } = props;
   const rf = useReactFlow();
+  const updateInternals = useUpdateNodeInternals();
   const [rfNodes, setRfNodes] = useState<RfNode[]>([]);
   const [rfEdges, setRfEdges] = useState<Edge[]>([]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Collapse-time viewport centre per group (flow coords) – the chip's anchor
+  // when the frame origin is off the virtualized viewport.
+  const [chipAnchor, setChipAnchor] = useState<Record<string, { x: number; y: number }>>({});
   const [locked, setLocked] = useState(false);
   const [showMini, setShowMini] = useState(false); // default off – rendering 2 600 mini-rects costs the first paint
   const [sideOpen, setSideOpen] = useState(false);
@@ -103,16 +112,21 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       const sorted = [...withDrags].sort((a, b) => depth(a) - depth(b) || (a.pos!.x - b.pos!.x) || (a.pos!.y - b.pos!.y));
       const FIRST = 400;
       setRfNodes(sorted.slice(0, FIRST).map((n) => toRf(n, null, new Set(), new Set())));
-      setRfEdges(edges.map((e) => ({
-        id: e.id, source: e.source, target: e.target, type: "flow-edge",
-        data: { ...e }, zIndex: e.main === false ? 0 : 1,
-      })));
       didFit.current = true;
       // Hydrate the rest in small chunks (no 600 ms long task), then fit.
       let done = FIRST;
       const CHUNK = 800;
+      let edgesSet = false;
       const step = () => {
         if (!live) return;
+        if (!edgesSet && done >= Math.min(FIRST + CHUNK, sorted.length)) {
+          // Edges hydrate with the second chunk – the first paint renders nodes only.
+          edgesSet = true;
+          setRfEdges(edges.map((e) => ({
+            id: e.id, source: e.source, target: e.target, type: "flow-edge",
+            data: { ...e }, zIndex: e.main === false ? 0 : 1,
+          })));
+        }
         if (done >= sorted.length) {
           performance.mark("fc:hydrate");
           setHydrated(true);
@@ -146,10 +160,15 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     for (const g of groups) {
       if (!collapsed.has(g.id)) continue;
       const frame = rfNodes.find((n) => n.id === g.id);
+      // Anchor: the collapse-time viewport centre (flow coords) when the frame
+      // origin itself is off the virtualized viewport (shelf-packed frames
+      // start far left – a chip born there is visibility:hidden forever).
+      const anchor = chipAnchor[g.id] ?? frame?.position ?? { x: 0, y: 0 };
       const chip: RfNode = {
         id: `${g.id}::chip`, type: "wide",
-        position: { x: frame?.position.x ?? 0, y: frame?.position.y ?? 0 },
+        position: { x: anchor.x, y: anchor.y },
         data: { id: `${g.id}::chip`, kind: "wide", title: g.label, subtitle: `${g.members.length} members`, size: CHIP, color: "var(--accent)" },
+        width: CHIP.w, height: CHIP.h,
         style: { width: CHIP.w, height: CHIP.h },
         selected: sel === g.id,
       } as RfNode;
@@ -172,15 +191,24 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   }, [rfNodes, rfEdges, collapsed, groups, sel]);
 
   const toggleGroup = useCallback((id?: string) => {
-    const gid = id ?? groups.find((g) => g.id === sel || g.members.includes(sel ?? ""))?.id;
+    const gid = id && id !== "*" ? id : groups.find((g) => g.id === sel || g.members.includes(sel ?? ""))?.id;
     if (!gid) return;
+    const collapsing = !collapsed.has(gid);
+    if (collapsing) {
+      // The chip anchors at the current viewport centre (flow coords).
+      const c = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      setChipAnchor((prev) => ({ ...prev, [gid]: { x: snap(c.x - CHIP.w / 2), y: snap(c.y - CHIP.h / 2) } }));
+    }
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(gid)) next.delete(gid);
       else next.add(gid);
       return next;
     });
-  }, [groups, sel]);
+    // New/changed nodes (the chip among them) need a forced re-measure, or
+    // React Flow's virtualization keeps them visibility:hidden.
+    window.setTimeout(() => updateInternals(), 50);
+  }, [groups, sel, collapsed, rf, updateInternals]);
 
   const select = useCallback((id: string | null) => {
     setInternalSel(id);
@@ -198,6 +226,14 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     const go = (id: string | undefined) => {
       if (!id) return;
       select(id);
+      // The visual selection follows keyboard moves here (synchronously –
+      // keydown is not inside React Flow's store dispatch, so this cannot
+      // re-enter it; the click path must not write flags for the same reason).
+      setRfNodes((prev) => prev.map((n) => {
+        const want = n.id === id;
+        if (n.selected === want) return n;
+        return { ...n, selected: want };
+      }));
       const n = byId.get(id);
       if (n) {
         const s = nodeSize(n.data);
@@ -230,7 +266,11 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     if (key === "t" || key === "T") { tidy(); ev.preventDefault(); return; }
     if (key === "+" || key === "=") { rf.zoomIn({ duration: reduced.current ? 0 : 120 }); ev.preventDefault(); return; }
     if (key === "-" || key === "_") { rf.zoomOut({ duration: reduced.current ? 0 : 120 }); ev.preventDefault(); return; }
-    if (key === "Escape") { select(null); ev.preventDefault(); }
+    if (key === "Escape") {
+      select(null);
+      setRfNodes((prev) => prev.map((n) => (n.selected ? { ...n, selected: false } : n)));
+      ev.preventDefault();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel, select, onOpen, rf]);
 
@@ -264,7 +304,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   return (
     <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel }}>
       <div className={`fc-wrap${sidebar ? " fc-with-side" : ""}`} data-testid={testId} data-fc-ready={rfNodes.length > 0 ? "1" : "0"} data-fc-hydrated={hydrated ? "1" : "0"}>
-        <div className="fc-canvas" tabIndex={0} onKeyDown={onKeyDown} aria-label="Flow canvas">
+        <div className="fc-canvas" tabIndex={0} onKeyDown={onKeyDown} aria-label="Flow canvas" data-fc-selection={sel ?? ""}>
           <ReactFlow
             nodes={view.nodes}
             edges={view.edges}

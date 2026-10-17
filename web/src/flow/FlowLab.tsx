@@ -6,11 +6,13 @@ import { FlowSidebar } from "./FlowSidebar";
 import { useFc } from "./fcContext";
 import { flowLabFixture } from "./fixture";
 
-/** The collapse/expand tinker – the fixed-UI path for phones and keyboards. */
+/** The collapse/expand tinker – the fixed-UI path for phones and keyboards.
+    No arg: the canvas resolves the selected node's group (or the group whose
+    member is selected) – the literal "*" was collapsing nothing. */
 function TinkerCollapse() {
   const { toggleGroup } = useFc();
   if (!toggleGroup) return null;
-  return <button className="btn sm" data-testid="fc-tinker-collapse" onClick={() => toggleGroup("*")}>Collapse / expand selection</button>;
+  return <button className="btn sm" data-testid="fc-tinker-collapse" onClick={() => toggleGroup()}>Collapse / expand selection</button>;
 }
 
 export default function FlowLab() {
