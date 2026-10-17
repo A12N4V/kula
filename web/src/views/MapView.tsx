@@ -55,6 +55,15 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
   const [focusMode, setFocusMode] = useState(false);
   // Grouping depth on the flow canvas: sections as single nodes, or their blocks inside.
   const [depth, setDepth] = useState(2);
+  // Expanded blocks on the flow canvas: their functions hang below as circles.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const toggleExpand = useCallback((id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
   const code = useCode();
   const live = useMapProgress();
   const wasActive = useRef(false);
@@ -282,6 +291,8 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
               aria-pressed={view === v} onClick={() => { setView(v); if (v === "flow") { home(); setSelChain(null); } }}>{v}</button>
           ))}
         </div>
+        <button className="tab-btn sy-lens-btn" data-testid="map-expand" title="expand the selected block's functions under its node"
+          disabled={!selBlock} onClick={() => selBlock && toggleExpand(selBlock)}>expand</button>
         <button className="tab-btn sy-lens-btn" data-testid="map-depth" title="grouping depth: sections as single nodes, or their blocks inside the frames"
           onClick={() => setDepth((d) => (d === 2 ? 1 : 2))}>depth {depth}</button>
         <button className={`tab-btn sy-lens-btn${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn"
@@ -311,7 +322,7 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
         {view === "capabilities" && <CapsKitView data={data} roles={roles} selection={selBlock} onSelect={setSelBlock} />}
         {view === "chains" && <ChainsStrips data={data} roles={roles} onChain={selectChain} selChain={selChain?.id ?? null} loadChains={loadChains} onLeaf={selectLeaf} />}
         {view === "flow" && (!chain || focusMode) && !path.length
-          ? <FlowKitView data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} depth={depth} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} />
+          ? <FlowKitView data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} depth={depth} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} expanded={expanded} onToggleExpand={toggleExpand} onClearExpand={() => setExpanded(new Set())} />
           : (view === "blocks" || chain || path.length) && view !== "capabilities" && view !== "chains"
             ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
             : null}

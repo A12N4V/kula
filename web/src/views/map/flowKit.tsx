@@ -31,6 +31,11 @@ type Props = {
   /** Grouping depth: 1 = one wide node per section, 2 = child blocks inside each frame. */
   depth?: number;
   layoutKey?: number;
+  /** Expanded blocks (their functions hang below as circle sub-nodes). */
+  expanded?: Set<string>;
+  onToggleExpand?: (id: string) => void;
+  /** Clear every expansion (the collapse tinker). */
+  onClearExpand?: () => void;
 };
 
 const title = (b: Block) => b.theme || b.name;
@@ -115,7 +120,7 @@ export function mapFlowLayout(data: MapData & { flows?: Flow[] }) {
       : i === kept.length - 1 && kept.length > 1 ? "terminal"
       : l.every((id) => sections[id].role === "adapter") ? "outside world"
       : `step ${i}`);
-  return { sections, layers: kept, labels, band, flows, headline };
+  return { sections, layers: kept, labels, band, flows, headline, secOf: Object.fromEntries(secOf) as Record<string, string> };
 }
 
 /** Chain/flow weight quantised to the kit's 1–4 edge stroke. */
@@ -132,40 +137,38 @@ function fnIcon(kind: string) {
 /** The flow lens on the kit canvas. Selection is single-writer (the kit):
     function circles and "+ more" chips are intercepted here and never
     become the block selection; everything else maps to the block id. */
-export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0 }: Props) {
-  const { sections, layers, band, flows, headline } = useMemo(() => mapFlowLayout(data), [data]);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const lit = (id: string) => !focus?.chain || focus.on.has(id);
-  const shown = (b: Block) => roles.has(b.role);
-  const toggleExpand = (id: string) => {
+export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, expanded: expandedProp, onToggleExpand, onClearExpand }: Props) {
+  const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
+  const [expandedState, setExpanded] = useState<Set<string>>(() => new Set());
+  const expanded = expandedProp ?? expandedState;
+  const toggleExpand = onToggleExpand ?? ((id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  };
-
-  const maxW = flows.reduce((m, f) => Math.max(m, f.weight), 0) || 1;
-  // The block that carries a section's edges: its first (heaviest-leading)
-  // child, or the section itself when it has none.
-  const rep = (s: Block): string => {
-    const kid = s.children.map((c) => data.blocks[c]).find((x): x is Block => !!x && shown(x));
-    return kid?.id ?? s.id;
-  };
+  });
+  const lit = (id: string) => !focus?.chain || focus.on.has(id);
+  const shown = (b: Block) => roles.has(b.role);
   // Expansion lives in the node's hover/selection toolbar slot: the only
   // affordance the kit gives a tile without faking DOM into it.
   const expandTool = (b: Block, open: boolean) => (
-    <button className="fc-tool" data-testid="map-expand" onClick={(e) => { e.stopPropagation(); toggleExpand(b.id); }}
+    <button className="fc-tool" data-testid="map-expand-node" onClick={(e) => { e.stopPropagation(); toggleExpand(b.id); }}
       title={open ? "Collapse functions" : "Expand functions"}>
       {open ? "−" : "+"}
     </button>
   );
 
-  const nodes: FlowNode[] = [];
-  const edges: FlowEdge[] = [];
-  const groups: FlowGroup[] = [];
-  const fnNodes: FlowNode[] = [];
-  const secShown: string[] = [];
+  // The built graph is memoised: new array identities would re-run the kit's
+  // layout effect on every parent re-render (a selection change included),
+  // which wipes the kit's selection flags and re-fits the viewport.
+  const { nodes, edges, groups } = useMemo((): { nodes: FlowNode[]; edges: FlowEdge[]; groups: FlowGroup[] } => {
+    const nodes: FlowNode[] = [];
+    const edges: FlowEdge[] = [];
+    const groups: FlowGroup[] = [];
+    const fnNodes: FlowNode[] = [];
+    const secShown: string[] = [];
+
 
   const blockNode = (b: Block): FlowNode => {
     return {
@@ -236,40 +239,95 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     groups.push({ id: secId(s), label: title(s), members: kids.map((k) => k.id) });
   }
   nodes.push(...fnNodes);
+  const nodeIds = new Set(nodes.map((n) => n.id));
 
-  // Section-level flows become chain-weight edges between each section's
-  // representative block; never between a node and itself.
+  // Edges: the section-level flows (families folded to sections, heaviest
+  // first) between each section's representative block. Members keep their
+  // own dashed tie-up below, so the frames stay coherent.
+  const rep = (s: Block): string => {
+    const kid = s.children.map((c) => data.blocks[c]).find((x): x is Block => !!x && shown(x));
+    return kid?.id ?? s.id;
+  };
   const seenEdge = new Set<string>();
+  const maxW = flows.reduce((m, f) => Math.max(m, f.weight), 0) || 1;
   for (const f of flows.slice(0, 96)) {
-    const from = sections[f.from], to = sections[f.to];
-    if (!from || !to || !secShown.includes(f.from) || !secShown.includes(f.to)) continue;
-    const a = rep(from), b = rep(to);
-    if (a === b) continue;
+    if (!secShown.includes(f.from) || !secShown.includes(f.to)) continue;
+    const a = rep(sections[f.from]), b = rep(sections[f.to]);
+    if (a === b || !nodeIds.has(a) || !nodeIds.has(b)) continue;
     const key = `${a}>${b}`;
     if (seenEdge.has(key)) continue;
     seenEdge.add(key);
-    edges.push({ id: key, source: a, target: b, weight: edgeWeight(f.weight, maxW), backward: false });
+    edges.push({ id: key, source: a, target: b, weight: edgeWeight(f.weight, maxW) });
   }
+
+  // Everything joins one weak component – the kit batches per component and
+  // shelf-packs the batches, so separate islands would scatter across a huge
+  // canvas that never fits the viewport at the 0.5 minimum zoom. Each minor
+  // component gets one light tie-up edge into the main flow.
+  {
+    const adj = new Map<string, Set<string>>();
+    for (const id of nodeIds) adj.set(id, new Set());
+    for (const e of edges) {
+      if (!adj.has(e.source) || !adj.has(e.target) || e.source === e.target) continue;
+      adj.get(e.source)!.add(e.target);
+      adj.get(e.target)!.add(e.source);
+    }
+    const deg = new Map<string, number>();
+    const comps: string[][] = [];
+    const seen = new Set<string>();
+    for (const id of nodeIds) {
+      if (seen.has(id)) continue;
+      const comp: string[] = [];
+      const stack = [id];
+      seen.add(id);
+      while (stack.length) {
+        const cur = stack.pop()!;
+        comp.push(cur);
+        for (const next of adj.get(cur) ?? []) if (!seen.has(next)) { seen.add(next); stack.push(next); }
+      }
+      comps.push(comp);
+      for (const c of comp) deg.set(c, (adj.get(c)?.size ?? 0));
+    }
+    comps.sort((a, b) => b.length - a.length);
+    const main = comps[0];
+    const mainIds = new Set(main);
+    for (let ci = 1; ci < comps.length; ci++) {
+      const comp = comps[ci];
+      const anchor = [...comp].sort((a, b) => (deg.get(b) ?? 0) - (deg.get(a) ?? 0))[0];
+      // Tie into the section's own rep when it rides the main flow – members
+      // cluster around their section instead of drifting to a global hub.
+      const secBlock = secOf[anchor] ? sections[secOf[anchor]] : undefined;
+      const r = secBlock ? rep(secBlock) : undefined;
+      const to = r && mainIds.has(r) && r !== anchor ? r : [...main].sort((a, b) => (deg.get(b) ?? 0) - (deg.get(a) ?? 0))[0];
+      if (!to || anchor === to) continue;
+      const key = `link:${anchor}>${to}`;
+      if (seenEdge.has(key)) continue;
+      seenEdge.add(key);
+      // main (not dashed): the kit's dagre pass drops main:false edges, and
+      // the whole point is to fold every block into one layout run. Weight 1
+      // keeps the stroke light.
+      edges.push({ id: key, source: anchor, target: to, weight: 1 });
+    }
+  }
+    return { nodes, edges, groups };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, roles, focus, depth, expanded]);
 
   // Intercepted selections: function circles open the code panel, "+ more"
   // chips toggle the expansion – neither becomes the block selection.
+  // Selections that open panels or mutate the graph must not run inside
+  // React Flow's click dispatch – a synchronous parent update there
+  // re-enters the store (React error 185). Defer them a tick.
   const select = (id: string | null) => {
     if (!id) { onSelect?.(null); return; }
-    if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
-    if (id.startsWith("more:")) {
-      const bid = id.slice(5);
-      setExpanded((prev) => {
-        const next = new Set(prev);
-        if (next.has(bid)) next.delete(bid); else next.add(bid);
-        return next;
-      });
-      return;
-    }
-    onSelect?.(id);
+    if (id.startsWith("fn:")) { const n = Number(id.slice(3)); setTimeout(() => onLeaf(n), 0); return; }
+    if (id.startsWith("more:")) { const bid = id.slice(5); setTimeout(() => toggleExpand(bid), 0); return; }
+    // a group frame selects its section block – the sidebar reads blocks
+    onSelect?.(id.startsWith("sec:") ? id.slice(4) : id);
   };
   const open = (id: string) => {
-    if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
-    if (id.startsWith("more:")) { onDrill(id.slice(5)); return; }
+    if (id.startsWith("fn:")) { const n = Number(id.slice(3)); setTimeout(() => onLeaf(n), 0); return; }
+    if (id.startsWith("more:")) { const bid = id.slice(5); setTimeout(() => onDrill(bid), 0); return; }
     onDrill(id.startsWith("sec:") ? id.slice(4) : id);
   };
 
@@ -281,13 +339,15 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
         <span className="fm-headline-v">{headline || "–"}</span>
         <span className="fm-headline-tools">
           <button className="tab-btn sy-lens-btn" data-testid="map-collapse-all" title="collapse every expanded block" aria-pressed={anyExpanded}
-            onClick={() => setExpanded(new Set())}>collapse</button>
+            onClick={() => onClearExpand?.()}>collapse</button>
         </span>
       </div>
       <FlowCanvas
         nodes={nodes} edges={edges} groups={groups}
         selection={selection ?? null} onSelect={select} onOpen={open}
-        layoutKey={`map-${depth}-${layoutKey}`} ns="map" testId="map-flow-canvas"
+        // the focus state rides the layout key: the kit's layout cache keys on
+        // node ids/edges only, so a dim change would otherwise never repaint
+        layoutKey={`map-${depth}-${layoutKey}-${focus?.chain ? `f${focus.chain.id}` : "n"}`} ns="map" testId="map-flow-canvas"
       />
       {focus?.chain && <FocusBadge n={focus.on.size} onClear={() => onClearFocus?.()} still={focus.still} />}
     </div>
