@@ -360,7 +360,7 @@ async fn file(State(s): State<AppState>, Query(q): Query<HashMap<String, String>
             return Err(anyhow!("path must be relative to the repository root, got {p}"));
         }
         let content = std::fs::read_to_string(s.repo.root.join(&p)).map_err(|e| anyhow!("cannot read {p}: {e}"))?;
-        Ok(json!({ "path": p, "content": content }))
+        Ok(json!({ "path": p, "content": content, "base_hash": crate::file_write::hash(&content) }))
     })
     .await
 }
@@ -1209,7 +1209,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/isolate", post(isolate))
         .route("/api/scopes", get(scopes))
         .route("/api/scopes/{action}", post(scopes_action))
-        .route("/api/file", get(file))
+        .route("/api/file", get(file).put(crate::file_write::put))
         .route("/api/compare", get(compare))
         .route("/api/git/status", get(git_status))
         .route("/api/git/log", get(git_log))
