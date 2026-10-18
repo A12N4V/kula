@@ -2,7 +2,7 @@
 // dev lab. Sizes live on the 16 px grid (docs/design/flow-canvas.md §1).
 import type { ReactNode } from "react";
 
-export type FlowNodeKind = "tile" | "wide" | "circle" | "group" | "loop";
+export type FlowNodeKind = "tile" | "wide" | "circle" | "group" | "loop" | "sticky";
 export type FlowStatus = "running" | "success" | "error" | "pinned" | "disabled";
 
 /** A node for the canvas. Sizes come from the kind unless the caller overrides. */
@@ -38,6 +38,10 @@ export type FlowNode = {
   ring?: "fence" | "hot" | "drop";
   /** Small corner badge (an agent widget, a change count). */
   badge?: ReactNode;
+  /** The output handle can be dragged to make a connection (n8n). */
+  connectable?: boolean;
+  /** The input handle accepts a dragged connection. */
+  accepts?: boolean;
 };
 
 export type FlowEdge = {
@@ -52,6 +56,10 @@ export type FlowEdge = {
   main?: boolean;
   /** Explicit backward routing hint; the renderer also detects it from x. */
   backward?: boolean;
+  /** Run state of the wire: data moving (animated), passed, failed. */
+  flow?: "run" | "ok" | "err";
+  /** Hover tools at the midpoint (n8n's "+" / delete on an edge). */
+  tools?: ReactNode;
 };
 
 /** A titled frame behind its members; collapsible to a chip. */

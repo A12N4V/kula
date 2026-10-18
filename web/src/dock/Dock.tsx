@@ -3,7 +3,7 @@
 // has a button, and a run opens it on the log.
 
 import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { clearLog, logLines, onLog, registerDock, type DockTab } from "./bus";
+import { clearLog, logLines, onLog, onRunTree, registerDock, runTree, type DockTab } from "./bus";
 import { Icon } from "../ui";
 import type { Go, Target } from "../nav";
 type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
@@ -48,22 +48,44 @@ export function Dock({ open, setOpen, tab, setTab, nav }: { open: boolean; setOp
   );
 }
 
+const fmt = (ms?: number) => (ms == null ? "" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
+
+/** n8n's logs panel: the run's blocks on the left (state and time), the
+    selected block's lines on the right – or every line with none selected. */
 function RunLog() {
-  const lines = useSyncExternalStore(onLog, () => logLines().length) && logLines();
+  useSyncExternalStore(onLog, () => logLines().length);
+  const tree = useSyncExternalStore(onRunTree, runTree);
+  const [pick, setPick] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
-  const all = lines || logLines();
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [all.length]);
-  if (!all.length) return <div className="dock-empty" data-testid="dock-run-empty">No run yet. Add blocks to the map and press <b>Run</b> – every step, gate output and fence edit streams here.</div>;
+  const all = logLines();
+  const lines = pick ? all.filter((l) => l.step === pick) : all;
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [lines.length]);
+  if (!all.length) return <div className="dock-empty" data-testid="dock-run-empty">No run yet. Add blocks to the map and press <b>Run pipeline</b> – every block, gate output and fence edit streams here.</div>;
   return (
-    <div className="dock-log" data-testid="dock-log">
-      {all.map((l, i) => (
-        <div key={i} className={`dl dl-${l.level ?? "info"}`}>
-          <span className="dl-t">{new Date(l.t).toLocaleTimeString([], { hour12: false })}</span>
-          <span className="dl-src">{l.src}</span>
-          <span className="dl-x">{l.text}</span>
-        </div>
-      ))}
-      <div ref={end} />
+    <div className="dock-logs">
+      {tree && (
+        <nav className="dock-tree" aria-label="Run overview" data-testid="dock-tree">
+          <button className={`dt-row dt-run${pick === null ? " on" : ""}`} onClick={() => setPick(null)}>
+            <span className={`dt-dot dt-${tree.status}`} /><span className="dt-name">Run {tree.status}</span><span className="dt-ms mono">{fmt(tree.ms)}</span>
+          </button>
+          {tree.steps.map((s) => (
+            <button key={s.id} className={`dt-row${pick === s.id ? " on" : ""}`} onClick={() => setPick(pick === s.id ? null : s.id)} data-testid={`dt-${s.id}`}>
+              <span className={`dt-dot dt-${s.status}`} /><span className="dt-name">{s.name}</span><span className="dt-ms mono">{fmt(s.ms)}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+      <div className="dock-log" data-testid="dock-log">
+        {lines.map((l, i) => (
+          <div key={i} className={`dl dl-${l.level ?? "info"}`}>
+            <span className="dl-t">{new Date(l.t).toLocaleTimeString([], { hour12: false })}</span>
+            <span className="dl-src">{l.src}</span>
+            <span className="dl-x">{l.text}</span>
+          </div>
+        ))}
+        {!lines.length && <div className="dock-empty">No output from this block yet.</div>}
+        <div ref={end} />
+      </div>
     </div>
   );
 }

@@ -36,6 +36,20 @@ export type FlowCanvasProps = {
   /** Open a node's detail (Enter, double-click, hover toolbar). */
   onOpen?: (id: string) => void;
   testId?: string;
+  /** Right-click on a node (id) or the pane (null): screen point and flow point. */
+  onContextMenu?: (id: string | null, screen: { x: number; y: number }, flow: { x: number; y: number }) => void;
+  /** A connection dragged from a connectable output onto an accepting input. */
+  onConnect?: (source: string, target: string) => void;
+  /** A connection dropped on empty canvas (n8n opens the node panel there). */
+  onConnectToPane?: (source: string, flow: { x: number; y: number }) => void;
+  /** The "+" stub on a node with no outgoing edge. */
+  onStub?: (id: string) => void;
+  /** Keys the canvas does not handle itself; return true when handled. */
+  onKey?: (key: string, sel: string | null, ev: React.KeyboardEvent) => boolean;
+  /** Pan to this node when it changes (n8n brings a new node into view). */
+  reveal?: string | null;
+  /** A node was dragged to a new position (flow coords). */
+  onMoved?: (id: string, pos: { x: number; y: number }) => void;
 };
 
 type RfNode = Node<FlowNode>;
@@ -66,7 +80,8 @@ const toRf = (n: FlowNode, sel: string | null, collapsed: Set<string>, chipIds: 
 };
 
 function FlowCanvasInner(props: FlowCanvasProps) {
-  const { nodes, edges, groups = EMPTY_GROUPS, selection, onSelect, layoutKey = "default", ns = "lab", sidebar, onOpen, testId = "flow-canvas" } = props;
+  const { nodes, edges, groups = EMPTY_GROUPS, selection, onSelect, layoutKey = "default", ns = "lab", sidebar, onOpen, testId = "flow-canvas", onContextMenu, onConnect, onConnectToPane, onStub, onKey, onMoved, reveal } = props;
+  const [hoverEdge, setHoverEdge] = useState<string | null>(null);
   const rf = useReactFlow();
   const updateInternals = useUpdateNodeInternals();
   const [rfNodes, setRfNodes] = useState<RfNode[]>([]);
@@ -96,6 +111,8 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   edgesRef.current = rfEdges;
   const reduced = useRef(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
   const tidySeq = useRef(0);
+  // The viewport is the user's: fit once per layout key, never on a data refresh.
+  const fittedKey = useRef<string | null>(null);
 
   // Layout (cached, worker-offloaded) whenever the data or layoutKey changes.
   useEffect(() => {
@@ -142,7 +159,10 @@ function FlowCanvasInner(props: FlowCanvasProps) {
         if (done >= sorted.length) {
           performance.mark("fc:hydrate");
           setHydrated(true);
-          rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 });
+          if (fittedKey.current !== layoutKey) {
+            fittedKey.current = layoutKey;
+            window.requestAnimationFrame(() => rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 }));
+          }
           return;
         }
         setRfNodes((prev) => prev.concat(sorted.slice(done, done + CHUNK).map((n) => toRf(n, selRef.current, new Set(), new Set()))));
@@ -153,6 +173,22 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     })();
     return () => { live = false; };
   }, [nodes, edges, groups, layoutKey, ns, rf]);
+
+  // Reveal: once the node is laid out, pan it into view unless it already is.
+  const revealed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!reveal || revealed.current === reveal) return;
+    const n = rfNodes.find((x) => x.id === reveal);
+    if (!n) return;
+    revealed.current = reveal;
+    const s2 = nodeSize(n.data);
+    const cx = n.position.x + s2.w / 2, cy = n.position.y + s2.h / 2;
+    const el = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
+    const t = rf.getViewport();
+    const sx = cx * t.zoom + t.x, sy = cy * t.zoom + t.y;
+    if (el && sx > 40 && sy > 40 && sx < el.width - 40 && sy < el.height - 40) return;
+    rf.setCenter(cx, cy, { zoom: Math.max(t.zoom, 0.6), duration: reduced.current ? 0 : 200 });
+  }, [reveal, rfNodes, rf, testId]);
 
   // Collapsed groups: members + frame hidden, one chip per collapsed group,
   // edges re-anchored to the chip (docs/design/flow-canvas.md §4).
@@ -255,6 +291,10 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       ev.preventDefault();
     };
     const key = ev.key;
+    if (onKey?.(key, sel, ev)) { ev.preventDefault(); return; }
+    // n8n's zoom keys: 1 fits the workflow, 0 resets the zoom.
+    if (key === "1" && !ev.metaKey && !ev.ctrlKey) { rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 }); ev.preventDefault(); return; }
+    if (key === "0" && !ev.metaKey && !ev.ctrlKey) { rf.zoomTo(1, { duration: reduced.current ? 0 : 120 }); ev.preventDefault(); return; }
     if (key === "ArrowRight" || key === "ArrowLeft" || key === "ArrowUp" || key === "ArrowDown") {
       if (!cur) { go(all.find((n) => !n.parentId)?.id); return; }
       if (key === "ArrowRight") {
@@ -285,7 +325,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       ev.preventDefault();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel, select, onOpen, rf]);
+  }, [sel, select, onOpen, rf, onKey]);
 
   const tidy = useCallback(() => {
     tidySeq.current += 1;
@@ -315,7 +355,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   const zoomPct = Math.round(useStore((s) => s.transform[2]) * 100);
 
   return (
-    <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel }}>
+    <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel, hovered, onStub, hoverEdge, setHoverEdge }}>
       <div className={`fc-wrap${sidebar ? " fc-with-side" : ""}`} data-testid={testId} data-fc-ready={rfNodes.length > 0 ? "1" : "0"} data-fc-hydrated={hydrated ? "1" : "0"}>
         <div className="fc-canvas" tabIndex={0} onKeyDown={onKeyDown} aria-label="Flow canvas" data-fc-selection={sel ?? ""}>
           <ReactFlow
@@ -327,6 +367,16 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             onNodeClick={(_, n) => { if (n.id.endsWith("::chip")) { toggleGroup(n.id.replace(/::chip$/, "")); return; } select(n.id); }}
             onPaneClick={() => select(null)}
             onNodeDoubleClick={(_, n) => onOpen?.(n.id)}
+            onNodeContextMenu={onContextMenu ? (e, n) => { e.preventDefault(); select(n.id); onContextMenu(n.id, { x: e.clientX, y: e.clientY }, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY })); } : undefined}
+            onPaneContextMenu={onContextMenu ? (e) => { e.preventDefault(); onContextMenu(null, { x: e.clientX, y: e.clientY }, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY })); } : undefined}
+            nodesConnectable={!!(onConnect || onConnectToPane)}
+            onConnect={(c) => { if (c.source && c.target) onConnect?.(c.source, c.target); }}
+            onConnectEnd={(e, st) => {
+              if (st.isValid || !st.fromNode || !onConnectToPane) return;
+              const p = "changedTouches" in e ? e.changedTouches[0] : (e as MouseEvent);
+              onConnectToPane(st.fromNode.id, rf.screenToFlowPosition({ x: p.clientX, y: p.clientY }));
+            }}
+            connectionLineStyle={{ stroke: "var(--accent)", strokeWidth: 2 }}
             onNodeMouseEnter={(_, n) => setHovered(n.id)}
             onNodeMouseLeave={() => setHovered(null)}
             onSelectionChange={(objs) => {
@@ -347,6 +397,8 @@ function FlowCanvasInner(props: FlowCanvasProps) {
               const allAbs = rfNodesNow.map((x) => ({ id: x.id, kind: (x.data as FlowNode).kind, title: "", parent: x.parentId, pos: { x: x.position.x, y: x.position.y } }) as FlowNode);
               const dragged = nodes2.map((x) => ({ id: x.id, kind: (x.data as FlowNode).kind, title: "", parent: x.parentId, pos: { x: snap(x.position.x), y: snap(x.position.y) } }) as FlowNode);
               if (dragged.length) persist(ns, layoutKey, dragged, allAbs);
+              if (onMoved) for (const d of dragged) onMoved(d.id, d.pos!);
+              void n;
             }}
             nodesDraggable={!locked}
             nodesFocusable={false} // keyboard lives on the wrapper; nodes are not tabbable controls

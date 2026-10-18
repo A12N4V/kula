@@ -1822,6 +1822,15 @@ async function openView(page: Page, sec: "show" | "colour" | "canvas" = "show") 
 
 /** The map opens with every section collapsed to one node; tests that need
     block tiles inside frames open them all first. */
+/** Add a block the n8n way: open the panel, search, pick. */
+async function addBlock(page: Page, testid: string, query: string) {
+  await page.locator("[data-testid=ws-add]").click();
+  await expect(page.locator("[data-testid=np]")).toHaveClass(/open/);
+  await page.locator("[data-testid=np-search]").fill(query);
+  await page.locator(`[data-testid=${testid}]`).click();
+  await expect(page.locator("[data-testid=np]")).not.toHaveClass(/open/);
+}
+
 async function openAllSections(page: Page) {
   await openView(page, "canvas");
   const btn = page.locator("[data-testid=map-depth]");
@@ -2206,7 +2215,10 @@ test.describe("map", () => {
     await page.locator("[data-testid=ws-add]").click();
     const np = page.locator("[data-testid=np]");
     await expect(np).toHaveClass(/open/);
+    // categories first; a category slides in its blocks
+    await page.locator("[data-testid=np-cat-agent]").click();
     await expect(page.locator("[data-testid=np-item-agent-fix]")).toBeVisible();
+    await page.locator("[data-testid=np-back]").click();
     await page.locator("[data-testid=np-search]").fill("verify");
     await expect(page.locator("[data-testid=np-item-gate-verify]")).toBeVisible();
     await expect(page.locator("[data-testid=np-item-agent-fix]")).toHaveCount(0);
@@ -2235,11 +2247,9 @@ test.describe("map", () => {
     await page.evaluate(() => localStorage.removeItem("kula.pipeline.map"));
     // select a section, then click blocks in the panel: the agent lands on it
     await page.locator(".fc-wide").first().dispatchEvent("click");
-    await page.locator("[data-testid=ws-add]").click();
-    await page.locator("[data-testid=np-item-trigger-manual]").click();
-    await page.locator("[data-testid=np-item-agent-fix]").click();
-    await page.locator("[data-testid=np-item-gate-status]").click();
-    await page.keyboard.press("Escape");
+    await addBlock(page, "np-item-trigger-manual", "manual");
+    await addBlock(page, "np-item-agent-fix", "fix");
+    await addBlock(page, "np-item-gate-status", "graph current");
     await expect(page.locator("[data-testid^=pl-row-]")).toHaveCount(3);
     await expect(page.locator("[data-testid^='fc-node-step:']")).toHaveCount(3);
     await page.locator("[data-testid=pl-row-1]").click();
@@ -2253,6 +2263,50 @@ test.describe("map", () => {
     await page.locator("[data-testid=ws-done]").click();
     await expect(page.locator("[data-testid=dock-log]")).toContainText(/run (passed|failed)/, { timeout: 20_000 });
     expect(open1).toBe(false);
+  });
+
+  test("n8n parity: the panel slides into a category, right-click opens the menu, the details view has input · parameters · output, D skips a block, ⌘Z undoes", async ({ page }) => {
+    await page.route("**/api/agents/task_start", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+    await open(page, "map");
+    await page.evaluate(() => localStorage.removeItem("kula.pipeline.map"));
+    await page.reload();
+    await expect(page.locator("[data-testid=ws-add]")).toBeVisible();
+    // node panel: categories first, a category slides in its blocks, Esc backs out
+    await page.locator("[data-testid=ws-add]").click();
+    await page.locator("[data-testid=np-cat-gate]").click();
+    await expect(page.locator("[data-testid=np-back]")).toContainText("Gates");
+    await page.locator("[data-testid=np-item-gate-status]").click();
+    // keyboard: search, Enter inserts the top hit
+    await page.locator("[data-testid=ws-add]").click();
+    await page.locator("[data-testid=np-search]").fill("graph current");
+    await page.locator("[data-testid=np-search]").press("Enter");
+    await expect(page.locator("[data-testid^=pl-row-]")).toHaveCount(2);
+    // undo takes the second block back
+    await page.locator(".fc-canvas").focus();
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.locator("[data-testid^=pl-row-]")).toHaveCount(1);
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    await expect(page.locator("[data-testid^=pl-row-]")).toHaveCount(2);
+    // right-click a block: n8n's menu; Open shows the three-pane details view
+    const step = page.locator("[data-testid^='fc-node-step:']").first();
+    await step.click({ button: "right" });
+    await expect(page.locator("[data-testid=ctx-menu]")).toBeVisible();
+    await page.locator("[data-testid=cm-open]").press("Enter");
+    const ndv = page.locator("[data-testid=ndv]");
+    await expect(ndv).toBeVisible();
+    await expect(ndv.locator(".ndv-col h3")).toHaveText([/Input/, /Parameters/, /Output/]);
+    await page.keyboard.press("Escape");
+    await expect(ndv).toHaveCount(0);
+    // deactivate the first block: the run skips it and the log says so
+    await step.click({ button: "right" });
+    await page.locator("[data-testid=cm-toggle]").press("Enter");
+    await page.locator("[data-testid=ws-run-btn]").click();
+    await expect(page.locator("[data-testid=dock-log]")).toContainText("deactivated – skipped");
+    await expect(page.locator("[data-testid=dock-tree]")).toBeVisible();
+    await expect(page.locator("[data-testid=dock-log]")).toContainText(/run (passed|failed)/, { timeout: 20_000 });
+    // the run is in the executions history
+    await page.locator("[data-testid=ws-tab-live]").click();
+    await expect(page.locator("[data-testid=ws-execs] .ex-row")).toHaveCount(1);
   });
 
   test("sections start collapsed; open all shows their blocks in frames, close all folds them back", async ({ page }) => {

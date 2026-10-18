@@ -2,7 +2,7 @@
 // Plain module state with subscribers – no provider, so the map's runner and
 // the dock never need a shared parent.
 
-export type LogLine = { t: number; src: string; text: string; level?: "info" | "ok" | "err" | "warn" };
+export type LogLine = { t: number; src: string; text: string; level?: "info" | "ok" | "err" | "warn"; step?: string };
 
 const lines: LogLine[] = [];
 const subs = new Set<() => void>();
@@ -10,8 +10,8 @@ let wantOpen: ((tab: DockTab) => void) | null = null;
 
 export type DockTab = "terminal" | "run";
 
-export function log(src: string, text: string, level: LogLine["level"] = "info") {
-  for (const part of text.split("\n")) if (part.trim()) lines.push({ t: Date.now(), src, text: part, level });
+export function log(src: string, text: string, level: LogLine["level"] = "info", step?: string) {
+  for (const part of text.split("\n")) if (part.trim()) lines.push({ t: Date.now(), src, text: part, level, step });
   if (lines.length > 2000) lines.splice(0, lines.length - 2000);
   subs.forEach((f) => f());
 }
@@ -22,3 +22,12 @@ export function onLog(f: () => void) { subs.add(f); return () => { subs.delete(f
 /** Ask the dock to open on a tab (the runner does this when a run starts). */
 export function openDock(tab: DockTab) { wantOpen?.(tab); }
 export function registerDock(f: (tab: DockTab) => void) { wantOpen = f; return () => { if (wantOpen === f) wantOpen = null; }; }
+
+/* The run tree the dock's log panel draws beside the lines (n8n's logs
+   overview): the steps of the current run with their state and timing. */
+export type RunStep = { id: string; name: string; kind: string; status: string; ms?: number };
+let tree: { started: number; ms?: number; status: string; steps: RunStep[] } | null = null;
+const treeSubs = new Set<() => void>();
+export function setRunTree(t: typeof tree) { tree = t; treeSubs.forEach((f) => f()); }
+export function runTree() { return tree; }
+export function onRunTree(f: () => void) { treeSubs.add(f); return () => { treeSubs.delete(f); }; }

@@ -37,18 +37,26 @@ function TBar({ id, data }: { id: string; data: FcData }) {
   );
 }
 
-function Handles({ data, nodeW, nodeH }: { data: FcData; nodeW: number; nodeH: number }) {
+function Handles({ data }: { data: FcData; nodeW: number; nodeH: number }) {
   return (
     <>
       {data.kind !== "circle" && data.kind !== "group" && (
-        <Handle type="target" position={Position.Left} id="l" className="fc-dot" isConnectable={false} />
+        <Handle type="target" position={Position.Left} id="l" className={`fc-dot${data.accepts ? " fc-dot-in" : ""}`} isConnectable={!!data.accepts} />
       )}
       {data.kind === "circle" && <Handle type="target" position={Position.Top} id="t" className="fc-diamond" isConnectable={false} />}
-      {data.kind !== "group" && <Handle type="source" position={data.kind === "circle" ? Position.Bottom : Position.Right} id="r" className="fc-dot" isConnectable={false} />}
+      {data.kind !== "group" && <Handle type="source" position={data.kind === "circle" ? Position.Bottom : Position.Right} id="r" className={`fc-dot${data.connectable ? " fc-dot-out" : ""}`} isConnectable={!!data.connectable} />}
       {data.hasSub && <Handle type="source" position={Position.Bottom} id="b" className="fc-diamond" isConnectable={false} />}
     </>
   );
 }
+
+/** The "+" on an unused output: a button when the canvas listens for it (n8n opens the node panel). */
+function Stub({ id }: { id: string }) {
+  const { onStub } = useFc();
+  if (!onStub) return <span className="fc-stub" title="No outgoing step">+</span>;
+  return <button className="fc-stub fc-stub-btn nodrag" data-testid={`fc-stub-${id}`} title="Add the next block" onClick={(e) => { e.stopPropagation(); onStub(id); }}>+</button>;
+}
+const stCls = (d: FcData) => (d.status && d.status !== "disabled" ? ` fc-is-${d.status}` : "");
 
 const STATUS_MARK: Record<string, string> = { running: "run", success: "ok", error: "err", pinned: "pin" };
 
@@ -56,7 +64,7 @@ const TileNode = memo(({ data, selected, id }: NodeProps & { data: FcData }) => 
   const w = data.size?.w ?? TILE.w;
   const h = data.size?.h ?? TILE.h;
   return (
-    <div className={`fc-node fc-tile${data.ring ? ` fc-ring-${data.ring}` : ""}${data.entry ? " fc-entry" : ""}${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}`} style={{ width: w, height: h }} data-testid={`fc-node-${id}`}>
+    <div className={`fc-node fc-tile${data.ring ? ` fc-ring-${data.ring}` : ""}${data.entry ? " fc-entry" : ""}${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${stCls(data)}`} style={{ width: w, height: h }} data-testid={`fc-node-${id}`}>
       <TBar id={id ?? data.id} data={data} />
       <div className="fc-tile-box" style={{ ["--fc-role" as string]: data.color }}>
         <Glyph icon={data.icon} size={32} />
@@ -66,7 +74,7 @@ const TileNode = memo(({ data, selected, id }: NodeProps & { data: FcData }) => 
       <div className="fc-title">{data.title}</div>
       {data.subtitle && <div className="fc-sub">{data.subtitle}</div>}
       <Handles data={data} nodeW={w} nodeH={h} />
-      {data.noOut && data.kind !== "circle" && <span className="fc-stub" title="No outgoing step">+</span>}
+      {data.noOut && data.kind !== "circle" && <Stub id={id ?? data.id} />}
     </div>
   );
 });
@@ -76,7 +84,7 @@ const WideNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
   const w = data.size?.w ?? WIDE.w;
   const h = data.size?.h ?? WIDE.h;
   return (
-    <div className={`fc-node fc-wide${data.ring ? ` fc-ring-${data.ring}` : ""}${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}`} style={{ width: w, height: h }} data-testid={`fc-node-${data.id}`}>
+    <div className={`fc-node fc-wide${data.ring ? ` fc-ring-${data.ring}` : ""}${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${stCls(data)}`} style={{ width: w, height: h }} data-testid={`fc-node-${data.id}`}>
       <TBar id={data.id} data={data} />
       <div className="fc-wide-in" style={{ ["--fc-role" as string]: data.color }}>
         <Glyph icon={data.icon} size={24} />
@@ -88,7 +96,7 @@ const WideNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
       </div>
       {data.badge && <span className="fc-badge">{data.badge}</span>}
       <Handles data={data} nodeW={w} nodeH={h} />
-      {data.noOut && <span className="fc-stub" title="No outgoing step">+</span>}
+      {data.noOut && <Stub id={data.id} />}
     </div>
   );
 });
@@ -134,4 +142,17 @@ const LoopNode = memo(({ data, selected }: NodeProps & { data: FcData }) => (
 ));
 LoopNode.displayName = "LoopNode";
 
-export const nodeTypes = { tile: TileNode, wide: WideNode, circle: CircleNode, group: GroupNode, loop: LoopNode };
+/** A sticky note (n8n): text on a tinted card, never wired, never run. */
+const StickyNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
+  const w = data.size?.w ?? 240, h = data.size?.h ?? 160;
+  return (
+    <div className={`fc-node fc-sticky${selected ? " fc-sel" : ""}`} style={{ width: w, height: h, ["--fc-role" as string]: data.color ?? "var(--yellow, #d9b54a)" }} data-testid={`fc-node-${data.id}`}>
+      <TBar id={data.id} data={data} />
+      <div className="fc-sticky-title">{data.title}</div>
+      {data.subtitle && <div className="fc-sticky-body">{data.subtitle}</div>}
+    </div>
+  );
+});
+StickyNode.displayName = "StickyNode";
+
+export const nodeTypes = { sticky: StickyNode, tile: TileNode, wide: WideNode, circle: CircleNode, group: GroupNode, loop: LoopNode };

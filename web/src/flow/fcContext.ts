@@ -10,6 +10,13 @@ export const FcCtx = createContext<{
   toggleGroup?: (id?: string) => void;
   /** The node whose hover toolbar is showing (hovered or selected). */
   activeId?: string | null;
+  /** The "+" stub on a node with no outgoing edge. */
+  onStub?: (id: string) => void;
+  /** The node under the pointer – its wires light up, the rest fade. */
+  hovered?: string | null;
+  /** The edge under the pointer – its hover tools show. */
+  hoverEdge?: string | null;
+  setHoverEdge?: (id: string | null) => void;
 }>({});
 
 export const useFc = () => useContext(FcCtx);

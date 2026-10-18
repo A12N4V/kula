@@ -22,7 +22,8 @@ import { ChainsStrips } from "./map/caps";
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf } from "./map/chainFocus";
 import { Library, ReviewPanel, RunPanel, sectionAtPoint, sectionOf, useLive, useMarks } from "./map/workspace";
-import { NodePanel, PipelinePanel, droppedItem, isItemDrag, usePipeline, useRunner, type Item } from "./map/pipeline";
+import { ContextMenu, Executions, FLOW, NodePanel, PipelinePanel, StepDetails, droppedItem, isItemDrag, runnable, usePipeline, useRunner, type Item, type MenuItem } from "./map/pipeline";
+import { log } from "../dock/bus";
 import { SCHEMES, type Scheme } from "./map/flowKit";
 import type { Go } from "../nav";
 import type { Chain, ChainPage, Lens, MapData, MapProgress, Role } from "./map/types";
@@ -286,8 +287,15 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   // selected block stays the target while the new blocks take the selection).
   const [lastSec, setLastSec] = useState<string | null>(null);
   useEffect(() => { if (data && selBlock && !selStep && data.blocks[selBlock]) setLastSec(sectionOf(data, selBlock) ?? selBlock); }, [data, selBlock, selStep]);
+  // Where the next block goes: after a block (the "+" on a wire or a stub, a
+  // wire dropped on empty canvas), else at the end on the last section.
+  const [insert, setInsert] = useState<{ after: string | null; pos?: { x: number; y: number } } | null>(null);
+  const openPanel = useCallback((after: string | null = null, pos?: { x: number; y: number }) => { setInsert({ after, pos }); setPanel(true); }, []);
   const pick = (it: Item) => {
-    const id = pipe.add(it, it.kind === "agent" || it.kind === "crew" ? lastSec : null);
+    const at = insert?.after ? pipe.steps.findIndex((x) => x.id === insert.after) + 1 : undefined;
+    const id = pipe.add(it, it.kind === "agent" || it.kind === "crew" ? lastSec : null, at && at > 0 ? at : undefined, it.kind === "note" ? insert?.pos : undefined);
+    setInsert(null);
+    setPanel(false); // n8n closes the panel once a node is in
     setSelBlock(`step:${id}`); setTab("pipeline");
   };
   const onCanvasDragOver = (e: React.DragEvent) => {
@@ -307,23 +315,100 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     const id = pipe.add(it, sec);
     setSelBlock(`step:${id}`); setTab("pipeline");
   };
-  // Tab opens the block panel (n8n), ctrl/⌘+Enter runs the pipeline.
+  const [ndv, setNdv] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ at: { x: number; y: number }; id: string | null; flow: { x: number; y: number } } | null>(null);
+  const select = (id: string | null) => setSelBlock(id ? `step:${id}` : null);
+  const addSticky = (pos?: { x: number; y: number }) => { const id = pipe.add(FLOW[1], null, undefined, pos); select(id); setTab("pipeline"); };
+  const removeStep = (id: string) => { pipe.remove(id); setSelBlock((b) => (b === `step:${id}` ? null : b)); };
+  const toggleStep = (id: string) => { const st = pipe.steps.find((x) => x.id === id); if (st) pipe.update(id, { disabled: !st.disabled }); };
+  const rename = () => { setTab("pipeline"); window.setTimeout(() => { const el = document.querySelector<HTMLInputElement>("[data-testid=pl-name]"); el?.focus(); el?.select(); }, 60); };
+  // n8n's canvas keys (docs.n8n.io/build/keyboard-shortcuts): N or Tab opens
+  // the node panel, Shift+S a sticky, D deactivates, Del deletes, F2 renames,
+  // ⌘C/⌘V copy and paste, ⌘Z/⇧⌘Z undo and redo, ⌘↵ runs.
+  const keys = (key: string, ev: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean }, onCanvas: boolean): boolean => {
+    const mod = ev.metaKey || ev.ctrlKey;
+    const cur = selStep;
+    if (mod && key === "Enter") { void runner.run(); return true; }
+    if (mod && key.toLowerCase() === "z") { if (ev.shiftKey) pipe.redo(); else pipe.undo(); return true; }
+    if (mod && key.toLowerCase() === "c" && cur && !window.getSelection()?.toString()) return pipe.copy(cur);
+    if (mod && key.toLowerCase() === "v") { const id = pipe.paste(cur); if (id) select(id); return !!id; }
+    if (mod && key.toLowerCase() === "d" && cur) { select(pipe.duplicate(cur)); return true; }
+    if (mod || ev.altKey || !onCanvas) return false;
+    if ((key === "n" || key === "N" || key === "Tab") && !ev.shiftKey) { openPanel(cur); return true; }
+    if (key === "S" && ev.shiftKey) { addSticky(); return true; }
+    if (!cur) return false;
+    if (key === "d" || key === "D") { toggleStep(cur); return true; }
+    if (key === "Delete" || key === "Backspace") { removeStep(cur); return true; }
+    if (key === "F2") { rename(); return true; }
+    if (key === "Enter") { setNdv(cur); return true; }
+    return false;
+  };
+  const keysRef = useRef(keys);
+  keysRef.current = keys;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest?.("input, textarea, select, [role=dialog]")) return;
-      // Tab only from the canvas or the page itself – keyboard focus order elsewhere stays intact.
-      const onCanvas = e.target === document.body || !!(e.target as HTMLElement)?.closest?.(".react-flow");
-      if (e.key === "Tab" && onCanvas && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); setPanel((p) => !p); }
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void runner.run(); }
+      if ((e.target as HTMLElement)?.closest?.("input, textarea, select, [role=dialog], .fc-canvas")) return; // the canvas routes its own keys
+      // From the page itself only – keyboard focus order elsewhere stays intact.
+      const onPage = e.target === document.body;
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void runner.run(); return; }
+      if (onPage && keysRef.current(e.key, e, true)) e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [runner]);
   useEffect(() => { if (selStep) setTab("pipeline"); }, [selStep]);
-  const onStepTool = useCallback((id: string, a: "done" | "remove") => {
+  const onStepTool = useCallback((id: string, a: "done" | "remove" | "run" | "toggle" | "insert" | "open") => {
     if (a === "done") runner.markDone(id);
-    else { pipe.remove(id); setSelBlock((b) => (b === `step:${id}` ? null : b)); }
+    else if (a === "run") void runner.run(id);
+    else if (a === "toggle") toggleStep(id);
+    else if (a === "insert") openPanel(id);
+    else if (a === "open") setNdv(id);
+    else removeStep(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runner, pipe]);
+  const canvas = useMemo(() => ({
+    onKey: (key: string, _sel: string | null, ev: React.KeyboardEvent) => keysRef.current(key, ev, true),
+    onStub: (id: string) => { if (id.startsWith("step:")) openPanel(id.slice(5)); },
+    onConnect: (source: string, target: string) => {
+      if (!source.startsWith("step:") || !data) return;
+      const sid = source.slice(5);
+      if (target.startsWith("step:")) return; // order is the lane; wires between blocks follow it
+      const sec = data.blocks[target] ? sectionOf(data, target) ?? target : null;
+      if (sec) { pipe.update(sid, { section: sec }); select(sid); log("map", `${pipe.steps.find((x) => x.id === sid)?.name ?? "block"} now acts on ${data.blocks[sec]?.theme || data.blocks[sec]?.name}`); }
+    },
+    onConnectToPane: (source: string, pos: { x: number; y: number }) => { if (source.startsWith("step:")) openPanel(source.slice(5), pos); },
+    onContextMenu: (id: string | null, at: { x: number; y: number }, flow: { x: number; y: number }) => setMenu({ at, id, flow }),
+    onMoved: (id: string, pos: { x: number; y: number }) => { if (id.startsWith("step:") && pipe.steps.find((x) => x.id === id.slice(5))?.kind === "note") pipe.patch(id.slice(5), { pos }); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [data, pipe, openPanel]);
+  const menuItems = (m: NonNullable<typeof menu>): MenuItem[] => {
+    const st = m.id?.startsWith("step:") ? pipe.steps.find((x) => x.id === m.id!.slice(5)) : null;
+    if (st) return [
+      { label: "Open", key: "↵", run: () => setNdv(st.id), testid: "cm-open" },
+      ...(st.kind !== "note" ? [{ label: "Run from here", run: () => void runner.run(st.id), disabled: runner.running, testid: "cm-run" }] : []),
+      ...(st.status === "waiting" ? [{ label: "Mark done", run: () => runner.markDone(st.id) }] : []),
+      { label: "Rename", key: "F2", run: () => { select(st.id); rename(); } },
+      { label: st.disabled ? "Activate" : "Deactivate", key: "D", run: () => toggleStep(st.id), testid: "cm-toggle" },
+      { label: "Duplicate", key: "⌘D", run: () => select(pipe.duplicate(st.id)), testid: "cm-dup" },
+      { label: "Copy", key: "⌘C", run: () => pipe.copy(st.id) },
+      { label: "Insert after", key: "N", run: () => openPanel(st.id) },
+      { sep: true, label: "", run: () => {} },
+      { label: "Delete", key: "Del", danger: true, run: () => removeStep(st.id), testid: "cm-delete" },
+    ];
+    const secId = m.id && data?.blocks[m.id] ? sectionOf(data, m.id) ?? m.id : null;
+    return [
+      { label: "Add block", key: "N", run: () => { if (secId) setLastSec(secId); openPanel(null); }, testid: "cm-add" },
+      ...(secId ? [{ label: "Add an agent here", run: () => { setLastSec(secId); setPanel(true); setInsert(null); } }] : []),
+      { label: "Add sticky note", key: "⇧S", run: () => addSticky(m.flow), testid: "cm-sticky" },
+      { label: "Paste", key: "⌘V", run: () => { const id = pipe.paste(); if (id) select(id); } },
+      { sep: true, label: "", run: () => {} },
+      { label: runner.running ? "Stop run" : "Run pipeline", key: "⌘↵", run: () => (runner.running ? runner.stop() : void runner.run()) },
+      { label: "Undo", key: "⌘Z", run: pipe.undo },
+      { label: "Redo", key: "⇧⌘Z", run: pipe.redo },
+    ];
+  };
+  const ndvStep = ndv ? pipe.steps.find((x) => x.id === ndv) ?? null : null;
+  const ndvPrev = ndvStep ? (() => { const r = runnable(pipe.steps); const i = r.findIndex((x) => x.id === ndvStep.id); return i > 0 ? r[i - 1] : null; })() : null;
 
   if (!data) {
     if (prog?.running) {
@@ -358,7 +443,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   return (
     <div className="sy-root" ref={rootRef} data-testid="map-view">
       <div className="sy-lens" data-testid="map-lens" role="toolbar" aria-label="Lens and role filter">
-        <button className={`btn sm primary ws-add${panel ? " on" : ""}`} data-testid="ws-add" aria-expanded={panel} title="Add a block  Tab" onClick={() => setPanel((p) => !p)}><Icon.plus /> Add block</button>
+        <button className={`btn sm primary ws-add${panel ? " on" : ""}`} data-testid="ws-add" aria-expanded={panel} title="Add a block  Tab" onClick={() => (panel ? setPanel(false) : openPanel(null))}><Icon.plus /> Add block</button>
         <div className="sy-lens-group" role="group" aria-label="View">
           {(["flow", "capabilities", "blocks", "chains"] as const).map((v) => (
             <button key={v} className={`tab-btn sy-lens-btn${view === v ? " on" : ""}`} data-testid={`map-view-${v}`}
@@ -426,8 +511,11 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           onFile={(p) => code.open({ path: p, name: p.split("/").pop() })} />}
         {view === "chains" && <ChainsStrips data={data} roles={roles} onChain={selectChain} selChain={selChain?.id ?? null} loadChains={loadChains} onLeaf={selectLeaf} />}
         {view === "flow" && (!chain || focusMode) && !path.length
-          ? <div className="ws-drop" onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={marks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} depth={depth} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} expanded={expanded} onToggleExpand={toggleExpand} onClearExpand={() => setExpanded(new Set())} />
-            <NodePanel info={ws.info} open={panel} onClose={() => setPanel(false)} onPick={pick} hasSel={!!lastSec} />
+          ? <div className="ws-drop" onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={marks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} depth={depth} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} expanded={expanded} onToggleExpand={toggleExpand} onClearExpand={() => setExpanded(new Set())} />
+            <NodePanel info={ws.info} open={panel} onClose={() => { setPanel(false); setInsert(null); }} onPick={pick}
+              hint={insert?.after ? `Insert after ${pipe.steps.find((x) => x.id === insert.after)?.name ?? "block"}` : lastSec ? `Add on ${data.blocks[lastSec]?.theme || data.blocks[lastSec]?.name}` : "Add a block"} />
+            {menu && <ContextMenu at={menu.at} items={menuItems(menu)} onClose={() => setMenu(null)} />}
+            {ndvStep && <StepDetails data={data} s={ndvStep} pipe={pipe} runner={runner} sections={sections} prev={ndvPrev} onClose={() => setNdv(null)} />}
             <div className="ws-runbar" data-testid="ws-runbar">
               {runner.running && waiting && <button className="btn ws-run" onClick={() => runner.markDone(waiting.id)} data-testid="ws-done" title="The agent finished – hand on to the next block">{waiting.name}: done</button>}
               {runner.running
@@ -453,8 +541,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
               </button>
             ))}
           </div>
-          {tab === "pipeline" && <PipelinePanel data={data} pipe={pipe} runner={runner} sel={selStep} onSel={(id) => setSelBlock(id ? `step:${id}` : null)} sections={sections} />}
-          {tab === "live" && <RunPanel data={data} info={ws.info} onChanged={ws.reload} onSection={(id) => setSelBlock(id)} />}
+          {tab === "pipeline" && <PipelinePanel data={data} pipe={pipe} runner={runner} sel={selStep} onSel={(id) => setSelBlock(id ? `step:${id}` : null)} sections={sections} onOpen={setNdv} />}
+          {tab === "live" && <><RunPanel data={data} info={ws.info} onChanged={ws.reload} onSection={(id) => setSelBlock(id)} /><Executions runner={runner} /></>}
           {tab === "changes" && <ReviewPanel data={data} files={ws.files} onSection={(id) => setSelBlock(id)} onFile={(p) => code.open({ path: p, name: p.split("/").pop() })} />}
           {tab === "library" && <Library info={ws.info} go={go} onPick={pick} />}
           {tab === "inspect" && <>

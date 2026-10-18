@@ -4,6 +4,7 @@
 // docs/design/flow-canvas.md §3.2.
 import { memo } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useStore, type EdgeProps } from "@xyflow/react";
+import { useFc } from "./fcContext";
 
 /** Rounded orthogonal path through points (8 px corners). */
 export function roundedPath(pts: { x: number; y: number }[], r = 8): string {
@@ -63,10 +64,22 @@ const FlowEdgeView = memo((props: EdgeProps) => {
     labelY = ly;
   }
 
-  const cls = `fc-edge${backward ? " fc-back" : ""}${dashed || !main ? " fc-dashed" : ""}${selected ? " fc-edge-sel" : ""}`;
+  const { hoverEdge, setHoverEdge, hovered } = useFc();
+  const touch = hovered ? (props.source === hovered || props.target === hovered ? " fc-edge-lit" : " fc-edge-faint") : "";
+  const flow = data?.flow as string | undefined;
+  const tools = data?.tools as React.ReactNode | undefined;
+  const hot = hoverEdge === props.id;
+  const cls = `fc-edge${backward ? " fc-back" : ""}${dashed || !main ? " fc-dashed" : ""}${selected ? " fc-edge-sel" : ""}${flow ? ` fc-flow-${flow}` : ""}${hot ? " fc-edge-hot" : ""}${touch}`;
   return (
     <>
       <BaseEdge id={props.id} path={path} markerEnd={markerEnd} className={cls} style={{ strokeWidth: stroke }} data-testid={data?.testid as string | undefined} />
+      {tools && <path d={path} className="fc-edge-hit" onPointerEnter={() => setHoverEdge?.(props.id)} onPointerLeave={() => setHoverEdge?.(null)} />}
+      {tools && (
+        <EdgeLabelRenderer>
+          <div className={`fc-edge-tools nodrag nopan${hot ? " on" : ""}`} style={{ transform: `translate(-50%,-50%) translate(${labelX}px,${labelY + (data?.label != null ? 26 : 0)}px)` }}
+            onPointerEnter={() => setHoverEdge?.(props.id)} onPointerLeave={() => setHoverEdge?.(null)}>{tools}</div>
+        </EdgeLabelRenderer>
+      )}
       {data?.label != null && (
         <EdgeLabelRenderer>
           <div className="fc-edge-label" style={{ transform: `translate(-50%,-50%) translate(${labelX}px,${labelY}px)` }}>

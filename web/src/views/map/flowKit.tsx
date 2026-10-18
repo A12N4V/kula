@@ -51,7 +51,9 @@ type Props = {
   marks?: Marks;
   /** Pipeline blocks drawn as a lane above the sections they act on. */
   steps?: Step[];
-  onStepTool?: (id: string, action: "done" | "remove") => void;
+  onStepTool?: (id: string, action: "done" | "remove" | "run" | "toggle" | "insert" | "open") => void;
+  /** n8n canvas callbacks, passed through to the kit. */
+  canvas?: Partial<Pick<React.ComponentProps<typeof FlowCanvas>, "onContextMenu" | "onConnect" | "onConnectToPane" | "onStub" | "onKey" | "onMoved" | "reveal">>;
   scheme?: Scheme;
 };
 
@@ -154,7 +156,7 @@ function fnIcon(kind: string) {
 /** The flow lens on the kit canvas. Selection is single-writer (the kit):
     function circles and "+ more" chips are intercepted here and never
     become the block selection; everything else maps to the block id. */
-export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, expanded: expandedProp, onToggleExpand, onClearExpand, marks, steps = [], onStepTool, scheme = "role" }: Props) {
+export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, expanded: expandedProp, onToggleExpand, onClearExpand, marks, steps = [], onStepTool, scheme = "role", canvas }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   const [expandedState, setExpanded] = useState<Set<string>>(() => new Set());
   const expanded = expandedProp ?? expandedState;
@@ -292,38 +294,62 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   });
   nodes.push(...fnNodes);
 
-  // The pipeline lane: blocks left to right above the map, wired in order,
-  // each with a dashed wire down to the section it acts on (n8n's main flow
-  // over the data it touches). A retry loops back to the last agent.
-  const LANE_Y = -256, STEP_W = 288;
-  const repOfSec = (sid: string) => { const r = repOf.get(sid); return r && nodeIdsSoFar.has(r) ? r : null; };
+  // The pipeline lane: blocks left to right above the map as n8n's square
+  // nodes, wired in order, each with a dashed wire down to the section it acts
+  // on. A retry loops back to the last agent. Wires carry the run: marching
+  // while data moves, green once passed, red where it failed; hovering one
+  // shows "+" to insert a block there. Stickies sit where they were dropped.
+  const LANE_Y = -288, STEP_W = 176;
+  const fenceSize = (sid: string) => { const set = new Set<string>(); for (const sym of symbolsUnder(data.blocks, sid)) { const p = data.leaves[sym]?.path; if (p) set.add(p); } return set.size; };
   const nodeIdsSoFar = new Set(nodes.map((n) => n.id));
+  const repOfSec = (sid: string) => { const r = repOf.get(sid); return r && nodeIdsSoFar.has(r) ? r : null; };
   const name = (id: string | null) => (id ? data.blocks[id]?.theme || data.blocks[id]?.name : null);
-  let prevStep: string | null = null, lastAgent: string | null = null;
-  steps.forEach((st, i) => {
+  let prevStep: Step | null = null, lastAgent: string | null = null, li = 0;
+  const flowOf = (st: Step) => st.status === "success" || st.status === "skipped" ? "ok" : st.status === "error" ? "err" : undefined;
+  const run = steps.filter((x) => x.kind !== "note");
+  steps.forEach((st) => {
     const id = `step:${st.id}`;
-    const status = st.status === "waiting" || st.status === "running" ? "running" : st.status === "success" ? "success" : st.status === "error" ? "error" : undefined;
+    if (st.kind === "note") {
+      nodes.push({ id, kind: "sticky", title: st.name, subtitle: st.task, color: st.color, size: { w: 224, h: 144 }, pos: st.pos ?? { x: -272, y: LANE_Y - 32 } });
+      return;
+    }
+    const status = st.disabled ? "disabled" : st.status === "waiting" || st.status === "running" ? "running" : st.status === "success" ? "success" : st.status === "error" ? "error" : undefined;
     const tools = (
       <>
-        {st.status === "waiting" && <button className="fc-tool" data-testid="step-done" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "done"); }} title="Mark this agent's task done">done</button>}
-        <button className="fc-tool" data-testid="step-remove" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "remove"); }} title="Remove block"><Icon.close /></button>
+        {st.status === "waiting" && <button className="fc-tool" data-testid="step-done" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "done"); }} title="The agent finished – hand on">done</button>}
+        <button className="fc-tool" data-testid="step-run" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "run"); }} title="Run from this block"><Icon.play /></button>
+        <button className="fc-tool" data-testid="step-toggle" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "toggle"); }} title={st.disabled ? "Activate (D)" : "Deactivate (D)"}><Icon.lock /></button>
+        <button className="fc-tool" data-testid="step-remove" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "remove"); }} title="Delete (Del)"><Icon.close /></button>
       </>
     );
+    const last = li === run.length - 1;
     nodes.push({
-      id, kind: "wide", title: st.name,
-      subtitle: st.note ?? (st.status === "waiting" ? "waiting for an agent" : st.kind === "note" ? (st.task || "note") : name(st.section) ? `on ${name(st.section)}` : st.kind),
+      id, kind: "tile", title: st.name,
+      subtitle: st.note ?? (st.status === "waiting" ? "waiting for an agent" : name(st.section) ?? (st.kind === "gate" ? `kula ${st.ref}` : st.kind === "retry" ? `up to ${st.max ?? 3} rounds` : st.ref)),
       icon: <span className="fc-step-ico" style={{ color: KIND_COLOR[st.kind] }}><KindIco kind={st.kind} /></span>,
-      color: KIND_COLOR[st.kind], status, entry: st.kind === "trigger", noOut: i === steps.length - 1 && st.kind !== "note",
-      toolbar: tools, pos: { x: i * STEP_W, y: LANE_Y },
+      color: KIND_COLOR[st.kind], status, entry: st.kind === "trigger", noOut: last,
+      toolbar: tools, pos: { x: li * STEP_W, y: LANE_Y }, connectable: true, accepts: li > 0,
     });
-    if (st.kind === "note") return;
-    if (prevStep) edges.push({ id: `${prevStep}>${id}`, source: prevStep, target: id, weight: 3, main: true });
-    if (st.kind === "retry" && lastAgent) edges.push({ id: `${id}>loop`, source: id, target: lastAgent, weight: 2, main: true, backward: true, label: `x${st.max ?? 3}` });
+    li++;
+    if (prevStep) {
+      const pid = `step:${prevStep.id}`;
+      const live = prevStep.status === "success" && (st.status === "running" || st.status === "waiting");
+      edges.push({
+        id: `${pid}>${id}`, source: pid, target: id, weight: 2, main: true,
+        flow: live ? "run" : flowOf(prevStep) && st.status && st.status !== "idle" ? flowOf(st) ?? "ok" : undefined,
+        tools: <button data-testid={`edge-add-${prevStep.id}`} title="Insert a block here" onClick={(e) => { e.stopPropagation(); onStepTool?.(prevStep!.id, "insert"); }}>+</button>,
+      });
+    }
+    if (st.kind === "retry" && lastAgent) edges.push({ id: `${id}>loop`, source: id, target: lastAgent, weight: 2, main: true, backward: true, label: `up to ${st.max ?? 3}x` });
     const target = st.section ? repOfSec(st.section) : null;
-    if (target) edges.push({ id: `${id}~${target}`, source: id, target, main: false });
-    prevStep = id;
+    // After a run the section wire carries its count, as n8n's item counts do.
+    const ran = st.status === "success" || st.status === "error" || st.status === "waiting";
+    if (target) edges.push({ id: `${id}~${target}`, source: id, target, main: false, flow: st.status === "waiting" ? "run" : undefined, label: ran && st.section ? `${fenceSize(st.section)} files` : undefined });
+    prevStep = st;
     if (st.kind === "agent" || st.kind === "crew") lastAgent = id;
   });
+  // Sections accept a wire dragged from a block: that block now acts on it.
+  if (steps.length) for (const n of nodes) if (!n.id.startsWith("step:") && n.kind !== "circle") n.accepts = true;
   const nodeIds = new Set(nodes.map((n) => n.id));
 
   // Edges: each section keeps its two heaviest outgoing flows (every flow as
@@ -363,7 +389,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     onSelect?.(id.startsWith("sec:") ? id.slice(4) : id);
   };
   const open = (id: string) => {
-    if (id.startsWith("step:")) return;
+    if (id.startsWith("step:")) { onStepTool?.(id.slice(5), "open"); return; }
     if (id.startsWith("fn:")) { const n = Number(id.slice(3)); setTimeout(() => onLeaf(n), 0); return; }
     if (id.startsWith("more:")) { const bid = id.slice(5); setTimeout(() => onDrill(bid), 0); return; }
     if (id.startsWith("sec:")) { const sid = id.slice(4); setTimeout(() => toggleSec(sid), 0); return; }
@@ -383,6 +409,8 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
         </span>
       </div>
       <FlowCanvas
+        {...canvas}
+        reveal={selection?.startsWith("step:") ? selection : null}
         minZoom={0.1}
         nodes={nodes} edges={edges} groups={groups}
         selection={selection ?? null} onSelect={select} onOpen={open}

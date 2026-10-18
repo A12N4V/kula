@@ -31,3 +31,18 @@
 .dock-tab, .dock-btn { background: none; border: 0; font: inherit; font-size: 12px; }
 .dock-tab { color: var(--text-3); }
 .dock-tab.on { background: var(--bg-3); color: var(--text); }
+.dock-logs { height: 100%; display: grid; grid-template-columns: 240px 1fr; min-height: 0; }
+.dock-logs > .dock-log:only-child { grid-column: 1 / -1; }
+.dock-tree { border-right: 1px solid var(--line); overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 1px; }
+.dt-row { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; background: none; border: 0; font: inherit; font-size: 12px; color: var(--text-2); text-align: left; cursor: pointer; }
+.dt-row:hover { background: var(--bg-3); color: var(--text); }
+.dt-row.on { background: var(--bg-3); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+.dt-run { font-weight: 600; }
+.dt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-ms { font-size: 10.5px; color: var(--text-3); }
+.dt-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); }
+.dt-running, .dt-waiting { background: var(--accent); animation: ws-pulse 1.2s ease-in-out infinite; }
+.dt-success, .dt-passed { background: var(--green); }
+.dt-error, .dt-failed { background: var(--red); }
+.dt-skipped, .dt-stopped { background: var(--text-3); }
+@media (max-width: 640px) { .dock-logs { grid-template-columns: 1fr; } .dock-tree { display: none; } }

@@ -93,7 +93,7 @@ function scopeHits(scope: string[], path: string): boolean {
 /** Overlay marks from live state: the active task's fence and agent, changed files. */
 export function useMarks(data: MapData | null, mode: Mode, info: AgentsInfo | null, files: FileStatus[], dropTarget: string | null): Marks {
   const idx = useFileIndex(data);
-  return useMemo(() => {
+  const marks = useMemo(() => {
     const m: Marks = {};
     const put = (id: string, v: Marks[string]) => { m[id] = { ...m[id], ...v }; };
     if (mode !== "explore" && info?.task?.scope.length) {
@@ -106,6 +106,11 @@ export function useMarks(data: MapData | null, mode: Mode, info: AgentsInfo | nu
     if (dropTarget) put(dropTarget, { drop: true });
     return m;
   }, [idx, mode, info, files, dropTarget]);
+  // Polls hand back new objects with the same content; keep the identity so
+  // the canvas does not rebuild (and re-layout) every five seconds.
+  const sig = JSON.stringify(marks);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => marks, [sig]);
 }
 
 /* ---- Templates -------------------------------------------------------- */
