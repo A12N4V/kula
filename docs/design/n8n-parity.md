@@ -23,7 +23,7 @@ experiments in the community forum), and the editor itself.
 | Hover toolbar | execute step, deactivate, delete, more | run from here, deactivate, delete, done (waiting agent) |
 | Context menu | open, execute, rename, deactivate, pin, copy, duplicate, delete; pane: add node, sticky, paste | the same set, minus pin; pane adds run and undo/redo |
 | NDV | input · parameters · output | input (the fence or the previous block's output) · parameters · output (its log lines) |
-| Run button | bottom centre, "Execute workflow" | bottom centre, "Run pipeline", Stop and the waiting agent's "done" beside it |
+| Run button | bottom centre, "Execute workflow" | a transport (after IDE debug bars and sema): run, pause/continue, step, re-run failed, stop, state, clock, the waiting agent's "done"; F5 · F8 · F10 · ⇧F5 |
 | Logs panel | bottom, overview tree + per-node input/output | the dock's Run log: run tree with times, filter to one block |
 | Executions | tab with past runs | the Live sidebar's Executions list, expandable per block |
 | Sticky notes | markdown, 7 colours, Shift+S | text, 7 colours, Shift+S, drag to place |
