@@ -325,3 +325,66 @@ input.mi-title { font: 600 14px var(--mono); }
 @keyframes hg-draw { from { stroke-dashoffset: 1; } }
 @keyframes hg-swing { 0% { stroke-dashoffset: 0; } 50% { stroke-dashoffset: -1; } 50.01% { stroke-dashoffset: 1; } 100% { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { .hgraph path, .hgraph.live path { animation: none; } }
+
+/* A3 · the org as flow-canvas nodes: the card rides inside the kit's tile box */
+.org .fc-canvas { min-height: 380px; }
+.org .fc-tile-box { width: 100%; height: calc(100% - 40px); place-items: stretch; padding: 8px; }
+.org .fc-tile { height: 100%; }
+.org .fc-title { margin-top: 4px; }
+.org .org-card { flex: 1; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px 10px; padding: 6px 8px; cursor: pointer; border: none; background: none; }
+.org .org-hint { display: none; }
+.org-tinker { display: flex; flex-direction: column; gap: 8px; }
+.org-rel { font-size: 11px; }
+.wf-graph { margin: 8px 0; border: 1px solid var(--line); }
+.wf-graph .fc-canvas { height: 320px; }
+.wf-graph-hint { padding: 4px 10px; border-top: 1px solid var(--line); font-size: 11px; }
+.wf-rel { font-size: 11px; }
+.m1-a11y { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.m1-node-glyph { font: 600 12px var(--mono); color: var(--text); }
+.m1-graph { position: relative; }
+.rf-canvas { margin: 8px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.rf-canvas .fc-canvas { height: 360px; }
+.rf-list { display: grid; grid-template-columns: minmax(0, 1fr); padding: 4px 0; }
+.rf-list .rf-tries { position: static; display: grid; align-content: start; }
+/* A3 · the org canvas needs real width: the editor column widens, the canvas
+   spans the stage above the inspector, and the kit sidebar takes the right.
+   Wide only while there is room for both (≥ 901 px); below, the editor stacks
+   above the canvas and the base single-column rule stands. */
+@media (min-width: 1401px) { .team-split { grid-template-columns: minmax(0, 1fr) minmax(860px, 62%); } }
+@media (min-width: 901px) and (max-width: 1400px) { .team-split { grid-template-columns: minmax(0, 1fr) minmax(720px, 70%); } }
+.team-stage > .team-graph { grid-column: 1 / -1; }
+.team-stage { grid-template-columns: minmax(0, 1fr); }
+.rf-canvas .fc-canvas, .wf-graph .fc-canvas, .org .fc-canvas, .m1-graph .fc-canvas { flex: 1 1 0; min-width: 0; }
+.m1-graph .fc-canvas { height: 340px; }
+.rf-canvas .fc-canvas { height: 360px; }
+.wf-graph .fc-canvas { height: 300px; }
+.org .fc-canvas { height: 440px; }
+/* keep my views' wide inputs clear of the floating shortcuts button */
+.team-stage .map-inspector { max-width: 760px; }
+.wf-form { max-width: 1160px; }
+@media (min-width: 1200px) { .ag-memory .ag-body { padding-right: 104px; } }
+/* A3 · phone: grid min-content must not overflow, kit min-height yields */
+.team-stage > *, .org, .m1-graph, .wf-graph, .rf { min-width: 0; }
+@media (max-width: 600px) {
+  .org .fc-canvas { height: 288px; min-height: 0; }
+  .m1-graph .fc-canvas { height: 228px; min-height: 0; }
+  .wf-graph .fc-canvas { height: 150px; min-height: 0; }
+  .rf-canvas .fc-canvas { height: 240px; min-height: 0; }
+  /* keep the panel's last row clear of the statusbar's shortcuts button */
+  .ag-panel { padding-bottom: 48px; }
+  /* these canvases are small and dense: the control cluster and the drawer
+     toggle would sit on top of nodes – zoom and pan stay available by touch,
+     fit and tidy remain on the desktop controls */
+  .org .fc-controls, .m1-graph .fc-controls, .wf-graph .fc-controls, .rf-canvas .fc-controls { display: none; }
+  .org .fc-side-toggle, .m1-graph .fc-side-toggle, .wf-graph .fc-side-toggle, .rf-canvas .fc-side-toggle {
+    top: auto; bottom: 8px; right: 8px;
+  }
+  /* the org's fitted cards reach the bottom-right corner: the toggle goes to
+     the free bottom-left instead */
+  .org .fc-side-toggle { right: auto; left: 8px; }
+  /* the kit's controls column is taller than these short canvases: lay it out
+     as one row along the bottom edge – full-size buttons, the 40 px floor */
+  .org .fc-controls, .m1-graph .fc-controls, .wf-graph .fc-controls, .rf-canvas .fc-controls {
+    flex-direction: row; gap: 0; padding: 0 2px;
+  }
+}

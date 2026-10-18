@@ -16,6 +16,8 @@ import { CHIP, nodeSize, snap, type FlowEdge, type FlowGroup, type FlowNode } fr
 import { nodeTypes } from "./nodes";
 import { Icon } from "../ui";
 
+const EMPTY_GROUPS: FlowGroup[] = [];
+
 export type FlowCanvasProps = {
   nodes: FlowNode[];
   edges: FlowEdge[];
@@ -62,7 +64,7 @@ const toRf = (n: FlowNode, sel: string | null, collapsed: Set<string>, chipIds: 
 };
 
 function FlowCanvasInner(props: FlowCanvasProps) {
-  const { nodes, edges, groups = [], selection, onSelect, layoutKey = "default", ns = "lab", sidebar, onOpen, testId = "flow-canvas" } = props;
+  const { nodes, edges, groups = EMPTY_GROUPS, selection, onSelect, layoutKey = "default", ns = "lab", sidebar, onOpen, testId = "flow-canvas" } = props;
   const rf = useReactFlow();
   const updateInternals = useUpdateNodeInternals();
   const [rfNodes, setRfNodes] = useState<RfNode[]>([]);
@@ -78,6 +80,13 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const sel = selection !== undefined ? selection : internalSel;
+  // The selection rides through layout re-runs: a caller that rebuilds its
+  // nodes array (a poll, an unrelated state tick) must not deselect the node
+  // the user just picked – rebuilt nodes keep the current selection, and
+  // React Flow never sees an empty echo to clear it.
+  const selRef = useRef(sel);
+  selRef.current = sel;
+  const rfSelRef = useRef<string | null>(null);
   const didFit = useRef(false);
   const nodesRef = useRef<RfNode[]>([]);
   const edgesRef = useRef<Edge[]>([]);
@@ -112,7 +121,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       };
       const sorted = [...withDrags].sort((a, b) => depth(a) - depth(b) || (a.pos!.x - b.pos!.x) || (a.pos!.y - b.pos!.y));
       const FIRST = 400;
-      setRfNodes(sorted.slice(0, FIRST).map((n) => toRf(n, null, new Set(), new Set())));
+      setRfNodes(sorted.slice(0, FIRST).map((n) => toRf(n, selRef.current, new Set(), new Set())));
       didFit.current = true;
       // Hydrate the rest in small chunks (no 600 ms long task), then fit.
       let done = FIRST;
@@ -134,7 +143,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
           rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 });
           return;
         }
-        setRfNodes((prev) => prev.concat(sorted.slice(done, done + CHUNK).map((n) => toRf(n, null, new Set(), new Set()))));
+        setRfNodes((prev) => prev.concat(sorted.slice(done, done + CHUNK).map((n) => toRf(n, selRef.current, new Set(), new Set()))));
         done += CHUNK;
         window.setTimeout(step, 50);
       };
@@ -319,9 +328,17 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             onNodeMouseEnter={(_, n) => setHovered(n.id)}
             onNodeMouseLeave={() => setHovered(null)}
             onSelectionChange={(objs) => {
-              const first = objs.nodes[0];
-              if (first && first.id !== sel) select(first.id);
-              if (!objs.nodes.length && sel) select(null);
+              // Only forward additions: React Flow fires an empty selection
+              // echo while the controlled selection syncs (and when it clears
+              // its internal set on a re-render). Forwarding that echo would
+              // clear a selection the app just set programmatically; user
+              // clearing is onPaneClick and the Escape handler, not here.
+              // Forward only a change in React Flow's own selection, so a late
+              // echo of a node Escape just cleared cannot re-select it.
+              const id = objs.nodes[0]?.id ?? null;
+              const prev = rfSelRef.current;
+              rfSelRef.current = id;
+              if (id && id !== prev && id !== sel) select(id);
             }}
             onNodeDragStop={(_, n, nodes2) => {
               const rfNodesNow = rf.getNodes() as unknown as RfNode[];
@@ -364,7 +381,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
           )}
         </div>
         {sidebar && (
-          <aside className={`fc-side${sideOpen ? " fc-side-open" : ""}`} data-testid="fc-sidebar">{sidebar}</aside>
+          <aside className={`fc-side fc-sidebar${sideOpen ? " fc-side-open" : ""}`} data-testid="fc-sidebar">{sidebar}</aside>
         )}
       </div>
     </FcCtx.Provider>
