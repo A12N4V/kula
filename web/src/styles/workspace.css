@@ -112,6 +112,9 @@
 .ws-viewrow { display: flex; flex-wrap: wrap; gap: 4px; }
 @media (prefers-reduced-motion: reduce) { .ws-viewpop { animation: none; } }
 
-.ws-chev { display: inline-flex; vertical-align: middle; transform: rotate(90deg); transition: transform 150ms var(--ease); }
-.ws-chev.up { transform: rotate(-90deg); }
+.ws-chev { display: inline-flex; vertical-align: middle; transform: rotate(-90deg); transition: transform 150ms var(--ease); }
+.ws-chev.up { transform: rotate(90deg); }
 .ws-chev svg { width: 12px; height: 12px; }
+
+/* While a template is dragged the menu fades and lets the canvas take the drop. */
+.ws-pop.ws-dragging { opacity: .2; pointer-events: none; transition: opacity 80ms var(--ease); }

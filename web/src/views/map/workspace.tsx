@@ -139,6 +139,7 @@ const KINDS: { id: Template["kind"]; label: string; hint: string }[] = [
     deploys onto the selected section. */
 export function AgentMenu({ info, onPick, canClick }: { info: AgentsInfo | null; onPick: (t: Template) => void; canClick: boolean }) {
   const [open, setOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [kind, setKind] = useState<Template["kind"]>("agent");
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -169,7 +170,7 @@ export function AgentMenu({ info, onPick, canClick }: { info: AgentsInfo | null;
       <button className={`btn sm primary ws-add${open ? " on" : ""}`} data-testid="ws-add-agent" aria-haspopup="menu" aria-expanded={open}
         onClick={() => setOpen((o) => !o)}>+ Agent</button>
       {open && (
-        <div className="ws-pop" role="menu" aria-label="Agent templates" data-testid="ws-agent-menu"
+        <div className={`ws-pop${dragging ? " ws-dragging" : ""}`} role="menu" aria-label="Agent templates" data-testid="ws-agent-menu"
           style={size ? { width: size.w, height: size.h } : undefined}>
           <div className="ws-pop-in" ref={inner}>
             <div className="ws-kinds" role="tablist" aria-label="Kind">
@@ -188,7 +189,8 @@ export function AgentMenu({ info, onPick, canClick }: { info: AgentsInfo | null;
               {!list.length && <div className="ws-empty">{kind === "crew" ? "No teams yet – define one in kula.toml or the Teams editor." : kind === "loop" ? "No research workflows yet." : "No workflows."}</div>}
               {list.map((t, i) => (
                 <button key={t.id} role="menuitem" className="ws-tpl" style={{ animationDelay: `${i * 25}ms` }} draggable data-testid={`ws-tpl-${t.id}`}
-                  onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(t)); e.dataTransfer.effectAllowed = "copy"; window.setTimeout(() => setOpen(false), 0); }}
+                  onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(t)); e.dataTransfer.effectAllowed = "copy"; window.setTimeout(() => setDragging(true), 0); }}
+                  onDragEnd={() => { setDragging(false); setOpen(false); }}
                   onClick={() => { onPick(t); setOpen(false); }}>
                   <span className="ws-tpl-name">{t.name}</span>
                   <span className="ws-tpl-about">{t.about || (t.kind === "loop" ? `metric: ${t.metric}` : "")}</span>
