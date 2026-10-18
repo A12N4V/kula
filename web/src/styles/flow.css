@@ -222,8 +222,8 @@ html[data-rm="1"] .fc-dot { transition: none; }
 /* "+" stub as a button. */
 .fc-stub-btn { cursor: pointer; background: var(--bg-2); font: inherit; pointer-events: all; }
 /* Connectable handles grow on hover like n8n's. */
-.fc-dot-out, .fc-dot-in { width: 12px !important; height: 12px !important; background: var(--bg-2) !important; border: 2px solid var(--text-3) !important; cursor: crosshair; transition: transform .12s, border-color .12s; }
-.fc-dot-out:hover, .fc-dot-in:hover, .react-flow__handle.connectingto { transform: scale(1.35); border-color: var(--accent) !important; }
+.fc-dot-out, .fc-dot-in { width: 12px !important; height: 12px !important; background: var(--bg-2) !important; border: 2px solid var(--text-3) !important; cursor: crosshair; transition: background .12s, border-color .12s; }
+.fc-dot-out:hover, .fc-dot-in:hover, .react-flow__handle.connectingto { background: var(--accent) !important; border-color: var(--accent) !important; }
 .react-flow__handle.valid { border-color: var(--green) !important; }
 /* Sticky notes. */
 .fc-sticky { border-radius: 8px; padding: 10px 12px; background: color-mix(in srgb, var(--fc-role) 18%, var(--bg)); border: 1px solid color-mix(in srgb, var(--fc-role) 45%, transparent); overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
