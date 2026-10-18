@@ -56,12 +56,13 @@ const TileNode = memo(({ data, selected, id }: NodeProps & { data: FcData }) => 
   const w = data.size?.w ?? TILE.w;
   const h = data.size?.h ?? TILE.h;
   return (
-    <div className={`fc-node fc-tile${data.entry ? " fc-entry" : ""}${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}`} style={{ width: w, height: h }} data-testid={`fc-node-${id}`}>
+    <div className={`fc-node fc-tile${data.ring ? ` fc-ring-${data.ring}` : ""}${data.entry ? " fc-entry" : ""}${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}`} style={{ width: w, height: h }} data-testid={`fc-node-${id}`}>
       <TBar id={id ?? data.id} data={data} />
       <div className="fc-tile-box" style={{ ["--fc-role" as string]: data.color }}>
         <Glyph icon={data.icon} size={32} />
         {data.status && <span className={`fc-status fc-st-${STATUS_MARK[data.status] ?? data.status}`} title={data.status} />}
       </div>
+      {data.badge && <span className="fc-badge">{data.badge}</span>}
       <div className="fc-title">{data.title}</div>
       {data.subtitle && <div className="fc-sub">{data.subtitle}</div>}
       <Handles data={data} nodeW={w} nodeH={h} />
@@ -75,7 +76,7 @@ const WideNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
   const w = data.size?.w ?? WIDE.w;
   const h = data.size?.h ?? WIDE.h;
   return (
-    <div className={`fc-node fc-wide${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}`} style={{ width: w, height: h }} data-testid={`fc-node-${data.id}`}>
+    <div className={`fc-node fc-wide${data.ring ? ` fc-ring-${data.ring}` : ""}${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}`} style={{ width: w, height: h }} data-testid={`fc-node-${data.id}`}>
       <TBar id={data.id} data={data} />
       <div className="fc-wide-in" style={{ ["--fc-role" as string]: data.color }}>
         <Glyph icon={data.icon} size={24} />
@@ -85,6 +86,7 @@ const WideNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
         </div>
         {data.status && <span className={`fc-status fc-st-${STATUS_MARK[data.status] ?? data.status}`} title={data.status} />}
       </div>
+      {data.badge && <span className="fc-badge">{data.badge}</span>}
       <Handles data={data} nodeW={w} nodeH={h} />
       {data.noOut && <span className="fc-stub" title="No outgoing step">+</span>}
     </div>

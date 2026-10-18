@@ -243,11 +243,11 @@ export async function layout(nodes: FlowNode[], edges: FlowEdge[], groups: FlowG
   const hash = dataHash(nodes, edges);
   const key = `${cacheKey}:${hash}`;
   const hit = cache.get(key);
-  if (hit) return { ...hit, nodes: rebasePinned(hit.nodes, nodes) };
+  if (hit) return { ...hit, nodes: refreshLook(rebasePinned(hit.nodes, nodes), nodes) };
   // Two identical calls in the same tick (React StrictMode double effect) must
   // not both pay the worker – share the in-flight job.
   const inflightHit = inflight.get(key);
-  if (inflightHit) return inflightHit.then((r) => ({ ...r, nodes: rebasePinned(r.nodes, nodes) }));
+  if (inflightHit) return inflightHit.then((r) => ({ ...r, nodes: refreshLook(rebasePinned(r.nodes, nodes), nodes) }));
   const preset = nodes.some((n) => !n.sub) && nodes.every((n) => n.sub || n.pos);
   const job: Job = { nodes: nodes.map((n) => ({ ...n, pos: preset && !n.sub ? n.pos : undefined })), edges, groups };
   const run = async (): Promise<LaidOut> => {
@@ -289,6 +289,21 @@ export async function layout(nodes: FlowNode[], edges: FlowEdge[], groups: FlowG
 }
 
 /** Caller-pinned positions survive a cached (or fresh) layout. */
+/** Layout is cached by structure (ids, kinds, edges); a node's look – title,
+    dim, ring, badge, toolbar, status – can change without a re-layout, so the
+    caller's current data is laid over the cached positions. */
+const LOOK: (keyof FlowNode)[] = ["title", "subtitle", "icon", "color", "status", "entry", "noOut", "hasSub", "toolbar", "dim", "ring", "badge"];
+function refreshLook(laid: FlowNode[], current: FlowNode[]): FlowNode[] {
+  const cur = new Map(current.map((n) => [n.id, n]));
+  return laid.map((n) => {
+    const c = cur.get(n.id);
+    if (!c) return n;
+    const out = { ...n } as Record<string, unknown>;
+    for (const k of LOOK) out[k] = c[k];
+    return out as FlowNode;
+  });
+}
+
 function rebasePinned(laid: FlowNode[], original: FlowNode[]): FlowNode[] {
   const pinned = new Map(original.filter((n) => n.pos).map((n) => [n.id, n.pos!]));
   if (!pinned.size) return laid;

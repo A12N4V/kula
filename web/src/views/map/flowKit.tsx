@@ -14,6 +14,7 @@ import type { Block, MapData, Role } from "./types";
 import { capabilities } from "./lenses";
 import type { Focus } from "./chainFocus";
 import { Icon } from "../../ui";
+import type { Marks } from "./workspace";
 
 /** No block ever mounts all its functions: this frame caps the expansion. */
 export const FN_CAP = 40;
@@ -36,6 +37,8 @@ type Props = {
   onToggleExpand?: (id: string) => void;
   /** Clear every expansion (the collapse tinker). */
   onClearExpand?: () => void;
+  /** Workspace overlays per section: agent fence, changes, drop target. */
+  marks?: Marks;
 };
 
 const title = (b: Block) => b.theme || b.name;
@@ -137,7 +140,7 @@ function fnIcon(kind: string) {
 /** The flow lens on the kit canvas. Selection is single-writer (the kit):
     function circles and "+ more" chips are intercepted here and never
     become the block selection; everything else maps to the block id. */
-export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, expanded: expandedProp, onToggleExpand, onClearExpand }: Props) {
+export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, expanded: expandedProp, onToggleExpand, onClearExpand, marks }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   const [expandedState, setExpanded] = useState<Set<string>>(() => new Set());
   const expanded = expandedProp ?? expandedState;
@@ -211,6 +214,16 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     return subs;
   };
 
+  // Overlay marks → ring and badge (a section's mark also rings its blocks).
+  const markOf = (secId: string, first: boolean): Partial<FlowNode> => {
+    const mk = marks?.[secId];
+    if (!mk) return {};
+    const ring = mk.drop ? "drop" : mk.fence ? "fence" : mk.changed ? "hot" : undefined;
+    const badge = first && (mk.agent || mk.changed)
+      ? <span className={`fc-badge-in${mk.agent ? " agent" : ""}`} data-testid={`ws-badge-${secId}`}>{mk.agent ?? ""}{mk.changed ? <span className="fc-badge-n">{mk.changed}</span> : null}</span>
+      : undefined;
+    return { ring, badge };
+  };
   // The view owns the layout (the kit's preset mode): one column per
   // pipeline layer, left to right, shared utilities last. A closed section
   // is one coloured wide node; an open one is a frame with its blocks in a
@@ -237,6 +250,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
           subtitle: kids.length ? `${kids.length} blocks · ${s.summary || s.name}` : (s.summary || undefined),
           toolbar: kids.length ? secTool(id, false) : expandTool(s, expanded.has(s.id)),
           pos: { x, y },
+          ...markOf(id, true),
         });
         fnNodes.push(...fnSubs(s));
         repOf.set(id, s.id);
@@ -246,7 +260,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
       const cols = Math.min(3, Math.ceil(Math.sqrt(kids.length)));
       kids.forEach((k, i) => {
         const r = Math.floor(i / cols), c = i % cols;
-        nodes.push({ ...blockNode(k), pos: { x: x + c * CELL_W, y: y + HEAD + r * CELL_H } });
+        nodes.push({ ...blockNode(k), pos: { x: x + c * CELL_W, y: y + HEAD + r * CELL_H }, ...markOf(id, i === 0) });
         fnNodes.push(...fnSubs(k));
       });
       groups.push({ id: secId(s), label: title(s), members: kids.map((k) => k.id) });
@@ -282,7 +296,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   }
     return { nodes, edges, groups };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, roles, focus, depth, expanded, openSecs]);
+  }, [data, roles, focus, depth, expanded, openSecs, marks]);
 
   // Intercepted selections: function circles open the code panel, "+ more"
   // chips toggle the expansion – neither becomes the block selection.

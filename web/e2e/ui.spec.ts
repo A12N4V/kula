@@ -1808,9 +1808,17 @@ test.describe("isolate from the map", () => {
   });
 });
 
+/** Secondary map controls live in the View ▾ menu; open it (idempotent). */
+async function openView(page: Page) {
+  const pop = page.locator("[data-testid=map-view-pop]");
+  if (!(await pop.isVisible())) await page.locator("[data-testid=map-view-menu]").click();
+  await expect(pop).toBeVisible();
+}
+
 /** The map opens with every section collapsed to one node; tests that need
     block tiles inside frames open them all first. */
 async function openAllSections(page: Page) {
+  await openView(page);
   const btn = page.locator("[data-testid=map-depth]");
   if ((await btn.textContent())?.includes("open all")) await btn.click();
   await expect(btn).toHaveText("close all");
@@ -1833,7 +1841,8 @@ test.describe("map", () => {
     await chainsList(page);
     await expect(page.locator(".sy-family").first()).toBeVisible();
     await expect(page.locator("[data-testid=map-stats-table]")).toContainText("families");
-    // the lens bar is in: Functions / Utilities / All, plus the roles legend
+    // the lens filters (Functions / Utilities / All) live in the View menu
+    await openView(page);
     await expect(page.locator("[data-testid=map-lens-functions]")).toBeVisible();
     await expect(page.locator("[data-testid=map-lens-utilities]")).toBeVisible();
     await expect(page.locator("[data-testid=map-lens-all]")).toBeVisible();
@@ -2014,18 +2023,18 @@ test.describe("map", () => {
     // Utilities: only families whose ends carry a utilities-lens role – the
     // glyph shows the family's source role, so on live data model ("m") and
     // config ("k") sources appear beside utility ("u") ones
-    await page.locator("[data-testid=map-lens-utilities]").click();
+    await openView(page); await page.locator("[data-testid=map-lens-utilities]").click();
     const glyphs = await page.locator(".sy-family .sy-role").allTextContents();
     expect(glyphs.length).toBeGreaterThan(0);
     expect(glyphs.every((g) => ["u", "m", "k"].includes(g))).toBe(true);
     // the role legend explains each role's one-line rule
-    await page.locator("[data-testid=map-roles-btn]").click();
+    await openView(page); await page.locator("[data-testid=map-roles-btn]").click();
     for (const role of ["entry", "orchestrator", "core", "utility", "adapter", "model", "config", "test", "glue"]) {
       await expect(page.locator(`[data-testid=map-role-${role}]`)).toBeVisible();
     }
     await expect(page.locator(".sy-role-rule", { hasText: "high fan-in from ≥ 3 distinct blocks" })).toBeVisible();
     // back to All: the full list returns – non-utility entries are visible again
-    await page.locator("[data-testid=map-lens-all]").click();
+    await openView(page); await page.locator("[data-testid=map-lens-all]").click();
     const allGlyphs = await page.locator(".sy-family .sy-role").allTextContents();
     // (no count comparison: the list is windowed, so rendered rows ≠ matches)
     expect(allGlyphs.some((g) => g !== "u")).toBe(true);
@@ -2037,7 +2046,7 @@ test.describe("map", () => {
     // count only after the data has landed, so `all` is not 0
     await expect(page.locator(".sy-family").first()).toBeVisible();
     const all = await page.locator(".sy-family").count();
-    await page.locator("[data-testid=map-roles-btn]").click();
+    await openView(page); await page.locator("[data-testid=map-roles-btn]").click();
     await page.locator("[data-testid=map-role-test]").click();
     const fewer = await page.locator(".sy-family").count();
     expect(fewer).toBeLessThanOrEqual(all);
@@ -2155,11 +2164,11 @@ test.describe("map", () => {
     // the tinker rail: pin, hide tests, re-layout. Pin first: the role
     // toggles and a re-layout replace the node objects and React Flow's
     // selection echo clears the selection
-    await page.locator("[data-testid=map-pin]").click();
+    await openView(page); await page.locator("[data-testid=map-pin]").click();
     await expect(page.locator("[data-testid=map-pin]")).toHaveAttribute("aria-pressed", "true");
-    await page.locator("[data-testid=map-hide-tests]").click();
+    await openView(page); await page.locator("[data-testid=map-hide-tests]").click();
     await expect(page.locator("[data-testid=map-hide-tests]")).toHaveAttribute("aria-pressed", "true");
-    await page.locator("[data-testid=map-relayout]").click();
+    await openView(page); await page.locator("[data-testid=map-relayout]").click();
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
 
@@ -2171,7 +2180,7 @@ test.describe("map", () => {
     expect(await page.locator("[data-testid^='fc-node-fn:']").count()).toBe(0);
     // the tinker bar expands the selected block (canvas hover toolbars can
     // sit under the lens bar for nodes near the canvas top)
-    await page.locator("[data-testid=map-expand]").click();
+    await openView(page); await page.locator("[data-testid=map-expand]").click();
     // expanded: up to 40 function circles hang below the block, one per function
     const fns = page.locator("[data-testid^='fc-node-fn:']");
     await expect(fns.first()).toBeVisible();
@@ -2185,16 +2194,58 @@ test.describe("map", () => {
     await expect(page).toHaveURL(/#map/);
   });
 
+  // – Workspace: agents deployed onto the map –
+  test("workspace modes switch the sidebar; + Agent opens the template megamenu with kinds", async ({ page }) => {
+    await open(page, "map");
+    await expect(page.locator("[data-testid=ws-mode-explore]")).toHaveAttribute("aria-selected", "true");
+    await page.locator("[data-testid=ws-add-agent]").click();
+    const menu = page.locator("[data-testid=ws-agent-menu]");
+    await expect(menu).toBeVisible();
+    await expect(page.locator("[data-testid='ws-tpl-wf:fix']")).toBeVisible();
+    await page.locator("[data-testid=ws-kind-crew]").click();
+    await expect(page.locator("[data-testid=ws-kind-crew]")).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await page.locator("[data-testid=ws-mode-review]").click();
+    await expect(page.locator("[data-testid=ws-review]")).toBeVisible();
+    await page.locator("[data-testid=ws-mode-run]").click();
+    await expect(page.locator("[data-testid=ws-run]")).toBeVisible();
+  });
+
+  test("deploying from the map: pick a template, click a section, Start sends task_start fenced to its files", async ({ page }) => {
+    let body: { title?: string; scope?: string[]; workflow?: string } | null = null;
+    await page.route("**/api/agents/task_start", async (r) => { body = r.request().postDataJSON(); await r.fulfill({ status: 200, contentType: "application/json", body: "{}" }); });
+    await open(page, "map");
+    await page.locator("[data-testid=ws-add-agent]").click();
+    await page.locator("[data-testid='ws-tpl-wf:fix']").click();
+    await expect(page.locator("[data-testid=ws-pending]")).toBeVisible();
+    await expect(page.locator("[data-testid=ws-mode-build]")).toHaveAttribute("aria-selected", "true");
+    // the first section node on the canvas becomes the target
+    await page.locator(".fc-wide").first().dispatchEvent("click");
+    const card = page.locator("[data-testid=ws-deploy]");
+    await expect(card).toBeVisible();
+    await page.locator("[data-testid=ws-fence-files]").click();
+    await expect(card.locator(".ws-files li").first()).toBeVisible();
+    await page.locator("[data-testid=ws-task-title]").fill("tighten the parser");
+    await page.locator("[data-testid=ws-start]").click();
+    await expect.poll(() => body?.title).toBe("tighten the parser");
+    expect(body!.workflow).toBe("fix");
+    expect(body!.scope!.length).toBeGreaterThan(0);
+    // after Start the workspace switches to Run
+    await expect(page.locator("[data-testid=ws-mode-run]")).toHaveAttribute("aria-selected", "true");
+  });
+
   test("sections start collapsed; open all shows their blocks in frames, close all folds them back", async ({ page }) => {
     await open(page, "map");
     // default: one coloured wide node per section, no frames – detail is a click away
+    await openView(page);
     await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
     await expect(page.locator("[data-testid^='fc-node-sec:']")).toHaveCount(0);
     await expect(page.locator(".fc-wide-title").first()).toBeVisible();
     await openAllSections(page);
     await expect(page.locator("[data-testid^='fc-node-sec:']").first()).toBeVisible();
     await expect(page.locator(".fc-tile").first()).toBeVisible();
-    await page.locator("[data-testid=map-depth]").click();
+    await openView(page); await page.locator("[data-testid=map-depth]").click();
     await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
     await expect(page.locator("[data-testid^='fc-node-sec:']")).toHaveCount(0);
   });
@@ -2326,7 +2377,7 @@ test.describe("map", () => {
     // drag a node and the position persists to localStorage. Drags inside
     // group frames are not persisted (kit limitation) – drag at depth 1,
     // where every section is one unparented wide node.
-    await page.locator("[data-testid=map-depth]").click();
+    await openView(page); await page.locator("[data-testid=map-depth]").click();
     await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
     const wide = page.locator(".fc-wide").first();
     await wide.hover();

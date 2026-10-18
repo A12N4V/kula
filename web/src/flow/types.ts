@@ -34,6 +34,10 @@ export type FlowNode = {
   pos?: { x: number; y: number };
   /** Dimmed while another selection is focused. */
   dim?: boolean;
+  /** Overlay ring: an agent's fence, changed files, or a live drop target. */
+  ring?: "fence" | "hot" | "drop";
+  /** Small corner badge (an agent widget, a change count). */
+  badge?: ReactNode;
 };
 
 export type FlowEdge = {
