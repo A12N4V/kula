@@ -21,7 +21,10 @@ import { FlowKitView, CapsKitView } from "./map/flowKit";
 import { ChainsStrips } from "./map/caps";
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf } from "./map/chainFocus";
-import { AgentMenu, DeployCard, MODES, ReviewPanel, RunPanel, droppedTemplate, isTemplateDrag, sectionAtPoint, sectionOf, useLive, useMarks, type Mode, type Template } from "./map/workspace";
+import { Library, ReviewPanel, RunPanel, sectionAtPoint, sectionOf, useLive, useMarks } from "./map/workspace";
+import { NodePanel, PipelinePanel, droppedItem, isItemDrag, usePipeline, useRunner, type Item } from "./map/pipeline";
+import { SCHEMES, type Scheme } from "./map/flowKit";
+import type { Go } from "../nav";
 import type { Chain, ChainPage, Lens, MapData, MapProgress, Role } from "./map/types";
 import { LENS_ROLES, ROLES, ROLE_RULES } from "./map/types";
 
@@ -33,7 +36,13 @@ const PROGRESS_LABEL: Record<string, string> = {
 const PHASES = ["load", "graph", "similarity", "map", "done"];
 
 // The view owns its own sidebar visibility on phones (390 px): a drawer.
-export default function MapView({ block }: { openSymbol?: (id: number) => void; version?: number; block?: string }) {
+type Tab = "inspect" | "pipeline" | "live" | "changes" | "library";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "inspect", label: "Inspect" }, { id: "pipeline", label: "Pipeline" }, { id: "live", label: "Live" },
+  { id: "changes", label: "Changes" }, { id: "library", label: "Library" },
+];
+
+export default function MapView({ block, go }: { openSymbol?: (id: number) => void; version?: number; block?: string; go?: Go }) {
   const [data, setData] = useState<MapData | null>(null);
   const [prog, setProg] = useState<MapProgress | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -67,12 +76,19 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
     });
   }, []);
   const code = useCode();
-  // Workspace: one canvas for code and agents (Explore · Build · Run · Review).
-  const [mode, setMode] = useState<Mode>("explore");
-  const [draft, setDraft] = useState<{ tpl: Template; section: string } | null>(null);
-  const [pendingTpl, setPendingTpl] = useState<Template | null>(null);
+  // Workspace: one canvas for code and agents. The sidebar's tabs manage and
+  // inform; the canvas holds the code and the pipeline that acts on it.
+  const [tab, setTab] = useState<Tab>("inspect");
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [panel, setPanel] = useState(false);
+  const [scheme, setScheme] = useState<Scheme>(() => { try { return (localStorage.getItem("kula.map.scheme") as Scheme) || "role"; } catch { return "role"; } });
+  useEffect(() => { try { localStorage.setItem("kula.map.scheme", scheme); } catch { /* private */ } }, [scheme]);
+  const [viewSec, setViewSec] = useState<string>("show");
   const ws = useLive(true);
+  const pipe = usePipeline("map");
+  const runner = useRunner(data, pipe, ws.reload);
+  const waiting = pipe.steps.find((x) => x.status === "waiting");
+  const selStep = selBlock?.startsWith("step:") ? selBlock.slice(5) : null;
   const [viewOpen, setViewOpen] = useState(false);
   const viewRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -263,21 +279,19 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
     else if (pinned) setPinned(null);
   }, [data, pinned]);
 
-  const marks = useMarks(data, mode, ws.info, ws.files, dropTarget);
-  // A template picked with no section selected waits for the next selection.
-  useEffect(() => {
-    if (!pendingTpl || !selBlock || !data) return;
-    const sec = sectionOf(data, selBlock) ?? selBlock;
-    setDraft({ tpl: pendingTpl, section: sec });
-    setPendingTpl(null);
-  }, [pendingTpl, selBlock, data]);
-  const pick = (t: Template) => {
-    setMode("build");
-    if (data && selBlock) setDraft({ tpl: t, section: sectionOf(data, selBlock) ?? selBlock });
-    else { setDraft(null); setPendingTpl(t); }
+  const marks = useMarks(data, "review", ws.info, ws.files, dropTarget);
+  const sections = useMemo(() => data ? Object.values(data.blocks).filter((b) => b.depth === 0 && b.parent !== null).map((b) => b.id) : [], [data]);
+  // A palette click adds the block on the selected section (or at the end).
+  // The section a click-added block lands on: the last section selected (a
+  // selected block stays the target while the new blocks take the selection).
+  const [lastSec, setLastSec] = useState<string | null>(null);
+  useEffect(() => { if (data && selBlock && !selStep && data.blocks[selBlock]) setLastSec(sectionOf(data, selBlock) ?? selBlock); }, [data, selBlock, selStep]);
+  const pick = (it: Item) => {
+    const id = pipe.add(it, it.kind === "agent" || it.kind === "crew" ? lastSec : null);
+    setSelBlock(`step:${id}`); setTab("pipeline");
   };
   const onCanvasDragOver = (e: React.DragEvent) => {
-    if (!data || !isTemplateDrag(e)) return;
+    if (!data || !isItemDrag(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     const sec = sectionAtPoint(data, e.clientX, e.clientY);
@@ -285,15 +299,31 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
   };
   const onCanvasDrop = (e: React.DragEvent) => {
     if (!data) return;
-    const t = droppedTemplate(e);
+    const it = droppedItem(e);
     const sec = sectionAtPoint(data, e.clientX, e.clientY);
     setDropTarget(null);
-    if (!t) return;
+    if (!it) return;
     e.preventDefault();
-    setMode("build");
-    if (sec) { setSelBlock(sec); setDraft({ tpl: t, section: sec }); setPendingTpl(null); }
-    else setPendingTpl(t);
+    const id = pipe.add(it, sec);
+    setSelBlock(`step:${id}`); setTab("pipeline");
   };
+  // Tab opens the block panel (n8n), ctrl/⌘+Enter runs the pipeline.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest?.("input, textarea, select, [role=dialog]")) return;
+      // Tab only from the canvas or the page itself – keyboard focus order elsewhere stays intact.
+      const onCanvas = e.target === document.body || !!(e.target as HTMLElement)?.closest?.(".react-flow");
+      if (e.key === "Tab" && onCanvas && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); setPanel((p) => !p); }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void runner.run(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [runner]);
+  useEffect(() => { if (selStep) setTab("pipeline"); }, [selStep]);
+  const onStepTool = useCallback((id: string, a: "done" | "remove") => {
+    if (a === "done") runner.markDone(id);
+    else { pipe.remove(id); setSelBlock((b) => (b === `step:${id}` ? null : b)); }
+  }, [runner, pipe]);
 
   if (!data) {
     if (prog?.running) {
@@ -328,13 +358,7 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
   return (
     <div className="sy-root" ref={rootRef} data-testid="map-view">
       <div className="sy-lens" data-testid="map-lens" role="toolbar" aria-label="Lens and role filter">
-        <div className="ws-modes" role="tablist" aria-label="Workspace mode" data-testid="ws-modes">
-          {MODES.map((m) => (
-            <button key={m.id} role="tab" aria-selected={mode === m.id} title={m.hint} data-testid={`ws-mode-${m.id}`}
-              className={`ws-mode${mode === m.id ? " on" : ""}`} onClick={() => setMode(m.id)}>{m.label}</button>
-          ))}
-        </div>
-        <AgentMenu info={ws.info} onPick={pick} canClick={!!selBlock} />
+        <button className={`btn sm primary ws-add${panel ? " on" : ""}`} data-testid="ws-add" aria-expanded={panel} title="Add a block  Tab" onClick={() => setPanel((p) => !p)}><Icon.plus /> Add block</button>
         <div className="sy-lens-group" role="group" aria-label="View">
           {(["flow", "capabilities", "blocks", "chains"] as const).map((v) => (
             <button key={v} className={`tab-btn sy-lens-btn${view === v ? " on" : ""}`} data-testid={`map-view-${v}`}
@@ -345,29 +369,40 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
           <button className={`tab-btn sy-lens-btn${viewOpen ? " on" : ""}`} data-testid="map-view-menu" aria-haspopup="true" aria-expanded={viewOpen}
             onClick={() => setViewOpen((o) => !o)}>View <span className={`ws-chev${viewOpen ? " up" : ""}`} aria-hidden="true"><Icon.chevron /></span></button>
           {viewOpen && (
-            <div className="ws-viewpop" role="group" aria-label="View options" data-testid="map-view-pop">
-              <div className="ws-viewsec"><span className="ws-eyebrow">Show</span>
+            <div className="ws-viewpop dd" role="group" aria-label="View options" data-testid="map-view-pop">
+              <Disclosure id="show" label="Show" hint={lens} open={viewSec} setOpen={setViewSec}>
                 <div className="sy-lens-group">
-          {(["functions", "utilities", "all"] as Lens[]).map((l) => (
-            <button key={l} className={`tab-btn sy-lens-btn${lens === l ? " on" : ""}`} data-testid={`map-lens-${l}`}
-              aria-pressed={lens === l} onClick={() => setLens(l)}>{l}</button>
-          ))}
-        </div>
-              </div>
-              <div className="ws-viewsec"><span className="ws-eyebrow">Canvas</span><div className="ws-viewrow">
+                  {(["functions", "utilities", "all"] as Lens[]).map((l) => (
+                    <button key={l} className={`tab-btn sy-lens-btn${lens === l ? " on" : ""}`} data-testid={`map-lens-${l}`}
+                      aria-pressed={lens === l} onClick={() => setLens(l)}>{l}</button>
+                  ))}
+                </div>
+                <button className={`dd-row${hideTests ? " on" : ""}`} data-testid="map-hide-tests" aria-pressed={hideTests} onClick={() => setHideTests((t) => !t)}>
+                  <span className={`dd-check${hideTests ? " on" : ""}`} />hide tests</button>
+                <button className={`dd-row${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter" onClick={() => setRolesOpen((o) => !o)}>
+                  <span className={`dd-check${rolesOpen ? " on" : ""}`} />roles filter</button>
+              </Disclosure>
+              <Disclosure id="colour" label="Colours" hint={SCHEMES.find((x) => x.id === scheme)?.label ?? ""} open={viewSec} setOpen={setViewSec}>
+                <div className="dd-swatches">
+                  {SCHEMES.map((c) => (
+                    <button key={c.id} className={`dd-swatch${scheme === c.id ? " on" : ""}`} data-testid={`map-scheme-${c.id}`} aria-pressed={scheme === c.id} onClick={() => setScheme(c.id)} title={c.hint}>
+                      <span className={`dd-chip dd-chip-${c.id}`} /><span>{c.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </Disclosure>
+              <Disclosure id="canvas" label="Layout" hint={depth === 2 ? "open" : "sections"} open={viewSec} setOpen={setViewSec}>
+                <div className="ws-viewrow">
         <button className="tab-btn sy-lens-btn" data-testid="map-expand" title="expand the selected block's functions under its node"
-          disabled={!selBlock} onClick={() => selBlock && toggleExpand(selBlock)}>expand</button>
+          disabled={!selBlock || !!selStep} onClick={() => selBlock && toggleExpand(selBlock)}>expand</button>
         <button className="tab-btn sy-lens-btn" data-testid="map-depth" title="grouping depth: sections as single nodes, or their blocks inside the frames"
           onClick={() => setDepth((d) => (d === 2 ? 1 : 2))}>{depth === 2 ? "close all" : "open all"}</button>
-        <button className={`tab-btn sy-lens-btn${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn"
-          aria-expanded={rolesOpen} aria-controls="map-role-filter" onClick={() => setRolesOpen((o) => !o)}>roles</button>
-        <button className={`tab-btn sy-lens-btn${hideTests ? " on" : ""}`} data-testid="map-hide-tests" aria-pressed={hideTests}
-          onClick={() => setHideTests((t) => !t)}>hide tests</button>
         <button className="tab-btn sy-lens-btn" data-testid="map-relayout" title="re-run the layout"
           onClick={() => setLayoutKey((k) => k + 1)}>re-layout</button>
         <button className={`tab-btn sy-lens-btn${selBlock && pinned === selBlock ? " on" : ""}`} data-testid="map-pin" aria-pressed={!!selBlock && pinned === selBlock} title="pin this selection"
           onClick={() => setPinned((p) => (selBlock && p !== selBlock ? selBlock : null))}>pin</button>
-              </div></div>
+                </div>
+              </Disclosure>
             </div>
           )}
         </div>
@@ -391,7 +426,16 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
           onFile={(p) => code.open({ path: p, name: p.split("/").pop() })} />}
         {view === "chains" && <ChainsStrips data={data} roles={roles} onChain={selectChain} selChain={selChain?.id ?? null} loadChains={loadChains} onLeaf={selectLeaf} />}
         {view === "flow" && (!chain || focusMode) && !path.length
-          ? <div className="ws-drop" onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={marks} data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} depth={depth} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} expanded={expanded} onToggleExpand={toggleExpand} onClearExpand={() => setExpanded(new Set())} /></div>
+          ? <div className="ws-drop" onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={marks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} depth={depth} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} expanded={expanded} onToggleExpand={toggleExpand} onClearExpand={() => setExpanded(new Set())} />
+            <NodePanel info={ws.info} open={panel} onClose={() => setPanel(false)} onPick={pick} hasSel={!!lastSec} />
+            <div className="ws-runbar" data-testid="ws-runbar">
+              {runner.running && waiting && <button className="btn ws-run" onClick={() => runner.markDone(waiting.id)} data-testid="ws-done" title="The agent finished – hand on to the next block">{waiting.name}: done</button>}
+              {runner.running
+                ? <button className="btn ws-run stop" onClick={runner.stop} data-testid="ws-stop"><span className="ws-run-sq" />Stop</button>
+                : <button className="btn primary ws-run" onClick={() => void runner.run()} data-testid="ws-run-btn" title="Run the pipeline  ⌘↵"><Icon.play />Run pipeline</button>}
+              <span className="ws-run-meta">{pipe.steps.length ? `${pipe.steps.length} blocks` : "empty – Tab to add"}</span>
+            </div>
+          </div>
           : (view === "blocks" || chain || path.length) && view !== "capabilities" && view !== "chains"
             ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
             : null}
@@ -399,15 +443,21 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
         {/* Right-hand structure panel, sized and resized like Graph's inspector. */}
         <aside className={`sy-side-wrap fm-right${side ? " open" : ""}`} id="map-sidebar" aria-label="map structure">
           <Grip id="map" edge="left" min={280} max={720} label="Resize structure panel" />
-          {pendingTpl && !draft && (
-            <section className="ws-card ws-pending" data-testid="ws-pending">
-              <div className="ws-card-head"><span className="ws-eyebrow">Deploy {pendingTpl.name}</span><button className="ws-x" aria-label="Cancel" onClick={() => setPendingTpl(null)}>×</button></div>
-              <p className="ws-note">Click a section on the map to place it there.</p>
-            </section>
-          )}
-          {draft && <DeployCard data={data} draft={draft} info={ws.info} onCancel={() => setDraft(null)} onDone={() => { setDraft(null); setMode("run"); ws.reload(); }} />}
-          {!draft && mode === "run" && <RunPanel data={data} info={ws.info} onChanged={ws.reload} onSection={(id) => setSelBlock(id)} />}
-          {!draft && mode === "review" && <ReviewPanel data={data} files={ws.files} onSection={(id) => setSelBlock(id)} onFile={(p) => code.open({ path: p, name: p.split("/").pop() })} />}
+          <div className="ws-tabs" role="tablist" aria-label="Sidebar" data-testid="ws-tabs">
+            {TABS.map((t) => (
+              <button key={t.id} role="tab" aria-selected={tab === t.id} className={`ws-tab${tab === t.id ? " on" : ""}`} data-testid={`ws-tab-${t.id}`} onClick={() => setTab(t.id)}>
+                {t.label}
+                {t.id === "pipeline" && pipe.steps.length > 0 && <span className="ws-tab-n">{pipe.steps.length}</span>}
+                {t.id === "live" && (ws.info?.task || ws.info?.team) && <span className="ws-tab-dot" />}
+                {t.id === "changes" && ws.files.length > 0 && <span className="ws-tab-n">{ws.files.length}</span>}
+              </button>
+            ))}
+          </div>
+          {tab === "pipeline" && <PipelinePanel data={data} pipe={pipe} runner={runner} sel={selStep} onSel={(id) => setSelBlock(id ? `step:${id}` : null)} sections={sections} />}
+          {tab === "live" && <RunPanel data={data} info={ws.info} onChanged={ws.reload} onSection={(id) => setSelBlock(id)} />}
+          {tab === "changes" && <ReviewPanel data={data} files={ws.files} onSection={(id) => setSelBlock(id)} onFile={(p) => code.open({ path: p, name: p.split("/").pop() })} />}
+          {tab === "library" && <Library info={ws.info} go={go} onPick={pick} />}
+          {tab === "inspect" && <>
           <details className="fm-details" open={!!readBlock && (path.length > 0 || !!selChain || !!selBlock)}>
             <summary className="fm-details-sum">{readBlock?.name ?? "map"} – details</summary>
             {selChain && (
@@ -430,8 +480,23 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
             onChain={selectChain} onLeaf={selectLeaf} onToggle={toggle} onZoom={drill}
             onClose={() => setSide(false)}
           />
+          </>}
         </aside>
       </div>
+    </div>
+  );
+}
+
+/** One section of a dynamic dropdown: a row that expands in place (one open at a time). */
+function Disclosure({ id, label, hint, open, setOpen, children }: { id: string; label: string; hint?: string; open: string; setOpen: (id: string) => void; children: React.ReactNode }) {
+  const on = open === id;
+  return (
+    <div className={`dd-sec${on ? " open" : ""}`}>
+      <button className="dd-head" aria-expanded={on} data-testid={`dd-${id}`} onClick={() => setOpen(on ? "" : id)}>
+        <span className="dd-label">{label}</span><span className="dd-hint">{hint}</span>
+        <span className={`ws-chev${on ? " up" : ""}`} aria-hidden="true"><Icon.chevron /></span>
+      </button>
+      <div className="dd-body"><div className="dd-inner">{children}</div></div>
     </div>
   );
 }

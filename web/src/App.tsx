@@ -13,7 +13,6 @@ const Query = lazy(() => import("./views/Query"));
 const Changes = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Changes })));
 const History = lazy(() => import("./views/GitViews").then((m) => ({ default: m.History })));
 const Branches = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Branches })));
-const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
 const Flows = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Flows })));
 const MapView = lazy(() => import("./views/MapView"));
 const FlowLab = lazy(() => import("./flow/FlowLab")); // F1 · dev-only #flow-lab
@@ -22,6 +21,8 @@ const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.N
 const Proposals = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Proposals })));
 import Overview from "./views/Overview";
 import SettingsPanel from "./SettingsPanel";
+import { Dock } from "./dock/Dock";
+import type { DockTab } from "./dock/bus";
 
 // Warm the lazy chunks once the shell is up, so the first click on a rail item
 // does not wait on the network (local disk, but still a visible flash).
@@ -43,7 +44,7 @@ function prefetchViews() {
 import { settings } from "./settings";
 import Opening from "./Opening";
 
-type Rail = { id: View; label: string; icon: () => React.ReactElement; key: string };
+type Rail = { id: View; label: string; icon: () => React.ReactElement; key: string; hidden?: boolean };
 // Grouped by intent: understand · change · collaborate · agents and the graph as data · escape hatch.
 const GROUPS: Rail[][] = [
   [
@@ -51,7 +52,7 @@ const GROUPS: Rail[][] = [
     { id: "graph", label: "Graph", icon: Icon.graph, key: "2" },
     { id: "flows", label: "Flows", icon: Icon.flows, key: "3" },
     // `s` stages files in Changes, so map takes `y` instead.
-    { id: "map", label: "map", icon: Icon.flowMap, key: "y" },
+    { id: "map", label: "Workspace", icon: Icon.workspace, key: "y" },
   ],
   [
     { id: "changes", label: "Changes", icon: Icon.changes, key: "4" },
@@ -64,10 +65,12 @@ const GROUPS: Rail[][] = [
     { id: "notes", label: "Notes", icon: Icon.notes, key: "9" },
   ],
   [
-    { id: "agents", label: "Agents", icon: Icon.agents, key: "a" },
+    // Agents live on the Workspace now; the old page stays reachable (palette, `a`) as its library.
+    { id: "agents", label: "Agents", icon: Icon.agents, key: "a", hidden: true },
     { id: "query", label: "Query (SPARQL)", icon: Icon.query, key: "q" },
   ],
-  [{ id: "console", label: "Console", icon: Icon.console, key: "0" }],
+  // The console is the bottom dock under every view; #console just opens it.
+  [{ id: "console", label: "Console", icon: Icon.console, key: "0", hidden: true }],
 ];
 const VIEWS = GROUPS.flat();
 
@@ -107,6 +110,8 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const [indexing, setIndexing] = useState(false);
   const [prefs, setPrefs] = useState(false);
+  const [dock, setDock] = useState(initial.view === "console");
+  const [dockTab, setDockTab] = useState<DockTab>("terminal");
   // The server's last error: when set, the shell shows it with a retry instead of a blank page.
   const [serverError, setServerError] = useState<string | null>(null);
   // The opening plays once per session (or on demand with ?opening), never under reduced motion.
@@ -168,6 +173,7 @@ export default function App() {
   // Phones: the sidebar is a drawer, summoned from the top bar.
   const [rail, setRail] = useState(false);
   const go: Go = useCallback((v, t = {}) => {
+    if (v === "console") { setDock(true); setDockTab("terminal"); }
     setView(v);
     setTarget(t);
     if (v === "graph") {
@@ -180,6 +186,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
+      if (e.ctrlKey && e.key === "`") { e.preventDefault(); setDock((d) => !d); return; }
       if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") history.back(); else history.forward(); return; }
       const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -228,8 +235,8 @@ export default function App() {
 
       <nav className="rail" id="rail" aria-label="Views">
         {GROUPS.map((g, gi) => (
-          <div key={gi} className="rail-group">
-            {g.map((v) => (
+          g.some((v) => !v.hidden) && <div key={gi} className="rail-group">
+            {g.filter((v) => !v.hidden).map((v) => (
               <button key={v.id} className={view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
                 <v.icon />
                 <span className="rail-label">{v.label}</span>
@@ -275,15 +282,16 @@ export default function App() {
             {view === "issues" && <Issues {...nav} />}
             {view === "notes" && <Notes {...nav} />}
             {view === "flows" && <Flows {...nav} />}
-            {view === "map" && <MapView openSymbol={(id) => go("graph", { symbol: id })} version={version} block={target.block} />}
+            {view === "map" && <MapView openSymbol={(id) => go("graph", { symbol: id })} version={version} block={target.block} go={go} />}
             {view === "flow-lab" && <FlowLab />}
             {view === "agents" && <Agents {...nav} />}
             {view === "query" && <Query {...nav} />}
-            {view === "console" && <Console {...nav} />}
+            {view === "console" && <Overview repo={repo} version={version} go={go} />}
           </Suspense>
         </div>
         </>
         )}
+        <Dock open={dock} setOpen={setDock} tab={dockTab} setTab={setDockTab} nav={nav} />
       </main>
 
       <footer className="statusbar">
@@ -294,6 +302,7 @@ export default function App() {
         <span>{changes ? `${changes} changed` : "clean"}</span>
         <span className="mono">{repo?.head?.slice(0, 8)}</span>
         <span>{repo?.user}</span>
+        <button className="sb-help" data-testid="sb-dock" onClick={() => setDock((d) => !d)} title="Terminal and run log  ctrl+`"><Icon.console /> panel</button>
         <button className="sb-help" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
       </footer>
 

@@ -15,6 +15,16 @@ import { capabilities } from "./lenses";
 import type { Focus } from "./chainFocus";
 import { Icon } from "../../ui";
 import type { Marks } from "./workspace";
+import { KIND_COLOR, KindIco, type Step } from "./pipeline";
+
+export type Scheme = "role" | "section" | "heat" | "mono";
+export const SCHEMES: { id: Scheme; label: string; hint: string }[] = [
+  { id: "role", label: "Role", hint: "entry, step, terminal, shared" },
+  { id: "section", label: "Section", hint: "one hue per section" },
+  { id: "heat", label: "Changes", hint: "hot where files changed" },
+  { id: "mono", label: "Quiet", hint: "monochrome, agents stand out" },
+];
+const hue = (id: string) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360; return h; };
 
 /** No block ever mounts all its functions: this frame caps the expansion. */
 export const FN_CAP = 40;
@@ -39,6 +49,10 @@ type Props = {
   onClearExpand?: () => void;
   /** Workspace overlays per section: agent fence, changes, drop target. */
   marks?: Marks;
+  /** Pipeline blocks drawn as a lane above the sections they act on. */
+  steps?: Step[];
+  onStepTool?: (id: string, action: "done" | "remove") => void;
+  scheme?: Scheme;
 };
 
 const title = (b: Block) => b.theme || b.name;
@@ -140,7 +154,7 @@ function fnIcon(kind: string) {
 /** The flow lens on the kit canvas. Selection is single-writer (the kit):
     function circles and "+ more" chips are intercepted here and never
     become the block selection; everything else maps to the block id. */
-export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, expanded: expandedProp, onToggleExpand, onClearExpand, marks }: Props) {
+export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, expanded: expandedProp, onToggleExpand, onClearExpand, marks, steps = [], onStepTool, scheme = "role" }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   const [expandedState, setExpanded] = useState<Set<string>>(() => new Set());
   const expanded = expandedProp ?? expandedState;
@@ -185,10 +199,15 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     const secShown: string[] = [];
 
 
-  const blockNode = (b: Block): FlowNode => {
+  const colorOf = (b: Block, sec: string) =>
+    scheme === "section" ? `hsl(${hue(sec)} 60% 58%)`
+    : scheme === "mono" ? "var(--text-3)"
+    : scheme === "heat" ? (marks?.[sec]?.changed ? "var(--red)" : marks?.[sec]?.fence ? "var(--accent)" : "var(--line-2)")
+    : ROLE_COLOR[b.role];
+  const blockNode = (b: Block, sec = b.id): FlowNode => {
     return {
       id: b.id, kind: "tile", title: title(b), subtitle: b.theme ? b.name : undefined,
-      icon: <RoleMark role={b.role} />, color: ROLE_COLOR[b.role],
+      icon: <RoleMark role={b.role} />, color: colorOf(b, sec),
       entry: b.role === "entry", dim: !lit(b.id), hasSub: expanded.has(b.id),
       toolbar: expandTool(b, expanded.has(b.id)),
     };
@@ -260,7 +279,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
       const cols = Math.min(3, Math.ceil(Math.sqrt(kids.length)));
       kids.forEach((k, i) => {
         const r = Math.floor(i / cols), c = i % cols;
-        nodes.push({ ...blockNode(k), pos: { x: x + c * CELL_W, y: y + HEAD + r * CELL_H }, ...markOf(id, i === 0) });
+        nodes.push({ ...blockNode(k, id), pos: { x: x + c * CELL_W, y: y + HEAD + r * CELL_H }, ...markOf(id, i === 0) });
         fnNodes.push(...fnSubs(k));
       });
       groups.push({ id: secId(s), label: title(s), members: kids.map((k) => k.id) });
@@ -272,6 +291,39 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     x += colW + GAP_X;
   });
   nodes.push(...fnNodes);
+
+  // The pipeline lane: blocks left to right above the map, wired in order,
+  // each with a dashed wire down to the section it acts on (n8n's main flow
+  // over the data it touches). A retry loops back to the last agent.
+  const LANE_Y = -256, STEP_W = 288;
+  const repOfSec = (sid: string) => { const r = repOf.get(sid); return r && nodeIdsSoFar.has(r) ? r : null; };
+  const nodeIdsSoFar = new Set(nodes.map((n) => n.id));
+  const name = (id: string | null) => (id ? data.blocks[id]?.theme || data.blocks[id]?.name : null);
+  let prevStep: string | null = null, lastAgent: string | null = null;
+  steps.forEach((st, i) => {
+    const id = `step:${st.id}`;
+    const status = st.status === "waiting" || st.status === "running" ? "running" : st.status === "success" ? "success" : st.status === "error" ? "error" : undefined;
+    const tools = (
+      <>
+        {st.status === "waiting" && <button className="fc-tool" data-testid="step-done" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "done"); }} title="Mark this agent's task done">done</button>}
+        <button className="fc-tool" data-testid="step-remove" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "remove"); }} title="Remove block"><Icon.close /></button>
+      </>
+    );
+    nodes.push({
+      id, kind: "wide", title: st.name,
+      subtitle: st.note ?? (st.status === "waiting" ? "waiting for an agent" : st.kind === "note" ? (st.task || "note") : name(st.section) ? `on ${name(st.section)}` : st.kind),
+      icon: <span className="fc-step-ico" style={{ color: KIND_COLOR[st.kind] }}><KindIco kind={st.kind} /></span>,
+      color: KIND_COLOR[st.kind], status, entry: st.kind === "trigger", noOut: i === steps.length - 1 && st.kind !== "note",
+      toolbar: tools, pos: { x: i * STEP_W, y: LANE_Y },
+    });
+    if (st.kind === "note") return;
+    if (prevStep) edges.push({ id: `${prevStep}>${id}`, source: prevStep, target: id, weight: 3, main: true });
+    if (st.kind === "retry" && lastAgent) edges.push({ id: `${id}>loop`, source: id, target: lastAgent, weight: 2, main: true, backward: true, label: `x${st.max ?? 3}` });
+    const target = st.section ? repOfSec(st.section) : null;
+    if (target) edges.push({ id: `${id}~${target}`, source: id, target, main: false });
+    prevStep = id;
+    if (st.kind === "agent" || st.kind === "crew") lastAgent = id;
+  });
   const nodeIds = new Set(nodes.map((n) => n.id));
 
   // Edges: each section keeps its two heaviest outgoing flows (every flow as
@@ -296,7 +348,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   }
     return { nodes, edges, groups };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, roles, focus, depth, expanded, openSecs, marks]);
+  }, [data, roles, focus, depth, expanded, openSecs, marks, steps, scheme]);
 
   // Intercepted selections: function circles open the code panel, "+ more"
   // chips toggle the expansion – neither becomes the block selection.
@@ -311,6 +363,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     onSelect?.(id.startsWith("sec:") ? id.slice(4) : id);
   };
   const open = (id: string) => {
+    if (id.startsWith("step:")) return;
     if (id.startsWith("fn:")) { const n = Number(id.slice(3)); setTimeout(() => onLeaf(n), 0); return; }
     if (id.startsWith("more:")) { const bid = id.slice(5); setTimeout(() => onDrill(bid), 0); return; }
     if (id.startsWith("sec:")) { const sid = id.slice(4); setTimeout(() => toggleSec(sid), 0); return; }

@@ -1,0 +1,33 @@
+/* Bottom dock – the console and the run log under every view. */
+:root { --dock-h: 30px; }
+.main > .view-enter { bottom: var(--dock-h); }
+.dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; background: var(--bg); border-top: 1px solid var(--line); transition: height .18s var(--ease); }
+.dock-grip { position: absolute; top: -3px; left: 0; right: 0; height: 6px; cursor: ns-resize; z-index: 1; }
+.dock-grip:hover, .dock-grip:active { background: var(--accent-soft); }
+.dock-bar { display: flex; align-items: center; gap: 2px; height: 29px; flex: none; padding: 0 6px; background: var(--bg-2); }
+.dock-tab { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 6px; color: var(--text-3); font-size: 12px; }
+.dock-tab svg { width: 13px; height: 13px; }
+.dock-tab:hover { color: var(--text); background: var(--bg-3); }
+.dock-tab.on { color: var(--text); background: var(--bg-3); box-shadow: inset 0 -2px 0 var(--accent); }
+.dock-n { font: 10px var(--mono); color: var(--text-3); padding: 0 5px; border-radius: 8px; background: var(--bg); }
+.dock-btn { height: 22px; padding: 0 8px; color: var(--text-3); font-size: 11.5px; border-radius: 6px; display: inline-flex; align-items: center; }
+.dock-btn:hover { color: var(--text); background: var(--bg-3); }
+.dock-body { flex: 1; min-height: 0; overflow: hidden; animation: dock-in .18s var(--ease) both; }
+.dock-body .console { height: 100%; }
+@keyframes dock-in { from { opacity: 0; transform: translateY(6px); } }
+.dock-empty { padding: 18px; color: var(--text-3); font-size: 12.5px; }
+.dock-empty b { color: var(--accent); }
+.dock-log { height: 100%; overflow: auto; padding: 8px 12px; font: 12px/1.55 var(--mono); }
+.dl { display: grid; grid-template-columns: 64px 120px 1fr; gap: 10px; animation: dl-in .2s var(--ease) both; }
+.dl-t { color: var(--text-3); }
+.dl-src { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-x { color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
+.dl-ok .dl-x { color: var(--green); }
+.dl-err .dl-x { color: var(--red); }
+.dl-warn .dl-x { color: var(--yellow, #d9b54a); }
+@keyframes dl-in { from { opacity: 0; transform: translateX(-4px); } }
+@media (prefers-reduced-motion: reduce) { .dock, .dock-body, .dl { transition: none; animation: none; } }
+@media (max-width: 640px) { .dl { grid-template-columns: 56px 1fr; } .dl-src { display: none; } }
+.dock-tab, .dock-btn { background: none; border: 0; font: inherit; font-size: 12px; }
+.dock-tab { color: var(--text-3); }
+.dock-tab.on { background: var(--bg-3); color: var(--text); }

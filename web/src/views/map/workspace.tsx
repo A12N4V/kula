@@ -6,18 +6,14 @@
 // and MCP use (`task_start`, `team_start`, `research_start`). Live state comes
 // from /api/agents and /api/git/status, polled while a mode needs it.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, type AgentsInfo, type FileStatus, type Team, type Workflow } from "../../api";
 import type { Block, MapData } from "./types";
 import { Icon } from "../../ui";
+import type { Go } from "../../nav";
+import { ITEM_DRAG, KIND_COLOR, KindIco, type Item } from "./pipeline";
 
 export type Mode = "explore" | "build" | "run" | "review";
-export const MODES: { id: Mode; label: string; hint: string }[] = [
-  { id: "explore", label: "Explore", hint: "Read the map – what the repo does and how it flows" },
-  { id: "build", label: "Build", hint: "Deploy agents onto sections" },
-  { id: "run", label: "Run", hint: "What agents are doing now" },
-  { id: "review", label: "Review", hint: "What changed, where" },
-];
 
 export type Template =
   | { kind: "agent"; id: string; name: string; about: string; workflow: string }
@@ -27,7 +23,6 @@ export type Template =
 /** Per-section overlay marks the canvas draws: an agent badge, a fence ring, changed files. */
 export type Marks = Record<string, { agent?: string; fence?: boolean; changed?: number; drop?: boolean }>;
 
-const DRAG_TYPE = "application/x-kula-template";
 
 /* ---- Map ↔ files ------------------------------------------------------ */
 
@@ -125,93 +120,6 @@ export function templatesFrom(info: AgentsInfo | null): Record<Template["kind"],
   };
 }
 const title = (s: string) => s.slice(0, 1).toUpperCase() + s.slice(1);
-const KINDS: { id: Template["kind"]; label: string; hint: string }[] = [
-  { id: "agent", label: "Agent", hint: "one agent, fenced to a section" },
-  { id: "crew", label: "Crew", hint: "a team, each member in its workflow" },
-  { id: "loop", label: "Loop", hint: "measure, try, keep what improves" },
-];
-
-/* ---- + Agent megamenu ------------------------------------------------- */
-
-/** One container that morphs between kinds (it animates its own size), opens
-    on click, switches kind on hover after an intent delay, and closes on Esc
-    or an outside click. Templates are draggable onto the canvas; a click
-    deploys onto the selected section. */
-export function AgentMenu({ info, onPick, canClick }: { info: AgentsInfo | null; onPick: (t: Template) => void; canClick: boolean }) {
-  const [open, setOpen] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const [kind, setKind] = useState<Template["kind"]>("agent");
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const root = useRef<HTMLDivElement>(null);
-  const inner = useRef<HTMLDivElement>(null);
-  const intent = useRef<number | null>(null);
-  const all = useMemo(() => templatesFrom(info), [info]);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    window.addEventListener("pointerdown", away);
-    window.addEventListener("keydown", esc);
-    return () => { window.removeEventListener("pointerdown", away); window.removeEventListener("keydown", esc); };
-  }, [open]);
-  // Morph: measure the content and let CSS animate the panel to it.
-  useLayoutEffect(() => {
-    if (!open || !inner.current) return;
-    const r = inner.current.getBoundingClientRect();
-    setSize({ w: Math.ceil(r.width), h: Math.ceil(r.height) });
-  }, [open, kind, all]);
-  const hoverKind = (k: Template["kind"]) => {
-    if (intent.current) window.clearTimeout(intent.current);
-    intent.current = window.setTimeout(() => setKind(k), 120);
-  };
-  const list = all[kind];
-  return (
-    <div className="ws-menu" ref={root}>
-      <button className={`btn sm primary ws-add${open ? " on" : ""}`} data-testid="ws-add-agent" aria-haspopup="menu" aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}>+ Agent</button>
-      {open && (
-        <div className={`ws-pop${dragging ? " ws-dragging" : ""}`} role="menu" aria-label="Agent templates" data-testid="ws-agent-menu"
-          style={size ? { width: size.w, height: size.h } : undefined}>
-          <div className="ws-pop-in" ref={inner}>
-            <div className="ws-kinds" role="tablist" aria-label="Kind">
-              {KINDS.map((k) => (
-                <button key={k.id} role="tab" aria-selected={kind === k.id} className={`ws-kind${kind === k.id ? " on" : ""}`}
-                  data-testid={`ws-kind-${k.id}`} onClick={() => setKind(k.id)} onPointerEnter={() => hoverKind(k.id)}
-                  onPointerLeave={() => intent.current && window.clearTimeout(intent.current)}>
-                  <span className="ws-kind-name">{k.label}</span>
-                  <span className="ws-kind-hint">{k.hint}</span>
-                  <span className="ws-kind-n mono">{all[k.id].length}</span>
-                </button>
-              ))}
-            </div>
-            <div className="ws-tpls" key={kind}>
-              <div className="ws-tpls-head">{canClick ? "Click to deploy on the selected section, or drag onto any section" : "Drag onto a section – or select one first, then click"}</div>
-              {!list.length && <div className="ws-empty">{kind === "crew" ? "No teams yet – define one in kula.toml or the Teams editor." : kind === "loop" ? "No research workflows yet." : "No workflows."}</div>}
-              {list.map((t, i) => (
-                <button key={t.id} role="menuitem" className="ws-tpl" style={{ animationDelay: `${i * 25}ms` }} draggable data-testid={`ws-tpl-${t.id}`}
-                  onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(t)); e.dataTransfer.effectAllowed = "copy"; window.setTimeout(() => setDragging(true), 0); }}
-                  onDragEnd={() => { setDragging(false); setOpen(false); }}
-                  onClick={() => { onPick(t); setOpen(false); }}>
-                  <span className="ws-tpl-name">{t.name}</span>
-                  <span className="ws-tpl-about">{t.about || (t.kind === "loop" ? `metric: ${t.metric}` : "")}</span>
-                  <span className="ws-tpl-meta mono">{t.kind === "crew" ? `${t.size} agents` : t.kind === "loop" ? "loop" : t.workflow}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Read a dropped template, if the drag carries one. */
-export function droppedTemplate(e: React.DragEvent): Template | null {
-  const raw = e.dataTransfer.getData(DRAG_TYPE);
-  if (!raw) return null;
-  try { return JSON.parse(raw) as Template; } catch { return null; }
-}
-export const isTemplateDrag = (e: React.DragEvent) => e.dataTransfer.types.includes(DRAG_TYPE);
 
 /** The map node under a point → its section. */
 export function sectionAtPoint(data: MapData, x: number, y: number): string | null {
@@ -224,58 +132,52 @@ export function sectionAtPoint(data: MapData, x: number, y: number): string | nu
 
 /* ---- Sidebar panels --------------------------------------------------- */
 
-type Draft = { tpl: Template; section: string };
-
 function Row({ k, v }: { k: string; v: ReactNode }) {
   return <div className="ws-kv"><span>{k}</span><span>{v}</span></div>;
 }
 
-/** The deploy card: four fields, the fence it will set, and Start. */
-export function DeployCard({ data, draft, info, onDone, onCancel }: { data: MapData; draft: Draft; info: AgentsInfo | null; onDone: () => void; onCancel: () => void }) {
-  const sec = data.blocks[draft.section];
-  const files = useMemo(() => filesOf(data, draft.section), [data, draft.section]);
-  const [titleText, setTitle] = useState("");
-  const [workflow, setWorkflow] = useState(draft.tpl.kind === "crew" ? "" : draft.tpl.workflow);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [showFiles, setShowFiles] = useState(false);
-  const active = info?.task;
-  const start = async () => {
-    setBusy(true); setErr(null);
-    try {
-      if (draft.tpl.kind === "crew") await api.agentAction("team_start", { name: draft.tpl.team });
-      else if (draft.tpl.kind === "loop") await api.agentAction("research_start", { workflow: draft.tpl.workflow });
-      else await api.agentAction("task_start", { title: titleText.trim() || `${draft.tpl.name} on ${sec?.name ?? "section"}`, scope: files, workflow });
-      onDone();
-    } catch (e) { setErr(String((e as Error).message ?? e)); } finally { setBusy(false); }
-  };
+/** The Agents page, folded into the sidebar: what kula knows about agents as
+    compact disclosures – each block draggable or clickable onto the map, each
+    section a link to its full editor. The page itself stays as the library's
+    "open full" target, not a tab of its own. */
+export function Library({ info, go, onPick }: { info: AgentsInfo | null; go?: Go; onPick: (it: Item) => void }) {
+  const [open, setOpen] = useState<string>("workflows");
+  if (!info) return <section className="ws-card"><p className="ws-note">Loading agents…</p></section>;
+  const conns = info.connections.filter((c) => c.mcp || c.hook);
+  const wf = info.workflows.filter((w) => !w.research);
+  const loops = info.workflows.filter((w) => !!w.research);
+  const sec = (id: string, label: string, n: number | string, tab: string, body: ReactNode) => (
+    <div className={`dd-sec${open === id ? " open" : ""}`} key={id}>
+      <button className="dd-head" aria-expanded={open === id} data-testid={`lib-${id}`} onClick={() => setOpen(open === id ? "" : id)}>
+        <span className="dd-label">{label}</span><span className="dd-hint mono">{n}</span>
+        <span className={`ws-chev${open === id ? " up" : ""}`} aria-hidden="true"><Icon.chevron /></span>
+      </button>
+      <div className="dd-body"><div className="dd-inner">
+        {body}
+        {go && <button className="ws-link lib-full" onClick={() => go("agents", { tab })}>Open {label.toLowerCase()} editor</button>}
+      </div></div>
+    </div>
+  );
+  const item = (it: Item, sub?: string) => (
+    <button key={it.kind + it.ref} className="lib-item" draggable onClick={() => onPick(it)}
+      onDragStart={(e) => { e.dataTransfer.setData(ITEM_DRAG, JSON.stringify(it)); e.dataTransfer.effectAllowed = "copy"; }}>
+      <span className="np-ico sm" style={{ color: KIND_COLOR[it.kind], background: `color-mix(in srgb, ${KIND_COLOR[it.kind]} 18%, transparent)` }}><KindIco kind={it.kind} /></span>
+      <span className="lib-name">{it.name}</span><span className="lib-sub">{sub ?? it.about}</span>
+    </button>
+  );
   return (
-    <section className="ws-card" data-testid="ws-deploy">
-      <div className="ws-card-head"><span className="ws-eyebrow">New {draft.tpl.kind}</span><button className="ws-x" onClick={onCancel} aria-label="Cancel">×</button></div>
-      <h3 className="ws-title">{draft.tpl.name} <span className="ws-on">on</span> {sec?.theme || sec?.name}</h3>
-      {draft.tpl.kind === "agent" && (
-        <>
-          <label className="ws-field"><span>Task</span>
-            <textarea rows={2} value={titleText} placeholder="What should it do here?" onChange={(e) => setTitle(e.target.value)} data-testid="ws-task-title" /></label>
-          <label className="ws-field"><span>Workflow</span>
-            <select value={workflow} onChange={(e) => setWorkflow(e.target.value)} data-testid="ws-workflow">
-              {(info?.workflows ?? []).filter((w) => !w.research).map((w) => <option key={w.name} value={w.name}>{w.name}</option>)}
-            </select></label>
-        </>
-      )}
-      {draft.tpl.kind === "crew" && <p className="ws-note">Starts team <b>{draft.tpl.team}</b>: each member works in its own workflow and fences.</p>}
-      {draft.tpl.kind === "loop" && <p className="ws-note">Starts the <b>{draft.tpl.workflow}</b> loop on metric <span className="mono">{draft.tpl.metric}</span>.</p>}
-      {draft.tpl.kind === "agent" && (
-        <div className="ws-fence">
-          <Row k="may edit" v={<button className="ws-link" onClick={() => setShowFiles((s) => !s)} data-testid="ws-fence-files">{files.length} files <span className={`ws-chev${showFiles ? " up" : ""}`} aria-hidden="true"><Icon.chevron /></span></button>} />
-          <Row k="may read" v="whole repo" />
-          {showFiles && <ul className="ws-files mono">{files.slice(0, 60).map((f) => <li key={f}>{f}</li>)}{files.length > 60 && <li>+ {files.length - 60} more</li>}</ul>}
-        </div>
-      )}
-      {active && draft.tpl.kind === "agent" && <p className="ws-warn">Replaces the open task “{active.title}”.</p>}
-      {err && <p className="ws-err">{err}</p>}
-      <button className="btn primary ws-start" disabled={busy} onClick={start} data-testid="ws-start">{busy ? "Starting…" : "Start"}</button>
-      <p className="ws-hint">Connected agents (Claude Code, Cursor, Codex…) pick this up through kula's MCP server and hooks.</p>
+    <section className="ws-card ws-lib" data-testid="ws-library">
+      <div className="ws-card-head"><span className="ws-eyebrow">Library</span>
+        <span className={`lib-conn${conns.length ? " on" : ""}`} title="agents connected over MCP and hooks">{conns.length ? `${conns.map((c) => c.name).join(", ")} connected` : "no agent connected"}</span></div>
+      <div className="dd">
+        {sec("workflows", "Workflows", wf.length, "workflows", wf.map((w) => item({ kind: "agent", ref: w.name, name: title(w.name), about: w.about ?? "" })))}
+        {sec("teams", "Teams", info.teams.length, "teams", info.teams.length ? info.teams.map((t) => item({ kind: "crew", ref: t.name, name: title(t.name), about: t.about ?? "" }, `${t.members.length} agents`)) : <p className="ws-note">No teams yet.</p>)}
+        {sec("research", "Research loops", loops.length, "research", loops.length ? loops.map((w) => item({ kind: "loop", ref: w.name, name: title(w.name), about: w.about ?? "" }, `metric ${w.research?.metric}`)) : <p className="ws-note">No research workflows.</p>)}
+        {sec("skills", "Skills", info.skills?.length ?? 0, "skills", <div className="ws-chips">{(info.skills ?? []).slice(0, 24).map((k) => <span key={k.name} className="ws-chip" title={k.description}>{k.name}</span>)}</div>)}
+        {sec("memory", "Memory", info.memories.length, "memory", info.memories.length ? <ul className="lib-mem">{info.memories.slice(0, 6).map((m, i) => <li key={i}>{(m as { text?: string }).text ?? String(m)}</li>)}</ul> : <p className="ws-note">Agents write facts here as they work; none yet.</p>)}
+        {sec("fences", "Fences", info.rules.length, "fences", <p className="ws-note">{info.rules.length} rules · {info.files.length} guarded files. Fences also appear on the map while a task runs.</p>)}
+        {sec("connect", "Connections", `${conns.length}/${info.connections.length}`, "connect", <div className="ws-chips">{info.connections.map((c) => <span key={c.id} className={`ws-chip${c.mcp || c.hook ? " on" : ""}`}>{c.name}</span>)}</div>)}
+      </div>
     </section>
   );
 }
