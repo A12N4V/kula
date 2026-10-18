@@ -102,7 +102,7 @@ test.describe("shell", () => {
     await search.click();
     await expect(page.locator(".palette")).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // Agents left the rail (it is the Workspace library now); `a` still opens it
     await page.getByRole("tab", { name: /Memory/ }).click();
     await expect(page).toHaveURL(/#agents\/memory$/);
     await page.goBack();
@@ -800,7 +800,7 @@ test.describe("agents", () => {
     await page.keyboard.type("context_pack");
     await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
     await expect(page.locator(".inspector h2")).toHaveText("context_pack");
-    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // Agents left the rail (it is the Workspace library now); `a` still opens it
     await page.getByRole("tab", { name: /Memory/ }).click();
     const hint = page.locator(".here-hint");
     await expect(hint).toContainText("context_pack");
@@ -865,7 +865,7 @@ test.describe("agents", () => {
     await insp.locator("textarea").fill(fact);
     await insp.getByRole("button", { name: "Remember" }).click();
     await expect(insp.locator(".note.mem").filter({ hasText: fact })).toBeVisible();
-    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // Agents left the rail (it is the Workspace library now); `a` still opens it
     await page.getByRole("tab", { name: /Memory/ }).click();
     const row = page.locator(".ag-mem").filter({ hasText: fact });
     await expect(row.locator(".tag")).toHaveText("fresh");

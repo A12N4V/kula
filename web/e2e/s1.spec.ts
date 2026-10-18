@@ -17,7 +17,7 @@ test.describe("s1 agents split", () => {
   test("the nine agents tabs all render after the split", async ({ page }) => {
     test.skip(test.info().project.name !== "desktop");
     await open(page);
-    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // Agents left the rail (it is the Workspace library now); `a` still opens it
     await expect(page.locator(".page-head h1")).toHaveText("Agents");
     const tabs = page.locator(".ag-tabs [role=tab]");
     await expect(tabs).toHaveCount(9);
