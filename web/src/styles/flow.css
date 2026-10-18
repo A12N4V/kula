@@ -178,3 +178,18 @@ html[data-rm="1"] .fc-st-run { animation: none; }
 html[data-rm="1"] .fc-side, html[data-rm="1"] .fc-tile-box,
 html[data-rm="1"] .fc-wide-in, html[data-rm="1"] .fc-circle-in,
 html[data-rm="1"] .fc-dot { transition: none; }
+
+/* ---- Colour: every node carries its role (n8n-style tinted tiles) ------ */
+.fc-tile-box, .fc-wide-in, .fc-loop-box {
+  background: color-mix(in srgb, var(--fc-role, var(--text-3)) 12%, var(--panel));
+  border-color: color-mix(in srgb, var(--fc-role, var(--line)) 45%, var(--line));
+}
+.fc-wide-in { border-left: 4px solid var(--fc-role, var(--line-2)); }
+.fc-circle-in { border-color: color-mix(in srgb, var(--fc-role, var(--line-2)) 55%, var(--line)); }
+.fc-node:hover .fc-tile-box, .fc-node:hover .fc-wide-in {
+  border-color: var(--fc-role, var(--line-2));
+  background: color-mix(in srgb, var(--fc-role, var(--text-3)) 20%, var(--panel));
+}
+.fc-wide-title { font-size: 14px; font-weight: 500; }
+.fc-title { color: var(--text-2); }
+.fc-group-label { color: var(--text-2); font-size: 12px; }

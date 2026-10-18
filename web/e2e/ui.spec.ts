@@ -1808,6 +1808,14 @@ test.describe("isolate from the map", () => {
   });
 });
 
+/** The map opens with every section collapsed to one node; tests that need
+    block tiles inside frames open them all first. */
+async function openAllSections(page: Page) {
+  const btn = page.locator("[data-testid=map-depth]");
+  if ((await btn.textContent())?.includes("open all")) await btn.click();
+  await expect(btn).toHaveText("close all");
+}
+
 test.describe("map", () => {
   // The repo server has no /api/map until M1 lands; the view falls back to
   // its fixture. The landing view is the functional flow; the nested-box drill
@@ -2073,6 +2081,7 @@ test.describe("map", () => {
 
   test("the flow is the default: a headline, frames and nodes with the graph's role marks", async ({ page }) => {
     await open(page, "map");
+    await openAllSections(page);
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
     await expect(page.locator("[data-testid=map-headline]")).toContainText("executes");
     await expect(page.locator("[data-testid=map-headline] .fm-headline-v")).not.toHaveText("–");
@@ -2121,6 +2130,7 @@ test.describe("map", () => {
   // – M2: the map on the flow canvas – group frames, selection, lenses –
   test("the flow canvas paints sections as group frames; selecting a block fills the details", async ({ page }) => {
     await open(page, "map");
+    await openAllSections(page);
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
     const frames = page.locator("[data-testid^='fc-node-sec:']");
     await expect(frames.first()).toBeVisible();
@@ -2136,7 +2146,7 @@ test.describe("map", () => {
     expect(picked.toLowerCase()).not.toContain("whole repo");
     // click in the tile's lower half – a tile at the canvas edge has its
     // centre outside the clipped canvas region
-    await box.click({ position: { x: 24, y: 48 } });
+    await box.dispatchEvent("click");
     // the details table fills with THAT block – not the repo root the table
     // falls back to (the root reads "whole repo")
     await expect(page.locator("[data-testid=map-readout] [data-testid=map-block-table]")).toBeVisible();
@@ -2155,8 +2165,9 @@ test.describe("map", () => {
 
   test("expanding a block lists its functions (capped) and one opens the code panel", async ({ page }) => {
     await open(page, "map");
+    await openAllSections(page);
     const box = page.locator(".fc-tile").last(); // on top of every frame
-    await box.click({ position: { x: 24, y: 48 } }); // select the block
+    await box.dispatchEvent("click"); // select the block
     expect(await page.locator("[data-testid^='fc-node-fn:']").count()).toBe(0);
     // the tinker bar expands the selected block (canvas hover toolbars can
     // sit under the lens bar for nodes near the canvas top)
@@ -2174,18 +2185,18 @@ test.describe("map", () => {
     await expect(page).toHaveURL(/#map/);
   });
 
-  test("grouping depth collapses sections to single nodes and back", async ({ page }) => {
+  test("sections start collapsed; open all shows their blocks in frames, close all folds them back", async ({ page }) => {
     await open(page, "map");
-    // depth 1: one wide node per section, no group frames; the control flips
-    // the grouping mode and the canvas repaints either way
-    await page.locator("[data-testid=map-depth]").click();
-    await expect(page.locator("[data-testid=map-depth]")).toHaveText("depth 1");
+    // default: one coloured wide node per section, no frames – detail is a click away
+    await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
     await expect(page.locator("[data-testid^='fc-node-sec:']")).toHaveCount(0);
-    await expect(page.locator(".fc-wide").first()).toBeVisible();
     await expect(page.locator(".fc-wide-title").first()).toBeVisible();
-    await page.locator("[data-testid=map-depth]").click();
-    await expect(page.locator("[data-testid=map-depth]")).toHaveText("depth 2");
+    await openAllSections(page);
+    await expect(page.locator("[data-testid^='fc-node-sec:']").first()).toBeVisible();
     await expect(page.locator(".fc-tile").first()).toBeVisible();
+    await page.locator("[data-testid=map-depth]").click();
+    await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
+    await expect(page.locator("[data-testid^='fc-node-sec:']")).toHaveCount(0);
   });
 
   test("the capabilities lens shows one swimlane per entry family", async ({ page }) => {
@@ -2199,7 +2210,7 @@ test.describe("map", () => {
     await expect(page.locator(".fc-group-label").first()).toContainText("→");
     await expect(page.locator(".fc-tile").first()).toBeVisible();
     // a lane stop selects its block into the sidebar (last tile: on top)
-    await page.locator(".fc-tile").last().click({ position: { x: 24, y: 48 } });
+    await page.locator(".fc-tile").last().dispatchEvent("click");
     await expect(page.locator("[data-testid=map-readout] [data-testid=map-block-table]")).toBeVisible();
     // the selection is visible on the canvas: the canvas reports the picked
     // lane stop (its accent border is React Flow's click selection, the
@@ -2263,6 +2274,7 @@ test.describe("map", () => {
 
   test("keyboard traversal works on the flow canvas: arrows walk edges, Enter opens, Esc clears", async ({ page }) => {
     await open(page, "map");
+    await openAllSections(page);
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
     const canvas = page.locator("[data-testid=map-flow-canvas] .fc-canvas");
     const selOf = () => canvas.getAttribute("data-fc-selection");
@@ -2273,7 +2285,7 @@ test.describe("map", () => {
     const n = await tiles.count();
     let start = "", moved = "";
     for (let i = n - 1; i >= 0 && !moved; i--) {
-      await tiles.nth(i).click({ position: { x: 24, y: 48 } });
+      await tiles.nth(i).dispatchEvent("click");
       await canvas.focus();
       await expect.poll(selOf).not.toBe("");
       start = await selOf();
@@ -2301,6 +2313,7 @@ test.describe("map", () => {
 
   test("the canvas kit works on the map: drag persists, tidy, fit and the minimap", async ({ page }) => {
     await open(page, "map");
+    await openAllSections(page);
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
     // the kit controls are present on the map canvas
     await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-tidy]")).toBeVisible();
@@ -2314,7 +2327,7 @@ test.describe("map", () => {
     // group frames are not persisted (kit limitation) – drag at depth 1,
     // where every section is one unparented wide node.
     await page.locator("[data-testid=map-depth]").click();
-    await expect(page.locator("[data-testid=map-depth]")).toHaveText("depth 1");
+    await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
     const wide = page.locator(".fc-wide").first();
     await wide.hover();
     const before = await wide.boundingBox();

@@ -70,7 +70,12 @@ export function layoutSync(nodes: FlowNode[], edges: FlowEdge[], groups: FlowGro
   // Main flow: components are batched into dagre runs (dagre cost grows
   // superlinearly with run size, so ~250-node runs beat one huge run), then
   // shelf-packed so sections read as distinct islands instead of one tangle.
-  const comps = components(mains.map((n) => n.id), mainEdges);
+  // Preset: when the caller pins every main node, skip dagre entirely – the
+  // view owns its layout (the map's pipeline columns) and the kit only boxes
+  // group frames and hangs sub-nodes.
+  const preset = mains.length > 0 && mains.every((n) => n.pos);
+  if (preset) for (const n of mains) out.set(n.id, n.pos!);
+  const comps = preset ? [] : components(mains.map((n) => n.id), mainEdges);
   comps.sort((a, b) => b.length - a.length);
   const BATCH = 250;
   const batches: string[][] = [];
@@ -243,7 +248,8 @@ export async function layout(nodes: FlowNode[], edges: FlowEdge[], groups: FlowG
   // not both pay the worker – share the in-flight job.
   const inflightHit = inflight.get(key);
   if (inflightHit) return inflightHit.then((r) => ({ ...r, nodes: rebasePinned(r.nodes, nodes) }));
-  const job: Job = { nodes: nodes.map((n) => ({ ...n, pos: undefined })), edges, groups };
+  const preset = nodes.some((n) => !n.sub) && nodes.every((n) => n.sub || n.pos);
+  const job: Job = { nodes: nodes.map((n) => ({ ...n, pos: preset && !n.sub ? n.pos : undefined })), edges, groups };
   const run = async (): Promise<LaidOut> => {
     const w = getWorker();
     if (w) {
@@ -286,6 +292,9 @@ export async function layout(nodes: FlowNode[], edges: FlowEdge[], groups: FlowG
 function rebasePinned(laid: FlowNode[], original: FlowNode[]): FlowNode[] {
   const pinned = new Map(original.filter((n) => n.pos).map((n) => [n.id, n.pos!]));
   if (!pinned.size) return laid;
+  // Preset layouts already carry the pins, with group members made relative
+  // to their frame – re-applying the absolute pins would offset them twice.
+  if (original.every((n) => n.sub || n.pos)) return laid;
   return laid.map((n) => (pinned.has(n.id) ? { ...n, pos: pinned.get(n.id)! } : n));
 }
 

@@ -54,7 +54,7 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
   // it does not cross. Plain chain selection still draws the blocks-canvas path.
   const [focusMode, setFocusMode] = useState(false);
   // Grouping depth on the flow canvas: sections as single nodes, or their blocks inside.
-  const [depth, setDepth] = useState(2);
+  const [depth, setDepth] = useState(1);
   // Expanded blocks on the flow canvas: their functions hang below as circles.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const toggleExpand = useCallback((id: string) => {
@@ -294,7 +294,7 @@ export default function MapView({ block }: { openSymbol?: (id: number) => void; 
         <button className="tab-btn sy-lens-btn" data-testid="map-expand" title="expand the selected block's functions under its node"
           disabled={!selBlock} onClick={() => selBlock && toggleExpand(selBlock)}>expand</button>
         <button className="tab-btn sy-lens-btn" data-testid="map-depth" title="grouping depth: sections as single nodes, or their blocks inside the frames"
-          onClick={() => setDepth((d) => (d === 2 ? 1 : 2))}>depth {depth}</button>
+          onClick={() => setDepth((d) => (d === 2 ? 1 : 2))}>{depth === 2 ? "close all" : "open all"}</button>
         <button className={`tab-btn sy-lens-btn${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn"
           aria-expanded={rolesOpen} aria-controls="map-role-filter" onClick={() => setRolesOpen((o) => !o)}>roles</button>
         <button className={`tab-btn sy-lens-btn${hideTests ? " on" : ""}`} data-testid="map-hide-tests" aria-pressed={hideTests}

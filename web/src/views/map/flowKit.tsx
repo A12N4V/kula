@@ -148,6 +148,18 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
       return next;
     });
   });
+  const [openSecs, setOpenSecs] = useState<Set<string>>(() => new Set());
+  const toggleSec = (id: string) => setOpenSecs((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const secTool = (id: string, open: boolean) => (
+    <button className="fc-tool" data-testid="map-open-section" onClick={(e) => { e.stopPropagation(); toggleSec(id); }}
+      title={open ? "Close section" : "Open section – show its blocks"}>
+      {open ? "−" : "+"}
+    </button>
+  );
   const lit = (id: string) => !focus?.chain || focus.on.has(id);
   const shown = (b: Block) => roles.has(b.role);
   // Expansion lives in the node's hover/selection toolbar slot: the only
@@ -179,7 +191,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     };
   };
 
-  // A section's functions: shown when its block node is expanded (cap 40).
+  // A block's functions: shown when the block is expanded (cap 40).
   const fnSubs = (b: Block) => {
     if (!expanded.has(b.id)) return [];
     const syms = symbolsUnder(data.blocks, b.id).filter((id) => data.leaves[id]);
@@ -199,119 +211,78 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     return subs;
   };
 
-  for (const layer of layers) for (const id of layer) {
-    const s = sections[id];
-    if (!s || !shown(s)) continue;
-    secShown.push(id);
-    if (depth < 2) {
-      nodes.push({ ...blockNode(s), id: s.id, kind: "wide", title: title(s), subtitle: s.summary || undefined, dim: !lit(s.id) });
-      fnNodes.push(...fnSubs(s));
-      continue;
+  // The view owns the layout (the kit's preset mode): one column per
+  // pipeline layer, left to right, shared utilities last. A closed section
+  // is one coloured wide node; an open one is a frame with its blocks in a
+  // small grid. Complexity stays behind a click – nothing opens by default.
+  const CELL_W = 176, CELL_H = 192, GAP_Y = 48, GAP_X = 160, HEAD = 48;
+  const columns: string[][] = [...layers.map((l) => l.filter((id) => sections[id] && shown(sections[id])))];
+  const bandShown = band.filter((id) => sections[id] && shown(sections[id]));
+  if (bandShown.length) columns.push(bandShown);
+  const colOf = new Map<string, number>();
+  const repOf = new Map<string, string>();
+  let x = 0;
+  columns.forEach((col, ci) => {
+    if (!col.length) return;
+    let y = 0, colW = 256;
+    for (const id of col) {
+      const s = sections[id];
+      colOf.set(id, ci);
+      secShown.push(id);
+      const kids = s.children.map((c) => data.blocks[c]).filter((k): k is Block => !!k && shown(k));
+      const open = depth >= 2 || openSecs.has(id);
+      if (!open || !kids.length) {
+        nodes.push({
+          ...blockNode(s), kind: "wide", title: title(s),
+          subtitle: kids.length ? `${kids.length} blocks · ${s.summary || s.name}` : (s.summary || undefined),
+          toolbar: kids.length ? secTool(id, false) : expandTool(s, expanded.has(s.id)),
+          pos: { x, y },
+        });
+        fnNodes.push(...fnSubs(s));
+        repOf.set(id, s.id);
+        y += 96 + GAP_Y;
+        continue;
+      }
+      const cols = Math.min(3, Math.ceil(Math.sqrt(kids.length)));
+      kids.forEach((k, i) => {
+        const r = Math.floor(i / cols), c = i % cols;
+        nodes.push({ ...blockNode(k), pos: { x: x + c * CELL_W, y: y + HEAD + r * CELL_H } });
+        fnNodes.push(...fnSubs(k));
+      });
+      groups.push({ id: secId(s), label: title(s), members: kids.map((k) => k.id) });
+      repOf.set(id, kids[0].id);
+      const rows = Math.ceil(kids.length / cols);
+      y += HEAD + rows * CELL_H + GAP_Y;
+      colW = Math.max(colW, cols * CELL_W);
     }
-    const kids = s.children.map((c) => data.blocks[c]).filter((x): x is Block => !!x && shown(x));
-    if (!kids.length) {
-      // A section that is its own block: one tile node in the frame's place.
-      nodes.push(blockNode(s));
-      groups.push({ id: secId(s), label: title(s), members: [s.id] });
-      fnNodes.push(...fnSubs(s));
-      continue;
-    }
-    for (const k of kids) { nodes.push(blockNode(k)); fnNodes.push(...fnSubs(k)); }
-    groups.push({ id: secId(s), label: title(s), members: kids.map((k) => k.id) });
-  }
-  for (const id of band) {
-    const s = sections[id];
-    if (!s || !shown(s)) continue;
-    secShown.push(id);
-    if (depth < 2) {
-      nodes.push({ ...blockNode(s), id: s.id, kind: "wide", title: title(s), subtitle: s.summary || undefined, dim: !lit(s.id) });
-      fnNodes.push(...fnSubs(s));
-      continue;
-    }
-    const kids = s.children.map((c) => data.blocks[c]).filter((x): x is Block => !!x && shown(x));
-    if (!kids.length) {
-      nodes.push(blockNode(s));
-      groups.push({ id: secId(s), label: title(s), members: [s.id] });
-      fnNodes.push(...fnSubs(s));
-      continue;
-    }
-    for (const k of kids) { nodes.push(blockNode(k)); fnNodes.push(...fnSubs(k)); }
-    groups.push({ id: secId(s), label: title(s), members: kids.map((k) => k.id) });
-  }
+    x += colW + GAP_X;
+  });
   nodes.push(...fnNodes);
   const nodeIds = new Set(nodes.map((n) => n.id));
 
-  // Edges: the section-level flows (families folded to sections, heaviest
-  // first) between each section's representative block. Members keep their
-  // own dashed tie-up below, so the frames stay coherent.
-  const rep = (s: Block): string => {
-    const kid = s.children.map((c) => data.blocks[c]).find((x): x is Block => !!x && shown(x));
-    return kid?.id ?? s.id;
-  };
+  // Edges: each section keeps its two heaviest outgoing flows (every flow as
+  // an edge is spaghetti; the sidebar lists the rest). A flow into an
+  // earlier column routes below, as n8n draws loops.
   const seenEdge = new Set<string>();
   const maxW = flows.reduce((m, f) => Math.max(m, f.weight), 0) || 1;
-  for (const f of flows.slice(0, 96)) {
-    if (!secShown.includes(f.from) || !secShown.includes(f.to)) continue;
-    const a = rep(sections[f.from]), b = rep(sections[f.to]);
+  const outCount = new Map<string, number>();
+  for (const f of flows) {
+    if (!colOf.has(f.from) || !colOf.has(f.to)) continue;
+    if ((outCount.get(f.from) ?? 0) >= 2) continue;
+    const a = repOf.get(f.from)!, b = repOf.get(f.to)!;
     if (a === b || !nodeIds.has(a) || !nodeIds.has(b)) continue;
+    // Flows back into an earlier column (or within one) would wrap the whole
+    // canvas; the default view reads left to right, the sidebar lists them.
+    if (colOf.get(f.to)! <= colOf.get(f.from)!) continue;
     const key = `${a}>${b}`;
     if (seenEdge.has(key)) continue;
     seenEdge.add(key);
+    outCount.set(f.from, (outCount.get(f.from) ?? 0) + 1);
     edges.push({ id: key, source: a, target: b, weight: edgeWeight(f.weight, maxW) });
-  }
-
-  // Everything joins one weak component – the kit batches per component and
-  // shelf-packs the batches, so separate islands would scatter across a huge
-  // canvas that never fits the viewport at the 0.5 minimum zoom. Each minor
-  // component gets one light tie-up edge into the main flow.
-  {
-    const adj = new Map<string, Set<string>>();
-    for (const id of nodeIds) adj.set(id, new Set());
-    for (const e of edges) {
-      if (!adj.has(e.source) || !adj.has(e.target) || e.source === e.target) continue;
-      adj.get(e.source)!.add(e.target);
-      adj.get(e.target)!.add(e.source);
-    }
-    const deg = new Map<string, number>();
-    const comps: string[][] = [];
-    const seen = new Set<string>();
-    for (const id of nodeIds) {
-      if (seen.has(id)) continue;
-      const comp: string[] = [];
-      const stack = [id];
-      seen.add(id);
-      while (stack.length) {
-        const cur = stack.pop()!;
-        comp.push(cur);
-        for (const next of adj.get(cur) ?? []) if (!seen.has(next)) { seen.add(next); stack.push(next); }
-      }
-      comps.push(comp);
-      for (const c of comp) deg.set(c, (adj.get(c)?.size ?? 0));
-    }
-    comps.sort((a, b) => b.length - a.length);
-    const main = comps[0];
-    const mainIds = new Set(main);
-    for (let ci = 1; ci < comps.length; ci++) {
-      const comp = comps[ci];
-      const anchor = [...comp].sort((a, b) => (deg.get(b) ?? 0) - (deg.get(a) ?? 0))[0];
-      // Tie into the section's own rep when it rides the main flow – members
-      // cluster around their section instead of drifting to a global hub.
-      const secBlock = secOf[anchor] ? sections[secOf[anchor]] : undefined;
-      const r = secBlock ? rep(secBlock) : undefined;
-      const to = r && mainIds.has(r) && r !== anchor ? r : [...main].sort((a, b) => (deg.get(b) ?? 0) - (deg.get(a) ?? 0))[0];
-      if (!to || anchor === to) continue;
-      const key = `link:${anchor}>${to}`;
-      if (seenEdge.has(key)) continue;
-      seenEdge.add(key);
-      // main (not dashed): the kit's dagre pass drops main:false edges, and
-      // the whole point is to fold every block into one layout run. Weight 1
-      // keeps the stroke light.
-      edges.push({ id: key, source: anchor, target: to, weight: 1 });
-    }
   }
     return { nodes, edges, groups };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, roles, focus, depth, expanded]);
+  }, [data, roles, focus, depth, expanded, openSecs]);
 
   // Intercepted selections: function circles open the code panel, "+ more"
   // chips toggle the expansion – neither becomes the block selection.
@@ -328,7 +299,9 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   const open = (id: string) => {
     if (id.startsWith("fn:")) { const n = Number(id.slice(3)); setTimeout(() => onLeaf(n), 0); return; }
     if (id.startsWith("more:")) { const bid = id.slice(5); setTimeout(() => onDrill(bid), 0); return; }
-    onDrill(id.startsWith("sec:") ? id.slice(4) : id);
+    if (id.startsWith("sec:")) { const sid = id.slice(4); setTimeout(() => toggleSec(sid), 0); return; }
+    if (sections[id] && data.blocks[id]?.children.length && depth < 2) { setTimeout(() => toggleSec(id), 0); return; }
+    onDrill(id);
   };
 
   const anyExpanded = expanded.size > 0;
@@ -343,6 +316,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
         </span>
       </div>
       <FlowCanvas
+        minZoom={0.1}
         nodes={nodes} edges={edges} groups={groups}
         selection={selection ?? null} onSelect={select} onOpen={open}
         // the focus state rides the layout key: the kit's layout cache keys on
@@ -440,6 +414,7 @@ export function CapsKitView({ data, roles, selection, onSelect, onFile }: CapsPr
         )}
       </div>
       <FlowCanvas
+        minZoom={0.5}
         nodes={nodes} edges={edges} groups={groups}
         selection={selNode} onSelect={select}
         layoutKey={`map-caps-${nodes.length}`} ns="map" testId="map-caps-canvas"

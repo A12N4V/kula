@@ -19,6 +19,8 @@ import { Icon } from "../ui";
 const EMPTY_GROUPS: FlowGroup[] = [];
 
 export type FlowCanvasProps = {
+  /** Lowest zoom; big preset maps pass less so fit can show everything. */
+  minZoom?: number;
   nodes: FlowNode[];
   edges: FlowEdge[];
   groups?: FlowGroup[];
@@ -356,7 +358,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             panOnDrag={[1, 2]}
             panActivationKeyCode="Space"
             multiSelectionKeyCode="Shift"
-            minZoom={0.5}
+            minZoom={props.minZoom ?? 0.5}
             maxZoom={2}
             defaultEdgeOptions={{ type: "flow-edge" }}
             proOptions={{ hideAttribution: true }}
