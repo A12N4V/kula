@@ -2309,6 +2309,21 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=ws-execs] .ex-row")).toHaveCount(1);
   });
 
+  test("transport: step runs one block then pauses, continue finishes, re-run appears after a failure", async ({ page }) => {
+    await page.route("**/api/git/kula", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ code: 1, stdout: "", stderr: "gate failed" }) }));
+    await open(page, "map");
+    await page.evaluate(() => localStorage.removeItem("kula.pipeline.map"));
+    await page.reload();
+    await addBlock(page, "np-item-trigger-manual", "manual");
+    await addBlock(page, "np-item-gate-status", "graph current");
+    await page.locator("[data-testid=ws-step]").click();
+    await expect(page.locator("[data-testid=ws-run-state]")).toContainText("Paused");
+    await expect(page.locator("[data-testid=ws-pause]")).toHaveAttribute("aria-pressed", "true");
+    await page.locator("[data-testid=ws-pause]").click();
+    await expect(page.locator("[data-testid=ws-run-state]")).toContainText("Failed", { timeout: 15_000 });
+    await expect(page.locator("[data-testid=ws-rerun]")).toBeVisible();
+  });
+
   test("sections start collapsed; open all shows their blocks in frames, close all folds them back", async ({ page }) => {
     await open(page, "map");
     // default: one coloured wide node per section, no frames – detail is a click away

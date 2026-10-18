@@ -167,6 +167,13 @@ type Pipe = ReturnType<typeof usePipeline>;
 export function useRunner(data: MapData | null, pipe: Pipe, onChanged: () => void) {
   const [running, setRunning] = useState(false);
   const [runs, setRuns] = useState<Execution[]>(readRuns);
+  // Transport: pause holds the run between blocks (a block in flight finishes),
+  // step runs exactly one block then pauses – a debugger's continue and step over.
+  const [paused, setPausedState] = useState(false);
+  const pausedRef = useRef(false);
+  const stepOnce = useRef(false);
+  const setPaused = (p: boolean) => { pausedRef.current = p; setPausedState(p); };
+  const [cursor, setCursor] = useState<{ at: number; of: number; t0: number } | null>(null);
   const abort = useRef(false);
   const done = useRef(new Set<string>()); // steps a user marked done by hand
   const stepsRef = useRef(pipe.steps);
@@ -200,8 +207,10 @@ export function useRunner(data: MapData | null, pipe: Pipe, onChanged: () => voi
     }
   };
 
-  const run = useCallback(async (fromId?: string, trigger = "manual") => {
+  const run = useCallback(async (fromId?: string, trigger = "manual", stepping = false) => {
     if (!data || running) return;
+    stepOnce.current = stepping;
+    setPaused(false);
     const steps = runnable(stepsRef.current);
     if (!steps.length) { log("run", "Nothing to run – add blocks with N or the Add block button.", "warn"); openDock("run"); return; }
     const from = fromId ? Math.max(0, steps.findIndex((s) => s.id === fromId)) : 0;
@@ -221,6 +230,14 @@ export function useRunner(data: MapData | null, pipe: Pipe, onChanged: () => voi
     for (let i = from; i < steps.length; i++) {
       if (abort.current) { ok = false; break; }
       const s = steps[i];
+      setCursor({ at: i + 1, of: steps.length, t0 });
+      if (pausedRef.current) {
+        log("run", `paused before ${s.name} – continue or step`, "warn");
+        tree("paused");
+        while (pausedRef.current && !abort.current) await sleep(150);
+        if (abort.current) { ok = false; break; }
+        tree("running");
+      }
       if (s.disabled) { mark(s, { status: "skipped" }); log(s.name, "deactivated – skipped", "info", s.id); continue; }
       const ts = Date.now();
       mark(s, { status: "running" });
@@ -270,6 +287,7 @@ export function useRunner(data: MapData | null, pipe: Pipe, onChanged: () => voi
         log(s.name, String((e as Error).message ?? e), "err", s.id);
       }
       mark(s, { status: abort.current ? "error" : pass ? "success" : "error", ms: Date.now() - ts });
+      if (stepOnce.current) setPaused(true);
       if (!pass) {
         // a failed gate followed by a retry block hands control to the retry
         if (s.kind === "gate" && steps[i + 1]?.kind === "retry" && !steps[i + 1].disabled) continue;
@@ -282,11 +300,24 @@ export function useRunner(data: MapData | null, pipe: Pipe, onChanged: () => voi
     const exec: Execution = { id: `r${t0}`, at: t0, ms: Date.now() - t0, status, trigger, steps: steps.map((s) => ({ name: s.name, kind: s.kind, status: (state.get(s.id)?.status ?? "idle") as StepStatus, ms: state.get(s.id)?.ms })) };
     setRuns((r) => { const n = [exec, ...r].slice(0, 25); try { localStorage.setItem(RUNS, JSON.stringify(n)); } catch { /* private */ } return n; });
     setRunning(false);
+    setPaused(false);
+    setCursor(null);
     onChanged();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, running, pipe]);
 
-  const stop = useCallback(() => { abort.current = true; api.agentAction("task_done", {}).catch(() => {}); }, []);
+  /** Pause between blocks, or continue. */
+  const togglePause = useCallback(() => { stepOnce.current = false; setPaused(!pausedRef.current); }, []);
+  /** Run the next block then pause; from idle, start a run in step mode. */
+  const step = useCallback((fromId?: string) => {
+    if (!running) { void run(fromId, "manual", true); return; }
+    stepOnce.current = true; setPaused(false);
+  }, [running, run]);
+  /** Re-run from the first block that failed in the last run. */
+  const failedAt = pipe.steps.find((x) => x.status === "error")?.id ?? null;
+  const rerunFailed = useCallback(() => { if (failedAt) void run(failedAt, "re-run"); }, [failedAt, run]);
+
+  const stop = useCallback(() => { abort.current = true; setPaused(false); api.agentAction("task_done", {}).catch(() => {}); }, []);
   const markDone = useCallback((id: string) => { done.current.add(id); }, []);
 
   // Automations: an armed "On change" trigger reruns when its section's files
@@ -310,7 +341,7 @@ export function useRunner(data: MapData | null, pipe: Pipe, onChanged: () => voi
     return () => window.clearInterval(t);
   }, [auto, data, running, run]);
 
-  return { running, run, stop, markDone, runs, clearRuns: () => { setRuns([]); try { localStorage.removeItem(RUNS); } catch { /* private */ } } };
+  return { running, run, stop, markDone, runs, paused, togglePause, step, failedAt, rerunFailed, cursor, clearRuns: () => { setRuns([]); try { localStorage.removeItem(RUNS); } catch { /* private */ } } };
 }
 
 /* ---- Node panel: n8n's node creator ----------------------------------- */
@@ -443,9 +474,11 @@ export function PipelinePanel({ data, pipe, runner, sel, onSel, sections, onOpen
       <ol className="pl-list">
         {pipe.steps.map((x, i) => (
           <li key={x.id} className={`pl-row${x.id === sel ? " on" : ""} pl-${x.status ?? "idle"}${x.disabled ? " pl-off" : ""}`} onClick={() => onSel(x.id)} onDoubleClick={() => onOpen(x.id)} data-testid={`pl-row-${i}`}>
+            <span className="pl-n mono">{x.kind === "note" ? "" : `#${runnable(pipe.steps).indexOf(x) + 1}`}</span>
             <span className="np-ico sm" style={{ background: `color-mix(in srgb, ${KIND_COLOR[x.kind]} 18%, transparent)`, color: KIND_COLOR[x.kind] }}><KindIco kind={x.kind} /></span>
             <span className="pl-name">{x.name}{x.section && <span className="pl-on"> · {name(x.section)}</span>}</span>
             <span className="pl-st">{x.disabled ? "off" : x.note ?? STATUS_LABEL[x.status ?? "idle"]}{x.ms != null && <span className="pl-ms"> {fmtMs(x.ms)}</span>}</span>
+            {x.kind !== "note" && !runner.running && <button className="pl-from" title="Run from this block" onClick={(e) => { e.stopPropagation(); void runner.run(x.id); }}>run from</button>}
           </li>
         ))}
       </ol>

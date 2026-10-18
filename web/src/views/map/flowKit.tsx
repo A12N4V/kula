@@ -348,6 +348,9 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     prevStep = st;
     if (st.kind === "agent" || st.kind === "crew") lastAgent = id;
   });
+  // The lane reads as one thing: a labelled frame round its blocks.
+  const laneIds = run.map((x) => `step:${x.id}`);
+  if (laneIds.length) groups.push({ id: "lane", label: "Pipeline", members: laneIds });
   // Sections accept a wire dragged from a block: that block now acts on it.
   if (steps.length) for (const n of nodes) if (!n.id.startsWith("step:") && n.kind !== "circle") n.accepts = true;
   const nodeIds = new Set(nodes.map((n) => n.id));
@@ -382,7 +385,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   // React Flow's click dispatch – a synchronous parent update there
   // re-enters the store (React error 185). Defer them a tick.
   const select = (id: string | null) => {
-    if (!id) { onSelect?.(null); return; }
+    if (!id || id === "lane") { onSelect?.(null); return; }
     if (id.startsWith("fn:")) { const n = Number(id.slice(3)); setTimeout(() => onLeaf(n), 0); return; }
     if (id.startsWith("more:")) { const bid = id.slice(5); setTimeout(() => toggleExpand(bid), 0); return; }
     // a group frame selects its section block – the sidebar reads blocks
@@ -390,6 +393,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   };
   const open = (id: string) => {
     if (id.startsWith("step:")) { onStepTool?.(id.slice(5), "open"); return; }
+    if (id === "lane") return;
     if (id.startsWith("fn:")) { const n = Number(id.slice(3)); setTimeout(() => onLeaf(n), 0); return; }
     if (id.startsWith("more:")) { const bid = id.slice(5); setTimeout(() => onDrill(bid), 0); return; }
     if (id.startsWith("sec:")) { const sid = id.slice(4); setTimeout(() => toggleSec(sid), 0); return; }

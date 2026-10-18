@@ -329,6 +329,10 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     const mod = ev.metaKey || ev.ctrlKey;
     const cur = selStep;
     if (mod && key === "Enter") { void runner.run(); return true; }
+    // An IDE's run keys: F5 run, ⇧F5 stop, F8 pause/continue, F10 step.
+    if (key === "F5") { if (ev.shiftKey) runner.stop(); else if (!runner.running) void runner.run(); return true; }
+    if (key === "F8") { if (runner.running) runner.togglePause(); else void runner.run(); return true; }
+    if (key === "F10") { runner.step(); return true; }
     if (mod && key.toLowerCase() === "z") { if (ev.shiftKey) pipe.redo(); else pipe.undo(); return true; }
     if (mod && key.toLowerCase() === "c" && cur && !window.getSelection()?.toString()) return pipe.copy(cur);
     if (mod && key.toLowerCase() === "v") { const id = pipe.paste(cur); if (id) select(id); return !!id; }
@@ -516,13 +520,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
               hint={insert?.after ? `Insert after ${pipe.steps.find((x) => x.id === insert.after)?.name ?? "block"}` : lastSec ? `Add on ${data.blocks[lastSec]?.theme || data.blocks[lastSec]?.name}` : "Add a block"} />
             {menu && <ContextMenu at={menu.at} items={menuItems(menu)} onClose={() => setMenu(null)} />}
             {ndvStep && <StepDetails data={data} s={ndvStep} pipe={pipe} runner={runner} sections={sections} prev={ndvPrev} onClose={() => setNdv(null)} />}
-            <div className="ws-runbar" data-testid="ws-runbar">
-              {runner.running && waiting && <button className="btn ws-run" onClick={() => runner.markDone(waiting.id)} data-testid="ws-done" title="The agent finished – hand on to the next block">{waiting.name}: done</button>}
-              {runner.running
-                ? <button className="btn ws-run stop" onClick={runner.stop} data-testid="ws-stop"><span className="ws-run-sq" />Stop</button>
-                : <button className="btn primary ws-run" onClick={() => void runner.run()} data-testid="ws-run-btn" title="Run the pipeline  ⌘↵"><Icon.play />Run pipeline</button>}
-              <span className="ws-run-meta">{pipe.steps.length ? `${pipe.steps.length} blocks` : "empty – Tab to add"}</span>
-            </div>
+            <Transport runner={runner} blocks={runnable(pipe.steps).length} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} />
           </div>
           : (view === "blocks" || chain || path.length) && view !== "capabilities" && view !== "chains"
             ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
@@ -571,6 +569,37 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           </>}
         </aside>
       </div>
+    </div>
+  );
+}
+
+/** The run transport – an IDE's debug toolbar on a CI run header, after
+    sema's transport strip: run / pause-continue / step / re-run failed / stop,
+    then where the run is and how long it has taken (tabular, so it does not
+    jitter), and the hand-off when an agent block is waiting. */
+function Transport({ runner, blocks, waiting, last }: { runner: ReturnType<typeof useRunner>; blocks: number; waiting: { id: string; name: string } | null; last: { status: string; ms: number } | null }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { if (!runner.running) return; const t = window.setInterval(() => setNow(Date.now()), 250); return () => window.clearInterval(t); }, [runner.running]);
+  const el = runner.cursor ? now - runner.cursor.t0 : 0;
+  const clock = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+  const state = runner.running ? (runner.paused ? "paused" : waiting ? "waiting" : "running") : last ? last.status : "idle";
+  return (
+    <div className={`tp tp-${state}`} data-testid="ws-runbar" role="toolbar" aria-label="Run">
+      {!runner.running
+        ? <button className="tp-btn tp-go" onClick={() => void runner.run()} data-testid="ws-run-btn" title="Run pipeline  ⌘↵" disabled={!blocks}><Icon.play /><span>Run</span></button>
+        : <button className="tp-btn" onClick={runner.togglePause} data-testid="ws-pause" title={runner.paused ? "Continue  F8" : "Pause before the next block  F8"} aria-pressed={runner.paused}>{runner.paused ? <Icon.play /> : <Icon.pause />}</button>}
+      <button className="tp-btn" onClick={() => runner.step()} data-testid="ws-step" title="Step – run the next block, then pause  F10" disabled={!blocks || (runner.running && !runner.paused)}><Icon.stepOver /></button>
+      {!runner.running && runner.failedAt && <button className="tp-btn" onClick={runner.rerunFailed} data-testid="ws-rerun" title="Re-run from the failed block"><Icon.rerun /></button>}
+      {runner.running && <button className="tp-btn tp-stop" onClick={runner.stop} data-testid="ws-stop" title="Stop  ⇧F5"><Icon.stop /></button>}
+      <span className="tp-sep" />
+      <span className="tp-dot" />
+      <span className="tp-state" data-testid="ws-run-state">
+        {runner.running
+          ? `${runner.paused ? "Paused" : waiting ? "Waiting" : "Running"} ${runner.cursor ? `${runner.cursor.at}/${runner.cursor.of}` : ""}`
+          : last ? `${last.status[0].toUpperCase()}${last.status.slice(1)}` : blocks ? `${blocks} blocks` : "Empty – N adds a block"}
+      </span>
+      <span className="tp-clock mono">{runner.running ? clock(el) : last ? clock(last.ms) : ""}</span>
+      {runner.running && waiting && <button className="tp-done" onClick={() => runner.markDone(waiting.id)} data-testid="ws-done" title="The agent finished – hand on to the next block">{waiting.name}: done</button>}
     </div>
   );
 }

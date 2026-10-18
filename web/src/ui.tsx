@@ -61,6 +61,12 @@ export const Icon = {
   query: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M8 4H6.5A1.5 1.5 0 0 0 5 5.5v4L3.5 12 5 14.5v4A1.5 1.5 0 0 0 6.5 20H8M16 4h1.5A1.5 1.5 0 0 1 19 5.5v4l1.5 2.5-1.5 2.5v4a1.5 1.5 0 0 1-1.5 1.5H16" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /></svg>),
   copy: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="8.5" y="8.5" width="11" height="11" /><path d="M15.5 8.5V5.5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3" /></svg>),
   play: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M7 5v14l11-7z" fill="currentColor" /></svg>),
+  pause: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="6.5" y="5" width="3.5" height="14" fill="currentColor" stroke="none" /><rect x="14" y="5" width="3.5" height="14" fill="currentColor" stroke="none" /></svg>),
+  stop: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" stroke="none" /></svg>),
+  /** Step: run the next block, then pause (a debugger's step over). */
+  stepOver: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M5 5v14l8-7z" fill="currentColor" /><path d="M17 5v14" strokeWidth="2.2" /></svg>),
+  /** Re-run from the first failed block (CI's "re-run failed jobs"). */
+  rerun: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 12a8 8 0 1 0 2.3-5.6" /><path d="M4 4v4.5h4.5" /><path d="M10.5 9v6l4.5-3z" fill="currentColor" stroke="none" /></svg>),
   lock: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="5" y="11" width="14" height="9" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>),
   sidebar: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="4.5" width="17" height="15" /><path d="M9.5 4.5v15" /><path d="M5.8 8.5h1.6M5.8 11h1.6M5.8 13.5h1.6" /></svg>),
   chevron: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m6 9 6 6 6-6" /></svg>),

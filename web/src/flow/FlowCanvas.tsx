@@ -182,7 +182,9 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     if (!n) return;
     revealed.current = reveal;
     const s2 = nodeSize(n.data);
-    const cx = n.position.x + s2.w / 2, cy = n.position.y + s2.h / 2;
+    // Members of a frame carry positions relative to it – pan to the absolute one.
+    const abs = rf.getInternalNode(reveal)?.internals.positionAbsolute ?? n.position;
+    const cx = abs.x + s2.w / 2, cy = abs.y + s2.h / 2;
     const el = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
     const t = rf.getViewport();
     const sx = cx * t.zoom + t.x, sy = cy * t.zoom + t.y;
