@@ -86,6 +86,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   // React Flow never sees an empty echo to clear it.
   const selRef = useRef(sel);
   selRef.current = sel;
+  const rfSelRef = useRef<string | null>(null);
   const didFit = useRef(false);
   const nodesRef = useRef<RfNode[]>([]);
   const edgesRef = useRef<Edge[]>([]);
@@ -332,8 +333,12 @@ function FlowCanvasInner(props: FlowCanvasProps) {
               // its internal set on a re-render). Forwarding that echo would
               // clear a selection the app just set programmatically; user
               // clearing is onPaneClick and the Escape handler, not here.
-              const first = objs.nodes[0];
-              if (first && first.id !== sel) select(first.id);
+              // Forward only a change in React Flow's own selection, so a late
+              // echo of a node Escape just cleared cannot re-select it.
+              const id = objs.nodes[0]?.id ?? null;
+              const prev = rfSelRef.current;
+              rfSelRef.current = id;
+              if (id && id !== prev && id !== sel) select(id);
             }}
             onNodeDragStop={(_, n, nodes2) => {
               const rfNodesNow = rf.getNodes() as unknown as RfNode[];
