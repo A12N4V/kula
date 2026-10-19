@@ -24,6 +24,17 @@ export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; ac
   const [orig, setOrig] = useState<string | null>(null);
   const cur = info.workflows.find((w) => w.name === sel);
   useEffect(() => { if (cur) { setDraft({ ...blank(), ...cur, memory: cur.memory || "write" }); setOrig(cur.name); } }, [sel, info]);
+  // A workflow created from the map's Library rail lands here selected (see
+  // workspace.tsx stashNewItem).
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("kula.agents.new");
+      if (!raw) return;
+      sessionStorage.removeItem("kula.agents.new");
+      const { kind, name } = JSON.parse(raw) as { kind: string; name: string };
+      if (kind === "agent" && name) setSel(name);
+    } catch { /* private mode */ }
+  }, []);
   const own = info.workflows.filter((w) => !w.builtin);
   const dirty = !!draft && !!cur && JSON.stringify({ ...blank(), ...cur, memory: cur.memory || "write", builtin: undefined }) !== JSON.stringify({ ...draft, builtin: undefined });
   const isNew = orig === null;

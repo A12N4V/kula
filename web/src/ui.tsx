@@ -3,6 +3,9 @@ import type { Node } from "./api";
 import { GLYPH, kindColor } from "./colors";
 import { nodeTarget, useCode } from "./CodePanel";
 import { markPath, N } from "./mark";
+// Agent and team marks are harmonographs – one component, shared by the
+// Workspace rail, the agents library, the dock and the inspector.
+export { Harmonograph, harmonograph } from "./harmonograph";
 
 // ---------- icons ----------
 // One grammar on a 24 grid, 1.5 stroke: rounded squares are structure (files,
