@@ -37,6 +37,11 @@ if want web; then
     run "pnpm install" pnpm -C web install --frozen-lockfile
     run "typecheck" pnpm -C web typecheck
     run "vite build" pnpm -C web exec vite build
+    # D1 design lint: the selftest seeds one violation of every rule into a
+    # scratch tree (fails = linter broken); the tree scan reports in report
+    # mode – KULA_LINT_STRICT=1 turns it into a gate once the tree is clean.
+    run "design lint (selftest)" node web/scripts/design-lint.mjs --selftest
+    run "design lint (tree scan)" node web/scripts/design-lint.mjs
   else bad "pnpm not found"; fi
 fi
 
