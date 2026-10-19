@@ -2075,9 +2075,9 @@ pub fn print_chains(store: &Store, s: &Syntagm, from: Option<&str>) -> Result<()
     Ok(())
 }
 
-pub mod flows;
-pub mod flows_name;
 pub mod embed;
 pub mod embed_cache;
+pub mod flows;
+pub mod flows_name;
 #[cfg(test)]
 mod tests;
