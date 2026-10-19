@@ -505,3 +505,125 @@ fn chain_family_page_enumerates_a_stored_family() {
     }
     assert_eq!(all.len() as u128, want, "pages must union to the family's stored count");
 }
+
+// ----------------------------------------------------------------– flows (M2)
+
+mod flows_tests {
+    use super::*;
+
+    /// Flows land on the synthetic fixture: every module's entry chain to a
+    /// side effect becomes one flow, tests and barrel hubs stay out.
+    #[test]
+    fn flows_extract_entry_to_side_effect_chains() {
+        let (_dir, _repo, store) = temp_store();
+        fixture(&store);
+        let flows = flows::extract(&store);
+        assert!(!flows.is_empty(), "the fixture has call chains, flows must exist");
+        for f in &flows {
+            assert!(f.members.len() >= 3, "flow {:?} below the member floor", f.name);
+            assert!(!f.name.is_empty(), "every flow is named");
+            assert!(!f.outcome.is_empty(), "every flow carries an outcome sentence");
+            assert!(f.outcome.split_whitespace().count() <= 12, "outcome at most 12 words: {:?}", f.outcome);
+            for &m in &f.members {
+                let path = store.conn.query_row("SELECT path FROM nodes WHERE id = ?1", [m], |r| r.get::<_, String>(0)).unwrap();
+                assert!(!is_test_path(&path), "tests never join a flow: {} in {:?}", path, f.name);
+            }
+        }
+        // The payments chain reaches its logging side effect: pay, charge,
+        // validate and log share one flow.
+        let members: Vec<Vec<i64>> = flows.iter().map(|f| f.members.clone()).collect();
+        assert!(members.iter().any(|m| m.contains(&2) && m.contains(&3) && m.contains(&4)), "the payments chain is one flow");
+    }
+
+    /// Same store, same flows – extraction is deterministic.
+    #[test]
+    fn flows_are_deterministic() {
+        let (_dir, _repo, store) = temp_store();
+        fixture(&store);
+        let a = flows::extract(&store);
+        let b = flows::extract(&store);
+        assert_eq!(a.len(), b.len());
+        for (x, y) in a.iter().zip(&b) {
+            assert_eq!(x.name, y.name, "names stable across runs");
+            assert_eq!(x.members, y.members, "members stable across runs");
+        }
+    }
+
+    /// Names pass the rubric: verb-object, at most 12 words, no code
+    /// identifiers - checked on the fixture AND scored with the bench's
+    /// rubric scorer on realistic member sets, so vacuous verb lists cannot
+    /// pass ungrammatical output.
+    #[test]
+    fn flow_names_pass_the_rubric() {
+        let (_dir, _repo, store) = temp_store();
+        fixture(&store);
+        let flows = flows::extract(&store);
+        assert!(!flows.is_empty());
+        for f in &flows {
+            let first = f.name.split_whitespace().next().unwrap_or("").to_lowercase();
+            let verbs = [
+                "add", "build", "check", "collect", "compute", "decode", "detect", "encode", "extract", "fetch", "find", "index", "list",
+                "load", "log", "map", "parse", "query", "read", "record", "render", "resolve", "run", "save", "scan", "search", "serve",
+                "show", "sort", "store", "sync", "update", "write",
+            ];
+            assert!(verbs.contains(&first.as_str()), "name {:?} starts with a verb", f.name);
+            assert!(f.name.split_whitespace().count() <= 12, "name {:?} at most 12 words", f.name);
+            assert!(!f.name.contains('_') && !f.name.contains("::"), "no identifiers in {:?}", f.name);
+        }
+        // The bench scorer on names for realistic member sets: a decoder
+        // family, a store family, a server family. The namer must reach the
+        // scorer's floor - identifier snakes and noun piles fail this.
+        let cases: Vec<(&[&str], &[&str])> = vec![
+            (&["decode", "_parse_records", "_parse_stream", "u8", "text", "skip"], &["pod5.py", "signal"]),
+            (&["put", "get", "search", "write_all"], &["store.rs", "graph"]),
+            (&["router", "serve", "map_all", "block_json"], &["server.rs", "api"]),
+        ];
+        for (names, paths) in cases {
+            let names: Vec<String> = names.iter().map(|x| x.to_string()).collect();
+            let paths: Vec<String> = paths.iter().map(|x| x.to_string()).collect();
+            let named = flows_name::name_flow(&names, &paths, "main", None);
+            let sc = crate::bench::mapping::names::score(&named.name, &named.keywords);
+            assert!(sc >= 0.5, "name {:?} scores {sc} below the rubric floor", named.name);
+            assert!(!named.name.contains('_') && !named.name.contains("::"), "no identifiers in {:?}", named.name);
+            assert!(named.outcome.split_whitespace().count() <= 12, "outcome at most 12 words: {:?}", named.outcome);
+        }
+    }
+
+    /// The shared-plumbing prune keeps feature cores: a hub called by many
+    /// flows is not part of any one of them. Proven two ways - directly on
+    /// the prune function, and end to end on a fixture with enough flows
+    /// for the prune to fire.
+    #[test]
+    fn shared_hubs_are_pruned_from_flows() {
+        use std::collections::BTreeSet;
+        let (_dir, _repo, store) = temp_store();
+        fixture(&store);
+        // One hub helper every entry reaches: it must not land in the flows
+        // that merely pass through it.
+        add_node(&store, 60, "function", "log_meta", "shared/log_meta.py", 10);
+        for s in [61, 62, 63, 64, 65, 66] {
+            add_node(&store, s, "function", &format!("entry_{s}"), "shared/entries.py", 10);
+            add_edge(&store, s, 60, "CALLS", 1.0);
+        }
+        let cfg = flows::FlowConfig::default();
+        // Direct: the hub sits in at least half of six member sets, so the
+        // prune must remove it from every surviving one.
+        let sets: Vec<(usize, BTreeSet<usize>, usize)> = (0..6)
+            .map(|i| {
+                let mut m: BTreeSet<usize> = [10 + i, 20 + i, 30 + i, 40 + i, 50 + i].into_iter().collect();
+                m.insert(60);
+                (i, m, 5)
+            })
+            .collect();
+        let pruned = flows::prune_shared(sets, &cfg);
+        assert_eq!(pruned.len(), 6, "the prune drops members, not flows");
+        for (_, m, _) in &pruned {
+            assert!(!m.contains(&60), "the shared hub is pruned from every flow");
+        }
+        // End to end: with six flows through the hub, extraction drops it.
+        let flows = flows::extract(&store);
+        for f in &flows {
+            assert!(!f.members.contains(&60), "hub log_meta must not join a flow: {:?}", f.name);
+        }
+    }
+}
