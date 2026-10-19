@@ -127,9 +127,9 @@
 /* Node panel: slides in from the right edge of the canvas. */
 .np { position: absolute; top: 56px; right: 12px; bottom: 76px; width: 340px; max-width: calc(100% - 24px); z-index: 25;
   display: flex; flex-direction: column; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius);
-  transform: translateX(calc(100% + 24px)); opacity: 0; pointer-events: none;
-  transition: transform .22s cubic-bezier(.2,.8,.2,1), opacity .16s ease-out; }
-.np.open { transform: none; opacity: 1; pointer-events: auto; }
+  transform: translateX(calc(100% + 24px)); opacity: 0; pointer-events: none; visibility: hidden;
+  transition: transform .22s cubic-bezier(.2,.8,.2,1), opacity .16s ease-out, visibility 0s .22s; }
+.np.open { transform: none; opacity: 1; pointer-events: auto; visibility: visible; transition: transform .22s cubic-bezier(.2,.8,.2,1), opacity .16s ease-out; }
 .np.np-dragging { opacity: .25; pointer-events: none; }
 .np-head { display: flex; align-items: center; padding: 12px 14px 6px; }
 .np-title { font-weight: 600; font-size: 14px; flex: 1; }
