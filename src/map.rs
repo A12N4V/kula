@@ -137,6 +137,9 @@ pub struct Syntagm {
     /// Edge chain flow between block pairs, sorted, for /api/map.
     #[serde(skip)]
     pub flows: Vec<FlowEdge>,
+    /// Value flows: entry → side-effect chains, named (M2).
+    #[serde(skip)]
+    pub value_flows: Vec<flows::OutFlow>,
     /// Total chain count, exact unless saturated past u128.
     #[serde(skip)]
     pub total: u128,
@@ -254,7 +257,13 @@ impl Builder<'_> {
         lower_priority();
         let rev = file_rev(store)?;
         let mut s = if store.meta("syntagm_rev").is_some_and(|r| r == rev) {
-            load_stored(store, &self.embed_state)?.unwrap_or_else(|| self.compute(store))
+            let mut stored = load_stored(store, &self.embed_state)?;
+            if let Some(s) = &mut stored {
+                if s.value_flows.is_empty() {
+                    s.value_flows = flows::extract_cached(store).unwrap_or_else(|| flows::extract(store));
+                }
+            }
+            stored.unwrap_or_else(|| self.compute(store))
         } else {
             let s = self.compute(store);
             let _ = store_stored(store, &s, &rev);
@@ -420,7 +429,10 @@ impl Builder<'_> {
         let flows = Self::flow_edges(&cond, &counts, &edges, &idx, &block_lookup);
         let roles_map: BTreeMap<i64, String> = node_ids.iter().enumerate().map(|(i, id)| (*id, roles[i].clone())).collect();
         let _ = store.set_meta("syntagm_embed", &self.embed_state);
-        Syntagm { blocks, chains, stats, families, loops, roles: roles_map, flows, total: counts.total, exact: counts.exact }
+        // Value flows: extracted once per revision, cached in the store.
+        let value_flows = flows::extract(store);
+        let _ = store.set_meta("syntagm_flows", &serde_json::to_string(&value_flows).unwrap_or_default());
+        Syntagm { blocks, chains, stats, families, loops, roles: roles_map, flows, value_flows, total: counts.total, exact: counts.exact }
     }
 }
 
@@ -851,7 +863,7 @@ pub fn is_test_path(path: &str) -> bool {
         || file == "conftest.py"
 }
 
-fn is_reexport(path: &str) -> bool {
+pub fn is_reexport(path: &str) -> bool {
     matches!(path.rsplit('/').next().unwrap_or(""), "__init__.py" | "index.ts" | "index.tsx" | "index.js" | "mod.rs")
 }
 
@@ -1814,6 +1826,7 @@ fn load_stored(store: &Store, embed_state: &str) -> Result<Option<Syntagm>> {
         loops,
         roles,
         flows,
+        value_flows: Vec::new(),
         total,
         exact,
     }))
@@ -2050,6 +2063,9 @@ pub fn print_chains(store: &Store, s: &Syntagm, from: Option<&str>) -> Result<()
     }
     Ok(())
 }
+
+pub mod flows;
+pub mod flows_name;
 
 #[cfg(test)]
 mod tests;

@@ -312,87 +312,16 @@ fn bench_repo(name: &str, dir: &Path, gold: &GoldFile) -> Result<RepoResult> {
     })
 }
 
-/// Baseline flow adapter (wave 1): the top chain families by chain count,
-/// each becoming one candidate flow whose members are the union of a capped
-/// sample of its chains' steps. Wave 2's `src/map/flows.rs` replaces this.
-fn candidate_flows(s: &map::Syntagm, store: &Store, member_of: &dyn Fn(i64) -> Option<String>) -> Vec<metrics::Flow> {
-    let mut families: Vec<&map::ChainFamily> = s.families.iter().collect();
-    families.sort_by(|a, b| b.count.cmp(&a.count).then(a.id.cmp(&b.id)));
-    let sampled = family_chains(store, 8192);
-    // Greedy merge: families whose member sets overlap are one flow – the
-    // seed of wave 2's merge rule, kept here so the bench baseline is fair.
-    let mut names: Vec<(String, String)> = Vec::new(); // (source, terminal) words
-    let family_members = |sample: &[Vec<i64>]| -> Vec<String> {
-        let mut m: Vec<String> = Vec::new();
-        for steps in sample {
-            for &id in steps {
-                if let Some(x) = member_of(id) {
-                    if !m.contains(&x) {
-                        m.push(x);
-                    }
-                }
-            }
-        }
-        m
-    };
-    let mut fam_members: Vec<Vec<String>> = Vec::new();
-    for fam in families.iter().take(40) {
-        let sample: Vec<Vec<i64>> =
-            sampled.iter().filter(|c| c.first() == Some(&fam.source) && c.last() == Some(&fam.terminal)).take(64).cloned().collect();
-        fam_members.push(family_members(&sample));
-        names.push((
-            member_of(fam.source).map(|m| tail_word(&m)).unwrap_or_default(),
-            member_of(fam.terminal).map(|m| tail_word(&m)).unwrap_or_default(),
-        ));
-    }
-    // Families sharing a (source, terminal) pair are the same family seen
-    // twice; keep the first so the printed flow list is not duplicated.
-    let mut seen_pairs: std::collections::HashSet<(i64, i64)> = std::collections::HashSet::new();
-    let mut keep: Vec<usize> = Vec::new();
-    for (i, fam) in families.iter().enumerate().take(40) {
-        if seen_pairs.insert((fam.source, fam.terminal)) {
-            keep.push(i);
-        }
-    }
-    let fam_members: Vec<Vec<String>> = keep.iter().map(|&i| fam_members[i].clone()).collect();
-    let names: Vec<(String, String)> = keep.iter().map(|&i| names[i].clone()).collect();
-    // Union-find over families with member Jaccard ≥ 0.6.
-    let mut parent: Vec<usize> = (0..fam_members.len()).collect();
-    let find = |mut x: usize, parent: &[usize]| -> usize {
-        while parent[x] != x {
-            x = parent[x];
-        }
-        x
-    };
-    for i in 0..fam_members.len() {
-        for j in (i + 1)..fam_members.len() {
-            if metrics::jaccard(&fam_members[i], &fam_members[j]) >= 0.6 {
-                let (ri, rj) = (find(i, &parent), find(j, &parent));
-                if ri != rj {
-                    parent[rj.max(ri)] = rj.min(ri);
-                }
-            }
-        }
-    }
-    let mut out = Vec::new();
-    for i in 0..fam_members.len() {
-        if find(i, &parent) != i {
-            continue; // merged into a root
-        }
-        let mut members = fam_members[i].clone();
-        for (j, fam) in fam_members.iter().enumerate().skip(i + 1) {
-            if find(j, &parent) == i {
-                for m in fam {
-                    if !members.contains(m) {
-                        members.push(m.clone());
-                    }
-                }
-            }
-        }
+/// Candidate flows for the bench: the real value flows from `src/map/flows.rs`
+/// (wave 2), mapped onto the metrics Flow shape.
+fn candidate_flows(s: &map::Syntagm, _store: &Store, member_of: &dyn Fn(i64) -> Option<String>) -> Vec<metrics::Flow> {
+    let mut out: Vec<metrics::Flow> = Vec::new();
+    for f in &s.value_flows {
+        let members: Vec<String> = f.members.iter().filter_map(|&id| member_of(id)).collect();
         if members.len() < 2 {
             continue;
         }
-        out.push(metrics::Flow { name: names::baseline_name(&names[i].0, &names[i].1), members, keywords: vec![] });
+        out.push(metrics::Flow { name: f.name.clone(), members, keywords: vec![] });
     }
     out
 }
