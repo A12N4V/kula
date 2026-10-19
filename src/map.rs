@@ -1853,10 +1853,31 @@ pub struct LeafInfo {
     pub line: i64,
 }
 
+/// Value flows (M2's extractor) as payload JSON, under the additive
+/// `value_flows` key. Sections are the blocks covering each flow's members;
+/// the order is (name, entry), not insertion order, so two rebuilds emit the
+/// same JSON and the UI never flickers.
+pub fn value_flows_json(blocks: &[Block], flows: &[flows::OutFlow]) -> Vec<serde_json::Value> {
+    let block_of: std::collections::HashMap<i64, &str> =
+        blocks.iter().flat_map(|b| b.symbols.iter().map(|m| (*m, b.id.as_str()))).collect();
+    let mut out: Vec<serde_json::Value> = flows
+        .iter()
+        .map(|f| {
+            let mut secs: Vec<&str> = f.members.iter().filter_map(|m| block_of.get(m).copied()).collect();
+            secs.sort_unstable();
+            secs.dedup();
+            serde_json::json!({ "name": f.name, "outcome": f.outcome, "entry": f.entry, "members": f.members, "keywords": f.keywords, "sections": secs })
+        })
+        .collect();
+    out.sort_by(|a, b| (a["name"].as_str(), a["entry"].as_i64()).cmp(&(b["name"].as_str(), b["entry"].as_i64())));
+    out
+}
+
 /// `GET /api/syntagm` shape with an optional similarity provider (E1's
 /// embedding cache) and its state for the stats chip (off | on | stale).
 pub fn all_json_with(repo: &Repo, store: &Store, sim: Option<&dyn Similarity>, embed_state: &str) -> Result<serde_json::Value> {
     let s = build_with(repo, store, sim, embed_state)?;
+    let value_flows = value_flows_json(&s.blocks, &s.value_flows);
     let mut leaves = serde_json::Map::new();
     for n in store.nodes_where("kind != 'file'", [])? {
         leaves.insert(
@@ -1867,12 +1888,15 @@ pub fn all_json_with(repo: &Repo, store: &Store, sim: Option<&dyn Similarity>, e
             }),
         );
     }
+    // Value flows (M2's extractor) under an additive key – the old `flows` is
+    // the chain-family edge flow flowKit consumes; never repurpose it.
     Ok(serde_json::json!({
         "blocks": s.blocks,
         "families": s.families,
         "loops": s.loops,
         "leaves": leaves,
         "flows": s.flows,
+        "value_flows": value_flows,
         "stats": {
             "chains": s.total.to_string(),
             "exact": s.exact,

@@ -721,3 +721,74 @@ mod embed_tests {
         assert!(cosine(&a, &a) <= 1.0);
     }
 }
+
+// --------------------------------------------------------- m3: payload order
+
+mod m3_payload_tests {
+    use super::*;
+
+    /// Synthetic blocks covering the fixture's node ids 1..=11, two sections.
+    fn blocks() -> Vec<Block> {
+        let blk = |id: &str, symbols: Vec<i64>| Block {
+            id: id.into(),
+            parent: None,
+            depth: 0,
+            name: id.into(),
+            summary: String::new(),
+            kind: "section".into(),
+            symbols,
+            children: vec![],
+            files: 1,
+            cohesion: 1.0,
+            source: "graph".into(),
+            role: "core".into(),
+        };
+        vec![blk("b1", (1..=6).collect()), blk("b2", (7..=11).collect())]
+    }
+
+    /// /api/map's `value_flows` order is (name, entry), not insertion order –
+    /// two extract runs must serialize identically or the UI flickers across
+    /// rebuilds. Sections come from the blocks covering the members.
+    #[test]
+    fn value_flows_json_order_is_stable_across_runs() {
+        let (_dir, _repo, store) = temp_store();
+        fixture(&store);
+        let a = value_flows_json(&blocks(), &flows::extract(&store));
+        let b = value_flows_json(&blocks(), &flows::extract(&store));
+        assert_eq!(a, b, "two rebuilds must emit the same value_flows JSON");
+        // Sorted by name, then entry: the UI never sees insertion-order jitter.
+        let keys: Vec<(String, i64)> =
+            a.iter().map(|f| (f["name"].as_str().unwrap_or_default().to_string(), f["entry"].as_i64().unwrap_or_default())).collect();
+        let mut sorted = keys.clone();
+        sorted.sort();
+        assert_eq!(keys, sorted, "value_flows must be sorted by (name, entry)");
+        for f in &a {
+            let secs = f["sections"].as_array().unwrap();
+            let mut s2: Vec<&str> = secs.iter().map(|x| x.as_str().unwrap()).collect();
+            s2.sort_unstable();
+            assert_eq!(secs.len(), s2.len(), "sections are unique");
+            let members: Vec<i64> = f["members"].as_array().unwrap().iter().filter_map(|x| x.as_i64()).collect();
+            assert!(!members.is_empty(), "every flow keeps its members in the payload");
+            assert!(f["outcome"].as_str().is_some_and(|o| !o.is_empty()), "outcome survives the payload");
+        }
+    }
+
+    /// Sections are real block ids that cover the flow's members – each
+    /// member lands in exactly one block, so a member's block must appear.
+    #[test]
+    fn flow_sections_cover_the_flow_members() {
+        let (_dir, _repo, store) = temp_store();
+        fixture(&store);
+        let blks = blocks();
+        let json = value_flows_json(&blks, &flows::extract(&store));
+        let in_block: std::collections::HashSet<i64> = blks.iter().flat_map(|b| b.symbols.iter().copied()).collect();
+        for f in &json {
+            let secs: std::collections::HashSet<&str> = f["sections"].as_array().unwrap().iter().filter_map(|x| x.as_str()).collect();
+            for m in f["members"].as_array().unwrap().iter().filter_map(|x| x.as_i64()) {
+                if in_block.contains(&m) {
+                    assert!(!secs.is_empty(), "member {} must map to at least one section", m);
+                }
+            }
+        }
+    }
+}
