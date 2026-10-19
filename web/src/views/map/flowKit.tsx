@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { FlowCanvas, type FlowEdge, type FlowGroup, type FlowNode } from "../../flow";
-import { KindIcon, RoleMark, ROLE_COLOR } from "./icons";
+import { KindIcon, RoleMark, ROLE_COLOR, sectionLogo } from "./icons";
 import type { Block, MapData, Role } from "./types";
 import { capabilities } from "./lenses";
 import type { Focus } from "./chainFocus";
@@ -209,7 +209,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   const blockNode = (b: Block, sec = b.id): FlowNode => {
     return {
       id: b.id, kind: "tile", title: title(b), subtitle: b.theme ? b.name : undefined,
-      icon: <RoleMark role={b.role} />, color: colorOf(b, sec),
+      icon: sectionLogo(`${b.theme ?? ""} ${b.name} ${b.summary ?? ""}`, b.role), color: colorOf(b, sec),
       entry: b.role === "entry", dim: !lit(b.id), hasSub: expanded.has(b.id),
       toolbar: expandTool(b, expanded.has(b.id)),
     };
@@ -266,16 +266,20 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
       const kids = s.children.map((c) => data.blocks[c]).filter((k): k is Block => !!k && shown(k));
       const open = depth >= 2 || openSecs.has(id);
       if (!open || !kids.length) {
+        // Graph's square node: the section's logo in the box, its name and
+        // size under it – a glance reads what each part of the code does.
         nodes.push({
-          ...blockNode(s), kind: "wide", title: title(s),
-          subtitle: kids.length ? `${kids.length} blocks · ${s.summary || s.name}` : (s.summary || undefined),
+          ...blockNode(s), kind: "tile", title: title(s),
+          subtitle: kids.length ? `${kids.length} blocks · ${s.files} files` : `${s.files} files · ${s.symbols.length} fns`,
+          icon: sectionLogo(`${s.theme ?? ""} ${s.name} ${s.summary ?? ""}`, s.role),
+          size: { w: 96, h: 160 },
           toolbar: kids.length ? secTool(id, false) : expandTool(s, expanded.has(s.id)),
-          pos: { x, y },
+          pos: { x: x + 80, y },
           ...markOf(id, true),
         });
         fnNodes.push(...fnSubs(s));
         repOf.set(id, s.id);
-        y += 96 + GAP_Y;
+        y += 160 + GAP_Y;
         continue;
       }
       const cols = Math.min(3, Math.ceil(Math.sqrt(kids.length)));

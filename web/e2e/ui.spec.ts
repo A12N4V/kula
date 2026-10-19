@@ -1474,7 +1474,9 @@ test.describe("agents A2", () => {
     await expect(rows.filter({ hasText: "Gemini CLI" }).locator(".roster-num").nth(5)).toHaveText("3");
     for (const row of await rows.all()) await expect(row).toContainText("0"); // no skills in the fixture
     // Loops and teams as compact rows with status, linked to their tabs.
-    await expect(page.locator(".loop-row")).toHaveCount(4); // the four kula.toml teams
+    // The four kula.toml teams. Not an exact count: the fixture is per worker, and
+    // earlier tests on the same worker (T1.3b's research loop, team creation) add rows.
+    for (const name of ["ship", "steer", "research", "audit"]) await expect(page.locator(".loop-row").filter({ hasText: name }).first()).toBeVisible();
     await expect(page.locator(".loop-row").filter({ hasText: "ship" })).toContainText("saved");
     await expect(page.locator(".ag-control")).toContainText("loop is measuring anything");
     // A roster cell leads to the tab that owns it.
@@ -1843,17 +1845,28 @@ test.describe("map", () => {
   // its fixture. The landing view is the functional flow; the nested-box drill
   // is the "blocks" view, and the right panel lists blocks / functions / chains.
   const blocksView = (page: Page) => page.locator("[data-testid=map-view-blocks]").click();
-  const chainsList = (page: Page) => page.locator("[data-testid=map-sect-chains]").click();
+  // The inspector is closed until a click; Structure opens it on the block tree.
+  const structure = async (page: Page) => {
+    if (await page.locator("[data-testid=map-filter]").isVisible()) return;
+    if (await page.locator("[data-testid=map-side-toggle]").isVisible()) await page.locator("[data-testid=map-side-toggle]").click();
+    else await page.locator("[data-testid=ws-tab-structure]").click();
+    await expect(page.locator("[data-testid=map-filter]")).toBeVisible();
+  };
+  const chainsList = async (page: Page) => { await structure(page); await page.locator("[data-testid=map-sect-chains]").click(); };
   test("tab loads with sidebar, canvas and readout", async ({ page }) => {
     await open(page, "map");
     await expect(page.locator("[data-testid=map-view]")).toBeVisible();
-    await expect(page.locator("[data-testid=map-filter]")).toBeVisible();
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
-    await expect(page.locator("[data-testid=map-readout]")).toBeAttached();
+    // the canvas is everything until a click: no inspector yet
+    await expect(page.locator("[data-testid=map-inspector]")).toHaveCount(0);
+    await structure(page);
     // the panel opens on the block tree; chains are one tab away
     await expect(page.locator("[data-testid=map-sidebar] .sy-section-label").first()).toHaveText(/blocks/i);
     await chainsList(page);
     await expect(page.locator(".sy-family").first()).toBeVisible();
+    // Overview carries the readout: with nothing selected, the repo's stats
+    await page.locator("[data-testid=ws-tab-inspect]").click();
+    await expect(page.locator("[data-testid=map-readout]")).toBeAttached();
     await expect(page.locator("[data-testid=map-stats-table]")).toContainText("families");
     // the lens filters (Functions / Utilities / All) live in the View menu
     await openView(page);
@@ -1986,6 +1999,7 @@ test.describe("map", () => {
     await open(page, "map");
     await blocksView(page);
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
+    await structure(page);
     // the first box's name span – textContent would glue the role glyph to
     // the name ("ocore"), so read .sy-bname, the name the sidebar filters on
     const name = (await page.locator(".sy-box-title .sy-bname").first().textContent()) ?? "server";
@@ -2093,7 +2107,7 @@ test.describe("map", () => {
       status: 200, contentType: "application/json",
       body: JSON.stringify({ running: false, phase: "done", blocks: 3400, chains: 9000, ms: 9000, error: "" }),
     }));
-    await expect(page.locator("[data-testid=map-sidebar]")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible({ timeout: 10_000 });
   });
 
   test("the old #syntagm link lands on map", async ({ page }) => {
@@ -2109,11 +2123,9 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=map-headline]")).toContainText("executes");
     await expect(page.locator("[data-testid=map-headline] .fm-headline-v")).not.toHaveText("–");
     await expect(page.locator(".fc-tile").first()).toBeVisible();
-    // every block node carries its role mark (the map's one-letter role glyph)
-    const mark = page.locator(".fc-tile .sy-role[data-role]").first();
-    await expect(mark).toBeVisible();
-    expect(["entry", "orchestrator", "core", "utility", "adapter", "model", "config", "test", "glue"])
-      .toContain(await mark.getAttribute("data-role"));
+    // every node is Graph's square: a logo in the box, the name under it
+    await expect(page.locator(".fc-tile .fc-tile-box svg").first()).toBeVisible();
+    await expect(page.locator(".fc-tile .fc-title").first()).not.toBeEmpty();
     // opening a node drills into the blocks view; Esc returns to the flow
     await page.locator(".fc-tile").first().dblclick();
     await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
@@ -2123,12 +2135,13 @@ test.describe("map", () => {
 
   test("the right panel lists every function, single-function blocks included", async ({ page }) => {
     await open(page, "map");
+    await structure(page);
     const panel = page.locator("[data-testid=map-sidebar]");
-    // it sits on the right, like Graph's inspector
+    // it floats on the right, like Graph's inspector
     const box = await page.locator("#map-sidebar").boundingBox();
     const vw = page.viewportSize()!.width;
     test.skip(vw <= 720, "phones use the drawer");
-    expect(box!.x + box!.width).toBeGreaterThan(vw - 4);
+    expect(box!.x + box!.width).toBeGreaterThan(vw - 32);
     await page.locator("[data-testid=map-sect-functions]").click();
     await expect(panel.locator(".sy-section-label").first()).toHaveText(/functions · \d+/i);
     await expect(panel.locator(".sy-leaf .fm-kind").first()).toBeVisible();
@@ -2211,7 +2224,10 @@ test.describe("map", () => {
   // – Workspace: agents deployed onto the map –
   test("workspace: sidebar tabs manage, the block panel opens with Tab and searches, Library folds the agents page in", async ({ page }) => {
     await open(page, "map");
-    await expect(page.locator("[data-testid=ws-tab-inspect]")).toHaveAttribute("aria-selected", "true");
+    // the inspector opens from the HUD; Overview is its first tab
+    await expect(page.locator("[data-testid=map-inspector]")).toHaveCount(0);
+    await page.locator("[data-testid=hud-pipeline]").click();
+    await expect(page.locator("[data-testid=ws-tab-pipeline]")).toHaveAttribute("aria-selected", "true");
     await page.locator("[data-testid=ws-add]").click();
     const np = page.locator("[data-testid=np]");
     await expect(np).toHaveClass(/open/);
@@ -2246,7 +2262,7 @@ test.describe("map", () => {
     await open(page, "map");
     await page.evaluate(() => localStorage.removeItem("kula.pipeline.map"));
     // select a section, then click blocks in the panel: the agent lands on it
-    await page.locator(".fc-wide").first().dispatchEvent("click");
+    await page.locator(".fc-tile:not([data-testid^='fc-node-step'])").first().dispatchEvent("click");
     await addBlock(page, "np-item-trigger-manual", "manual");
     await addBlock(page, "np-item-agent-fix", "fix");
     await addBlock(page, "np-item-gate-status", "graph current");
@@ -2330,7 +2346,7 @@ test.describe("map", () => {
     await openView(page, "canvas");
     await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
     await expect(page.locator("[data-testid^='fc-node-sec:']")).toHaveCount(0);
-    await expect(page.locator(".fc-wide-title").first()).toBeVisible();
+    await expect(page.locator(".fc-tile .fc-title").first()).toBeVisible();
     await openAllSections(page);
     await expect(page.locator("[data-testid^='fc-node-sec:']").first()).toBeVisible();
     await expect(page.locator(".fc-tile").first()).toBeVisible();
@@ -2468,7 +2484,7 @@ test.describe("map", () => {
     // where every section is one unparented wide node.
     await openView(page, "canvas"); await page.locator("[data-testid=map-depth]").click();
     await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
-    const wide = page.locator(".fc-wide").first();
+    const wide = page.locator(".fc-tile:not([data-testid^='fc-node-step']) .fc-tile-box").first();
     await wide.hover();
     const before = await wide.boundingBox();
     await page.mouse.down();

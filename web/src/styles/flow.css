@@ -233,3 +233,10 @@ html[data-rm="1"] .fc-dot { transition: none; }
 @media (prefers-reduced-motion: reduce) { .fc-is-running .fc-tile-box::before, .fc-flow-run { animation: none; } }
 .fc-edge-lit { stroke: var(--text) !important; }
 .fc-edge-faint { opacity: .25; transition: opacity .15s; }
+/* Map sections as Graph's square nodes: the logo large, the name under it on two lines. */
+.fc-tile .fc-tile-box > svg { width: 32px; height: 32px; }
+.fc-tile .fc-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-align: center; max-width: 156px; line-height: 16px; }
+.fc-tile .fc-sub { text-align: center; max-width: 156px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Wires meet the box, not the label under it. */
+.fc-tile > .react-flow__handle-left, .fc-tile > .react-flow__handle-right { top: 48px; }
+.fc-tile .fc-title, .fc-tile .fc-sub { width: 156px; margin-left: -30px; }
