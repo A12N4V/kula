@@ -96,8 +96,8 @@ test.describe("design system – computed", () => {
       && (/(?:^|[\s,])inset\s+-?\d*\.?\d+px\s+0(?:px)?(?![\d.]*px\s*-?\d)/.test(css.replace(/inset\s+0\s+-/g, "inset 0neg -"))
         || (/border-left\s*:/.test(css) && !/transparent/.test(css))));
     const KNOWN = new Set([
-      ".item.on", ".sym.on", ".legend .li.on", ".wf-tile.active", ".mod.on",
-      ".af-opt.on", ".pl-row.on", ".dt-row.on",
+      ".item.on", ".sym.on", ".wf-tile.active", ".mod.on",
+      ".af-opt.on", ".dt-row.on",
     ]);
     const newBad = staticBad.filter((r) => !KNOWN.has(r.sel));
     const stale = [...KNOWN].filter((k) => !staticBad.some((r) => r.sel === k));

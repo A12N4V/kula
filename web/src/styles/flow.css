@@ -84,7 +84,7 @@
 /* Handles: 8 px dots with a 2 px ground ring; diamonds for sub-node edges. */
 .fc-dot, .fc-diamond { width: 8px; height: 8px; background: var(--line); border: 2px solid var(--bg); transition: none; min-width: 0; min-height: 0; }
 .fc-dot:hover { width: 12px; height: 12px; background: var(--accent); }
-.fc-diamond { border-radius: 2px; transform: rotate(45deg); }
+.fc-diamond { transform: rotate(45deg); }
 
 /* "+" stub on an unused output. */
 .fc-stub {
