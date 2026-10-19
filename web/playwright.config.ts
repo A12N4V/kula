@@ -24,9 +24,17 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 }, colorScheme: "dark" } },
-    { name: "tablet", use: { ...devices["iPad Mini"], browserName: "chromium", colorScheme: "dark" }, grep: /@responsive/ },
-    { name: "phone", use: { ...devices["Pixel 7"], colorScheme: "dark" }, grep: /@mobile|@responsive/ },
+    { name: "desktop", testIgnore: /visual\.spec\.ts$/, use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 }, colorScheme: "dark" } },
+    { name: "tablet", testIgnore: /visual\.spec\.ts$/, use: { ...devices["iPad Mini"], browserName: "chromium", colorScheme: "dark" }, grep: /@responsive/ },
+    { name: "phone", testIgnore: /visual\.spec\.ts$/, use: { ...devices["Pixel 7"], colorScheme: "dark" }, grep: /@mobile|@responsive/ },
+    // Screenshot baselines (e2e/visual.spec.ts): desktop only, both themes and
+    // viewports live in the spec. Run explicitly:
+    //   pnpm exec playwright test visual --project=visual [--update-snapshots]
+    {
+      name: "visual",
+      testMatch: /visual\.spec\.ts$/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" },
+    },
   ],
   webServer: [
     {
