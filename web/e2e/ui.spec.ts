@@ -2608,12 +2608,20 @@ test.describe("map", () => {
     const selOf = () => canvas.getAttribute("data-fc-selection");
     // seed the walk from a card with an outgoing main edge: cards are tried
     // from the top of the stacking order down (sibling frames cover earlier
-    // groups' children), each probed with one ArrowRight
-    const tiles = page.locator(".fc-card");
-    const n = await tiles.count();
+    // groups' children), each probed with one ArrowRight. The canvas
+    // virtualizes its node set, so re-resolve the card list every attempt –
+    // an index captured from an earlier render can be gone by now
     let start = "", moved = "";
-    for (let i = n - 1; i >= 0 && !moved; i--) {
-      await tiles.nth(i).dispatchEvent("click");
+    for (let skip = 0; skip < 14 && !moved; skip++) {
+      const cards = page.locator(".fc-card");
+      const i = (await cards.count()) - 1 - skip;
+      if (i < 0) break;
+      const tile = cards.nth(i);
+      try {
+        await tile.dispatchEvent("click", { timeout: 5000 });
+      } catch {
+        continue; // the node unmounted between count and click – next card
+      }
       await canvas.focus();
       await expect.poll(selOf).not.toBe("");
       start = await selOf();
