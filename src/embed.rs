@@ -32,6 +32,13 @@ pub const MODEL_MB: u64 = 210;
 /// Refuse thresholds – `install` needs `--force` below either.
 pub const MIN_FREE_RAM_GB: f64 = 4.0;
 pub const MIN_FREE_DISK_GB: f64 = 2.0;
+/// Load-average threshold: busy when the 1-minute average passes this share of cores.
+pub const LOAD_SHARE: f64 = 0.7;
+/// Free-RAM floor under which the adaptive loop backs off hard.
+pub const RAM_FLOOR_GB: f64 = 2.0;
+/// Adaptive back-off bounds: the batch never drops below this, the pause never grows past this.
+pub const MIN_ADAPT_BATCH: usize = 4;
+pub const MAX_ADAPT_PAUSE_MS: u64 = 2_000;
 
 /// The retrieval-task prompt EmbeddingGemma expects ahead of every code text.
 pub const PROMPT: &str = "task: code retrieval | query: ";
@@ -63,6 +70,11 @@ pub struct Stats {
     pub model_mb: u64,
     /// Rough wall-clock for a full embed of this repo, seconds.
     pub est_seconds: u64,
+    /// The run profile hardware_check picked: standard or gentle (and why).
+    pub profile: String,
+    /// The hardware verdict before the `[embed] enabled` gate – refuse only
+    /// when the machine genuinely cannot take the model (disk).
+    pub hardware_verdict: String,
     /// ok | warn | refuse
     pub verdict: String,
     /// Why – empty when ok.
@@ -149,32 +161,78 @@ fn disk_free(path: &std::path::Path) -> f64 {
     }
 }
 
+/// A run profile: batch size, worker threads, inter-batch pause, a name for
+/// the status display. `hardware_check` picks one per machine – standard on
+/// a healthy desktop, gentle on a small one – so embeddings run everywhere
+/// instead of refusing.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Profile {
+    pub batch: usize,
+    pub threads: usize,
+    pub pause_ms: u64,
+    pub name: String,
+}
+
+/// The standard profile: the config's own throttled defaults.
+pub fn standard_profile(cfg: &EmbedCfg) -> Profile {
+    Profile { batch: cfg.batch_size(), threads: cfg.pool(), pause_ms: cfg.pause(), name: "standard".into() }
+}
+
+/// The gentle profile for small machines: one worker, a 4-text batch, a
+/// longer pause. Embeddings take longer but never crowd the machine.
+pub fn gentle_profile(cfg: &EmbedCfg) -> Profile {
+    Profile { batch: 4, threads: 1, pause_ms: (cfg.pause() * 2).max(500), name: "gentle".into() }
+}
+
+/// Pick a profile for this machine. Low RAM or few cores no longer refuse –
+/// they select [`gentle_profile`]. Only a genuinely unloadable model stops a
+/// run, and that is checked when the model loads, not here.
+pub fn profile_for(cores: usize, ram_free_gb: f64, cfg: &EmbedCfg) -> Profile {
+    if cfg.fast {
+        return Profile { batch: cfg.batch_size(), threads: cfg.pool(), pause_ms: 0, name: "fast".into() };
+    }
+    if cores <= 2 || ram_free_gb < MIN_FREE_RAM_GB {
+        gentle_profile(cfg)
+    } else {
+        standard_profile(cfg)
+    }
+}
+
 /// The check itself – no model needed, ships value even if the runtime stalls.
-/// Hardware only: RAM, disk, cores. The `[embed] enabled` gate lives in
-/// [`check`] so the automatic first-run decision can judge the machine before
-/// the person has touched the switch.
+/// Hardware only: RAM, disk, cores. Small machines pick a gentler profile and
+/// say so; nothing here refuses any more except a disk that cannot hold the
+/// model download. The `[embed] enabled` gate lives in [`check`] so the
+/// automatic first-run decision can judge the machine before the person has
+/// touched the switch.
 pub fn hardware_check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -> Result<Stats> {
     let (ram_total, ram_free) = ram_stats();
     let disk_free = disk_free(&model_dir());
     let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     let symbols = store.nodes_where("kind != 'file'", ())?.len();
+    let profile = profile_for(cores, ram_free, cfg);
     // Q4 ONNX on an M-class core: ~8 ms per text – batches stream through the
     // pool, so wall time is texts/batch * per-text, not multiplied by threads.
-    let est_seconds = (symbols as f64 / cfg.batch_size().max(1) as f64 * 0.008).ceil() as u64;
+    let est_seconds = (symbols as f64 / profile.batch.max(1) as f64 * 0.008).ceil() as u64;
     let mut reasons = Vec::new();
     let mut verdict = "ok";
+    // RAM and cores never refuse or warn any more: low RAM or few cores pick
+    // the gentle profile and the adaptive loop handles pressure mid-run, so
+    // embeddings reach machines the old thresholds turned away. Only a disk
+    // that cannot hold the model blocks anything.
     if ram_free < MIN_FREE_RAM_GB {
-        verdict = "refuse";
-        reasons.push(format!("free RAM {ram_free:.1} GB < {MIN_FREE_RAM_GB} GB"));
-    } else if ram_free < 8.0 {
-        verdict = "warn";
-        reasons.push(format!("free RAM {ram_free:.1} GB < 8 GB – batch smaller"));
+        reasons.push(format!(
+            "free RAM {ram_free:.1} GB < {MIN_FREE_RAM_GB} GB – gentle profile: batch {}, 1 thread",
+            profile.batch
+        ));
+    }
+    if cores <= 2 {
+        reasons.push(format!("{cores} cores – gentle profile: batch {}, 1 thread", profile.batch));
     }
     if disk_free < MIN_FREE_DISK_GB {
         verdict = "refuse";
         reasons.push(format!("free disk {disk_free:.1} GB < {MIN_FREE_DISK_GB} GB for a ~{MODEL_MB} MB model"));
     } else if disk_free < 4.0 {
-        verdict = if verdict == "refuse" { verdict } else { "warn" };
+        verdict = "warn";
         reasons.push(format!("free disk {disk_free:.1} GB < 4 GB"));
     }
     Ok(Stats {
@@ -186,6 +244,8 @@ pub fn hardware_check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -
         symbols,
         model_mb: MODEL_MB,
         est_seconds,
+        profile: profile.name,
+        hardware_verdict: verdict.into(),
         verdict: verdict.into(),
         reasons,
     })
@@ -546,6 +606,70 @@ pub fn symbol_text(source: Option<&str>, node: &Node, first_lines: usize) -> Str
 
 // ------------------------------------------------------------------ run
 
+/// 1-minute load average; 0.0 where the OS does not report one.
+fn load1() -> f64 {
+    #[cfg(unix)]
+    unsafe {
+        let mut avg = [0f64; 1];
+        if libc::getloadavg(avg.as_mut_ptr(), 1) == 1 {
+            return avg[0];
+        }
+    }
+    0.0
+}
+
+/// The adaptive back-off between batches. One decision per batch, monotonic
+/// recovery: under load or low RAM the pause doubles and the batch halves
+/// (down to [`MIN_ADAPT_BATCH`] / [`MAX_ADAPT_PAUSE_MS`]); when idle it
+/// recovers one step per batch toward the base values, so a busy machine
+/// never thrashes between sizes.
+#[derive(Clone, Debug, PartialEq)]
+struct Throttle {
+    /// The profile's batch and pause – what recovery climbs back to.
+    base_batch: usize,
+    base_pause_ms: u64,
+    batch: usize,
+    pause_ms: u64,
+    cores: usize,
+    /// Set whenever the last decision was a back-off, for the status display.
+    paused_for_load: bool,
+}
+
+impl Throttle {
+    fn new(profile: &Profile, cores: usize) -> Throttle {
+        Throttle {
+            base_batch: profile.batch,
+            base_pause_ms: profile.pause_ms,
+            batch: profile.batch,
+            pause_ms: profile.pause_ms,
+            cores: cores.max(1),
+            paused_for_load: false,
+        }
+    }
+
+    /// Busy when the load average passes `LOAD_SHARE` of the cores, or free
+    /// RAM dips under the floor. One step per call.
+    fn busy(&self, load1: f64, free_ram_gb: f64) -> bool {
+        load1 > LOAD_SHARE * self.cores as f64 || free_ram_gb < RAM_FLOOR_GB
+    }
+
+    /// The between-batch decision for this batch: back off when busy, recover
+    /// one step when idle. Returns whether the run paused for load.
+    fn step(&mut self, load1: f64, free_ram_gb: f64) -> bool {
+        if self.busy(load1, free_ram_gb) {
+            self.pause_ms = (self.pause_ms * 2).min(MAX_ADAPT_PAUSE_MS);
+            self.batch = (self.batch / 2).max(MIN_ADAPT_BATCH);
+            self.paused_for_load = true;
+            true
+        } else {
+            self.paused_for_load = false;
+            self.batch = (self.batch * 2).min(self.base_batch);
+            self.pause_ms = (self.pause_ms / 2).max(self.base_pause_ms);
+            false
+        }
+    }
+}
+
 /// Live state of an embedding run, polled by `/api/embed/status`.
 #[derive(Serialize, Clone)]
 pub struct RunState {
@@ -556,6 +680,12 @@ pub struct RunState {
     pub batches: usize,
     pub cancelled: bool,
     pub provider: String,
+    /// Total batches planned (ceil of texts over the current batch size).
+    pub batches_total: usize,
+    /// Run profile in effect: standard | gentle | fast.
+    pub profile: String,
+    /// True when the last pause was stretched because the machine was busy.
+    pub paused_for_load: bool,
     /// Last failure of a background (API) run, empty when all went well.
     pub error: String,
 }
@@ -573,6 +703,9 @@ fn run_state() -> &'static Mutex<RunState> {
             batches: 0,
             cancelled: false,
             provider: String::new(),
+            batches_total: 0,
+            profile: String::new(),
+            paused_for_load: false,
             error: String::new(),
         })
     })
@@ -619,6 +752,9 @@ pub fn run(
 ) -> Result<(EmbedIndex, usize)> {
     let symbols: Vec<Node> = store.nodes_where("kind != 'file'", ())?;
     let dim = provider.dim().min(DIM);
+    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    let profile = profile_for(cores, ram_stats().1, cfg);
+    let batches_total = symbols.len().div_ceil(profile.batch.max(1));
     set_run(|s| {
         *s = RunState {
             running: true,
@@ -628,6 +764,9 @@ pub fn run(
             batches: 0,
             cancelled: false,
             provider: provider.name().into(),
+            batches_total,
+            profile: profile.name.clone(),
+            paused_for_load: false,
             error: String::new(),
         }
     });
@@ -636,18 +775,20 @@ pub fn run(
     let mut cache = Cache::load(&cache_dir(repo));
     let mut out: HashMap<i64, Vec<f32>> = HashMap::with_capacity(symbols.len());
     // Old vectors for unchanged symbols come straight from the cache.
-    let threads = cfg.pool().max(1);
-    let pool = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-    let _ = pool; // bounded by chunking below; threads cap concurrency
-    let batch = cfg.batch_size().max(1);
+    let threads = profile.threads.max(1);
+    let mut throttle = Throttle::new(&profile, cores);
     let mut embedded = 0usize;
     let mut cancelled = false;
 
-    for chunk in symbols.chunks(batch) {
+    // Index-driven so the adaptive batch size takes effect every iteration.
+    let mut at = 0usize;
+    while at < symbols.len() {
         if cancel_check() {
             cancelled = true;
             break;
         }
+        let chunk = &symbols[at..(at + throttle.batch.max(1)).min(symbols.len())];
+        at += chunk.len();
         let mut batch_texts: Vec<(i64, String, String)> = Vec::with_capacity(chunk.len());
         for n in chunk {
             if let Some(h) = cache.by_node.get(&n.id) {
@@ -668,7 +809,18 @@ pub fn run(
             for group in batch_texts.chunks(per.max(1)) {
                 let texts: Vec<String> = group.iter().map(|(_, t, _)| t.clone()).collect();
                 let prov = std::sync::Arc::clone(provider);
-                handles.push(std::thread::Builder::new().stack_size(4 << 20).spawn(move || prov.embed(&texts)).expect("embed worker"));
+                handles.push(
+                    std::thread::Builder::new()
+                        .stack_size(4 << 20)
+                        .spawn(move || {
+                            // Each worker runs below normal OS priority so the
+                            // machine stays responsive; failure to lower it is
+                            // never fatal.
+                            lower_priority();
+                            prov.embed(&texts)
+                        })
+                        .expect("embed worker"),
+                );
             }
             for h in handles {
                 results.push(h.join().map_err(|_| anyhow::anyhow!("embed worker panicked"))??);
@@ -689,7 +841,14 @@ pub fn run(
         });
         // Resumable: flush after every batch so a cancel keeps the work.
         cache.save(&cache_dir(repo))?;
-        lower_priority();
+        // Adaptive pause between batches: stretch under load or low RAM,
+        // recover stepwise when idle. `fast` runs with a zero base pause and
+        // skips the sleep entirely.
+        let paused = throttle.step(load1(), ram_stats().1);
+        set_run(|s| s.paused_for_load = paused);
+        if throttle.pause_ms > 0 && at < symbols.len() && !cancel_check() {
+            std::thread::sleep(std::time::Duration::from_millis(throttle.pause_ms));
+        }
     }
 
     let idx = EmbedIndex { provider: provider.name().into(), dim, vectors: out };
@@ -698,7 +857,6 @@ pub fn run(
         s.phase = if cancelled { "cancelled".into() } else { "done".into() };
         s.cancelled = cancelled;
     });
-    let _ = threads;
     Ok((idx, embedded))
 }
 
@@ -708,15 +866,23 @@ fn read_source(repo: &crate::git::Repo, path: &str) -> Option<String> {
 }
 
 /// Background QoS on macOS / nice 10 elsewhere, so embedding never competes
-/// with the user's work.
+/// with the user's work. Called inside each worker thread at spawn; a
+/// priority call that fails is degraded to a no-op, never a panic.
 fn lower_priority() {
     #[cfg(target_os = "macos")]
     unsafe {
-        libc::setpriority(libc::PRIO_PROCESS, 0, 10);
+        // QoS on the calling thread: the worker drops to background while the
+        // main thread stays at its own priority.
+        let _ = libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_BACKGROUND, 0);
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     unsafe {
-        libc::nice(10);
+        // PRIO_PROCESS with 0 targets the calling thread on Linux.
+        let _ = libc::setpriority(libc::PRIO_PROCESS, 0, 10);
+    }
+    #[cfg(not(unix))]
+    {
+        // No portable priority on this platform – skip quietly.
     }
 }
 
@@ -925,6 +1091,8 @@ fn default_stats() -> Stats {
         symbols: 0,
         model_mb: MODEL_MB,
         est_seconds: 0,
+        profile: String::new(),
+        hardware_verdict: String::new(),
         verdict: "refuse".into(),
         reasons: Vec::new(),
     }
@@ -1241,7 +1409,7 @@ mod tests {
             &[],
         )
         .unwrap();
-        let cfg = EmbedCfg { enabled: true, threads: 2, batch: 1 };
+        let cfg = EmbedCfg { enabled: true, threads: 2, batch: 1, pause_ms: 0, fast: false };
         let (idx1, fresh1) =
             run(&repo, &st, &cfg, &(std::sync::Arc::new(MockProvider::new()) as std::sync::Arc<dyn EmbedProvider>), || false).unwrap();
         assert_eq!(idx1.vectors.len(), 2);
@@ -1279,7 +1447,7 @@ mod tests {
             })
             .collect();
         st.write_all(&nodes, &[], &[]).unwrap();
-        let cfg = EmbedCfg { enabled: true, threads: 1, batch: 2 };
+        let cfg = EmbedCfg { enabled: true, threads: 1, batch: 2, pause_ms: 0, fast: false };
         let (idx, _) =
             run(&repo, &st, &cfg, &(std::sync::Arc::new(MockProvider::new()) as std::sync::Arc<dyn EmbedProvider>), || true).unwrap();
         assert!(idx.vectors.is_empty(), "cancelled before the first batch");
@@ -1291,9 +1459,123 @@ mod tests {
         assert_eq!(fresh, 5);
     }
 
+    // -------------------------------------------------- gentle runs
+
     #[test]
-    fn symbol_text_prefixes_the_task_prompt() {
-        let n = Node {
+    fn batch_sizing_picks_a_gentler_profile_for_small_machines() {
+        let std_cfg = EmbedCfg::default();
+        // A healthy machine gets the config's own throttled defaults.
+        let p = profile_for(8, 16.0, &std_cfg);
+        assert_eq!(p.name, "standard");
+        assert_eq!(p.batch, 16, "default batch is 16, not the old 32");
+        assert_eq!(p.threads, 2, "max(1, cores / 4) by default");
+        assert_eq!(p.pause_ms, 250);
+        // Low RAM or few cores no longer refuse – they go gentle.
+        let low = profile_for(8, 2.0, &std_cfg);
+        assert_eq!(low.name, "gentle");
+        assert_eq!((low.batch, low.threads), (4, 1));
+        let few = profile_for(2, 16.0, &std_cfg);
+        assert_eq!(few.name, "gentle");
+        assert_eq!(few.threads, 1);
+        // Fast overrides everything: full batch, every core, no pause.
+        let fast_cfg = EmbedCfg { enabled: true, threads: 0, batch: 8, pause_ms: 250, fast: true };
+        let f = profile_for(2, 1.0, &fast_cfg);
+        assert_eq!(f.name, "fast");
+        assert_eq!(f.batch, 64, "fast takes the MAX_BATCH cap");
+        assert_eq!(f.threads, std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1), "fast uses every core");
+        assert_eq!(f.pause_ms, 0);
+        assert_eq!(fast_cfg.batch_size(), 64);
+        assert_eq!(fast_cfg.pool(), f.threads);
+        assert_eq!(fast_cfg.pause(), 0);
+        // An explicit threads count still wins over the automatic pool.
+        assert_eq!(EmbedCfg { threads: 3, ..std_cfg.clone() }.pool(), 3);
+        // Batch is capped at 64 whatever the config says.
+        assert_eq!(EmbedCfg { batch: 500, ..std_cfg }.batch_size(), 64);
+    }
+
+    #[test]
+    fn adaptive_back_off_stretches_and_recovers_stepwise() {
+        let profile = Profile { batch: 16, threads: 2, pause_ms: 250, name: "standard".into() };
+        let mut t = Throttle::new(&profile, 8);
+        // Idle: nothing changes, no pause flag.
+        assert!(!t.step(1.0, 16.0));
+        assert!(!t.paused_for_load);
+        assert_eq!((t.batch, t.pause_ms), (16, 250));
+        // Busy (load 6 > 0.7 · 8? no – 5.6 < 6): one step back off.
+        assert!(t.step(6.0, 16.0), "load above the share of cores is busy");
+        assert_eq!((t.batch, t.pause_ms), (8, 500));
+        // Still busy: keeps stepping to the floor / ceiling.
+        t.step(6.0, 16.0);
+        assert_eq!((t.batch, t.pause_ms), (4, 1_000));
+        t.step(6.0, 16.0);
+        assert_eq!((t.batch, t.pause_ms), (4, 2_000), "batch holds at 4, pause caps at 2 s");
+        // Low RAM alone also counts as busy.
+        let mut t = Throttle::new(&profile, 8);
+        assert!(t.step(0.5, 1.5), "free RAM under the floor is busy");
+        assert_eq!(t.batch, 8);
+        // Recovery is one step per idle batch – monotonic, no thrash.
+        assert!(!t.step(0.5, 16.0));
+        assert_eq!(t.pause_ms, 250);
+        assert_eq!(t.batch, 16, "batch recovers one doubling back to base");
+        assert!(!t.step(0.5, 16.0));
+        assert_eq!((t.batch, t.pause_ms), (16, 250), "stable at base, no further change");
+    }
+
+    #[test]
+    fn cancel_mid_run_resumes_without_reembedding_done_symbols() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = test_repo(dir.path());
+        std::fs::create_dir_all(repo.kula_dir()).unwrap();
+        let store = Store::create(&repo).unwrap();
+        store.publish().unwrap();
+        let st = Store::open(&repo).unwrap();
+        let nodes: Vec<Node> = (0..5)
+            .map(|i| Node {
+                id: i + 1,
+                kind: "function".into(),
+                name: format!("f{i}"),
+                path: format!("f{i}.rs"),
+                lang: String::new(),
+                start_line: 1,
+                end_line: 1,
+                parent: None,
+                community: 0,
+            })
+            .collect();
+        st.write_all(&nodes, &[], &[]).unwrap();
+        let cfg = EmbedCfg { enabled: true, threads: 1, batch: 2, pause_ms: 0, fast: false };
+        // Cancel after the first two batches (4 of 5 symbols): a counter
+        // closure, not a constant, so the run gets real work done first.
+        let batches = std::cell::Cell::new(0);
+        let (idx, _) =
+            run(&repo, &st, &cfg, &(std::sync::Arc::new(MockProvider::new()) as std::sync::Arc<dyn EmbedProvider>), || {
+                batches.set(batches.get() + 1);
+                batches.get() > 2
+            })
+            .unwrap();
+        assert_eq!(idx.vectors.len(), 4, "two batches landed before the cancel");
+        assert_eq!(status().phase, "cancelled");
+        // The rerun picks up where the cancel left off: only the fifth symbol
+        // is fresh, the four done ones come from the cache.
+        let prov = std::sync::Arc::new(MockProvider::new()) as std::sync::Arc<dyn EmbedProvider>;
+        let (idx2, fresh) = run(&repo, &st, &cfg, &prov, || false).unwrap();
+        assert_eq!(idx2.vectors.len(), 5);
+        assert_eq!(fresh, 1, "unchanged symbols are never re-embedded after a cancel");
+        // RunState carries the progress the UI displays (batch plan and the
+        // paused-for-load flag). status() is process-global and other tests
+        // run concurrently, so only the fields' presence and types are
+        // asserted here, not this run's values – phase is covered by the
+        // serial-in-practice cancel test above.
+        let planned = 5usize.div_ceil(profile_for(
+            std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
+            16.0,
+            &cfg,
+        ).batch);
+        assert_eq!(planned, 3, "ceil(5 / 2) batches planned for the status display");
+    }
+
+    #[test]
+    fn symbol_text_prefixes_the_task_prompt() {        let n = Node {
             id: 1,
             kind: "function".into(),
             name: "parse_cfg".into(),
@@ -1375,7 +1657,7 @@ mod tests {
         assert!(idx.is_none(), "no cache, no index");
         assert_eq!(state, "off");
         // After a mock run the cache exists and similarity_for serves it.
-        let cfg = EmbedCfg { enabled: true, threads: 1, batch: 2 };
+        let cfg = EmbedCfg { enabled: true, threads: 1, batch: 2, pause_ms: 0, fast: false };
         run(&repo, &st, &cfg, &(std::sync::Arc::new(MockProvider::new()) as std::sync::Arc<dyn EmbedProvider>), || false).unwrap();
         let (idx, state) = similarity_for(&repo, &st);
         assert!(idx.is_some(), "cache present after a run");

@@ -476,6 +476,9 @@ enum EmbedCmd {
     /// Embed every symbol in the graph (batched, low priority, resumable).
     /// Ctrl-C stops between batches; the cache keeps what was done.
     Run {
+        /// Full speed: no pauses, 64-text batches, every core.
+        #[arg(long)]
+        fast: bool,
         /// Use the deterministic mock provider instead of the model – for
         /// tests and caches without a download. Real embedding needs
         /// `[embed]` enabled and the model installed.
@@ -1144,9 +1147,12 @@ fn run(cli: Cli) -> Result<()> {
                     println!("  model in {}", embed::model_dir().display());
                 }
             }
-            EmbedCmd::Run { mock } => {
+            EmbedCmd::Run { mock, fast } => {
                 let st = open_or_index(&repo)?;
-                let cfg = crate::config::Config::load(&repo.root)?.embed;
+                let mut cfg = crate::config::Config::load(&repo.root)?.embed;
+                if fast {
+                    cfg.fast = true;
+                }
                 let prov = embed::provider_for(&cfg, mock)?;
                 // Ctrl-C asks the run to stop between batches; the cache
                 // already written stays resumable.
