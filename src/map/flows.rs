@@ -231,6 +231,12 @@ pub fn extract_with(store: &Store, cfg: &FlowConfig) -> Vec<OutFlow> {
                 continue;
             }
             let back = rcls(t, &mut rmemo);
+            // A terminal almost everything reaches cannot yield one outcome –
+            // the intersection would be a whole-program walk, which the size
+            // cap drops anyway. Skipping keeps the build inside its budget.
+            if back.len() > 80 {
+                continue;
+            }
             let both: BTreeSet<usize> = fwd.intersection(&back).copied().collect();
             if both.len() < 2 {
                 continue;
