@@ -1850,7 +1850,10 @@ test.describe("map", () => {
   const chainsList = (page: Page) => page.locator("[data-testid=map-sect-chains]").click();
   test("tab loads with sidebar, canvas and readout", async ({ page }) => {
     await open(page, "map");
-    await expect(page.locator("[data-testid=map-view]")).toBeVisible();
+    // A cold server builds the whole map inside the first GET /api/map
+    // (11 s on this repo) – the view is "loading map…" until it lands, so
+    // give the first assert a cold-build budget, not the 5 s default.
+    await expect(page.locator("[data-testid=map-view]")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("[data-testid=map-filter]")).toBeVisible();
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
     await expect(page.locator("[data-testid=map-readout]")).toBeAttached();
