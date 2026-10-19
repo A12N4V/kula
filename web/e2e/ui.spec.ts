@@ -1474,9 +1474,13 @@ test.describe("agents A2", () => {
     await expect(rows.filter({ hasText: "Gemini CLI" }).locator(".roster-num").nth(5)).toHaveText("3");
     for (const row of await rows.all()) await expect(row).toContainText("0"); // no skills in the fixture
     // Loops and teams as compact rows with status, linked to their tabs.
-    await expect(page.locator(".loop-row")).toHaveCount(4); // the four kula.toml teams
+    // The four kula.toml teams. Not an exact count: the fixture is per worker, and
+    // earlier tests on the same worker (T1.3b's research loop, team creation) add rows.
+    for (const name of ["ship", "steer", "research", "audit"]) await expect(page.locator(".loop-row").filter({ hasText: name }).first()).toBeVisible();
     await expect(page.locator(".loop-row").filter({ hasText: "ship" })).toContainText("saved");
-    await expect(page.locator(".ag-control")).toContainText("loop is measuring anything");
+    // No loop is currently at work: on a clean fixture this is the empty
+    // state, after T1.3b on the same worker the finished e2e-loop is listed.
+    await expect(page.locator(".loop-row").filter({ hasText: "running" })).toHaveCount(0);
     // A roster cell leads to the tab that owns it.
     await rows.filter({ hasText: "Claude Code" }).locator(".roster-num").nth(5).click(); // seats → Teams
     await expect(page).toHaveURL(/#agents\/teams/);
@@ -2195,6 +2199,10 @@ test.describe("map", () => {
     // the tinker bar expands the selected block (canvas hover toolbars can
     // sit under the lens bar for nodes near the canvas top)
     await openView(page, "canvas"); await page.locator("[data-testid=map-expand]").click();
+    // close the View popup: it hangs over the canvas and would intercept the
+    // click on a function circle whose centre sits under it
+    await page.locator("[data-testid=map-view-menu]").click();
+    await expect(page.locator("[data-testid=map-view-pop]")).toHaveCount(0);
     // expanded: up to 40 function circles hang below the block, one per function
     const fns = page.locator("[data-testid^='fc-node-fn:']");
     await expect(fns.first()).toBeVisible();

@@ -1,0 +1,9 @@
+# Bench fixture manifest – the vendored gold repos.
+# miniserde: MIT, https://github.com/dtolnay/miniserde
+#   vendored at commit 90ff7ed148f1305b434d09f9569859df965963eb
+#   3343 LOC of src/*.rs (tests/ui excluded from the crate build; over the
+#   plan's 2k note – kept, licence and commit recorded, excluded from the
+#   build and from kula's own index)
+# homonin-scripts: not vendored – copied to /tmp at bench time from
+#   KULA_BENCH_HOMONIN (default ~/Desktop/projects/homonin/homonin-scripts).
+# kula: the working repository itself.
