@@ -44,7 +44,7 @@
 .ag-target:hover { color: var(--accent); }
 .ag-tool { display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); gap: 12px; padding: 4px 0; font-size: 12px; border-bottom: 1px dashed var(--line); }
 .ti { position: relative; }
-.ti-pop { position: absolute; top: 36px; left: 0; right: 0; z-index: 6; padding: 4px; background: var(--panel); box-shadow: var(--shadow); }
+.ti-pop { position: absolute; top: 36px; left: 0; right: 0; z-index: 6; padding: 4px; background: var(--panel); border: 1px solid var(--line-2); }
 .snippet { position: relative; margin: 0 0 10px; }
 .snippet pre.code { margin: 0; padding: 10px 72px 10px 12px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 11.5px; border: 1px solid var(--line); background: var(--bg); }
 .snippet-copy { position: absolute; top: 6px; right: 6px; height: 22px; font-size: 11px; }
@@ -68,7 +68,7 @@
 .ag-tabs button:hover { color: var(--text-2); }
 .ag-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
 .ag-tabs button svg { width: 14px; height: 14px; }
-.ag-tabs .badge { min-width: 15px; height: 15px; padding: 0 4px; background: var(--accent); color: var(--accent-ink); font-size: 9.5px; font-weight: 700; line-height: 15px; text-align: center; }
+.ag-tabs .badge { color: var(--text-3); font: 11px var(--mono); }
 .ag-panel { animation: view-in .25s var(--ease) both; }
 .ag-strip { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
 .ag-strip .kpi-cell { cursor: pointer; }
@@ -110,7 +110,7 @@
 .wf-tile[role="button"] { cursor: pointer; }
 .wf-tile[role="button"]:hover { border-color: var(--line-2); }
 .wf-tile.on { border-color: var(--accent); background: var(--panel); }
-.wf-tile.active { box-shadow: inset 2px 0 0 var(--accent); }
+.wf-tile.active { background: var(--bg-3); }
 .wf-tile b { font-size: 13px; }
 .wf-src { font-size: 10.5px; white-space: nowrap; }
 /* a tile's head wraps instead of spilling: name and tags, then where it comes from */
@@ -263,7 +263,7 @@
 .conn-wires li span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
 .mod { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg-2); font-size: 11.5px; line-height: 1.5; }
-.mod.on { border-left: 2px solid var(--green); }
+.mod.on { background: var(--bg-3); }
 .mod-mark { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); color: var(--text); background: var(--bg); }
 .mod-mark:hover { border-color: var(--accent); }
 .mod-body { display: grid; gap: 3px; min-width: 0; }
@@ -279,13 +279,15 @@
   .run-by { display: none; }
 }
 
-/* D1: hover/focus system – decoration shadows go, 1px borders replace them. */
-.ti-pop { box-shadow: none; border: 1px solid var(--line-2); }
+/* the workspace rail's add buttons and harmonograph marks – flat, square, obvious */
+.lib-add { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border: 1px solid var(--line); background: none; color: var(--text-2); font: 11.5px var(--mono); cursor: pointer; flex: none; }
+.lib-add:hover { border-color: var(--accent); color: var(--text); }
+.lib-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--line); color: var(--text); background: var(--bg); flex: none; }
 
 /* ================================================================ A1: agents tabs – tables, keyboard navigation, path test */
 /* Keyboard navigation (j/k/enter/esc) marks the roving selection on list
-   rows; the accent line keeps it readable without moving layout. */
-.kb-sel { box-shadow: inset 2px 0 0 var(--accent); background: var(--accent-soft); }
+   rows – selection is a fill, like every list in the design. */
+.kb-sel { background: var(--bg-3); }
 .wf-tile.kb-sel, .doc-item.kb-sel { border-color: var(--accent); }
 
 /* sortable lists */
@@ -348,7 +350,7 @@
 .roster-row { width: 100%; min-height: 30px; padding: 4px 8px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
 .roster-row.odd { background: var(--bg-2); }
 .roster-row:hover { background: var(--panel-2); color: var(--text); }
-.roster-row.kb-sel { box-shadow: inset 2px 0 0 var(--accent); background: var(--accent-soft); }
+.roster-row.kb-sel { background: var(--bg-3); color: var(--text); }
 .roster-agent { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .roster-agent b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .roster-wired { display: flex; flex-wrap: wrap; gap: 4px; }

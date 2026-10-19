@@ -95,9 +95,9 @@ test.describe("design system – computed", () => {
       /:hover|\.on\b|\.sel|selected|\.active/.test(sel)
       && (/(?:^|[\s,])inset\s+-?\d*\.?\d+px\s+0(?:px)?(?![\d.]*px\s*-?\d)/.test(css.replace(/inset\s+0\s+-/g, "inset 0neg -"))
         || (/border-left\s*:/.test(css) && !/transparent/.test(css))));
-    const KNOWN = new Set([
-      ".wf-tile.active", ".mod.on",
-    ]);
+    // U2/U3/U4 fixed every stripe: the allowlist is empty now – a violation
+    // again means a regression, add nothing here.
+    const KNOWN = new Set<string>([]);
     const newBad = staticBad.filter((r) => !KNOWN.has(r.sel));
     const stale = [...KNOWN].filter((k) => !staticBad.some((r) => r.sel === k));
     expect(newBad, newBad.map((r) => `${r.sel} :: ${r.css}`).join("\n")).toEqual([]);

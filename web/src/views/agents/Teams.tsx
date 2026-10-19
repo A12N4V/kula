@@ -25,6 +25,18 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   const [view, setView] = useState<"boxes" | "graph">(() => { try { return localStorage.getItem("kula.teams.view") === "boxes" ? "boxes" : "graph"; } catch { return "graph"; } });
   const pickView = (v: "boxes" | "graph") => { setView(v); try { localStorage.setItem("kula.teams.view", v); } catch { /* */ } };
   const [cur, setCur] = useState(() => Math.max(0, info.teams.findIndex((t) => t.name === info.team?.name)));
+  // A team created from the map's Library rail lands here selected: the rail
+  // stashes its name just before navigating (see workspace.tsx stashNewItem).
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("kula.agents.new");
+      if (!raw) return;
+      sessionStorage.removeItem("kula.agents.new");
+      const { kind, name } = JSON.parse(raw) as { kind: string; name: string };
+      if (kind === "team") { const i = teams.findIndex((t) => t.name === name); if (i >= 0) { setCur(i); setPicking(false); } }
+    } catch { /* private mode */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Follow the server only when its teams change: the 5 s agents poll hands
   // back a new `info` every time, and must not wipe edits not saved yet.
   const serverTeams = JSON.stringify(info.teams);

@@ -162,9 +162,9 @@ input.mi-title { font: 600 14px var(--mono); }
 .rf-back { stroke: var(--accent); stroke-dasharray: 2 4; opacity: .55; }
 .rf-col { position: absolute; top: 4px; display: grid; align-content: start; min-width: 0; }
 .rf-solvers { left: 0; }
-.rf-solver, .rf-try, .rf-rec { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0 8px; background: none; border: 0; border-left: 2px solid transparent; color: var(--text-2); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; transition: opacity .15s, background .15s; }
+.rf-solver, .rf-try, .rf-rec { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0 8px; background: none; border: 0; color: var(--text-2); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; transition: opacity .15s, background .15s; }
 .rf-solver:hover, .rf-try:hover, .rf-rec:hover { background: var(--panel-2); color: var(--text); }
-.rf-solver.sel, .rf-try.sel { border-left-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.rf-solver.sel, .rf-try.sel { background: var(--bg-3); color: var(--text); }
 .rf-sname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .rf-share { flex: none; width: 34px; height: 4px; background: var(--line); overflow: hidden; }
 .rf-share i { display: block; height: 100%; }
@@ -175,7 +175,7 @@ input.mi-title { font: 600 14px var(--mono); }
 .rf-files { flex: none; max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--text-3); }
 .rf-try.kept .rf-hyp { color: var(--text); }
 .rf-try.fenced .rf-hyp { color: var(--text-3); text-decoration: line-through; text-decoration-color: color-mix(in oklab, var(--red) 70%, transparent); }
-.rf-try.kept { border-left-color: var(--accent); }
+.rf-try.kept { background: var(--bg-3); }
 .rf .dim { opacity: .28; }
 .rf-gate { position: absolute; top: 0; bottom: 0; width: 2%; border-left: 1px solid var(--line-2); border-right: 1px solid var(--line-2); background: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in oklab, var(--line-2) 55%, transparent) 4px 5px); }
 .rf-pin { position: absolute; left: 50%; width: 10px; height: 10px; margin-left: -5px; border: 1px solid var(--text-3); background: var(--bg); transition: opacity .15s; }

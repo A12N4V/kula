@@ -2767,3 +2767,40 @@ test.describe("agents on the flow canvas (A3)", () => {
     await expect(page.locator(".rf-try").filter({ hasText: "borrow the graph" })).toHaveClass(/sel/);
   });
 });
+
+test.describe("agents add from the map rail (U3)", () => {
+  // Writes a team and a workflow to the fixture: one worker, own fixture.
+  test.use({ baseURL: ({ fx }, use) => use(fx) });
+  const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
+
+  test("the Library rail's add buttons create a team and an agent and open the editor on them", async ({ page }, info) => {
+    desktopOnly(info);
+    test.setTimeout(90_000);
+    await open(page, "map");
+    await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
+    await page.locator("[data-testid=map-side-toggle]").click();
+    await page.locator("[data-testid=ws-tab-library]").click();
+    // one obvious add per kind, in the rail's head
+    await expect(page.locator("[data-testid=lib-add-team]")).toBeVisible();
+    await expect(page.locator("[data-testid=lib-add-agent]")).toBeVisible();
+    // agent and team items carry their harmonograph mark
+    await expect(page.locator("[data-testid='ws-library'] .lib-item svg[data-figure='harmonograph']").first()).toBeVisible();
+    // add team: the editor opens on the new team, name and role prefilled
+    await page.locator("[data-testid=lib-add-team]").click();
+    await expect(page).toHaveURL(/#agents\/teams/);
+    await expect(page.locator("input.mi-title")).toHaveValue(/new-team/);
+    // the solo template's one seat (role lead) is in the org, the team fields in the inspector
+    await expect(page.locator(".org").first()).toContainText(/lead/i);
+    await expect(page.locator(".map-inspector")).toContainText("team prompt");
+    // add agent: the workflow editor opens on the new workflow, fence prefilled
+    await open(page, "map");
+    await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
+    await page.locator("[data-testid=map-side-toggle]").click();
+    await page.locator("[data-testid=ws-tab-library]").click();
+    await expect(page.locator("[data-testid=lib-add-agent]")).toBeVisible();
+    await page.locator("[data-testid=lib-add-agent]").click();
+    await expect(page).toHaveURL(/#agents\/workflows/);
+    await expect(page.locator(".wf-edit input.mono").first()).toHaveValue(/new-workflow/);
+    await expect(page.locator(".wf-edit")).toContainText("src/**");
+  });
+});

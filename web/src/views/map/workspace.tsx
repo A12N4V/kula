@@ -9,9 +9,11 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, type AgentsInfo, type FileStatus, type Team, type Workflow } from "../../api";
 import type { Block, MapData } from "./types";
-import { Icon } from "../../ui";
+import { Icon, Harmonograph } from "../../ui";
 import type { Go } from "../../nav";
-import { ITEM_DRAG, KIND_COLOR, KindIco, type Item } from "./pipeline";
+import { ITEM_DRAG, type Item } from "./pipeline";
+import { TEAM_TEMPLATES, teamFrom } from "../agents/templates";
+import { blank } from "../agents/data";
 
 export type Mode = "explore" | "build" | "run" | "review";
 
@@ -145,10 +147,35 @@ function Row({ k, v }: { k: string; v: ReactNode }) {
     compact disclosures – each block draggable or clickable onto the map, each
     section a link to its full editor. The page itself stays as the library's
     "open full" target, not a tab of its own. */
+/** Hand the agents page the item just created from the rail, so its editor
+    opens on the new thing rather than on whatever was selected before. */
+export const stashNewItem = (kind: "team" | "agent", name: string) => {
+  try { sessionStorage.setItem("kula.agents.new", JSON.stringify({ kind, name })); } catch { /* private mode */ }
+};
+
 export function Library({ info, go, onPick }: { info: AgentsInfo | null; go?: Go; onPick: (it: Item) => void }) {
   const [open, setOpen] = useState<string>("workflows");
   if (!info) return <section className="ws-card"><p className="ws-note">Loading agents…</p></section>;
   const conns = info.connections.filter((c) => c.mcp || c.hook);
+  const unique = (base: string, taken: string[]) => { let n = base, i = 2; while (taken.includes(n)) n = `${base}-${i++}`; return n; };
+  // One obvious add: the item is created at once with sensible defaults
+  // (a solo-lead team, a workflow fenced to src/**), and the agents editor
+  // opens on it – every field editable inline from there.
+  const addTeam = () => {
+    if (!go) return;
+    const tpl = TEAM_TEMPLATES.find((t) => t.id === "solo") ?? TEAM_TEMPLATES[0];
+    const name = unique("new-team", info.teams.map((t) => t.name));
+    const team = teamFrom(tpl, name, [], "");
+    api.agentAction("teams_save", { teams: [...info.teams, team] }).catch(() => { /* the editor shows the server's state */ })
+      .then(() => { stashNewItem("team", name); go("agents", { tab: "teams" }); });
+  };
+  const addAgent = () => {
+    if (!go) return;
+    const name = unique("new-workflow", info.workflows.map((w) => w.name));
+    const wf: Workflow = { ...blank(), name, scope: ["src/**"] };
+    api.agentAction("workflows_save", { workflows: [...info.workflows.filter((w) => !w.builtin), wf] }).catch(() => { /* the editor shows the server's state */ })
+      .then(() => { stashNewItem("agent", name); go("agents", { tab: "workflows" }); });
+  };
   const wf = info.workflows.filter((w) => !w.research);
   const loops = info.workflows.filter((w) => !!w.research);
   const sec = (id: string, label: string, n: number | string, tab: string, body: ReactNode) => (
@@ -166,14 +193,17 @@ export function Library({ info, go, onPick }: { info: AgentsInfo | null; go?: Go
   const item = (it: Item, sub?: string) => (
     <button key={it.kind + it.ref} className="lib-item" draggable onClick={() => onPick(it)}
       onDragStart={(e) => { e.dataTransfer.setData(ITEM_DRAG, JSON.stringify(it)); e.dataTransfer.effectAllowed = "copy"; }}>
-      <span className="np-ico sm" style={{ color: KIND_COLOR[it.kind], background: `color-mix(in srgb, ${KIND_COLOR[it.kind]} 18%, transparent)` }}><KindIco kind={it.kind} /></span>
+      <span className="lib-mark"><Harmonograph seed={it.ref} size={16} /></span>
       <span className="lib-name">{it.name}</span><span className="lib-sub">{sub ?? it.about}</span>
     </button>
   );
   return (
     <section className="ws-card ws-lib" data-testid="ws-library">
       <div className="ws-card-head"><span className="ws-eyebrow">Library</span>
-        <span className={`lib-conn${conns.length ? " on" : ""}`} title="agents connected over MCP and hooks">{conns.length ? `${conns.map((c) => c.name).join(", ")} connected` : "no agent connected"}</span></div>
+        <span className={`lib-conn${conns.length ? " on" : ""}`} title="agents connected over MCP and hooks">{conns.length ? `${conns.map((c) => c.name).join(", ")} connected` : "no agent connected"}</span>
+        <span className="spacer" />
+        <button className="lib-add" data-testid="lib-add-team" onClick={addTeam} title="Create a team from the default template and open it in the editor"><Icon.plus /> team</button>
+        <button className="lib-add" data-testid="lib-add-agent" onClick={addAgent} title="Create a workflow and open it in the editor"><Icon.plus /> agent</button></div>
       <div className="dd">
         {sec("workflows", "Workflows", wf.length, "workflows", wf.map((w) => item({ kind: "agent", ref: w.name, name: title(w.name), about: w.about ?? "" })))}
         {sec("teams", "Teams", info.teams.length, "teams", info.teams.length ? info.teams.map((t) => item({ kind: "crew", ref: t.name, name: title(t.name), about: t.about ?? "" }, `${t.members.length} agents`)) : <p className="ws-note">No teams yet.</p>)}
