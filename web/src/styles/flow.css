@@ -69,6 +69,42 @@
 .fc-loop-glyph { font-size: 24px; }
 .fc-loop-box { border-radius: var(--radius, 8px) var(--radius, 8px) var(--radius-xs, 4px) var(--radius-xs, 4px); }
 
+/* ---- Block card node (R0) – the Blocks lens card as the node --------- */
+.fc-card {
+  box-sizing: border-box; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius, 8px); padding: 8px 12px; overflow: hidden;
+  display: flex; flex-direction: column; gap: 4px; position: relative;
+  font-family: var(--font); color: var(--text);
+}
+.fc-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--fc-role, var(--line-2)); }
+.fc-card.fc-sel { border-color: var(--accent); background: var(--accent-soft); }
+.fc-card.fc-card-sec { background: color-mix(in srgb, var(--panel) 60%, transparent); padding: 8px 12px 12px; }
+.fc-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fc-card-role { flex: none; display: grid; place-items: center; }
+.fc-card-logo { flex: none; font-size: 15px; color: var(--fc-role, var(--text-2)); font-weight: bold; }
+.fc-card-name { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.fc-card-sub { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-card-meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text-3); }
+.fc-card-meta b { color: var(--text-2); font-weight: 600; }
+.fc-card-flows { display: flex; gap: 10px; font-size: 10.5px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
+.fc-card-fns { margin: 2px 0 0; padding: 0 0 0 2px; list-style: none; overflow-y: auto; min-height: 0;
+  border-top: 1px solid var(--line); padding-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+.fc-card-fns li { font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-card-fns .fm-kind { color: var(--text-3); margin-right: 4px; }
+.fc-card-more { color: var(--text-3); font-size: 10.5px; }
+.fc-card-members { display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; min-height: 0; }
+.fc-card-member { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-2);
+  border: 1px solid var(--line); border-radius: var(--radius-xs, 4px); padding: 1px 6px; max-width: 100%; }
+.fc-card-member-dot { width: 6px; height: 6px; background: var(--fc-role, var(--text-3)); }
+.fc-card-member span:last-child { overflow: hidden; text-overflow: ellipsis; }
+/* Corner resize handle: 12 px hit at rest, 40 px at touch. The nodrag/nopan
+   classes keep React Flow from turning it into a node drag or a pan. */
+.fc-card-resize { position: absolute; right: 0; bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; touch-action: none; }
+.fc-card-resize::after { content: ""; position: absolute; right: 3px; bottom: 3px; width: 6px; height: 6px;
+  border-right: 1px solid var(--text-3); border-bottom: 1px solid var(--text-3); }
+.fc-card-resize:hover::after { border-color: var(--accent); }
+@media (pointer: coarse) { .fc-card-resize { width: 40px; height: 40px; } }
+
 /* Group frame – behind its members. */
 .fc-group { border-radius: var(--radius, 8px); }
 .react-flow__node.fc-group, .react-flow__node [data-id^=""] .fc-group { z-index: 0; }
@@ -96,10 +132,35 @@
 .fc-stub:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ---- Edges ---------------------------------------------------------- */
-.fc-edge { stroke: var(--line-2); fill: none; }
-.fc-edge.fc-back { stroke: var(--text-3); }
-.fc-edge.fc-dashed { stroke-dasharray: 6 4; }
-.fc-edge:hover, .fc-edge.fc-edge-sel { stroke: var(--accent); }
+/* R0 – dimmer connections, matching the Graph tab: resting edges sit on
+   --line-2 (the dim warm line, no new token) at a lowered opacity, and
+   brighten to --text (hover, a hovered node's wires) or --accent (selected,
+   running) only on interaction. Dense graphs fade further, so the tangle
+   never reads as a bright net. Never invisible: 0.55 at rest keeps a resting
+   edge traceable against --bg. */
+.fc-edge { stroke: var(--line-2); fill: none; opacity: .55; transition: opacity var(--dur) var(--ease); }
+.fc-edge.fc-back { stroke: var(--text-3); opacity: .45; }
+.fc-edge.fc-dashed { stroke-dasharray: 6 4; opacity: .45; }
+/* Dense canvases (the hook is set by the view when edges exceed 120): the
+   resting opacity falls linearly to 0.35 at ~400 edges. */
+.map-canvas--dense .fc-edge { opacity: .42; }
+.map-canvas--dense .fc-edge.fc-dashed, .map-canvas--dense .fc-edge.fc-back { opacity: .35; }
+/* The second step of the falloff: past ~400 edges the resting wire dims
+   further, so the tangle never reads as a bright net. */
+.map-canvas--denser .fc-edge { opacity: .35; }
+.map-canvas--denser .fc-edge.fc-dashed, .map-canvas--denser .fc-edge.fc-back { opacity: .3; }
+/* Interaction restores full brightness: hover, selected, the running wires
+   and the wires of the node under the pointer. */
+/* The brightened states flip synchronously (no opacity transition) so a
+   computed-style test reads the lit value the moment the class attaches. */
+.fc-edge:hover, .fc-edge.fc-edge-sel, .fc-edge-hot, .fc-edge-lit, .fc-flow-run { opacity: 1; transition: none; }
+.fc-edge.fc-edge-sel, .fc-edge:hover { stroke: var(--accent); }
+.fc-edge-hot, .fc-edge-lit { stroke: var(--text); }
+.fc-edge-faint { opacity: .18; }
+/* A focused chain keeps its own wires lit and dims nothing about colour –
+   the chain's non-members already sit at fc-dim. */
+[data-fc-chainfocus="1"] .fc-edge { opacity: .3; }
+[data-fc-chainfocus="1"] .fc-edge-lit { opacity: 1; }
 .fc-edge-label {
   position: absolute; font-family: var(--font); font-size: 11px; color: var(--text-3);
   background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-xs, 4px);

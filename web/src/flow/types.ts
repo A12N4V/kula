@@ -2,7 +2,7 @@
 // dev lab. Sizes live on the 16 px grid (docs/design/flow-canvas.md §1).
 import type { ReactNode } from "react";
 
-export type FlowNodeKind = "tile" | "wide" | "circle" | "group" | "loop" | "sticky";
+export type FlowNodeKind = "tile" | "wide" | "circle" | "group" | "loop" | "sticky" | "block";
 export type FlowStatus = "running" | "success" | "error" | "pinned" | "disabled";
 
 /** A node for the canvas. Sizes come from the kind unless the caller overrides. */
@@ -42,6 +42,8 @@ export type FlowNode = {
   connectable?: boolean;
   /** The input handle accepts a dragged connection. */
   accepts?: boolean;
+  /** The block card's payload (R0). */
+  card?: BlockCardData;
 };
 
 export type FlowEdge = {
@@ -72,18 +74,48 @@ export type FlowGroup = {
 /** What the kit hands back on selection. */
 export type FlowSelection = { id: string; kind: FlowNodeKind } | null;
 
+/* The block node's payload (R0): the old Blocks-lens card, as the node itself.
+   Kept here so the kit stays the single type surface for every canvas. */
+export type BlockCardData = {
+  role?: string;
+  roleColor?: string;
+  logo?: string;
+  files?: number;
+  symbols?: number;
+  inDeg?: number;
+  outDeg?: number;
+  flows?: string[];
+  chains?: string[];
+  summary?: string;
+  /** Blocks with room show their function names (content reflows). */
+  functions?: { name: string; kind: string }[];
+  /** Sections are frames: their blocks render inside the card. */
+  members?: { id: string; title: string; color?: string }[];
+};
+
 /* Sizes (docs/design/flow-canvas.md §1–2). */
 export const GRID = 16;
 export const TILE = { w: 96, h: 128 }; // 96×96 tile + 32 of title/subtitle under it
 export const WIDE = { w: 256, h: 96 };
 export const CIRCLE = { w: 80, h: 80 };
 export const CHIP = { w: 256, h: 48 };
+/** Block card nodes (R0): the default stage and the expanded stage. */
+export const BLOCK_SIZES: { w: number; h: number; label: string }[] = [
+  { w: 224, h: 128, label: "compact" },
+  { w: 320, h: 208, label: "detail" },
+  { w: 432, h: 304, label: "full" },
+];
+export const BLOCK_DEFAULT = BLOCK_SIZES[1];
+/** Resizable kinds grow/shrink between their bounds (the corner handle). */
+export const RESIZE_MIN = { w: 192, h: 112 };
+export const RESIZE_MAX = { w: 560, h: 400 };
 /** Frame padding around members – room for the 33 px group head row. */
 export const GROUP_PAD = 48;
 export const RANK_STEP = 128;
 
 export function nodeSize(n: Pick<FlowNode, "kind" | "size">): { w: number; h: number } {
   if (n.size) return n.size;
+  if (n.kind === "block") return BLOCK_DEFAULT;
   if (n.kind === "wide") return WIDE;
   if (n.kind === "circle") return CIRCLE;
   if (n.kind === "group") return { w: 256, h: 128 };

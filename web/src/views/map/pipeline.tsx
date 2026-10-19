@@ -212,7 +212,7 @@ export function useRunner(data: MapData | null, pipe: Pipe, onChanged: () => voi
     stepOnce.current = stepping;
     setPaused(false);
     const steps = runnable(stepsRef.current);
-    if (!steps.length) { log("run", "Nothing to run – add blocks with N or the Add block button.", "warn"); openDock("run"); return; }
+    if (!steps.length) { log("run", "Nothing to run – add blocks from the pipeline panel.", "warn"); openDock("run"); return; }
     const from = fromId ? Math.max(0, steps.findIndex((s) => s.id === fromId)) : 0;
     abort.current = false;
     setRunning(true);
@@ -461,16 +461,18 @@ function StepFields({ data, s, pipe, sections }: { data: MapData; s: Step; pipe:
 
 /* ---- Sidebar: the pipeline list and the selected block ---------------- */
 
-export function PipelinePanel({ data, pipe, runner, sel, onSel, sections, onOpen }: {
-  data: MapData; pipe: Pipe; runner: ReturnType<typeof useRunner>; sel: string | null; onSel: (id: string | null) => void; sections: string[]; onOpen: (id: string) => void;
+export function PipelinePanel({ data, pipe, runner, sel, onSel, sections, onOpen, onAdd }: {
+  data: MapData; pipe: Pipe; runner: ReturnType<typeof useRunner>; sel: string | null; onSel: (id: string | null) => void; sections: string[]; onOpen: (id: string) => void; onAdd?: () => void;
 }) {
   const s = pipe.steps.find((x) => x.id === sel) ?? null;
   const name = (id: string | null) => (id ? data.blocks[id]?.theme || data.blocks[id]?.name : "") || "–";
   return (
     <section className="ws-card" data-testid="ws-pipeline">
       <div className="ws-card-head"><span className="ws-eyebrow">Pipeline · {runnable(pipe.steps).length} blocks</span>
-        {!!pipe.steps.length && !runner.running && <button className="ws-link" onClick={pipe.clear}>clear</button>}</div>
-      {!pipe.steps.length && <p className="ws-note">Empty. Press <kbd>N</kbd> (or Add block) and drag an agent onto a section – then a gate, then Run.</p>}
+        <span className="spacer" />
+        {!!pipe.steps.length && !runner.running && <button className="ws-link" onClick={pipe.clear}>clear</button>}
+        {!runner.running && <button className="ws-link" data-testid="pl-add" onClick={() => onAdd?.()}>+ add</button>}</div>
+      {!pipe.steps.length && <p className="ws-note">Empty. Use + add, then drag an agent onto a section – then a gate, then Run.</p>}
       <ol className="pl-list">
         {pipe.steps.map((x, i) => (
           <li key={x.id} className={`pl-row${x.id === sel ? " on" : ""} pl-${x.status ?? "idle"}${x.disabled ? " pl-off" : ""}`} onClick={() => onSel(x.id)} onDoubleClick={() => onOpen(x.id)} data-testid={`pl-row-${i}`}>

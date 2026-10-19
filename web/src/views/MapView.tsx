@@ -17,9 +17,8 @@ import { fixture } from "./map/fixture";
 import { BlockCanvas } from "./map/canvas";
 import { Readout, SubwayStrip } from "./map/readout";
 import { MapViewSidebar } from "./map/sidebar";
-import { FlowKitView, CapsKitView } from "./map/flowKit";
-import { FlowsPanel } from "./map/flowsPanel";
-import { ChainsStrips } from "./map/caps";
+import { FlowKitView } from "./map/flowKit";
+import { FlowsPanel, FlowsOverlay } from "./map/flowsPanel";
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf } from "./map/chainFocus";
 import { Library, ReviewPanel, RunPanel, sectionAtPoint, sectionOf, useLive, useMarks } from "./map/workspace";
@@ -56,28 +55,10 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   const [roles, setRoles] = useState<Set<Role>>(() => new Set(ROLES));
   const [rolesOpen, setRolesOpen] = useState(false);
   const [side, setSide] = useState(false); // phone drawer
-  // The landing view is the functional flow; "capabilities" reads the repo as
-  // what you can do with it; "blocks" is the nested-box drill; "chains" the
-  // top chain families as strips.
-  const [view, setView] = useState<"flow" | "capabilities" | "blocks" | "chains" | "flows">("flow");
   // The selected block fills the sidebar (the flow canvas selects, not drills);
   // a re-layout key and a pinned selection are the tinker levers.
   const [selBlock, setSelBlock] = useState<string | null>(null);
   const [layoutKey, setLayoutKey] = useState(0);
-  // Focus mode: the selected chain stays on the flow canvas and dims everything
-  // it does not cross. Plain chain selection still draws the blocks-canvas path.
-  const [focusMode, setFocusMode] = useState(false);
-  // Grouping depth on the flow canvas: sections as single nodes, or their blocks inside.
-  const [depth, setDepth] = useState(1);
-  // Expanded blocks on the flow canvas: their functions hang below as circles.
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const toggleExpand = useCallback((id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }, []);
   const code = useCode();
   const setInspForcedRef = useRef<(v: boolean) => void>(() => {});
   // Workspace: one canvas for code and agents. The sidebar's tabs manage and
@@ -188,7 +169,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || (e.target as HTMLElement)?.closest?.("input, textarea, [role=dialog]")) return;
-      if (path.length || selChain) { home(); setSelChain(null); setFocusMode(false); }
+      if (path.length || selChain) { home(); setSelChain(null); }
       else { setSelBlock(null); setInspForcedRef.current(false); } // Esc closes the inspector
     };
     window.addEventListener("keydown", onKey);
@@ -221,7 +202,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   const selectChain = useCallback((c: Chain) => {
     setSelChain((cur) => (cur?.id === c.id ? null : c));
     setSelLeaf(null);
-    setFocusMode(false);
+    setTab("inspect");
+    setInspForced(true);
   }, []);
 
   const selectLeaf = useCallback((id: number) => {
@@ -342,7 +324,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     if (mod && key.toLowerCase() === "v") { const id = pipe.paste(cur); if (id) select(id); return !!id; }
     if (mod && key.toLowerCase() === "d" && cur) { select(pipe.duplicate(cur)); return true; }
     if (mod || ev.altKey || !onCanvas) return false;
-    if ((key === "n" || key === "N" || key === "Tab") && !ev.shiftKey) { openPanel(cur); return true; }
+
     if (key === "S" && ev.shiftKey) { addSticky(); return true; }
     if (!cur) return false;
     if (key === "d" || key === "D") { toggleStep(cur); return true; }
@@ -405,7 +387,6 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     ];
     const secId = m.id && data?.blocks[m.id] ? sectionOf(data, m.id) ?? m.id : null;
     return [
-      { label: "Add block", key: "N", run: () => { if (secId) setLastSec(secId); openPanel(null); }, testid: "cm-add" },
       ...(secId ? [{ label: "Add an agent here", run: () => { setLastSec(secId); setPanel(true); setInsert(null); } }] : []),
       { label: "Add sticky note", key: "⇧S", run: () => addSticky(m.flow), testid: "cm-sticky" },
       { label: "Paste", key: "⌘V", run: () => { const id = pipe.paste(); if (id) select(id); } },
@@ -420,7 +401,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   setInspForcedRef.current = setInspForced;
   const insp = inspForced || !!selBlock || !!selChain || path.length > 0;
   const openInsp = (t: Tab) => { setTab(t); setInspForced(true); };
-  const closeInsp = () => { setInspForced(false); setSelBlock(null); setSelChain(null); setFocusMode(false); if (path.length) home(); };
+  const closeInsp = () => { setInspForced(false); setSelBlock(null); setSelChain(null); if (path.length) home(); };
   useEffect(() => { if (selBlock && !selStep && tab !== "inspect" && tab !== "structure") setTab("inspect"); // a node click shows the node
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selBlock]);
@@ -446,7 +427,6 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
         facts: [[String(b.files), b.files === 1 ? "file" : "files"], [String(countSyms(data, b.id)), "functions"], ...(mk?.changed ? [[String(mk.changed), "changed"]] : []), ...(mk?.fence ? [["fenced", "by the task"]] : [])] as [string, string][],
         actions: [
           <button key="a" className="btn sm" onClick={() => { setLastSec(sec); openPanel(null); }} data-testid="insp-add-agent"><Icon.agents /> Add agent here</button>,
-          <button key="e" className="btn sm" onClick={() => toggleExpand(b.id)}><Icon.plus /> {expanded.has(b.id) ? "Fold functions" : "Show functions"}</button>,
           <button key="p" className={`btn sm${pinned === b.id ? " on" : ""}`} onClick={() => setPinned((p) => (p === b.id ? null : b.id))}><Icon.target /> {pinned === b.id ? "Pinned" : "Pin"}</button>,
         ],
       };
@@ -454,13 +434,13 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     if (selChain && data) return { kind: <>chain</>, title: `${data.leaves[selChain.source]?.name} → ${data.leaves[selChain.terminal]?.name}`, sub: `${selChain.len} steps`, facts: [] as [string, string][], actions: [] };
     return { kind: <>workspace</>, title: "Map", sub: `${sections.length} sections · ${Object.keys(data?.blocks ?? {}).length} blocks`, facts: [] as [string, string][], actions: [] };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selStep, pipe.steps, readBlock, selChain, data, marks, expanded, pinned, runner.running, sections]);
+  }, [selStep, pipe.steps, readBlock, selChain, data, marks, pinned, runner.running, sections]);
   const chainCard = !selChain || !data ? null : (
               <div className="fm-chain-card" data-testid="map-chain-card">
                 <div className="fm-chain-card-head">
                   <span className="sy-section-label">chain</span>
-                  <button className="tab-btn sy-lens-btn" data-testid="map-focus-chain" aria-pressed={focusMode} title="dim everything this chain does not cross"
-                    onClick={() => setFocusMode((f) => !f)}>{focusMode ? "unfocus" : "focus"}</button>
+                  <button className="tab-btn sy-lens-btn" data-testid="map-focus-chain" aria-pressed={!!selChain} title="dim everything this chain does not cross"
+                    onClick={() => setSelChain(null)}>unfocus</button>
                 </div>
                 <p className="sy-summary">{data.leaves[selChain.source]?.name} → {data.leaves[selChain.terminal]?.name} · {selChain.len} steps</p>
                 <SubwayStrip data={data} chain={selChain} onStep={(s) => typeof s === "number" ? selectLeaf(s) : undefined} />
@@ -502,59 +482,31 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
 
   return (
     <div className="sy-root" ref={rootRef} data-testid="map-view">
-      <div className="sy-lens" data-testid="map-lens" role="toolbar" aria-label="Lens and role filter">
-        <button className={`btn sm primary ws-add${panel ? " on" : ""}`} data-testid="ws-add" aria-expanded={panel} title="Add a block  Tab" onClick={() => (panel ? setPanel(false) : openPanel(null))}><Icon.plus /> Add block</button>
-        <div className="sy-lens-group" role="group" aria-label="View">
-          {(["flow", "flows", "capabilities", "blocks", "chains"] as const).map((v) => (
-            <button key={v} className={`tab-btn sy-lens-btn${view === v ? " on" : ""}`} data-testid={`map-view-${v}`}
-              aria-pressed={view === v} onClick={() => { setView(v); if (v === "flow") { home(); setSelChain(null); } }}>{v}</button>
-          ))}
-        </div>
-        <div className="ws-viewmenu" ref={viewRef}>
-          <button className={`tab-btn sy-lens-btn${viewOpen ? " on" : ""}`} data-testid="map-view-menu" aria-haspopup="true" aria-expanded={viewOpen}
-            onClick={() => setViewOpen((o) => !o)}>View <span className={`ws-chev${viewOpen ? " up" : ""}`} aria-hidden="true"><Icon.chevron /></span></button>
-          {viewOpen && (
-            <div className="ws-viewpop dd" role="group" aria-label="View options" data-testid="map-view-pop">
-              <Disclosure id="show" label="Show" hint={lens} open={viewSec} setOpen={setViewSec}>
-                <div className="sy-lens-group">
-                  {(["functions", "utilities", "all"] as Lens[]).map((l) => (
-                    <button key={l} className={`tab-btn sy-lens-btn${lens === l ? " on" : ""}`} data-testid={`map-lens-${l}`}
-                      aria-pressed={lens === l} onClick={() => setLens(l)}>{l}</button>
-                  ))}
-                </div>
-                <button className={`dd-row${hideTests ? " on" : ""}`} data-testid="map-hide-tests" aria-pressed={hideTests} onClick={() => setHideTests((t) => !t)}>
-                  <span className={`dd-check${hideTests ? " on" : ""}`} />hide tests</button>
-                <button className={`dd-row${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter" onClick={() => setRolesOpen((o) => !o)}>
-                  <span className={`dd-check${rolesOpen ? " on" : ""}`} />roles filter</button>
-              </Disclosure>
-              <Disclosure id="colour" label="Colours" hint={SCHEMES.find((x) => x.id === scheme)?.label ?? ""} open={viewSec} setOpen={setViewSec}>
-                <div className="dd-swatches">
-                  {SCHEMES.map((c) => (
-                    <button key={c.id} className={`dd-swatch${scheme === c.id ? " on" : ""}`} data-testid={`map-scheme-${c.id}`} aria-pressed={scheme === c.id} onClick={() => setScheme(c.id)} title={c.hint}>
-                      <span className={`dd-chip dd-chip-${c.id}`} /><span>{c.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </Disclosure>
-              <Disclosure id="canvas" label="Layout" hint={depth === 2 ? "open" : "sections"} open={viewSec} setOpen={setViewSec}>
-                <div className="ws-viewrow">
-        <button className="tab-btn sy-lens-btn" data-testid="map-expand" title="expand the selected block's functions under its node"
-          disabled={!selBlock || !!selStep} onClick={() => selBlock && toggleExpand(selBlock)}>expand</button>
-        <button className="tab-btn sy-lens-btn" data-testid="map-depth" title="grouping depth: sections as single nodes, or their blocks inside the frames"
-          onClick={() => setDepth((d) => (d === 2 ? 1 : 2))}>{depth === 2 ? "close all" : "open all"}</button>
+      {/* One canvas (R0): no lens switcher, no View menu, no Add block button.
+          The option filters live in the inspector's Overview tab; the canvas
+          tinker controls (re-layout, pin) ride the canvas chrome. */}
+      <div className="sy-lens" data-testid="map-lens" role="toolbar" aria-label="Canvas controls">
         <button className="tab-btn sy-lens-btn" data-testid="map-relayout" title="re-run the layout"
           onClick={() => setLayoutKey((k) => k + 1)}>re-layout</button>
         <button className={`tab-btn sy-lens-btn${selBlock && pinned === selBlock ? " on" : ""}`} data-testid="map-pin" aria-pressed={!!selBlock && pinned === selBlock} title="pin this selection"
           onClick={() => setPinned((p) => (selBlock && p !== selBlock ? selBlock : null))}>pin</button>
-                </div>
-              </Disclosure>
-            </div>
-          )}
-        </div>
+        <button className={`tab-btn sy-lens-btn${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
+          onClick={() => setRolesOpen((o) => !o)}>roles</button>
+        <button className="tab-btn sy-lens-btn" data-testid="map-scheme-btn" title="colour scheme"
+          onClick={() => { const i = SCHEMES.findIndex((x) => x.id === scheme); setScheme(SCHEMES[(i + 1) % SCHEMES.length].id); }}>
+          {SCHEMES.find((x) => x.id === scheme)?.label ?? "role"}
+        </button>
       </div>
       {live?.running && <ProgressStrip p={live} />}
       {rolesOpen && (
         <div className="sy-roles" id="map-role-filter" data-testid="map-role-filter" role="group" aria-label="Role filter">
+          {/* R0 – the lens presets live with the role filter now (no View menu). */}
+          <div className="sy-roles-presets">
+            {(["functions", "utilities", "all"] as const).map((l) => (
+              <button key={l} className={`tab-btn sy-lens-btn${lens === l ? " on" : ""}`} data-testid={`map-lens-${l}`} aria-pressed={lens === l}
+                onClick={() => { setLens(l); setRolesOpen(false); }}>{l}</button>
+            ))}
+          </div>
           {ROLES.map((role) => (
             <label key={role} className="sy-role-row" title={ROLE_RULES[role]}>
               <input type="checkbox" checked={roles.has(role)} onChange={() => toggleRole(role)} data-testid={`map-role-${role}`} />
@@ -565,21 +517,16 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
         </div>
       )}
       <div className="sy-split" style={listWidth("map", 360)}>
-        {view === "flows" && <FlowsPanel data={data} onSection={(id) => { setView("blocks"); drill(id); }} />}
-        {view === "capabilities" && <CapsKitView data={data} roles={roles} selection={selBlock} onSelect={setSelBlock}
-          onFile={(p) => code.open({ path: p, name: p.split("/").pop() })} />}
-        {view === "chains" && <ChainsStrips data={data} roles={roles} onChain={selectChain} selChain={selChain?.id ?? null} loadChains={loadChains} onLeaf={selectLeaf} />}
-        {view === "flow" && (!chain || focusMode) && !path.length
-          ? <div className="ws-drop" onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={marks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} depth={depth} onClearFocus={() => { setSelChain(null); setFocusMode(false); }} layoutKey={layoutKey} expanded={expanded} onToggleExpand={toggleExpand} onClearExpand={() => setExpanded(new Set())} />
+        {path.length
+          ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
+          : <div className="ws-drop" onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={marks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey} />
             <NodePanel info={ws.info} open={panel} onClose={() => { setPanel(false); setInsert(null); }} onPick={pick}
               hint={insert?.after ? `Insert after ${pipe.steps.find((x) => x.id === insert.after)?.name ?? "block"}` : lastSec ? `Add on ${data.blocks[lastSec]?.theme || data.blocks[lastSec]?.name}` : "Add a block"} />
             {menu && <ContextMenu at={menu.at} items={menuItems(menu)} onClose={() => setMenu(null)} />}
             {ndvStep && <StepDetails data={data} s={ndvStep} pipe={pipe} runner={runner} sections={sections} prev={ndvPrev} onClose={() => setNdv(null)} />}
             <Transport runner={runner} blocks={runnable(pipe.steps).length} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} />
-          </div>
-          : (view === "blocks" || chain || path.length) && view !== "capabilities" && view !== "chains" && view !== "flows"
-            ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
-            : null}
+          </div>}
+
         {/* The canvas is everything until a click: then Graph's inspector – a
             floating panel with a header (kind, name, facts, actions) and sub-tabs. */}
         {!insp && (
@@ -619,12 +566,15 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             ))}
           </div>
           <div className="body">
-          {tab === "pipeline" && <PipelinePanel data={data} pipe={pipe} runner={runner} sel={selStep} onSel={(id) => setSelBlock(id ? `step:${id}` : null)} sections={sections} onOpen={setNdv} />}
+          {tab === "pipeline" && <PipelinePanel data={data} pipe={pipe} runner={runner} sel={selStep} onSel={(id) => setSelBlock(id ? `step:${id}` : null)} sections={sections} onOpen={setNdv} onAdd={() => openPanel(insert?.after ?? null)} />}
           {tab === "live" && <><RunPanel data={data} info={ws.info} onChanged={ws.reload} onSection={(id) => setSelBlock(id)} /><Executions runner={runner} /></>}
           {tab === "changes" && <ReviewPanel data={data} files={ws.files} onSection={(id) => setSelBlock(id)} onFile={(p) => code.open({ path: p, name: p.split("/").pop() })} />}
           {tab === "library" && <Library info={ws.info} go={go} onPick={pick} />}
           {tab === "inspect" && <>
             {chainCard}
+            {/* Flows as overlays (R0): a compact list on the inspector –
+                picking a flow selects its sections on the one canvas. */}
+            <FlowsOverlay data={data} onSection={(id) => { setSelBlock(id); setInspForced(true); }} />
             {<Readout data={data} block={readBlock} onLeaf={selectLeaf} onFamily={(famId) => { loadChains(famId).then((p) => { const c = p.chains[0]; if (c) selectChain(c); }).catch(() => { /* no chains pageable */ }); }} />}
           </>}
           {tab === "structure" && chainCard}
@@ -668,7 +618,7 @@ function Transport({ runner, blocks, waiting, last }: { runner: ReturnType<typeo
       <span className="tp-state" data-testid="ws-run-state">
         {runner.running
           ? `${runner.paused ? "Paused" : waiting ? "Waiting" : "Running"} ${runner.cursor ? `${runner.cursor.at}/${runner.cursor.of}` : ""}`
-          : last ? `${last.status[0].toUpperCase()}${last.status.slice(1)}` : blocks ? `${blocks} blocks` : "Empty – N adds a block"}
+          : last ? `${last.status[0].toUpperCase()}${last.status.slice(1)}` : blocks ? `${blocks} blocks` : "0 blocks – add one from Pipeline"}
       </span>
       <span className="tp-clock mono">{runner.running ? clock(el) : last ? clock(last.ms) : ""}</span>
       {runner.running && waiting && <button className="tp-done" onClick={() => runner.markDone(waiting.id)} data-testid="ws-done" title="The agent finished – hand on to the next block">{waiting.name}: done</button>}

@@ -94,3 +94,39 @@ export function FlowsPanel({ data, onSection }: Props) {
     </div>
   );
 }
+
+
+/** The compact flows list (R0): flows are overlays on the one canvas, not
+    tabs. Picking a flow selects its entry block on the canvas and the flow's
+    sections into the inspector's flow path (the canvas highlights what it
+    crosses). Pure list, no canvas of its own. */
+export function FlowsOverlay({ data, onSection }: { data: MapData; onSection?: (blockId: string) => void }) {
+  const flows = data.value_flows ?? [];
+  if (!flows.length)
+    return <p className="sy-summary" data-testid="map-flows-empty">No value flows yet – the extractor found no entry-to-side-effect chains.</p>;
+  return (
+    <div className="vf-list" data-testid="map-flows-list">
+      <span className="sy-section-label">value flows</span>
+      <ol className="vf-rows">
+        {flows.slice(0, 24).map((f, i) => (
+          <li key={i} className="vf-row">
+            <button className="vf-row-btn" data-testid={`map-flow-${i}`} title={`${f.name} – ${f.outcome}`}
+              onClick={() => { for (const b of f.sections) onSection?.(b); }}>
+              <span className="mono vf-row-n">{i + 1}</span>
+              <span className="vf-row-name">{f.name}</span>
+              <span className="vf-row-meta mono">{f.sections.length} sections</span>
+            </button>
+            <div className="vf-row-secs">
+              {f.sections.slice(0, 6).map((b) => (
+                <button key={b} className="vf-sec mono" data-testid={`map-flow-sec-${i}-${b}`}
+                  onClick={() => onSection?.(b)} title={data.blocks[b]?.theme || data.blocks[b]?.name || b}>
+                  {data.blocks[b]?.theme || data.blocks[b]?.name || b}
+                </button>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}

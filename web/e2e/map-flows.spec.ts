@@ -13,64 +13,41 @@ async function open(page: Page, hash = "map") {
 }
 
 test.describe("map value flows", () => {
-  test("the flows lens renders entry, flow and section tiles", async ({ page }) => {
+  // R0: the flows lens is gone – flows are an overlay list in the inspector
+  // on the one canvas; picking a flow selects its sections on the canvas.
+  test("the flows overlay in the inspector lists the value flows", async ({ page }) => {
     await open(page);
     // A cold server builds the map inside the first GET /api/map (~11 s on
-    // this repo) – the view only renders its testid once the payload lands,
-    // so give the first assert the cold-build budget, not the 5 s default.
+    // this repo) – give the first assert the cold-build budget.
     await expect(page.locator("[data-testid=map-view]")).toBeVisible({ timeout: 30_000 });
-    await page.locator("[data-testid=map-view-flows]").click();
-    await expect(page.locator("[data-testid=map-flows]")).toBeVisible();
-    // The canvas is hydrated with at least one entry tile and one flow tile.
-    await expect(page.locator("[data-testid=vf-canvas][data-fc-ready='1']")).toBeAttached({ timeout: 15_000 });
-    const nodes = page.locator("[data-testid^=fc-node-vf]");
-    expect(await nodes.count()).toBeGreaterThan(1);
-  });
-
-  test("flow tiles carry their name and outcome sentence", async ({ page }) => {
-    await open(page);
-    await page.locator("[data-testid=map-view-flows]").click();
     const api = await page.evaluate(async () => {
       const token = document.querySelector('meta[name="kula-token"]')?.content ?? "";
       const r = await fetch("/api/map", { headers: { "x-kula-token": token } });
       return (await r.json()).value_flows as { name: string; outcome: string }[];
     });
     expect(api.length).toBeGreaterThan(0);
+    // a selection opens the inspector; the flows list rides the inspect tab
+    await page.locator(".fc-card").first().click();
+    await expect(page.locator("[data-testid=map-flows-list]")).toBeAttached();
+    const rows = page.locator("[data-testid=map-flows-list] .vf-row-name");
+    expect(await rows.count()).toBeGreaterThan(0);
     const names = new Set(api.map((f) => f.name));
-    // The canvas virtualises off-screen nodes, so assert on what is rendered:
-    // every flow tile shows a real flow name as its title and its outcome
-    // sentence as the subtitle line under the tile.
-    const tiles = page.locator(`[data-testid^="fc-node-vf:f"]`);
-    expect(await tiles.count()).toBeGreaterThan(0);
-    for (const t of await tiles.all()) {
-      const [title, subtitle] = await t.locator(".fc-title, .fc-sub").allTextContents();
-      expect(names.has(title)).toBe(true);
-      const f = api.find((x) => x.name === title)!;
-      expect(subtitle).toBe(f.outcome);
-    }
+    for (const r of await rows.all()) expect(names.has((await r.textContent()) ?? "")).toBe(true);
+    // the row button carries the outcome sentence as its title
+    const firstName = (await rows.first().textContent()) ?? "";
+    const first = api.find((f) => f.name === firstName)!;
+    await expect(page.locator("[data-testid=map-flow-0]")).toHaveAttribute("title", `${first.name} – ${first.outcome}`);
   });
 
-  test("the entry tile is D-shaped and sits in the leftmost rank", async ({ page }) => {
+  test("picking a flow selects its first section on the canvas", async ({ page }) => {
     await open(page);
-    await page.locator("[data-testid=map-view-flows]").click();
-    await expect(page.locator("[data-testid=vf-canvas][data-fc-ready='1']")).toBeAttached({ timeout: 15_000 });
-    const entry = page.locator(".fc-node.fc-entry").first();
-    await expect(entry).toBeVisible();
-    // The D shape is the tile box's radius: round back (left), flat face (right).
-    // The virtualized canvas remounts nodes under load; poll so a mid-remount
-    // read (empty computed style) does not fail the shape check.
-    await expect(async () => {
-      const radii = await entry.locator(".fc-tile-box").evaluate((el) => {
-        const s = getComputedStyle(el);
-        return { tl: parseFloat(s.borderTopLeftRadius), br: parseFloat(s.borderBottomRightRadius) };
-      });
-      expect(radii.tl).toBeGreaterThan(4); // the D's round back
-      expect(radii.br).toBe(0); // the D's flat face toward the flow
-    }).toPass({ timeout: 10_000 });
-    // Leftmost: no tile sits to its left.
-    const x = await entry.evaluate((el) => (el as HTMLElement).getBoundingClientRect().left);
-    const others = await page.locator(".fc-node:not(.fc-entry)").evaluateAll((els) => els.map((e) => (e as HTMLElement).getBoundingClientRect().left));
-    if (others.length) expect(x).toBeLessThanOrEqual(Math.min(...others) + 1);
+    await expect(page.locator("[data-testid=map-view]")).toBeVisible({ timeout: 30_000 });
+    await page.locator(".fc-card").first().click();
+    await expect(page.locator("[data-testid=map-flows-list]")).toBeAttached();
+    await page.locator("[data-testid=map-flow-0]").click();
+    // the canvas selection moved to the flow's first section (the inspector
+    // names the selected block; the canvas card carries the selection state)
+    await expect(page.locator("[data-testid=map-flow] .fc-canvas")).not.toHaveAttribute("data-fc-selection", "");
   });
 
   test("value_flows order is identical across two /api/map fetches", async ({ page }) => {

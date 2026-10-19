@@ -185,7 +185,7 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // A view that handled the key (the canvas: 1 fits, N adds a block) owns it.
+      // A view that handled the key (the canvas: 1 fits, arrows walk) owns it.
       if (e.defaultPrevented) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
       if (e.ctrlKey && e.key === "`") { e.preventDefault(); setDock((d) => !d); return; }

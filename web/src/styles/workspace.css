@@ -11,7 +11,6 @@
 
 /* ---- + Agent megamenu: one container that morphs between kinds --------- */
 .ws-menu { position: relative; margin-right: 12px; flex: 0 0 auto; }
-.ws-add { height: var(--ctl-h); }
 .ws-pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; overflow: hidden;
   background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius, 8px);
   transform-origin: top left; animation: ws-pop-in 200ms var(--ease) both;
@@ -121,8 +120,6 @@
 
 /* ---- Pipeline workspace (n8n-style) ---------------------------------- */
 .ws-drop { position: relative; }
-.ws-add { display: inline-flex; align-items: center; gap: 6px; }
-.ws-add svg { width: 13px; height: 13px; }
 
 /* Node panel: slides in from the right edge of the canvas. */
 .np { position: absolute; top: 56px; right: 12px; bottom: 76px; width: 340px; max-width: calc(100% - 24px); z-index: 25;

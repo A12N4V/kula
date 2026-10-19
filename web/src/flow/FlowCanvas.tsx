@@ -11,7 +11,7 @@ import "@xyflow/react/dist/style.css";
 import { FcCtx } from "./fcContext";
 import { edgeTypes } from "./edges";
 import { layout, layoutWorkerUsed } from "./layout";
-import { applyPersisted, clearPersisted, persist } from "./positions";
+import { applyPersisted, applySizes, clearPersisted, persist, persistSizes } from "./positions";
 import { CHIP, nodeSize, snap, type FlowEdge, type FlowGroup, type FlowNode } from "./types";
 import { nodeTypes } from "./nodes";
 import { Icon } from "../ui";
@@ -50,6 +50,10 @@ export type FlowCanvasProps = {
   reveal?: string | null;
   /** A node was dragged to a new position (flow coords). */
   onMoved?: (id: string, pos: { x: number; y: number }) => void;
+  /** Readable by default (R0): land centred on this node at `initialZoom`
+      instead of a fit-everything view. */
+  initialFocus?: string | null;
+  initialZoom?: number;
 };
 
 type RfNode = Node<FlowNode>;
@@ -120,7 +124,8 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     performance.mark("fc:effect");
     (async () => {
       const effectiveKey = tidySeq.current ? `${layoutKey}:tidy${tidySeq.current}` : layoutKey;
-      const res = await layout(nodes, edges, groups, effectiveKey);
+      const withSizes = applySizes(ns, layoutKey, nodes);
+      const res = await layout(withSizes, edges, groups, effectiveKey);
       performance.mark("fc:layout-done");
       (window as unknown as { __fcLayout?: { ms: number; nodes: number; worker: boolean; mainEdges: [string, string][] } }).__fcLayout = { ms: res.ms, nodes: res.nodes.filter((n) => n.kind !== "group").length, worker: !!layoutWorkerUsed(), mainEdges: edges.filter((e) => e.main !== false).map((e) => [e.source, e.target]) };
       if (!live) return;
@@ -159,9 +164,22 @@ function FlowCanvasInner(props: FlowCanvasProps) {
         if (done >= sorted.length) {
           performance.mark("fc:hydrate");
           setHydrated(true);
+          // Readable by default (R0): when the caller names an initialFocus,
+          // land centred on it at a readable zoom instead of fitting every
+          // node into 12 %. The focus node must be in the laid-out set.
           if (fittedKey.current !== layoutKey) {
             fittedKey.current = layoutKey;
-            window.requestAnimationFrame(() => rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 }));
+            const focusId = props.initialFocus;
+            window.requestAnimationFrame(() => {
+              const n = focusId ? rf.getNode(focusId) : null;
+              if (n) {
+                const d = n.data as FlowNode;
+                const cx = n.position.x + ((d.size?.w ?? 200) / 2), cy = n.position.y + ((d.size?.h ?? 120) / 2);
+                rf.setCenter(cx, cy, { zoom: props.initialZoom ?? 0.85, duration: reduced.current ? 0 : 200 });
+              } else {
+                rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 });
+              }
+            });
           }
           return;
         }
@@ -266,6 +284,20 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     onSelect?.(id);
   }, [onSelect]);
 
+  // Corner resize (R0): live size updates the node; release persists once and
+  // re-measures internals so the virtualizer never hides the grown node.
+  const onNodeResize = useCallback((id: string, size: { w: number; h: number }, commit: boolean) => {
+    setRfNodes((prev) => prev.map((n) => {
+      if (n.id !== id) return n;
+      const d = n.data as FlowNode;
+      return { ...n, width: size.w, height: size.h, style: { ...n.style, width: size.w, height: size.h }, data: { ...d, size } };
+    }));
+    if (commit) {
+      persistSizes(ns, layoutKey, [{ id, size }]);
+      window.setTimeout(() => updateInternals([id]), 50);
+    }
+  }, [ns, layoutKey, updateInternals]);
+
   /* Keyboard: one tabIndex surface on the wrapper (guidance-f1 risk 3). */
   const onKeyDown = useCallback((ev: React.KeyboardEvent) => {
     const tag = (ev.target as HTMLElement).tagName;
@@ -336,7 +368,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     setRfNodes((prev) => prev.map((n) => ({ ...n }))); // nudge effect via key change below
     // Re-run layout directly for determinism:
     (async () => {
-      const res = await layout(nodes, edges, groups, `${layoutKey}:tidy${tidySeq.current}`);
+      const res = await layout(applySizes(ns, layoutKey, nodes), edges, groups, `${layoutKey}:tidy${tidySeq.current}`);
       setRfNodes(res.nodes.map((n) => toRf(n, null, collapsed, new Set())));
       setRfEdges(edges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: "flow-edge", data: { ...e }, zIndex: e.main === false ? 0 : 1 })));
       rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 });
@@ -357,7 +389,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   const zoomPct = Math.round(useStore((s) => s.transform[2]) * 100);
 
   return (
-    <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel, hovered, onStub, hoverEdge, setHoverEdge }}>
+    <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel, hovered, onStub, hoverEdge, setHoverEdge, onResize: onNodeResize }}>
       <div className={`fc-wrap${sidebar ? " fc-with-side" : ""}`} data-testid={testId} data-fc-ready={rfNodes.length > 0 ? "1" : "0"} data-fc-hydrated={hydrated ? "1" : "0"}>
         <div className="fc-canvas" tabIndex={0} onKeyDown={onKeyDown} aria-label="Flow canvas" data-fc-selection={sel ?? ""}>
           <ReactFlow
