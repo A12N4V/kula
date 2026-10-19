@@ -2199,6 +2199,10 @@ test.describe("map", () => {
     // the tinker bar expands the selected block (canvas hover toolbars can
     // sit under the lens bar for nodes near the canvas top)
     await openView(page, "canvas"); await page.locator("[data-testid=map-expand]").click();
+    // close the View popup: it hangs over the canvas and would intercept the
+    // click on a function circle whose centre sits under it
+    await page.locator("[data-testid=map-view-menu]").click();
+    await expect(page.locator("[data-testid=map-view-pop]")).toHaveCount(0);
     // expanded: up to 40 function circles hang below the block, one per function
     const fns = page.locator("[data-testid^='fc-node-fn:']");
     await expect(fns.first()).toBeVisible();
