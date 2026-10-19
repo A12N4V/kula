@@ -120,11 +120,7 @@ pub fn section_purity(gold: &[Flow], blocks: &[(String, Vec<String>)]) -> f64 {
         let mut best = 0usize;
         for (_, members) in blocks {
             let mut seen = std::collections::BTreeSet::new();
-            let hits = members
-                .iter()
-                .map(|m| tail(m))
-                .filter(|m| set.contains(m) && seen.insert(m.clone()))
-                .count();
+            let hits = members.iter().map(|m| tail(m)).filter(|m| set.contains(m) && seen.insert(m.clone())).count();
             let hits = hits.min(set.len());
             best = best.max(hits);
         }
@@ -209,11 +205,7 @@ mod tests {
 
     #[test]
     fn crossings_count_only_true_overpasses() {
-        let edges = vec![
-            ("a".to_string(), "d".to_string()),
-            ("b".to_string(), "c".to_string()),
-            ("a".to_string(), "b".to_string()),
-        ];
+        let edges = vec![("a".to_string(), "d".to_string()), ("b".to_string(), "c".to_string()), ("a".to_string(), "b".to_string())];
         assert_eq!(edge_crossings(&edges), 1);
     }
 }

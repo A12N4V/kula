@@ -6,13 +6,66 @@ use std::collections::BTreeSet;
 
 /// Verbs the rubric recognises at the start of a name (case-insensitive).
 const VERBS: [&str; 60] = [
-    "add", "aggregate", "apply", "build", "check", "clean", "collect", "commit", "compare",
-    "complete", "compute", "count", "decode", "detect", "diff", "dispatch", "draw", "encode",
-    "extract", "fetch", "find", "format", "generate", "group", "handle", "import", "index",
-    "install", "list", "load", "log", "map", "merge", "name", "parse", "plan", "print", "query",
-    "read", "record", "remove", "render", "resolve", "run", "save", "scan", "search", "serve",
-    "show", "sort", "split", "store", "stream", "summarise", "summarize", "sync", "test", "track",
-    "update", "write",
+    "add",
+    "aggregate",
+    "apply",
+    "build",
+    "check",
+    "clean",
+    "collect",
+    "commit",
+    "compare",
+    "complete",
+    "compute",
+    "count",
+    "decode",
+    "detect",
+    "diff",
+    "dispatch",
+    "draw",
+    "encode",
+    "extract",
+    "fetch",
+    "find",
+    "format",
+    "generate",
+    "group",
+    "handle",
+    "import",
+    "index",
+    "install",
+    "list",
+    "load",
+    "log",
+    "map",
+    "merge",
+    "name",
+    "parse",
+    "plan",
+    "print",
+    "query",
+    "read",
+    "record",
+    "remove",
+    "render",
+    "resolve",
+    "run",
+    "save",
+    "scan",
+    "search",
+    "serve",
+    "show",
+    "sort",
+    "split",
+    "store",
+    "stream",
+    "summarise",
+    "summarize",
+    "sync",
+    "test",
+    "track",
+    "update",
+    "write",
 ];
 
 /// Rubric + keyword score for one produced name against one gold keyword set.
@@ -37,9 +90,7 @@ fn has_identifiers(name: &str) -> bool {
     name.contains('_')
         || name.contains("::")
         || name.contains('/')
-        || name
-            .split_whitespace()
-            .any(|w| w.len() > 3 && w[1..].chars().any(|c| c.is_uppercase()))
+        || name.split_whitespace().any(|w| w.len() > 3 && w[1..].chars().any(|c| c.is_uppercase()))
 }
 
 /// Fraction of gold keywords that appear in the name (case-insensitive),
@@ -48,12 +99,8 @@ pub fn keyword_overlap(name: &str, keywords: &[String]) -> f64 {
     if keywords.is_empty() {
         return 0.0;
     }
-    let words: BTreeSet<String> = name
-        .to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .map(|w| w.to_string())
-        .collect();
+    let words: BTreeSet<String> =
+        name.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(|w| w.to_string()).collect();
     let hits = keywords.iter().filter(|k| words.contains(&k.to_lowercase())).count();
     (hits as f64 / keywords.len() as f64).min(1.0)
 }
@@ -62,12 +109,7 @@ pub fn keyword_overlap(name: &str, keywords: &[String]) -> f64 {
 /// "run_index → save_map" becomes "Run index to save map". Wave 2's real
 /// namer replaces this; it exists so the bench has something to score.
 pub fn baseline_name(source: &str, terminal: &str) -> String {
-    let words = |s: &str| -> Vec<String> {
-        s.split(['_', '-', '.'])
-            .filter(|w| !w.is_empty())
-            .map(|w| w.to_string())
-            .collect()
-    };
+    let words = |s: &str| -> Vec<String> { s.split(['_', '-', '.']).filter(|w| !w.is_empty()).map(|w| w.to_string()).collect() };
     let src = words(source);
     let term = words(terminal);
     let mut out = String::new();

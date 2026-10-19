@@ -40,10 +40,8 @@ const GOLD_DIR: &str = "bench/mapping/gold";
 
 /// The three gold repos, in bench order.
 fn gold_files() -> Vec<PathBuf> {
-    let mut files: Vec<PathBuf> = ["kula.toml", "homonin-scripts.toml", "miniserde.toml"]
-        .iter()
-        .map(|f| Path::new(GOLD_DIR).join(f))
-        .collect();
+    let mut files: Vec<PathBuf> =
+        ["kula.toml", "homonin-scripts.toml", "miniserde.toml"].iter().map(|f| Path::new(GOLD_DIR).join(f)).collect();
     // Bisect-friendly: run just one repo with KULA_BENCH_ONLY=miniserde.
     if let Ok(only) = std::env::var("KULA_BENCH_ONLY") {
         files.retain(|p| p.file_stem().is_some_and(|s| s == only.as_str()));
@@ -269,12 +267,7 @@ fn bench_repo(name: &str, dir: &Path, gold: &GoldFile) -> Result<RepoResult> {
         .filter(|b| b.depth == 0)
         .map(|b| {
             let mut seen = std::collections::BTreeSet::new();
-            let members = b
-                .symbols
-                .iter()
-                .filter_map(|&id| member_of(id))
-                .filter(|m| seen.insert(m.clone()))
-                .collect();
+            let members = b.symbols.iter().filter_map(|&id| member_of(id)).filter(|m| seen.insert(m.clone())).collect();
             (b.id.clone(), members)
         })
         .collect();
@@ -298,23 +291,14 @@ fn bench_repo(name: &str, dir: &Path, gold: &GoldFile) -> Result<RepoResult> {
         edge_crossings: crossings,
         build_ms,
         peak_rss_kib: rss,
-        produced: produced
-            .iter()
-            .map(|f| ProducedFlow { name: f.name.clone(), members: f.members.len() })
-            .take(8)
-            .collect(),
+        produced: produced.iter().map(|f| ProducedFlow { name: f.name.clone(), members: f.members.len() }).take(8).collect(),
     })
 }
 
 /// Baseline flow adapter (wave 1): the top chain families by chain count,
 /// each becoming one candidate flow whose members are the union of a capped
 /// sample of its chains' steps. Wave 2's `src/map/flows.rs` replaces this.
-fn candidate_flows(
-    s: &map::Syntagm,
-    store: &Store,
-    member_of: &dyn Fn(i64) -> Option<String>,
-    cap_members: usize,
-) -> Vec<metrics::Flow> {
+fn candidate_flows(s: &map::Syntagm, store: &Store, member_of: &dyn Fn(i64) -> Option<String>, cap_members: usize) -> Vec<metrics::Flow> {
     let mut families: Vec<&map::ChainFamily> = s.families.iter().collect();
     families.sort_by(|a, b| b.count.cmp(&a.count).then(a.id.cmp(&b.id)));
     let sampled = family_chains(store, 8192);
@@ -337,12 +321,8 @@ fn candidate_flows(
     };
     let mut fam_members: Vec<Vec<String>> = Vec::new();
     for fam in families.iter().take(40) {
-        let sample: Vec<Vec<i64>> = sampled
-            .iter()
-            .filter(|c| c.first() == Some(&fam.source) && c.last() == Some(&fam.terminal))
-            .take(64)
-            .cloned()
-            .collect();
+        let sample: Vec<Vec<i64>> =
+            sampled.iter().filter(|c| c.first() == Some(&fam.source) && c.last() == Some(&fam.terminal)).take(64).cloned().collect();
         fam_members.push(family_members(&sample));
         names.push((
             member_of(fam.source).map(|m| tail_word(&m)).unwrap_or_default(),
@@ -386,11 +366,7 @@ fn candidate_flows(
         if members.len() < 2 {
             continue;
         }
-        out.push(metrics::Flow {
-            name: names::baseline_name(&names[i].0, &names[i].1),
-            members,
-            keywords: vec![],
-        });
+        out.push(metrics::Flow { name: names::baseline_name(&names[i].0, &names[i].1), members, keywords: vec![] });
     }
     out
 }
@@ -450,8 +426,32 @@ mod tests {
     #[test]
     fn summary_is_deterministic_and_sorted() {
         let r = summarise(vec![
-            RepoResult { repo: "b".into(), recall: 0.5, precision: 0.5, name_score: 0.5, section_purity: 0.5, edge_crossings: 0, build_ms: 1, peak_rss_kib: 1, gold_flows: 1, produced_flows: 1, produced: vec![] },
-            RepoResult { repo: "a".into(), recall: 1.0, precision: 1.0, name_score: 1.0, section_purity: 1.0, edge_crossings: 0, build_ms: 1, peak_rss_kib: 1, gold_flows: 1, produced_flows: 1, produced: vec![] },
+            RepoResult {
+                repo: "b".into(),
+                recall: 0.5,
+                precision: 0.5,
+                name_score: 0.5,
+                section_purity: 0.5,
+                edge_crossings: 0,
+                build_ms: 1,
+                peak_rss_kib: 1,
+                gold_flows: 1,
+                produced_flows: 1,
+                produced: vec![],
+            },
+            RepoResult {
+                repo: "a".into(),
+                recall: 1.0,
+                precision: 1.0,
+                name_score: 1.0,
+                section_purity: 1.0,
+                edge_crossings: 0,
+                build_ms: 1,
+                peak_rss_kib: 1,
+                gold_flows: 1,
+                produced_flows: 1,
+                produced: vec![],
+            },
         ]);
         assert_eq!(r.repos[0].repo, "a");
         assert!((r.summary.recall - 0.75).abs() < 1e-9);
