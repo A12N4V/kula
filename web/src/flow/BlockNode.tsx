@@ -7,13 +7,15 @@
 // function list. Nothing here talks to React Flow – the kit wraps it.
 import { memo, useCallback } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { GLYPH } from "../colors";
 import { RoleMark, ROLE_COLOR } from "../views/map/icons";
 import { sectionLogo } from "../views/map/icons";
 import type { BlockCardData, FlowNode } from "./types";
 import { BLOCK_SIZES, RESIZE_MAX, RESIZE_MIN, snap } from "./types";
 import { useFc } from "./fcContext";
 
-const kindGlyph: Record<string, string> = { fn: "ƒ", class: "◦", var: "·", type: "τ" };
+// Kind letters come from the shared GLYPH map (same tiles the graph draws).
+const kindGlyph: Record<string, string> = { fn: GLYPH.function, class: GLYPH.class, var: GLYPH.file, type: "T", method: GLYPH.method, interface: GLYPH.interface };
 
 /** The resize handle: bottom-right, 12 px hit (40 px at touch). Drag end
     commits the size through onResize so the kit persists it once, not per
