@@ -371,6 +371,12 @@
 .fm-headline-v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
 .sy-lens { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 @media (max-width: 640px) {
+  /* On phones the lens toolbar wraps instead of scrolling off – every
+     control stays on screen (the probe's 390 px finding). */
+  .sy-lens { flex-wrap: wrap; overflow-x: visible; }
+  .sy-lens-group { flex-wrap: wrap; min-width: 0; }
+}
+@media (max-width: 640px) {
   .map-insp { top: auto; left: 8px; right: 8px; bottom: 8px; height: 70%; width: auto; }
   .map-hud .btn { padding: 0 8px; }
   .map-hud .btn:not(:first-child) { font-size: 0; gap: 0; }

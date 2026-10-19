@@ -2584,8 +2584,9 @@ test.describe("map", () => {
     await page.waitForTimeout(250);
     const vp3 = await vp();
     expect(Math.abs(vp3.x - vp2.x) + Math.abs(vp3.y - vp2.y)).toBeLessThan(20);
-    // Click (no drag) opens the inspector; Esc closes it.
-    await page.mouse.click(x0 + 300, b!.y + 120);
+    // Click a tile (an empty-pane click is just a deselect) – the inspector opens; Esc closes it.
+    const tile = page.locator("[data-testid=map-flow] .react-flow__node").first();
+    await tile.click({ timeout: 5_000 });
     await expect(page.locator("[data-testid=map-inspector]")).toBeVisible({ timeout: 5_000 });
     await page.keyboard.press("Escape");
     await expect(page.locator("[data-testid=map-inspector]")).toHaveCount(0);
