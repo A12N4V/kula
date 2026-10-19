@@ -1978,10 +1978,13 @@ test.describe("map", () => {
       await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2 + i);
     }
     const leaf = page.locator(".sy-leaf-row").first();
+    // The panel shows the leaf's file – read the extension from the row's
+    // path title (which leaf sorts first varies by repo, e.g. kula.rb)
+    const title = (await leaf.getAttribute("title")) ?? "";
+    const ext = title.includes(".") ? title.replace(/^.*\./, "").split(":")[0] : "rs";
     await leaf.click();
     await expect(page.locator(".code-panel")).toBeVisible();
-    // the panel shows the leaf's file
-    await expect(page.locator(".code-panel")).toContainText(".rs");
+    await expect(page.locator(".code-panel")).toContainText(ext);
     // the code panel is an overlay – the tab must stay on MapView
     await expect(page).toHaveURL(/#map/);
   });
