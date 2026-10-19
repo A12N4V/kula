@@ -552,8 +552,10 @@ mod flows_tests {
         }
     }
 
-    /// Names pass the rubric: verb–object, at most 12 words, no code
-    /// identifiers – scored with the bench's rubric scorer.
+    /// Names pass the rubric: verb-object, at most 12 words, no code
+    /// identifiers - checked on the fixture AND scored with the bench's
+    /// rubric scorer on realistic member sets, so vacuous verb lists cannot
+    /// pass ungrammatical output.
     #[test]
     fn flow_names_pass_the_rubric() {
         let (_dir, _repo, store) = temp_store();
@@ -567,26 +569,61 @@ mod flows_tests {
             assert!(f.name.split_whitespace().count() <= 12, "name {:?} at most 12 words", f.name);
             assert!(!f.name.contains('_') && !f.name.contains("::"), "no identifiers in {:?}", f.name);
         }
+        // The bench scorer on names for realistic member sets: a decoder
+        // family, a store family, a server family. The namer must reach the
+        // scorer's floor - identifier snakes and noun piles fail this.
+        let cases: Vec<(&[&str], &[&str])> = vec![
+            (&["decode", "_parse_records", "_parse_stream", "u8", "text", "skip"], &["pod5.py", "signal"]),
+            (&["put", "get", "search", "write_all"], &["store.rs", "graph"]),
+            (&["router", "serve", "map_all", "block_json"], &["server.rs", "api"]),
+        ];
+        for (names, paths) in cases {
+            let names: Vec<String> = names.iter().map(|x| x.to_string()).collect();
+            let paths: Vec<String> = paths.iter().map(|x| x.to_string()).collect();
+            let named = flows_name::name_flow(&names, &paths, "main", None);
+            let sc = crate::bench::mapping::names::score(&named.name, &named.keywords);
+            assert!(sc >= 0.5, "name {:?} scores {sc} below the rubric floor", named.name);
+            assert!(!named.name.contains('_') && !named.name.contains("::"), "no identifiers in {:?}", named.name);
+            assert!(named.outcome.split_whitespace().count() <= 12, "outcome at most 12 words: {:?}", named.outcome);
+        }
     }
 
     /// The shared-plumbing prune keeps feature cores: a hub called by many
-    /// flows is not part of any one of them.
+    /// flows is not part of any one of them. Proven two ways - directly on
+    /// the prune function, and end to end on a fixture with enough flows
+    /// for the prune to fire.
     #[test]
     fn shared_hubs_are_pruned_from_flows() {
+        use std::collections::BTreeSet;
         let (_dir, _repo, store) = temp_store();
         fixture(&store);
-        // Many entries reaching one shared helper: it must not land in the
-        // flows that merely pass through it.
+        // One hub helper every entry reaches: it must not land in the flows
+        // that merely pass through it.
         add_node(&store, 60, "function", "log_meta", "shared/log_meta.py", 10);
-        for s in [61, 62, 63] {
+        for s in [61, 62, 63, 64, 65, 66] {
             add_node(&store, s, "function", &format!("entry_{s}"), "shared/entries.py", 10);
             add_edge(&store, s, 60, "CALLS", 1.0);
         }
+        let cfg = flows::FlowConfig::default();
+        // Direct: the hub sits in at least half of six member sets, so the
+        // prune must remove it from every surviving one.
+        let sets: Vec<(usize, BTreeSet<usize>, usize)> = (0..6)
+            .map(|i| {
+                let mut m: BTreeSet<usize> =
+                    [10 + i, 20 + i, 30 + i, 40 + i, 50 + i].into_iter().collect();
+                m.insert(60);
+                (i, m, 5)
+            })
+            .collect();
+        let pruned = flows::prune_shared(sets, &cfg);
+        assert_eq!(pruned.len(), 6, "the prune drops members, not flows");
+        for (_, m, _) in &pruned {
+            assert!(!m.contains(&60), "the shared hub is pruned from every flow");
+        }
+        // End to end: with six flows through the hub, extraction drops it.
         let flows = flows::extract(&store);
-        let hub_in_flow = flows.iter().any(|f| f.members.contains(&60) && f.members.len() > 3);
-        let _ = hub_in_flow; // prune kicks in only with enough flows; assert no panic and sane shape
         for f in &flows {
-            assert!(f.members.len() <= 40, "no flow swallows the program: {:?}", f.name);
+            assert!(!f.members.contains(&60), "hub log_meta must not join a flow: {:?}", f.name);
         }
     }
 }

@@ -79,9 +79,24 @@ fn title(words: &[String]) -> String {
         .join(" ")
 }
 
+/// The outcome tail for a flow's side-effect terminal: what the chain
+/// actually delivers, not a constant template.
+fn outcome_tail(effect: Option<&str>) -> &'static str {
+    match effect.unwrap_or("") {
+        "write" | "writeto" | "save" | "store" | "commit" | "insert" | "flush" => {
+            "and keep the result."
+        }
+        "read" | "load" | "open" => "and report what it reads.",
+        "serve" | "listen" | "send" | "post" | "connect" => "and answer over the connection.",
+        "fetch" | "query" | "search" | "exec" => "and return what it finds.",
+        "print" | "emit" => "and show the result.",
+        _ => "and hand back the result.",
+    }
+}
+
 /// Pick the most frequent verb from member names, entry side weighted, then
 /// the most distinctive object words from member paths.
-pub fn name_flow(names: &[String], paths: &[String], entry_name: &str) -> Named {
+pub fn name_flow(names: &[String], paths: &[String], entry_name: &str, effect: Option<&str>) -> Named {
     // Verb: first matching verb token per member name, earliest members and
     // the entry point count double.
     let mut verbs: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
@@ -119,7 +134,12 @@ pub fn name_flow(names: &[String], paths: &[String], entry_name: &str) -> Named 
     }
     let mut ranked: Vec<(String, usize)> = obj.into_iter().collect();
     ranked.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.len().cmp(&a.0.len())).then(a.0.cmp(&b.0)));
-    let object_words: Vec<String> = ranked.iter().take(2).map(|(t, _)| t.clone()).collect();
+    // Head noun last: the more general, more frequent token closes the
+    // phrase, the specific one modifies it.
+    let mut object_words: Vec<String> = ranked.iter().take(2).map(|(t, _)| t.clone()).collect();
+    if object_words.len() == 2 {
+        object_words.reverse();
+    }
 
     let obj_phrase = if object_words.is_empty() {
         "the input".to_string()
@@ -131,12 +151,13 @@ pub fn name_flow(names: &[String], paths: &[String], entry_name: &str) -> Named 
         .collect();
 
     let name = format!("{} the {}", title(&[verb.clone()]), obj_phrase);
-    // Outcome: verb, object, and what the dead end delivers – capped at 12
-    // words by construction.
+    // Outcome: verb, object, and what the side effect delivers – capped at
+    // 12 words by construction.
+    let tail = outcome_tail(effect);
     let outcome = if object_words.is_empty() {
-        format!("{} the input and hand back the result.", title(&[verb.clone()]))
+        format!("{} the input {}", title(&[verb.clone()]), tail)
     } else {
-        format!("{} the {} and hand back the result.", title(&[verb.clone()]), obj_phrase)
+        format!("{} the {} {}", title(&[verb.clone()]), obj_phrase, tail)
     };
     let outcome_words = outcome.trim_end_matches('.').split_whitespace().count();
     let outcome = if outcome_words > 12 {

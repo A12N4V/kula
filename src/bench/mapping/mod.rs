@@ -6,7 +6,7 @@
 //! network in the bench path.
 
 mod metrics;
-mod names;
+pub(crate) mod names;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
