@@ -542,6 +542,79 @@ test.describe("console", () => {
   });
 });
 
+// U2 · panel behaviour: hidden when closed, the sash snaps it shut under
+// 80px, maximize toggles, ctrl+` reopens (VS Code's panel).
+test.describe("bottom panel", () => {
+  const dockBox = (page: Page) => page.locator("[data-testid=dock]").boundingBox();
+  const dockHeight = async (page: Page) => (await dockBox(page))?.height ?? 0;
+
+  test("closed means gone; status bar button and ctrl+` both open it; hide closes it for good", async ({ page }) => {
+    await open(page);
+    await expect(page.locator("[data-testid=dock]")).toHaveCount(0);
+    await page.keyboard.press("Control+`");
+    await expect(page.locator("[data-testid=dock]")).toBeVisible();
+    // closed means gone: nothing of the panel is left to interact with
+    const unmounted = page.locator("[data-testid=dock-toggle]");
+    await page.locator("[data-testid=dock-toggle]").click();
+    await expect(page.locator("[data-testid=dock]")).toHaveCount(0);
+    await expect(unmounted).toHaveCount(0);
+    // reopen exactly with ctrl+`
+    await page.keyboard.press("Control+`");
+    await expect(page.locator("[data-testid=dock]")).toBeVisible();
+    await page.keyboard.press("Control+`");
+    await expect(page.locator("[data-testid=dock]")).toHaveCount(0);
+  });
+
+  test("maximize makes it most of the window and restores", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press("Control+`");
+    const before = await dockHeight(page);
+    await page.locator("[data-testid=dock-max]").click();
+    const vh = page.viewportSize()!.height;
+    const maxed = await dockHeight(page);
+    expect(maxed).toBeGreaterThan(before);
+    expect(maxed).toBeLessThanOrEqual(Math.round(vh * 0.8));
+    await page.locator("[data-testid=dock-max]").click();
+    expect(await dockHeight(page)).toBeLessThan(maxed);
+  });
+
+  test("@responsive the sash snaps the panel shut when dragged under 80px (desktop)", async ({ page }, info) => {
+    test.skip(info.project.name === "phone", "desktop pointer only");
+    await open(page);
+    await page.keyboard.press("Control+`");
+    const before = await dockHeight(page);
+    const g = await page.locator(".dock-grip").boundingBox();
+    expect(before).toBeGreaterThanOrEqual(120);
+    await page.mouse.move(g!.x + g!.width / 2, g!.y + g!.height / 2);
+    await page.mouse.down();
+    // a small resize stays open and grows
+    await page.mouse.move(g!.x + g!.width / 2, g!.y + g!.height / 2 - 30, { steps: 4 });
+    await page.mouse.up();
+    expect(await dockHeight(page)).toBeGreaterThan(before);
+    // dragged past 80px it snaps shut (and reopens at its last height)
+    const g2 = await page.locator(".dock-grip").boundingBox();
+    await page.mouse.move(g2!.x + g2!.width / 2, g2!.y + g2!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(g2!.x + g2!.width / 2, g2!.y + g2!.height / 2 + 400, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator("[data-testid=dock]")).toHaveCount(0);
+    await page.keyboard.press("Control+`");
+    await expect(page.locator("[data-testid=dock]")).toBeVisible();
+    expect(await dockHeight(page)).toBeGreaterThan(0);
+  });
+
+  test("the open panel pushes the view up and nothing overlaps it", async ({ page }, info) => {
+    test.skip(info.project.name === "phone", "desktop only: the status bar toggle");
+    await open(page);
+    await page.keyboard.press("Control+`");
+    const d = (await dockBox(page))!;
+    // the panel fills .main down to the status bar – nothing of it overlaps the bar
+    const bar = await page.locator(".statusbar").boundingBox();
+    expect(bar!.y).toBeGreaterThanOrEqual(Math.round(d.y + d.height) - 1);
+    expect(bar!.y).toBeLessThan(page.viewportSize()!.height);
+  });
+});
+
 /** Screen position of a graph node, once the layout has settled (automation-only handle, see GraphView). */
 async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: number; y: number; id: string; label: string }; b: { x: number; y: number; id: string; label: string } }> {
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 20_000 });

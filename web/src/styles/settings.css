@@ -112,7 +112,7 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .af-area .af-pop { top: calc(100% - 2px); }
 .af-grp { padding: 6px 8px 3px; font: 600 9.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
 .af-opt { display: grid; grid-template-columns: 18px auto minmax(0, 1fr); align-items: center; gap: 8px; padding: 5px 8px; cursor: pointer; font-size: 12px; }
-.af-opt.on { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+.af-opt.on { background: var(--bg-3); }
 .af-ico { width: 16px; text-align: center; color: var(--text-3); }
 .af-label { white-space: nowrap; }
 .af-hint { color: var(--text-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -129,7 +129,7 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .set-nav button { text-align: left; padding: 7px 10px; font: inherit; font-size: 12.5px; color: var(--text-2); background: none; border: 0; border-left: 2px solid transparent; cursor: pointer; }
 .settings.dialog .set-row.toggle { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
 .set-nav button:hover { color: var(--text); background: var(--bg-2); }
-.set-nav button.on { color: var(--text); border-left-color: var(--accent); background: var(--bg-2); }
+.set-nav button.on { color: var(--text); background: var(--bg-3); }
 .settings.dialog .set-body { padding: 4px 22px 20px; }
 @media (max-width: 760px) {
   .scrim:has(.settings.dialog) { padding-top: 16px; }
