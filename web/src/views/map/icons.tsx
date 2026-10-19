@@ -43,3 +43,28 @@ export function RoleMark({ role }: { role: Role }) {
     </span>
   );
 }
+
+/** A section's logo – what it does, read from its name, theme and summary
+    (the Graph's square-node language: a mark in the box, the name under it). */
+const LOGOS: [RegExp, string][] = [
+  [/test|spec|fixture|assert/, "flask"],
+  [/bench|perf|metric|score|evaluat|parity/, "gauge"],
+  [/valid|check|qc|guard|verif|lint/, "shield"],
+  [/convert|transform|export|import|encode|serial/, "arrow"],
+  [/decode|pars|read|load|io\b|file|reader|loader/, "doc"],
+  [/memory|cache|store|db\b|getdb|persist|database/, "memory"],
+  [/graph|network|dag|pedigree|tree|layer/, "graph"],
+  [/cli|main|entry|command|run\b|app\b/, "console"],
+  [/orchestr|pipeline|workflow|flow|schedul/, "workflow"],
+  [/query|search|find|index/, "search"],
+  [/api|server|client|http|adapter|plugin|connect/, "plug"],
+  [/model|schema|type|struct|record/, "types"],
+  [/clean|sweep|prune/, "sweep"],
+  [/shared|util|common|helper|core|lib/, "box"],
+  [/spatial|cell|single|cardiac|neuro|genom|germline|variation|signal/, "flowMap"],
+];
+export function sectionLogo(text: string, role: Role): string {
+  const t = text.toLowerCase();
+  for (const [re, ico] of LOGOS) if (re.test(t)) return ico;
+  return role === "test" ? "flask" : role === "entry" ? "console" : role === "utility" ? "box" : role === "adapter" ? "plug" : role === "model" ? "types" : "package";
+}

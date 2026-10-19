@@ -408,8 +408,9 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             snapToGrid
             snapGrid={[16, 16]}
             onlyRenderVisibleElements
-            selectionOnDrag
-            panOnDrag={[1, 2]}
+            // Drag pans (n8n, Figma); Shift-drag draws a marquee; Shift-click adds.
+            panOnDrag
+            selectionKeyCode="Shift"
             panActivationKeyCode="Space"
             multiSelectionKeyCode="Shift"
             minZoom={props.minZoom ?? 0.5}
