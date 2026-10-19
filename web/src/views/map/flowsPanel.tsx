@@ -8,6 +8,7 @@
 
 import { useMemo, useState } from "react";
 import { FlowCanvas, type FlowEdge, type FlowNode } from "../../flow";
+import { Harmonograph } from "../../harmonograph";
 import { KindIcon, RoleMark, ROLE_COLOR } from "./icons";
 import type { MapData, Role, ValueFlow } from "./types";
 
@@ -43,7 +44,7 @@ export function flowsToNodes(data: MapData): { nodes: FlowNode[]; edges: FlowEdg
     }
     nodes.push({
       id: flowId(i), kind: "tile", title: f.name, subtitle: f.outcome,
-      icon: <KindIcon kind={el?.kind ?? "fn"} />, color: "var(--text-2)",
+      icon: <Harmonograph seed={f.name} size={32} />, color: "var(--text-2)",
       badge: f.members.length > 1 ? `${f.members.length}` : undefined,
     });
     edges.push({ id: `vf:${f.entry}:${i}`, source: entId(f.entry), target: flowId(i), main: true, weight: 2 });
@@ -53,7 +54,7 @@ export function flowsToNodes(data: MapData): { nodes: FlowNode[]; edges: FlowEdg
       if (!nodes.some((n) => n.id === secId(b))) {
         nodes.push({
           id: secId(b), kind: "tile", title: blk?.name ?? b, subtitle: role,
-          icon: <RoleMark role={role} />, color: ROLE_COLOR[role], noOut: true,
+          icon: <Harmonograph seed={b} size={32} />, color: ROLE_COLOR[role], noOut: true,
         });
       }
       edges.push({ id: `vf:f${i}:${b}`, source: flowId(i), target: secId(b), main: true, weight: 1 });

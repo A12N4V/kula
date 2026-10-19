@@ -429,7 +429,7 @@ const STATUS_LABEL: Record<StepStatus, string> = { idle: "", waiting: "waiting f
 const fmtMs = (ms?: number) => (ms == null ? "" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
 
 function StepFields({ data, s, pipe, sections }: { data: MapData; s: Step; pipe: Pipe; sections: string[] }) {
-  const name = (id: string | null) => (id ? data.blocks[id]?.theme || data.blocks[id]?.name : "") || "—";
+  const name = (id: string | null) => (id ? data.blocks[id]?.theme || data.blocks[id]?.name : "") || "–";
   return (
     <>
       <label className="ws-field"><span>Name</span>
@@ -465,7 +465,7 @@ export function PipelinePanel({ data, pipe, runner, sel, onSel, sections, onOpen
   data: MapData; pipe: Pipe; runner: ReturnType<typeof useRunner>; sel: string | null; onSel: (id: string | null) => void; sections: string[]; onOpen: (id: string) => void;
 }) {
   const s = pipe.steps.find((x) => x.id === sel) ?? null;
-  const name = (id: string | null) => (id ? data.blocks[id]?.theme || data.blocks[id]?.name : "") || "—";
+  const name = (id: string | null) => (id ? data.blocks[id]?.theme || data.blocks[id]?.name : "") || "–";
   return (
     <section className="ws-card" data-testid="ws-pipeline">
       <div className="ws-card-head"><span className="ws-eyebrow">Pipeline · {runnable(pipe.steps).length} blocks</span>

@@ -2427,11 +2427,10 @@ test.describe("map", () => {
     await page.waitForTimeout(600);
     const dimmed = page.locator("[data-testid=map-flow] .fc-dim");
     expect(await dimmed.count()).toBeGreaterThan(0);
-    // The badge's clear button sits at the canvas' bottom-right corner – under
-    // the floating inspector, which is open while a chain is selected – so the
-    // user clears the focus with esc; the badge's own control is for when the
-    // inspector no longer covers that corner (see the U0 hand-off to U4).
-    await page.keyboard.press("Escape");
+    // The badge now sits at the canvas' bottom-left (map.css moved it out
+    // from under the floating inspector), so the badge's own clear button is
+    // reachable while a chain is selected.
+    await page.locator("[data-testid=map-focus-clear]").click();
     await expect(page.locator("[data-testid=map-focus-badge]")).toHaveCount(0);
     await expect(page.locator("[data-testid=map-flow] .fc-dim")).toHaveCount(0);
   });
@@ -2549,6 +2548,48 @@ test.describe("map", () => {
     await expect(page.locator(".rail button[aria-label=Console]")).toHaveCount(0);
     const acc = await btn.locator("[stroke='var(--accent)']").count();
     expect(acc).toBeGreaterThanOrEqual(1);
+  });
+
+  test("flow canvas: drag pans, Shift-drag marquees, click opens the inspector", async ({ page }) => {
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible({ timeout: 30_000 });
+    const pane = page.locator("[data-testid=map-flow] .react-flow__pane");
+    await pane.waitFor({ state: "visible", timeout: 30_000 });
+    // Let the initial fit settle so the viewport translate is stable.
+    await page.waitForTimeout(600);
+    const vp = () => page.evaluate(() => {
+      const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(document.querySelector("[data-testid=map-flow] .react-flow__viewport")?.getAttribute("style") ?? "");
+      return m ? { x: Number(m[1]), y: Number(m[2]) } : { x: 0, y: 0 };
+    });
+    const b = await pane.boundingBox();
+    const x0 = b!.x + 60, y0 = b!.y + b!.height - 40; // bottom-left corner: empty at the fitted zoom
+    // Drag on empty canvas pans and selects nothing.
+    const vp0 = await vp();
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    await page.mouse.move(x0 + 120, y0 - 80, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+    const vp1 = await vp();
+    expect(Math.abs(vp1.x - vp0.x) + Math.abs(vp1.y - vp0.y)).toBeGreaterThan(20);
+    // Shift-drag draws a marquee instead of panning.
+    const vp2 = await vp();
+    await page.keyboard.down("Shift");
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    await page.mouse.move(x0 + 160, y0 - 120, { steps: 6 });
+    expect(await page.locator("[data-testid=map-flow] .react-flow__selection").count()).toBeGreaterThan(0);
+    await page.mouse.up();
+    await page.keyboard.up("Shift");
+    await page.waitForTimeout(250);
+    const vp3 = await vp();
+    expect(Math.abs(vp3.x - vp2.x) + Math.abs(vp3.y - vp2.y)).toBeLessThan(20);
+    // Click a tile (an empty-pane click is just a deselect) – the inspector opens; Esc closes it.
+    const tile = page.locator("[data-testid=map-flow] .react-flow__node").first();
+    await tile.click({ timeout: 5_000 });
+    await expect(page.locator("[data-testid=map-inspector]")).toBeVisible({ timeout: 5_000 });
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-testid=map-inspector]")).toHaveCount(0);
   });
 });
 

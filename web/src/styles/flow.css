@@ -84,7 +84,7 @@
 /* Handles: 8 px dots with a 2 px ground ring; diamonds for sub-node edges. */
 .fc-dot, .fc-diamond { width: 8px; height: 8px; background: var(--line); border: 2px solid var(--bg); transition: none; min-width: 0; min-height: 0; }
 .fc-dot:hover { width: 12px; height: 12px; background: var(--accent); }
-.fc-diamond { border-radius: 2px; transform: rotate(45deg); }
+.fc-diamond { transform: rotate(45deg); }
 
 /* "+" stub on an unused output. */
 .fc-stub {
@@ -227,7 +227,7 @@ html[data-rm="1"] .fc-dot { transition: none; }
 .react-flow__handle.valid { border-color: var(--green) !important; }
 /* Sticky notes. */
 .fc-sticky { border-radius: 8px; padding: 10px 12px; background: color-mix(in srgb, var(--fc-role) 18%, var(--bg)); border: 1px solid color-mix(in srgb, var(--fc-role) 45%, transparent); overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
-.fc-sticky.fc-sel { box-shadow: 0 0 0 2px var(--fc-role); }
+.fc-sticky.fc-sel { border-color: var(--accent); background: var(--accent-soft); }
 .fc-sticky-title { font-weight: 600; font-size: 13px; color: var(--text); }
 .fc-sticky-body { font-size: 12px; color: var(--text-2); white-space: pre-wrap; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .fc-is-running .fc-tile-box::before, .fc-flow-run { animation: none; } }
