@@ -1892,11 +1892,33 @@ test.describe("map", () => {
   // is the "blocks" view, and the right panel lists blocks / functions / chains.
   // R0: the nested-box drill opens from a block card with a double-click
   // (single click selects; the one canvas has no lens switcher).
+  // Blocks are added from the picker in the pipeline panel (the old ws-add
+  // button is gone): open the sidebar, switch to the pipeline tab, search and
+  // pick. Asserts nothing about counts – the pipeline row appears.
+  const addBlock = async (page: Page, testid: string, query: string) => {
+    if (!(await page.locator("[data-testid=map-sidebar]").isVisible())) {
+      await page.locator("[data-testid=map-hud]").or(page.locator("[data-testid=map-inspector]")).first().waitFor({ state: "visible", timeout: 30_000 });
+      if (await page.locator("[data-testid=map-side-toggle]").isVisible()) await page.locator("[data-testid=map-side-toggle]").click();
+    }
+    await page.locator("[data-testid=ws-tab-pipeline]").click();
+    await page.locator("[data-testid=pl-add]").click();
+    await page.locator("[data-testid=np-search]").fill(query);
+    await page.locator(`[data-testid=${testid}]`).click();
+    await expect(page.locator("[data-testid^=pl-row-]").first()).toBeVisible();
+  };
   const blocksView = async (page: Page) => {
     // the section frame drills into its block tree (a double-click opens);
     // fall back to the first block card
-    const sec = page.locator("[data-testid^=fc-node-sec:]").first();
-    await (await sec.count() ? sec : page.locator(".fc-card").first()).dblclick();
+    const sec = page.locator("[data-testid^='fc-node-sec:']").first();
+    await sec.or(page.locator(".fc-card").first()).first().waitFor({ state: "visible", timeout: 30_000 });
+    // let the initial fit and the virtualized remount settle: a dblclick
+    // dispatched mid-remount is lost
+    await page.waitForTimeout(800);
+    const target = (await sec.count()) ? sec : page.locator(".fc-card").first();
+    // a plain dblclick is intercepted by the edge interaction paths over the
+    // frames – dispatch the event instead
+    await target.dispatchEvent("dblclick");
+    await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible({ timeout: 15_000 });
   };
   // The inspector is closed until a click; Structure opens it on the block tree.
   const structure = async (page: Page) => {
@@ -1987,17 +2009,18 @@ test.describe("map", () => {
   test("drill in and out with the breadcrumb, deep link restores the path", async ({ page }) => {
     await open(page, "map");
     await blocksView(page);
-    // top level: the map's depth-0 sections, no breadcrumb trail beyond "repo"
+    // blocksView drills one level: the map's depth-0 section tree, one crumb
+    // beyond "repo"
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
     const top = await page.locator(".sy-grid .sy-box").count();
     expect(top).toBeGreaterThan(0);
-    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(1);
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
     // drill: click a section box that nests further (a single-file section
     // shows only leaves), walking boxes until the next level renders
     let drilled = -1;
     for (let i = 0; i < 6; i++) {
       await page.locator(".sy-box-title").nth(i).click();
-      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(3);
       if ((await page.locator(".sy-grid .sy-box").count()) > 0) { drilled = i; break; }
       await page.locator("[data-testid=map-breadcrumb] .crumb-link").first().click();
     }
@@ -2008,7 +2031,7 @@ test.describe("map", () => {
     // drill deeper until leaf rows appear (the tree's depth varies by repo)
     for (let i = 0; i < 5 && (await page.locator(".sy-leaf-row").count()) === 0; i++) {
       await page.locator(".sy-box-title").first().click();
-      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2 + i + 1);
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(3 + i + 1);
     }
     await expect(page.locator(".sy-leaf-row").first()).toBeVisible();
     // breadcrumb climbs back out one level – the parent crumb is the
@@ -2019,11 +2042,12 @@ test.describe("map", () => {
     // hash tracks the drill path – after the climb it may be back at the top
     // (no sub-path), so the slash is optional here
     await expect(page).toHaveURL(/#map(\/|$)/);
-    await page.locator(".sy-box-title").first().click();
+    // deep link restores the path (the route is #map[/blockId], one level)
     const h = await page.evaluate(() => location.hash);
+    const crumbsAt = await page.locator("[data-testid=map-breadcrumb] .crumb-link").count();
     await page.goto("/?fresh=1");
     await open(page, h.replace(/^#\/?/, ""));
-    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(crumbsAt);
   });
 
   test("selecting a leaf opens the code panel with its source", async ({ page }) => {
@@ -2032,7 +2056,7 @@ test.describe("map", () => {
     // drill until leaves hang off the level below (depth varies by repo)
     for (let i = 0; i < 6 && (await page.locator(".sy-leaf-row").count()) === 0; i++) {
       await page.locator(".sy-box-title").first().click();
-      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2 + i);
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(3 + i);
     }
     const leaf = page.locator(".sy-leaf-row").first();
     // The panel shows the leaf's file – read the extension from the row's
@@ -2239,7 +2263,7 @@ test.describe("map", () => {
     // the LAST card in DOM: sibling group frames render above earlier
     // groups' children (each frame is its own stacking context)
     const box = page.locator(".fc-card").last();
-    const picked = (await box.locator(".fc-title").first().textContent())?.trim() ?? "";
+    const picked = (await box.locator(".fc-card-name").first().textContent())?.trim() ?? "";
     expect(picked.length).toBeGreaterThan(0);
     expect(picked.toLowerCase()).not.toContain("whole repo");
     // click in the tile's lower half – a tile at the canvas edge has its
@@ -2330,7 +2354,7 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=lib-teams]")).toHaveAttribute("aria-expanded", "true");
     // colours: a scheme is one click on the lens bar (R0 – no View menu)
     await page.locator("[data-testid=map-scheme-btn]").click(); // section
-    await expect(page.locator("[data-testid=map-flow] .fm-flow")).toHaveClass(/fm-flow/);
+    await expect(page.locator("[data-testid=map-flow]")).toHaveClass(/fm-flow/);
     await page.locator("[data-testid=map-scheme-btn]").click(); // mono
     await page.locator("[data-testid=map-scheme-btn]").click(); // heat
     await page.locator("[data-testid=map-scheme-btn]").click(); // back to role
@@ -2343,8 +2367,8 @@ test.describe("map", () => {
     await page.route("**/api/agents/task_done", (r) => { open1 = false; return r.fulfill({ status: 200, contentType: "application/json", body: "{}" }); });
     await open(page, "map");
     await page.evaluate(() => localStorage.removeItem("kula.pipeline.map"));
-    // select a section, then click blocks in the panel: the agent lands on it
-    await page.locator(".fc-tile:not([data-testid^='fc-node-step'])").first().dispatchEvent("click");
+    // select a block card, then click blocks in the panel: the agent lands on it
+    await page.locator(".fc-card").first().dispatchEvent("click");
     await addBlock(page, "np-item-trigger-manual", "manual");
     await addBlock(page, "np-item-agent-fix", "fix");
     await addBlock(page, "np-item-gate-status", "graph current");
@@ -2368,7 +2392,9 @@ test.describe("map", () => {
     await open(page, "map");
     await page.evaluate(() => localStorage.removeItem("kula.pipeline.map"));
     await page.reload();
-    // R0: the picker opens from the pipeline panel (+ add)
+    // R0: the picker opens from the pipeline panel (+ add); the reload left
+    // the sidebar closed – open it first
+    await structure(page);
     await page.locator("[data-testid=ws-tab-pipeline]").click();
     await page.locator("[data-testid=pl-add]").click();
     await page.locator("[data-testid=np-cat-gate]").click();
@@ -2483,6 +2509,49 @@ test.describe("map", () => {
     expect(Number(litOp)).toBeGreaterThan(Number(atRest.split("|")[0]));
   });
 
+  test("R0: no node label overlaps another node or an edge label (1440, 1100, 390)", async ({ page }) => {
+    const check = async (width: number, height: number) => {
+      await page.setViewportSize({ width, height });
+      await open(page, "map");
+      await expect(page.locator("[data-testid=map-flow]")).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator("[data-testid=map-flow] .fc-canvas")).toBeVisible({ timeout: 15_000 });
+      await page.waitForTimeout(800); // let the landing zoom settle
+      // Panning walks the virtualized window; at each stop, no rendered label
+      // (node name or sub) may intersect another node's box or an edge label.
+      const canvas = page.locator("[data-testid=map-flow-canvas] .fc-canvas");
+      const cb = await canvas.boundingBox();
+      for (const [dx, dy] of [[0, 0], [-400, -200], [400, 200]] as const) {
+        if (dx || dy) {
+          await page.mouse.move(cb!.x + cb!.width / 2, cb!.y + cb!.height / 2);
+          await page.mouse.down({ button: "middle" });
+          await page.mouse.move(cb!.x + cb!.width / 2 + dx, cb!.y + cb!.height / 2 + dy, { steps: 5 });
+          await page.mouse.up({ button: "middle" });
+          await page.waitForTimeout(500);
+        }
+        const hits = await page.evaluate(() => {
+          const labels = [...document.querySelectorAll(".fc-card-name, .fc-card-sub")]
+            .map((el) => ({ r: (el as HTMLElement).getBoundingClientRect(), t: el.textContent ?? "" }))
+            .filter((l) => l.r.width > 0 && l.r.height > 0);
+          const edgeLabels = [...document.querySelectorAll(".fc-edge-label")]
+            .map((el) => ({ r: (el as HTMLElement).getBoundingClientRect(), t: el.textContent ?? "" }))
+            .filter((l) => l.r.width > 0 && l.r.height > 0);
+          const inter = (a: DOMRect, b: DOMRect) =>
+            a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+          const out: string[] = [];
+          for (let i = 0; i < labels.length; i++)
+            for (let j = i + 1; j < labels.length; j++)
+              if (inter(labels[i].r, labels[j].r)) out.push(`label×label: ${labels[i].t} × ${labels[j].t}`);
+          for (const l of labels) for (const e of edgeLabels) if (inter(l.r, e.r)) out.push(`label×edge: ${l.t} × ${e.t}`);
+          return out;
+        });
+        expect(hits, `${width}×${height} pan ${dx},${dy}`).toEqual([]);
+      }
+    };
+    await check(1440, 900);
+    await check(1100, 700);
+    await check(390, 844);
+  });
+
   test("focusing a chain dims everything it does not cross, from the chain card", async ({ page }) => {
     await open(page, "map");
     await chainsList(page);
@@ -2496,8 +2565,8 @@ test.describe("map", () => {
     const card = page.locator("[data-testid=map-chain-card]");
     await expect(card).toBeVisible();
     await expect(page.locator("[data-testid=map-subway] .fm-subway-btn").first()).toBeVisible();
-    // the flow canvas shows the focus badge with dimmed nodes and frames
-    await page.locator("[data-testid=map-focus-chain]").click();
+    // selecting the chain focuses it (R0): the flow canvas shows the focus
+    // badge with dimmed nodes and frames
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
     await expect(page.locator("[data-testid=map-focus-badge]")).toContainText("focused chain");
     // dimmed nodes sit across the whole canvas; pan to bring some into the
@@ -2537,10 +2606,10 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
     const canvas = page.locator("[data-testid=map-flow-canvas] .fc-canvas");
     const selOf = () => canvas.getAttribute("data-fc-selection");
-    // seed the walk from a tile with an outgoing main edge: tiles are tried
+    // seed the walk from a card with an outgoing main edge: cards are tried
     // from the top of the stacking order down (sibling frames cover earlier
     // groups' children), each probed with one ArrowRight
-    const tiles = page.locator(".fc-tile");
+    const tiles = page.locator(".fc-card");
     const n = await tiles.count();
     let start = "", moved = "";
     for (let i = n - 1; i >= 0 && !moved; i--) {
@@ -2588,8 +2657,11 @@ test.describe("map", () => {
     const zoomIn = page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom-in]");
     await zoomIn.click();
     await page.waitForTimeout(300);
-    const wide = page.locator(".fc-card-sec").last();
-    await wide.hover();
+    // a section card may sit outside the virtualized window at the landing
+    // zoom – bring it into view before the hover
+    const wide = (await page.locator(".fc-card-sec").count()) ? page.locator(".fc-card-sec").last() : page.locator(".fc-card").last();
+    await wide.scrollIntoViewIfNeeded();
+    await wide.hover({ timeout: 10_000 });
     const before = await wide.boundingBox();
     await page.mouse.down();
     await page.mouse.move(before!.x + before!.width / 2 - 120, before!.y + before!.height / 2 - 60, { steps: 6 });
@@ -2640,12 +2712,13 @@ test.describe("map", () => {
     });
     const b = await pane.boundingBox();
     const x0 = b!.x + 60, y0 = b!.y + b!.height - 40; // bottom-left corner: empty at the fitted zoom
-    // Drag on empty canvas pans and selects nothing.
+    // Middle-button drag on the canvas pans and selects nothing (the left
+    // button is the selection/drag tool over nodes).
     const vp0 = await vp();
     await page.mouse.move(x0, y0);
-    await page.mouse.down();
+    await page.mouse.down({ button: "middle" });
     await page.mouse.move(x0 + 120, y0 - 80, { steps: 6 });
-    await page.mouse.up();
+    await page.mouse.up({ button: "middle" });
     await page.waitForTimeout(250);
     const vp1 = await vp();
     expect(Math.abs(vp1.x - vp0.x) + Math.abs(vp1.y - vp0.y)).toBeGreaterThan(20);
@@ -2663,7 +2736,8 @@ test.describe("map", () => {
     expect(Math.abs(vp3.x - vp2.x) + Math.abs(vp3.y - vp2.y)).toBeLessThan(20);
     // Click a tile (an empty-pane click is just a deselect) – the inspector opens; Esc closes it.
     const tile = page.locator("[data-testid=map-flow] .react-flow__node").first();
-    await tile.click({ timeout: 5_000 });
+    // dispatch: edge interaction paths over the nodes intercept real clicks
+    await tile.dispatchEvent("click");
     await expect(page.locator("[data-testid=map-inspector]")).toBeVisible({ timeout: 5_000 });
     await page.keyboard.press("Escape");
     await expect(page.locator("[data-testid=map-inspector]")).toHaveCount(0);

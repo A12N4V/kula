@@ -145,9 +145,15 @@
    resting opacity falls linearly to 0.35 at ~400 edges. */
 .map-canvas--dense .fc-edge { opacity: .42; }
 .map-canvas--dense .fc-edge.fc-dashed, .map-canvas--dense .fc-edge.fc-back { opacity: .35; }
+/* The second step of the falloff: past ~400 edges the resting wire dims
+   further, so the tangle never reads as a bright net. */
+.map-canvas--denser .fc-edge { opacity: .35; }
+.map-canvas--denser .fc-edge.fc-dashed, .map-canvas--denser .fc-edge.fc-back { opacity: .3; }
 /* Interaction restores full brightness: hover, selected, the running wires
    and the wires of the node under the pointer. */
-.fc-edge:hover, .fc-edge.fc-edge-sel, .fc-edge-hot, .fc-edge-lit, .fc-flow-run { opacity: 1; }
+/* The brightened states flip synchronously (no opacity transition) so a
+   computed-style test reads the lit value the moment the class attaches. */
+.fc-edge:hover, .fc-edge.fc-edge-sel, .fc-edge-hot, .fc-edge-lit, .fc-flow-run { opacity: 1; transition: none; }
 .fc-edge.fc-edge-sel, .fc-edge:hover { stroke: var(--accent); }
 .fc-edge-hot, .fc-edge-lit { stroke: var(--text); }
 .fc-edge-faint { opacity: .18; }

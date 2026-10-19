@@ -393,8 +393,9 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   };
 
   const dense = edges.length > 120;
+  const denser = edges.length > 400;
   return (
-    <div className={`sy-canvas fm-flow${dense ? " map-canvas--dense" : ""}`} data-testid="map-flow" data-fc-chainfocus={focus?.chain ? "1" : undefined}>
+    <div className={`sy-canvas fm-flow${dense ? " map-canvas--dense" : ""}${denser ? " map-canvas--denser" : ""}`} data-testid="map-flow" data-fc-chainfocus={focus?.chain ? "1" : undefined}>
       <div className="fm-headline" data-testid="map-headline">
         <span className="fm-headline-k">executes</span>
         <span className="fm-headline-v">{headline || "–"}</span>

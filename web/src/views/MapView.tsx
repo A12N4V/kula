@@ -19,7 +19,6 @@ import { Readout, SubwayStrip } from "./map/readout";
 import { MapViewSidebar } from "./map/sidebar";
 import { FlowKitView } from "./map/flowKit";
 import { FlowsPanel, FlowsOverlay } from "./map/flowsPanel";
-import { ChainsStrips } from "./map/caps";
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf } from "./map/chainFocus";
 import { Library, ReviewPanel, RunPanel, sectionAtPoint, sectionOf, useLive, useMarks } from "./map/workspace";
