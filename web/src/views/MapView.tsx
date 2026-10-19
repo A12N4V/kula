@@ -587,11 +587,15 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             <button className="btn sm" onClick={() => openInsp("pipeline")} data-testid="hud-pipeline"><Icon.flows /> Pipeline{pipe.steps.length ? <b>{runnable(pipe.steps).length}</b> : null}</button>
             <button className="btn sm" onClick={() => openInsp("live")} data-testid="hud-live"><Icon.agents /> Agents{(ws.info?.task || ws.info?.team) && <i className="hud-dot" />}</button>
             <button className="btn sm" onClick={() => openInsp("changes")} data-testid="hud-changes"><Icon.changes /> Changes{ws.files.length ? <b>{ws.files.length}</b> : null}</button>
-            <button className="btn sm" onClick={() => openInsp("inspect")} data-testid="map-side-toggle"><Icon.sidebar /> Structure</button>
+            <button className="btn sm" onClick={() => openInsp("structure")} data-testid="map-side-toggle"><Icon.sidebar /> Structure</button>
           </div>
         )}
+        {/* The add-block palette shares the inspector's corner – while it is
+            open it rides above (n8n slides its panel over the canvas), so the
+            inspector steps aside until the pick lands. */}
         {insp && (
-        <aside className="inspector map-insp" id="map-sidebar" aria-label="Map inspector" data-testid="map-inspector">
+        <aside className="inspector map-insp" id="map-sidebar" aria-label="Map inspector" data-testid="map-inspector"
+          style={panel ? { zIndex: 24 } : undefined}>
           <Grip id="inspector" edge="left" min={300} max={960} label="Resize inspector" />
           <header>
             <div className="row">

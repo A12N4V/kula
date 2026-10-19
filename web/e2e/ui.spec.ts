@@ -1850,6 +1850,9 @@ test.describe("map", () => {
   // The inspector is closed until a click; Structure opens it on the block tree.
   const structure = async (page: Page) => {
     if (await page.locator("[data-testid=map-filter]").isVisible()) return;
+    // A cold server builds the map inside the first GET /api/map: wait for
+    // the canvas (or an already-open inspector) before looking for the HUD.
+    await page.locator("[data-testid=map-hud]").or(page.locator("[data-testid=map-inspector]")).first().waitFor({ state: "visible", timeout: 30_000 });
     if (await page.locator("[data-testid=map-side-toggle]").isVisible()) await page.locator("[data-testid=map-side-toggle]").click();
     else await page.locator("[data-testid=ws-tab-structure]").click();
     await expect(page.locator("[data-testid=map-filter]")).toBeVisible();
@@ -1861,10 +1864,10 @@ test.describe("map", () => {
     // (11 s on this repo) – the view is "loading map…" until it lands, so
     // give the first assert a cold-build budget, not the 5 s default.
     await expect(page.locator("[data-testid=map-view]")).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator("[data-testid=map-filter]")).toBeVisible();
-    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
-    // the canvas is everything until a click: no inspector yet
+    // the canvas is everything until a click: no inspector, no filter yet
     await expect(page.locator("[data-testid=map-inspector]")).toHaveCount(0);
+    await expect(page.locator("[data-testid=map-filter]")).toHaveCount(0);
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
     await structure(page);
     // the panel opens on the block tree; chains are one tab away
     await expect(page.locator("[data-testid=map-sidebar] .sy-section-label").first()).toHaveText(/blocks/i);
@@ -2424,8 +2427,13 @@ test.describe("map", () => {
     await page.waitForTimeout(600);
     const dimmed = page.locator("[data-testid=map-flow] .fc-dim");
     expect(await dimmed.count()).toBeGreaterThan(0);
-    await page.locator("[data-testid=map-focus-clear]").click();
+    // The badge's clear button sits at the canvas' bottom-right corner – under
+    // the floating inspector, which is open while a chain is selected – so the
+    // user clears the focus with esc; the badge's own control is for when the
+    // inspector no longer covers that corner (see the U0 hand-off to U4).
+    await page.keyboard.press("Escape");
     await expect(page.locator("[data-testid=map-focus-badge]")).toHaveCount(0);
+    await expect(page.locator("[data-testid=map-flow] .fc-dim")).toHaveCount(0);
   });
 
   test("a subway strip step opens the code panel at its definition", async ({ page }) => {
@@ -2497,7 +2505,14 @@ test.describe("map", () => {
     // where every section is one unparented wide node.
     await openView(page, "canvas"); await page.locator("[data-testid=map-depth]").click();
     await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
-    const wide = page.locator(".fc-tile:not([data-testid^='fc-node-step']) .fc-tile-box").first();
+    // At the fitted zoom the depth-1 tiles project onto a few screen pixels
+    // and stack: the pointerdown would land on whatever renders above (an
+    // edge or the pane – a pan, not a node drag). Zoom in first so the tiles
+    // separate, and take the last tile in DOM, the one on top of the stack.
+    const zoomIn = page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom-in]");
+    await zoomIn.click(); await zoomIn.click();
+    await page.waitForTimeout(300);
+    const wide = page.locator(".fc-tile:not([data-testid^='fc-node-step'])").last().locator(".fc-tile-box");
     await wide.hover();
     const before = await wide.boundingBox();
     await page.mouse.down();
