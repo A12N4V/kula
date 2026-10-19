@@ -677,7 +677,8 @@ pub struct RunState {
     pub batches: usize,
     pub cancelled: bool,
     pub provider: String,
-    /// Total batches planned (ceil of texts over the current batch size).
+    /// Batches planned at run start (ceil of texts over the profile's base
+    /// batch size, before any adaptive shrinking mid-run) – an estimate.
     pub batches_total: usize,
     /// Run profile in effect: standard | gentle | fast.
     pub profile: String,
