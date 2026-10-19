@@ -18,6 +18,7 @@ import { BlockCanvas } from "./map/canvas";
 import { Readout, SubwayStrip } from "./map/readout";
 import { MapViewSidebar } from "./map/sidebar";
 import { FlowKitView, CapsKitView } from "./map/flowKit";
+import { FlowsPanel } from "./map/flowsPanel";
 import { ChainsStrips } from "./map/caps";
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf } from "./map/chainFocus";
@@ -57,7 +58,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   // The landing view is the functional flow; "capabilities" reads the repo as
   // what you can do with it; "blocks" is the nested-box drill; "chains" the
   // top chain families as strips.
-  const [view, setView] = useState<"flow" | "capabilities" | "blocks" | "chains">("flow");
+  const [view, setView] = useState<"flow" | "capabilities" | "blocks" | "chains" | "flows">("flow");
   // The selected block fills the sidebar (the flow canvas selects, not drills);
   // a re-layout key and a pinned selection are the tinker levers.
   const [selBlock, setSelBlock] = useState<string | null>(null);
@@ -449,7 +450,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       <div className="sy-lens" data-testid="map-lens" role="toolbar" aria-label="Lens and role filter">
         <button className={`btn sm primary ws-add${panel ? " on" : ""}`} data-testid="ws-add" aria-expanded={panel} title="Add a block  Tab" onClick={() => (panel ? setPanel(false) : openPanel(null))}><Icon.plus /> Add block</button>
         <div className="sy-lens-group" role="group" aria-label="View">
-          {(["flow", "capabilities", "blocks", "chains"] as const).map((v) => (
+          {(["flow", "flows", "capabilities", "blocks", "chains"] as const).map((v) => (
             <button key={v} className={`tab-btn sy-lens-btn${view === v ? " on" : ""}`} data-testid={`map-view-${v}`}
               aria-pressed={view === v} onClick={() => { setView(v); if (v === "flow") { home(); setSelChain(null); } }}>{v}</button>
           ))}
@@ -511,6 +512,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       <button className="btn sm sy-side-toggle" aria-expanded={side} aria-controls="map-sidebar"
         onClick={() => setSide((s) => !s)} data-testid="map-side-toggle">Structure</button>
       <div className="sy-split" style={listWidth("map", 360)}>
+        {view === "flows" && <FlowsPanel data={data} onSection={(id) => { setView("blocks"); drill(id); }} />}
         {view === "capabilities" && <CapsKitView data={data} roles={roles} selection={selBlock} onSelect={setSelBlock}
           onFile={(p) => code.open({ path: p, name: p.split("/").pop() })} />}
         {view === "chains" && <ChainsStrips data={data} roles={roles} onChain={selectChain} selChain={selChain?.id ?? null} loadChains={loadChains} onLeaf={selectLeaf} />}
@@ -522,7 +524,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             {ndvStep && <StepDetails data={data} s={ndvStep} pipe={pipe} runner={runner} sections={sections} prev={ndvPrev} onClose={() => setNdv(null)} />}
             <Transport runner={runner} blocks={runnable(pipe.steps).length} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} />
           </div>
-          : (view === "blocks" || chain || path.length) && view !== "capabilities" && view !== "chains"
+          : (view === "blocks" || chain || path.length) && view !== "capabilities" && view !== "chains" && view !== "flows"
             ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
             : null}
         {side && <div className="sy-scrim" onClick={() => setSide(false)} aria-hidden="true" />}

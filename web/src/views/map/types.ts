@@ -95,6 +95,24 @@ export interface MapData {
   loops: Loop[];
   leaves: Record<number, Leaf>;
   stats: { chains: number; exact: boolean; ms: number; threads: number; embed: EmbedState };
+  /** Value flows (M2): entry → outcome chains, sorted by name then entry. */
+  value_flows?: ValueFlow[];
+}
+
+/** One thing the program achieves: an entry point's chain to a side effect,
+ *  the functions that do it and the sections (block ids) that implement it. */
+export interface ValueFlow {
+  name: string;
+  /** Outcome sentence, at most 12 words. */
+  outcome: string;
+  /** Entry-point leaf id. */
+  entry: number;
+  /** Member leaf ids, sorted. */
+  members: number[];
+  /** Distinctive keywords, for chips and search. */
+  keywords: string[];
+  /** Block ids covering the members, sorted. */
+  sections: string[];
 }
 
 /** GET /api/map/chains – one page of a family's enumerated chains. */
