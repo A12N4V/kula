@@ -15,35 +15,45 @@ const readH = () => { try { return Number(localStorage.getItem(H_KEY)) || 280; }
 
 export function Dock({ open, setOpen, tab, setTab, nav }: { open: boolean; setOpen: (o: boolean) => void; tab: DockTab; setTab: (t: DockTab) => void; nav: Nav }) {
   const [h, setH] = useState(readH);
+  const [max, setMax] = useState(false);
   const drag = useRef<{ y: number; h: number } | null>(null);
   useEffect(() => registerDock((t) => { setTab(t); setOpen(true); }), [setOpen, setTab]);
   useEffect(() => { try { localStorage.setItem(H_KEY, String(h)); } catch { /* private */ } }, [h]);
-  // Views are absolutely positioned in .main; they end where the dock starts.
-  useEffect(() => { document.documentElement.style.setProperty("--dock-h", `${open ? h : 30}px`); }, [open, h]);
+  // VS Code's panel: closed means gone – the view takes the whole height.
+  const height = Math.round(max ? window.innerHeight * 0.8 : Math.min(h, window.innerHeight * 0.6));
+  useEffect(() => { document.documentElement.style.setProperty("--dock-h", `${open ? height : 0}px`); }, [open, height]);
   const n = useSyncExternalStore(onLog, () => logLines().length);
+  if (!open) return null;
 
   return (
-    <section className={`dock${open ? " open" : ""}`} style={{ height: open ? h : 30 }} data-testid="dock" aria-label="Bottom panel">
-      {open && <div className="dock-grip" role="separator" aria-orientation="horizontal" aria-label="Resize panel"
-        onPointerDown={(e) => { drag.current = { y: e.clientY, h }; (e.target as HTMLElement).setPointerCapture(e.pointerId); }}
-        onPointerMove={(e) => { if (drag.current) setH(Math.max(120, Math.min(window.innerHeight * 0.8, drag.current.h + drag.current.y - e.clientY))); }}
-        onPointerUp={() => { drag.current = null; }} />}
+    <section className={`dock open${max ? " max" : ""}`} style={{ height }} data-testid="dock" aria-label="Bottom panel">
+      <div className="dock-grip" role="separator" aria-orientation="horizontal" aria-label="Resize panel"
+        onDoubleClick={() => setMax(!max)}
+        onPointerDown={(e) => { drag.current = { y: e.clientY, h: height }; setMax(false); (e.target as HTMLElement).setPointerCapture(e.pointerId); }}
+        onPointerMove={(e) => {
+          if (!drag.current) return;
+          const next = drag.current.h + drag.current.y - e.clientY;
+          // Dragged past the minimum, the panel snaps shut (and reopens at its last height).
+          if (next < 80) { drag.current = null; setOpen(false); return; }
+          setH(Math.max(120, Math.min(window.innerHeight * 0.8, next)));
+        }}
+        onPointerUp={() => { drag.current = null; }} />
       <div className="dock-bar" role="tablist" aria-label="Panel">
         {(["terminal", "run"] as DockTab[]).map((t) => (
-          <button key={t} role="tab" aria-selected={open && tab === t} data-testid={`dock-tab-${t}`} className={`dock-tab${open && tab === t ? " on" : ""}`}
-            onClick={() => { if (open && tab === t) setOpen(false); else { setTab(t); setOpen(true); } }}>
-            {t === "terminal" ? <><Icon.console />Terminal</> : <><Icon.flows />Run log{n > 0 && <span className="dock-n">{n}</span>}</>}
+          <button key={t} role="tab" aria-selected={tab === t} data-testid={`dock-tab-${t}`} className={`dock-tab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>
+            {t === "terminal" ? "Terminal" : <>Run log{n > 0 && <span className="dock-n">{n}</span>}</>}
           </button>
         ))}
         <span className="spacer" />
-        {open && tab === "run" && <button className="dock-btn" onClick={clearLog}>clear</button>}
-        <button className="dock-btn" data-testid="dock-toggle" aria-expanded={open} title="Toggle panel  ctrl+`" onClick={() => setOpen(!open)}>
-          <span className={`ws-chev${open ? "" : " up"}`}><Icon.chevron /></span>
+        {tab === "run" && <button className="dock-act" onClick={clearLog} title="Clear" aria-label="Clear run log"><Icon.sweep /></button>}
+        <button className="dock-act" data-testid="dock-max" onClick={() => setMax(!max)} title={max ? "Restore panel size" : "Maximize panel size"} aria-label={max ? "Restore panel size" : "Maximize panel size"}>
+          <span className={`ws-chev${max ? "" : " up"}`}><Icon.chevron /></span>
         </button>
+        <button className="dock-act" data-testid="dock-toggle" onClick={() => setOpen(false)} title="Hide panel  ctrl+`" aria-label="Hide panel"><Icon.close /></button>
       </div>
-      {open && <div className="dock-body">
+      <div className="dock-body">
         {tab === "terminal" ? <Suspense fallback={<div className="view-loading">loading…</div>}><Console {...nav} compact /></Suspense> : <RunLog />}
-      </div>}
+      </div>
     </section>
   );
 }

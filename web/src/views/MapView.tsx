@@ -23,7 +23,8 @@ import { ChainsStrips } from "./map/caps";
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf } from "./map/chainFocus";
 import { Library, ReviewPanel, RunPanel, sectionAtPoint, sectionOf, useLive, useMarks } from "./map/workspace";
-import { ContextMenu, Executions, FLOW, NodePanel, PipelinePanel, StepDetails, droppedItem, isItemDrag, runnable, usePipeline, useRunner, type Item, type MenuItem } from "./map/pipeline";
+import { RoleMark } from "./map/icons";
+import { ContextMenu, Executions, FLOW, KIND_COLOR, KindIco, NodePanel, PipelinePanel, StepDetails, droppedItem, isItemDrag, runnable, usePipeline, useRunner, type Item, type MenuItem } from "./map/pipeline";
 import { log } from "../dock/bus";
 import { SCHEMES, type Scheme } from "./map/flowKit";
 import type { Go } from "../nav";
@@ -38,10 +39,10 @@ const PROGRESS_LABEL: Record<string, string> = {
 const PHASES = ["load", "graph", "similarity", "map", "done"];
 
 // The view owns its own sidebar visibility on phones (390 px): a drawer.
-type Tab = "inspect" | "pipeline" | "live" | "changes" | "library";
+type Tab = "inspect" | "structure" | "pipeline" | "live" | "changes" | "library";
 const TABS: { id: Tab; label: string }[] = [
-  { id: "inspect", label: "Inspect" }, { id: "pipeline", label: "Pipeline" }, { id: "live", label: "Live" },
-  { id: "changes", label: "Changes" }, { id: "library", label: "Library" },
+  { id: "inspect", label: "Overview" }, { id: "structure", label: "Structure" }, { id: "pipeline", label: "Pipeline" },
+  { id: "live", label: "Agents" }, { id: "changes", label: "Changes" }, { id: "library", label: "Library" },
 ];
 
 export default function MapView({ block, go }: { openSymbol?: (id: number) => void; version?: number; block?: string; go?: Go }) {
@@ -78,6 +79,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     });
   }, []);
   const code = useCode();
+  const setInspForcedRef = useRef<(v: boolean) => void>(() => {});
   // Workspace: one canvas for code and agents. The sidebar's tabs manage and
   // inform; the canvas holds the code and the pipeline that acts on it.
   const [tab, setTab] = useState<Tab>("inspect");
@@ -187,6 +189,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || (e.target as HTMLElement)?.closest?.("input, textarea, [role=dialog]")) return;
       if (path.length || selChain) { home(); setSelChain(null); setFocusMode(false); }
+      else { setSelBlock(null); setInspForcedRef.current(false); } // Esc closes the inspector
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -412,6 +415,58 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       { label: "Redo", key: "⇧⌘Z", run: pipe.redo },
     ];
   };
+  // Inspector: closed until a click (a node, a chain) or a HUD button opens it.
+  const [inspForced, setInspForced] = useState(false);
+  setInspForcedRef.current = setInspForced;
+  const insp = inspForced || !!selBlock || !!selChain || path.length > 0;
+  const openInsp = (t: Tab) => { setTab(t); setInspForced(true); };
+  const closeInsp = () => { setInspForced(false); setSelBlock(null); setSelChain(null); setFocusMode(false); if (path.length) home(); };
+  useEffect(() => { if (selBlock && !selStep && tab !== "inspect" && tab !== "structure") setTab("inspect"); // a node click shows the node
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selBlock]);
+  const inspHead = useMemo(() => {
+    const st = selStep ? pipe.steps.find((x) => x.id === selStep) : null;
+    if (st) return {
+      kind: <><span className="np-ico sm" style={{ color: KIND_COLOR[st.kind] }}><KindIco kind={st.kind} /></span>{st.kind} block</>,
+      title: st.name, sub: st.section && data ? `on ${data.blocks[st.section]?.theme || data.blocks[st.section]?.name}` : st.ref,
+      facts: [[`#${runnable(pipe.steps).indexOf(st) + 1}`, "in the pipeline"], ...(st.ms != null ? [[`${(st.ms / 1000).toFixed(1)}s`, "last run"]] : [])] as [string, string][],
+      actions: [
+        <button key="r" className="btn sm" onClick={() => void runner.run(st.id)} disabled={runner.running}><Icon.play /> Run from here</button>,
+        <button key="o" className="btn sm" onClick={() => setNdv(st.id)}><Icon.arrow /> Details</button>,
+        <button key="d" className="btn sm" onClick={() => toggleStep(st.id)}><Icon.lock /> {st.disabled ? "Activate" : "Deactivate"}</button>,
+      ],
+    };
+    const b = readBlock && readBlock.parent !== null ? readBlock : null;
+    if (b && data) {
+      const sec = sectionOf(data, b.id) ?? b.id;
+      const mk = marks[sec];
+      return {
+        kind: <><RoleMark role={b.role} />{b.depth === 0 ? "section" : "block"} · {b.role}</>,
+        title: b.theme || b.name, sub: b.theme ? b.name : b.summary,
+        facts: [[String(b.files), b.files === 1 ? "file" : "files"], [String(countSyms(data, b.id)), "functions"], ...(mk?.changed ? [[String(mk.changed), "changed"]] : []), ...(mk?.fence ? [["fenced", "by the task"]] : [])] as [string, string][],
+        actions: [
+          <button key="a" className="btn sm" onClick={() => { setLastSec(sec); openPanel(null); }} data-testid="insp-add-agent"><Icon.agents /> Add agent here</button>,
+          <button key="e" className="btn sm" onClick={() => toggleExpand(b.id)}><Icon.plus /> {expanded.has(b.id) ? "Fold functions" : "Show functions"}</button>,
+          <button key="p" className={`btn sm${pinned === b.id ? " on" : ""}`} onClick={() => setPinned((p) => (p === b.id ? null : b.id))}><Icon.target /> {pinned === b.id ? "Pinned" : "Pin"}</button>,
+        ],
+      };
+    }
+    if (selChain && data) return { kind: <>chain</>, title: `${data.leaves[selChain.source]?.name} → ${data.leaves[selChain.terminal]?.name}`, sub: `${selChain.len} steps`, facts: [] as [string, string][], actions: [] };
+    return { kind: <>workspace</>, title: "Map", sub: `${sections.length} sections · ${Object.keys(data?.blocks ?? {}).length} blocks`, facts: [] as [string, string][], actions: [] };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selStep, pipe.steps, readBlock, selChain, data, marks, expanded, pinned, runner.running, sections]);
+  const chainCard = !selChain || !data ? null : (
+              <div className="fm-chain-card" data-testid="map-chain-card">
+                <div className="fm-chain-card-head">
+                  <span className="sy-section-label">chain</span>
+                  <button className="tab-btn sy-lens-btn" data-testid="map-focus-chain" aria-pressed={focusMode} title="dim everything this chain does not cross"
+                    onClick={() => setFocusMode((f) => !f)}>{focusMode ? "unfocus" : "focus"}</button>
+                </div>
+                <p className="sy-summary">{data.leaves[selChain.source]?.name} → {data.leaves[selChain.terminal]?.name} · {selChain.len} steps</p>
+                <SubwayStrip data={data} chain={selChain} onStep={(s) => typeof s === "number" ? selectLeaf(s) : undefined} />
+              </div>
+            
+  );
   const ndvStep = ndv ? pipe.steps.find((x) => x.id === ndv) ?? null : null;
   const ndvPrev = ndvStep ? (() => { const r = runnable(pipe.steps); const i = r.findIndex((x) => x.id === ndvStep.id); return i > 0 ? r[i - 1] : null; })() : null;
 
@@ -509,8 +564,6 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           ))}
         </div>
       )}
-      <button className="btn sm sy-side-toggle" aria-expanded={side} aria-controls="map-sidebar"
-        onClick={() => setSide((s) => !s)} data-testid="map-side-toggle">Structure</button>
       <div className="sy-split" style={listWidth("map", 360)}>
         {view === "flows" && <FlowsPanel data={data} onSection={(id) => { setView("blocks"); drill(id); }} />}
         {view === "capabilities" && <CapsKitView data={data} roles={roles} selection={selBlock} onSelect={setSelBlock}
@@ -527,13 +580,37 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           : (view === "blocks" || chain || path.length) && view !== "capabilities" && view !== "chains" && view !== "flows"
             ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
             : null}
-        {side && <div className="sy-scrim" onClick={() => setSide(false)} aria-hidden="true" />}
-        {/* Right-hand structure panel, sized and resized like Graph's inspector. */}
-        <aside className={`sy-side-wrap fm-right${side ? " open" : ""}`} id="map-sidebar" aria-label="map structure">
-          <Grip id="map" edge="left" min={280} max={720} label="Resize structure panel" />
-          <div className="ws-tabs" role="tablist" aria-label="Sidebar" data-testid="ws-tabs">
+        {/* The canvas is everything until a click: then Graph's inspector – a
+            floating panel with a header (kind, name, facts, actions) and sub-tabs. */}
+        {!insp && (
+          <div className="map-hud" data-testid="map-hud">
+            <button className="btn sm" onClick={() => openInsp("pipeline")} data-testid="hud-pipeline"><Icon.flows /> Pipeline{pipe.steps.length ? <b>{runnable(pipe.steps).length}</b> : null}</button>
+            <button className="btn sm" onClick={() => openInsp("live")} data-testid="hud-live"><Icon.agents /> Agents{(ws.info?.task || ws.info?.team) && <i className="hud-dot" />}</button>
+            <button className="btn sm" onClick={() => openInsp("changes")} data-testid="hud-changes"><Icon.changes /> Changes{ws.files.length ? <b>{ws.files.length}</b> : null}</button>
+            <button className="btn sm" onClick={() => openInsp("structure")} data-testid="map-side-toggle"><Icon.sidebar /> Structure</button>
+          </div>
+        )}
+        {/* The add-block palette shares the inspector's corner – while it is
+            open it rides above (n8n slides its panel over the canvas), so the
+            inspector steps aside until the pick lands. */}
+        {insp && (
+        <aside className="inspector map-insp" id="map-sidebar" aria-label="Map inspector" data-testid="map-inspector"
+          style={panel ? { zIndex: 24 } : undefined}>
+          <Grip id="inspector" edge="left" min={300} max={960} label="Resize inspector" />
+          <header>
+            <div className="row">
+              <div className="kind">{inspHead.kind}</div>
+              <span className="spacer" />
+              <button className="btn ghost sm" onClick={closeInsp} aria-label="Close" title="Close  esc"><Icon.close /></button>
+            </div>
+            <h2>{inspHead.title}</h2>
+            {inspHead.sub && <div className="muted mono" style={{ fontSize: 11.5 }}>{inspHead.sub}</div>}
+            {inspHead.facts.length > 0 && <div className="insp-facts">{inspHead.facts.map((f, i) => <span key={i}><b>{f[0]}</b> {f[1]}</span>)}</div>}
+            {inspHead.actions.length > 0 && <div className="insp-actions">{inspHead.actions}</div>}
+          </header>
+          <div className="tabs" role="tablist" aria-label="Inspector" data-testid="ws-tabs">
             {TABS.map((t) => (
-              <button key={t.id} role="tab" aria-selected={tab === t.id} className={`ws-tab${tab === t.id ? " on" : ""}`} data-testid={`ws-tab-${t.id}`} onClick={() => setTab(t.id)}>
+              <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} data-testid={`ws-tab-${t.id}`} onClick={() => setTab(t.id)}>
                 {t.label}
                 {t.id === "pipeline" && pipe.steps.length > 0 && <span className="ws-tab-n">{pipe.steps.length}</span>}
                 {t.id === "live" && (ws.info?.task || ws.info?.team) && <span className="ws-tab-dot" />}
@@ -541,35 +618,28 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
               </button>
             ))}
           </div>
+          <div className="body">
           {tab === "pipeline" && <PipelinePanel data={data} pipe={pipe} runner={runner} sel={selStep} onSel={(id) => setSelBlock(id ? `step:${id}` : null)} sections={sections} onOpen={setNdv} />}
           {tab === "live" && <><RunPanel data={data} info={ws.info} onChanged={ws.reload} onSection={(id) => setSelBlock(id)} /><Executions runner={runner} /></>}
           {tab === "changes" && <ReviewPanel data={data} files={ws.files} onSection={(id) => setSelBlock(id)} onFile={(p) => code.open({ path: p, name: p.split("/").pop() })} />}
           {tab === "library" && <Library info={ws.info} go={go} onPick={pick} />}
           {tab === "inspect" && <>
-          <details className="fm-details" open={!!readBlock && (path.length > 0 || !!selChain || !!selBlock)}>
-            <summary className="fm-details-sum">{readBlock?.name ?? "map"} – details</summary>
-            {selChain && (
-              <div className="fm-chain-card" data-testid="map-chain-card">
-                <div className="fm-chain-card-head">
-                  <span className="sy-section-label">chain</span>
-                  <button className="tab-btn sy-lens-btn" data-testid="map-focus-chain" aria-pressed={focusMode} title="dim everything this chain does not cross"
-                    onClick={() => setFocusMode((f) => !f)}>{focusMode ? "unfocus" : "focus"}</button>
-                </div>
-                <p className="sy-summary">{data.leaves[selChain.source]?.name} → {data.leaves[selChain.terminal]?.name} · {selChain.len} steps</p>
-                <SubwayStrip data={data} chain={selChain} onStep={(s) => typeof s === "number" ? selectLeaf(s) : undefined} />
-              </div>
-            )}
-            <Readout data={data} block={readBlock} onLeaf={selectLeaf} onFamily={(famId) => { loadChains(famId).then((p) => { const c = p.chains[0]; if (c) selectChain(c); }).catch(() => { /* no chains pageable */ }); }} />
-          </details>
-          <MapViewSidebar
-            blocks={data.blocks} families={data.families} leaves={data.leaves} roles={roles}
-            selChain={selChain?.id ?? null} selLeaf={selLeaf} openRoot={openRoot}
-            loadChains={loadChains}
-            onChain={selectChain} onLeaf={selectLeaf} onToggle={toggle} onZoom={drill}
-            onClose={() => setSide(false)}
-          />
+            {chainCard}
+            {<Readout data={data} block={readBlock} onLeaf={selectLeaf} onFamily={(famId) => { loadChains(famId).then((p) => { const c = p.chains[0]; if (c) selectChain(c); }).catch(() => { /* no chains pageable */ }); }} />}
           </>}
+          {tab === "structure" && chainCard}
+          {tab === "structure" && (
+            <MapViewSidebar
+              blocks={data.blocks} families={data.families} leaves={data.leaves} roles={roles}
+              selChain={selChain?.id ?? null} selLeaf={selLeaf} openRoot={openRoot}
+              loadChains={loadChains}
+              onChain={selectChain} onLeaf={selectLeaf} onToggle={toggle} onZoom={drill}
+              onClose={closeInsp}
+            />
+          )}
+          </div>
         </aside>
+        )}
       </div>
     </div>
   );
@@ -618,6 +688,12 @@ function Disclosure({ id, label, hint, open, setOpen, children }: { id: string; 
       <div className="dd-body"><div className="dd-inner">{children}</div></div>
     </div>
   );
+}
+
+/** Every symbol under a block, children included. */
+function countSyms(data: MapData, id: string): number {
+  const b = data.blocks[id];
+  return b ? b.symbols.length + b.children.reduce((n, c) => n + countSyms(data, c), 0) : 0;
 }
 
 // Deterministic fixture enumeration with the same paged shape as the API.

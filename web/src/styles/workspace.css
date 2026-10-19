@@ -345,3 +345,47 @@
 .pl-from { display: none; height: 20px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--line-2); background: none; color: var(--text-2); font: 10.5px var(--mono); cursor: pointer; }
 .pl-from:hover { color: var(--text); border-color: var(--accent); }
 .pl-row:hover .pl-from { display: inline-block; }
+
+/* ---- Map: the canvas is everything; Graph's inspector on click -------- */
+.sy-root .sy-split { grid-template-columns: minmax(0, 1fr); }
+.map-insp { position: absolute; top: 12px; right: 12px; bottom: 12px; width: var(--size-inspector, 400px); max-width: calc(100% - 24px); z-index: 26; }
+.map-insp .body { padding: 8px 12px 16px; }
+.map-insp .body .ws-card { border: 0; padding: 4px 0; background: none; }
+.map-insp .insp-actions .btn svg { width: 12px; height: 12px; }
+.map-insp header .kind .np-ico.sm { width: 18px; height: 18px; }
+.map-insp .tabs { overflow-x: auto; scrollbar-width: none; }
+.map-insp .tabs button { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.map-hud { position: absolute; top: 12px; right: 12px; z-index: 22; display: flex; gap: 6px; }
+.map-hud .btn { background: var(--panel); display: inline-flex; align-items: center; gap: 6px; }
+.map-hud .btn svg { width: 13px; height: 13px; }
+.map-hud b { font: 600 10.5px var(--mono); padding: 0 5px; background: var(--bg-3); }
+.hud-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+/* No focus frame round the whole canvas; no edge markers on rows – fill only. */
+.fc-canvas:focus { outline: none; }
+.fc-canvas:focus-visible { outline: 1px solid var(--line-2); outline-offset: -1px; }
+.pl-row.on, .np-row.hi, .dt-row.on { box-shadow: none; }
+.pl-row.on { background: var(--bg-3); }
+.dt-row.on { background: var(--bg-3); color: var(--text); }
+/* One-line headline and toolbar – overflow scrolls, never stacks over the canvas. */
+.fm-headline { flex-wrap: nowrap; overflow: hidden; }
+.fm-headline-v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.sy-lens { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+@media (max-width: 640px) {
+  .map-insp { top: auto; left: 8px; right: 8px; bottom: 8px; height: 70%; width: auto; }
+  .map-hud .btn { padding: 0 8px; }
+  .map-hud .btn:not(:first-child) { font-size: 0; gap: 0; }
+  .map-hud .btn:not(:first-child) b { font-size: 10.5px; }
+}
+
+/* Coherence – Workspace panels and agent library match Graph: square rows,
+   panel fill for selection, flush tab underlines, plain counts, no pills. */
+.ws-chip, .fc-badge-in, .np-search, .np-cat-head, .np-item, .np-row, .pl-row, .dd-head, .dd-row, .dd-swatch, .lib-item, .cm-item, .pl-from { border-radius: 0; }
+.np-ico, .np-ico.sm { border-radius: 4px; }
+.fc-badge-in.agent::after { border-radius: 0; }
+.ws-run, .tp-btn, .tp-done { border-radius: 4px; }
+.cm, .ndv, .tp, .np { border-radius: var(--radius); }
+.ws-tab.on::after { border-radius: 0; animation: none; }
+.ws-tab-n { padding: 0; border-radius: 0; background: none; color: var(--text-3); }
+.pl-row.on, .np-row.hi { background: var(--panel-2); box-shadow: none; }
+.pl-running, .pl-waiting { box-shadow: none; background: var(--panel-2); }
+.ws-runbar { border-radius: var(--radius); }
