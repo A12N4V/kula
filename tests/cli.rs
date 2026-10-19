@@ -88,18 +88,26 @@ fn index_settles_the_embeddings_decision_once() {
     };
     assert_eq!(marker(d), "true", "the decision is recorded:\n{out}");
     let toml = std::fs::read_to_string(d.join("kula.toml")).unwrap_or_default();
-    // On a refuse machine the switch stays off, the reason prints and the
-    // automatic path leaves kula.toml missing; on an ok machine it turns on
-    // and records the switch in kula.toml. Either way the flag agrees with
+    // On a refuse machine (disk too small for the model – RAM and cores only
+    // pick a gentler profile now) the switch stays off, the reason prints and
+    // the automatic path leaves kula.toml missing; on an ok machine it turns
+    // on and records the switch in kula.toml. Either way the flag agrees with
     // the verdict.
     let s = kula_json(d, &["embed", "status", "--json"]);
     let verdict = kula_json(d, &["embed", "check", "--json"]);
-    if verdict["verdict"] == "ok" {
+    if verdict["hardware_verdict"] == "refuse" {
+        assert_eq!(s["enabled"], false, "refuse machine: embeddings stay off");
+        assert_eq!(toml, "", "refuse machine: no fenced kula.toml write");
+    } else if s["feature"] == true {
+        // The model can load: the auto path turns the switch on and installs.
         assert_eq!(s["enabled"], true, "ok machine: embeddings on by default");
         assert!(toml.contains("enabled = true"), "ok machine records the switch");
     } else {
-        assert_eq!(s["enabled"], false, "warn/refuse machine: embeddings stay off");
-        assert_eq!(toml, "", "refuse machine: no fenced kula.toml write");
+        // Hardware ok but this binary has no embed feature: the install fails
+        // and the auto path flips the switch back off – the decision stays
+        // recorded, and kula.toml carries the settled state.
+        assert_eq!(s["enabled"], false, "no embed feature: install fails, switch back off");
+        assert!(toml.contains("decided = true"), "ok machine records the decision: {toml}");
     }
 }
 

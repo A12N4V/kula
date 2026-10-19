@@ -40,41 +40,65 @@ pub struct Config {
 /// ```toml
 /// [embed]
 /// enabled = true       # off by default – nothing downloads without it
-/// threads = 0          # 0 = min(cores-2, 6)
-/// batch = 32           # texts per embedding batch, capped at 64
+/// threads = 0          # 0 = max(1, cores / 4) – the machine stays responsive
+/// batch = 16           # texts per embedding batch, capped at 64
+/// pause_ms = 250       # pause between batches; the run stretches it under load
+/// fast = false         # true = full speed: no pause, 64-text batches, all cores
 /// ```
+///
+/// The defaults are gentle on purpose: small batches, a short pause and a
+/// quarter of the cores, so embedding never makes the machine feel busy.
+/// `fast = true` (or `kula embed run --fast`) restores full speed.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct Embed {
     /// Embeddings are opt-in: nothing downloads or runs until this is true.
     pub enabled: bool,
-    /// Bounded worker pool for embedding; 0 picks min(cores-2, 6).
+    /// Bounded worker pool for embedding; 0 picks max(1, cores / 4) (all cores when fast).
     pub threads: usize,
     /// Texts per embedding batch (hard cap 64).
     pub batch: usize,
+    /// Pause between batches, milliseconds; the adaptive loop may stretch it.
+    pub pause_ms: u64,
+    /// Full speed: skip pauses, use the full batch cap and every core.
+    pub fast: bool,
 }
 
 impl Default for Embed {
     fn default() -> Self {
-        Embed { enabled: false, threads: 0, batch: 32 }
+        Embed { enabled: false, threads: 0, batch: 16, pause_ms: 250, fast: false }
     }
 }
 
 impl Embed {
-    /// Effective worker count per the performance rules.
+    /// Effective worker count: at most max(1, cores / 4) by default so the
+    /// machine stays responsive; `fast` restores all cores.
     pub fn pool(&self) -> usize {
+        let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
         if self.threads > 0 {
             self.threads
+        } else if self.fast {
+            cores
         } else {
-            std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).saturating_sub(2).clamp(1, 6)
+            (cores / 4).max(1)
         }
     }
-    /// Effective batch size, capped at 64.
+    /// Effective batch size, capped at 64 (embed::MAX_BATCH); `fast` takes the cap.
     pub fn batch_size(&self) -> usize {
-        if self.batch == 0 {
-            32
+        if self.fast {
+            64
+        } else if self.batch == 0 {
+            16
         } else {
             self.batch.min(64)
+        }
+    }
+    /// Pause between batches: none when fast, otherwise the configured pause.
+    pub fn pause(&self) -> u64 {
+        if self.fast {
+            0
+        } else {
+            self.pause_ms
         }
     }
 }
