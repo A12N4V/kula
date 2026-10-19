@@ -34,14 +34,97 @@ pub const STATE: &str = "hash-v1";
 
 /// Generic keywords and one-letter noise that carry no thematic signal.
 const STOPWORDS: &[&str] = &[
-    "pub", "fn", "func", "function", "let", "mut", "var", "val", "const", "impl", "self", "this",
-    "super", "mod", "use", "import", "export", "from", "return", "if", "else", "match", "while",
-    "for", "loop", "break", "continue", "struct", "enum", "trait", "type", "class", "interface",
-    "def", "async", "await", "ref", "as", "in", "is", "new", "static", "where", "dyn", "move",
-    "true", "false", "none", "null", "undefined", "string", "number", "int", "bool", "void",
-    "result", "option", "some", "err", "error", "ok", "data", "str", "usize", "i64", "u64", "f64",
-    "the", "and", "for", "with", "that", "this", "then", "into", "from", "out", "get", "set",
-    "tmp", "foo", "bar", "baz", "arg", "args", "param", "params", "res", "ret", "item", "value",
+    "pub",
+    "fn",
+    "func",
+    "function",
+    "let",
+    "mut",
+    "var",
+    "val",
+    "const",
+    "impl",
+    "self",
+    "this",
+    "super",
+    "mod",
+    "use",
+    "import",
+    "export",
+    "from",
+    "return",
+    "if",
+    "else",
+    "match",
+    "while",
+    "for",
+    "loop",
+    "break",
+    "continue",
+    "struct",
+    "enum",
+    "trait",
+    "type",
+    "class",
+    "interface",
+    "def",
+    "async",
+    "await",
+    "ref",
+    "as",
+    "in",
+    "is",
+    "new",
+    "static",
+    "where",
+    "dyn",
+    "move",
+    "true",
+    "false",
+    "none",
+    "null",
+    "undefined",
+    "string",
+    "number",
+    "int",
+    "bool",
+    "void",
+    "result",
+    "option",
+    "some",
+    "err",
+    "error",
+    "ok",
+    "data",
+    "str",
+    "usize",
+    "i64",
+    "u64",
+    "f64",
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "then",
+    "into",
+    "from",
+    "out",
+    "get",
+    "set",
+    "tmp",
+    "foo",
+    "bar",
+    "baz",
+    "arg",
+    "args",
+    "param",
+    "params",
+    "res",
+    "ret",
+    "item",
+    "value",
 ];
 
 /// FNV-1a 64-bit over the bytes of `s`.
@@ -84,8 +167,12 @@ fn split_words(ident: &str) -> Vec<String> {
 /// Comment-marker prefixes that start a doc line, by language family.
 fn is_comment_line(line: &str) -> bool {
     let t = line.trim_start();
-    t.starts_with("///") || t.starts_with("//!") || t.starts_with("/**") || t.starts_with("*")
-        || t.starts_with("//") || t.starts_with("#") && !(t.starts_with("#!") || t.starts_with("#["))
+    t.starts_with("///")
+        || t.starts_with("//!")
+        || t.starts_with("/**")
+        || t.starts_with("*")
+        || t.starts_with("//")
+        || t.starts_with("#") && !(t.starts_with("#!") || t.starts_with("#["))
 }
 
 /// One symbol's raw feature terms, in insertion order.
@@ -224,14 +311,7 @@ impl HashEmbedder {
         for n in nodes {
             let test = is_test_path(&n.path);
             let entry = ctx.remove(&n.id).unwrap_or_default();
-            syms.insert(n.id, SymInput {
-                name: n.name,
-                path: n.path,
-                start: n.start_line,
-                end: n.end_line,
-                ctx: entry,
-                test,
-            });
+            syms.insert(n.id, SymInput { name: n.name, path: n.path, start: n.start_line, end: n.end_line, ctx: entry, test });
         }
         Some(Self {
             root: repo.root.clone(),
@@ -274,20 +354,14 @@ impl HashEmbedder {
     fn source_slice(&self, id: i64) -> String {
         let s = self.syms.get(&id).expect("known symbol");
         let mut texts = self.file_text.lock().expect("lock");
-        let text = texts
-            .entry(s.path.clone())
-            .or_insert_with(|| std::fs::read_to_string(self.root.join(&s.path)).ok());
+        let text = texts.entry(s.path.clone()).or_insert_with(|| std::fs::read_to_string(self.root.join(&s.path)).ok());
         let Some(text) = text else { return String::new() };
         let lines: Vec<&str> = text.lines().collect();
         let n = lines.len() as i64;
         // Mirror terms_for's window: doc lines above, signature, bounded body.
         let lo = (s.start - 24).max(1);
         let hi = s.start.min(n);
-        lines
-            .iter()
-            .skip((lo - 1).max(0) as usize)
-            .take((hi - lo + 1).max(0) as usize)
-            .fold(String::new(), |a, l| a + l)
+        lines.iter().skip((lo - 1).max(0) as usize).take((hi - lo + 1).max(0) as usize).fold(String::new(), |a, l| a + l)
     }
 
     fn vector_of(&self, id: i64) -> [i32; DIM] {
@@ -394,5 +468,4 @@ mod tests {
         t2.reverse();
         assert_eq!(vector_for(&t1), vector_for(&t2));
     }
-
 }

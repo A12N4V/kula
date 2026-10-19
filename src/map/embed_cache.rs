@@ -35,9 +35,7 @@ impl VectorCache {
     pub fn open(repo: &Repo) -> Self {
         let path = repo.kula_dir().join(format!("map-embed-{STATE}.bin"));
         let map = read_file(&path).unwrap_or_default();
-        VectorCache {
-            inner: Some(Inner { path, dirty: AtomicBool::new(false), map: Mutex::new(map) }),
-        }
+        VectorCache { inner: Some(Inner { path, dirty: AtomicBool::new(false), map: Mutex::new(map) }) }
     }
 
     pub fn get(&self, key: u64) -> Option<[i32; DIM]> {

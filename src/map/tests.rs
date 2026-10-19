@@ -510,7 +510,7 @@ fn chain_family_page_enumerates_a_stored_family() {
 
 mod embed_tests {
     use super::*;
-    use crate::map::embed::{cosine, DIM, HashEmbedder, STATE};
+    use crate::map::embed::{cosine, HashEmbedder, DIM, STATE};
 
     /// Same synthetic fixture as the engine tests: two production modules,
     /// a tests directory, a barrel. Written to disk so source slices exist.
@@ -548,7 +548,9 @@ mod embed_tests {
     fn a_caller_supplied_provider_wins_over_the_local_one() {
         struct Off;
         impl Similarity for Off {
-            fn similarity(&self, _a: i64, _b: i64) -> f64 { 0.0 }
+            fn similarity(&self, _a: i64, _b: i64) -> f64 {
+                0.0
+            }
         }
         let (_dir, repo, store) = fixture_repo();
         let sim = Off;
