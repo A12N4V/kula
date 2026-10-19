@@ -1,0 +1,87 @@
+# Gold set – homonin-scripts (copied to /tmp at bench time).
+# Written against real engine output (KULA_BENCH_DEBUG=1 kula map --bench).
+repo = "homonin-scripts"
+description = "homonin-scripts – genomics, signal and clinical analysis scripts"
+max_members_per_flow = 24
+
+[[flow]]
+name = "Decode a POD5 long-read signal file"
+outcome = "Read raw signal records out of a POD5 container."
+keywords = ["decode", "signal", "pod5"]
+members = [
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::text",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::_parse_records",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::_parse",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::_parse_stream",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::decode",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::_Invalid",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::take",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::_read_chunk",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::u8",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::u16",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::u32",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::u64",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::f64",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::skip",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::ensure_exhausted"
+]
+
+[[flow]]
+name = "Compute the copy-number burden"
+outcome = "Read segment and variant sources and decline burden values."
+keywords = ["copy", "number", "burden", "compute"]
+members = [
+  "src/homonin/genomic/copy_number/burden.py::compute_cnv_burden",
+  "src/homonin/_shared/declination.py::Declination",
+  "src/homonin/genomic/copy_number/burden.py::_coerce_seg",
+  "src/homonin/genomic/copy_number/seg.py::_read_lines",
+  "src/homonin/genomic/copy_number/seg.py::_read_bytes",
+  "src/homonin/genomic/copy_number/seg.py::decode",
+  "src/homonin/genomic/structural_variation/bedpe.py::_read_source_lines",
+  "src/homonin/genomic/structural_variation/bedpe.py::decode",
+  "src/homonin/molecular/bulk_expression/gtf.py::_read_lines",
+  "src/homonin/molecular/bulk_expression/gtf.py::_read_bytes",
+  "src/homonin/molecular/bulk_expression/gtf.py::decode",
+  "src/homonin/phenotypic/pedigree/ped.py::_read_lines_and_locator",
+  "src/homonin/phenotypic/pedigree/ped.py::decode",
+  "src/homonin/phenotypic/pedigree/ped.py::_resolve_parent",
+  "src/homonin/genomic/copy_number/burden.py::_coerce_bedpe",
+  "src/homonin/genomic/copy_number/burden.py::_coerce_gtf",
+  "src/homonin/genomic/copy_number/burden.py::_coerce_ped",
+  "src/homonin/genomic/copy_number/burden.py::_decline",
+  "src/homonin/_shared/declination.py::record",
+  "src/homonin/_shared/declination.py::DeclinationError",
+  "src/homonin/_shared/version_state.py::VersionState"
+]
+
+[[flow]]
+name = "Decode actigraphy device files"
+outcome = "Parse Geneactiv and Actiwatch recordings into datasets."
+keywords = ["decode", "actigraphy", "geneactiv"]
+members = [
+  "src/homonin/signal/actigraphy/actigraphy.py::_decode_geneactiv",
+  "src/homonin/signal/actigraphy/actigraphy.py::_looks_geneactiv",
+  "src/homonin/signal/actigraphy/actigraphy.py::decode",
+  "src/homonin/_shared/declination.py::DeclinationError",
+  "src/homonin/_shared/units.py::normalise_to",
+  "src/homonin/signal/actigraphy/actigraphy.py::_resolve_accel_unit",
+  "src/homonin/signal/actigraphy/actigraphy.py::_decline_or_raise",
+  "src/homonin/signal/actigraphy/actigraphy.py::_decode_actiwatch",
+  "src/homonin/signal/actigraphy/actigraphy.py::_actiwatch_epoch_hz",
+  "src/homonin/_shared/declination.py::record",
+  "src/homonin/_shared/declination.py::Declination"
+]
+
+[[flow]]
+name = "Compute the EEG quality summary"
+outcome = "Summarise electrophysiology quality into a versioned record."
+keywords = ["eeg", "quality", "compute"]
+members = [
+  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::compute_eeg_quality",
+  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::EEGQualitySummary",
+  "src/homonin/_shared/version_state.py::VersionState",
+  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::_zeroed_quality_summary",
+  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::_extract_records",
+  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::_decline_zero_quality"
+]
+

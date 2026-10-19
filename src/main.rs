@@ -3,6 +3,7 @@
 mod agent;
 mod agent_config;
 mod agents;
+mod bench;
 mod cache;
 mod clean;
 mod config;
@@ -275,6 +276,9 @@ enum Cmd {
     Map {
         #[command(subcommand)]
         sub: Option<MapSub>,
+        /// Run the mapping benchmark: three gold repos, metrics as JSON.
+        #[arg(long)]
+        bench: bool,
     },
     /// Functional clusters (communities) in the codebase.
     #[command(after_help = "Examples:\n  kula clusters")]
@@ -1520,7 +1524,13 @@ fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Cmd::Map { sub } => map_cmd::run(sub, &repo, json)?,
+        Cmd::Map { sub, bench } => {
+            if bench {
+                bench::mapping::run()?;
+            } else {
+                map_cmd::run(sub, &repo, json)?
+            }
+        }
         Cmd::Blocks { depth } => {
             let st = Store::open(&repo)?;
             let (idx, state) = embed::similarity_for(&repo, &st);
