@@ -54,6 +54,12 @@ async function overlaps(page: Page) {
       if (s.display === "none") continue;
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
+      // A floating panel legitimately sits on top of the page; the whole
+      // shell behind it intersects its rect but is not visible overlap.
+      // Only flag elements that actually render above the host at the
+      // intersection: check the topmost element at a few probe points
+      // inside the overlap region – if the panel (or transport) itself is
+      // topmost there, the element is behind it and fine.
       for (const [name, host, rootSel] of [["panel", panel, "[data-testid=dock]"], ["transport", transport, ".tp"]] as const) {
         if (!host || !rootSel) continue;
         const root = q(rootSel);
@@ -61,6 +67,10 @@ async function overlaps(page: Page) {
         const ix = Math.max(0, Math.min(r.right, host.right) - Math.max(r.left, host.left));
         const iy = Math.max(0, Math.min(r.bottom, host.bottom) - Math.max(r.top, host.top));
         if (ix > 4 && iy > 4) {
+          const x0 = Math.max(r.left, host.left) + ix / 2;
+          const y0 = Math.max(r.top, host.top) + iy / 2;
+          const top = document.elementFromPoint(x0, y0);
+          if (top && (top === root || root.contains(top))) continue;
           const cls = (typeof el.className === "string" ? el.className : "").split(" ").slice(0, 2).join(".");
           out.push(`${name}: ${el.tagName.toLowerCase()}.${cls} at ${Math.round(r.left)},${Math.round(r.top)}`);
         }
