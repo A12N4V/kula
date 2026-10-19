@@ -220,10 +220,7 @@ pub fn hardware_check(_repo: &crate::git::Repo, store: &Store, cfg: &EmbedCfg) -
     // embeddings reach machines the old thresholds turned away. Only a disk
     // that cannot hold the model blocks anything.
     if ram_free < MIN_FREE_RAM_GB {
-        reasons.push(format!(
-            "free RAM {ram_free:.1} GB < {MIN_FREE_RAM_GB} GB – gentle profile: batch {}, 1 thread",
-            profile.batch
-        ));
+        reasons.push(format!("free RAM {ram_free:.1} GB < {MIN_FREE_RAM_GB} GB – gentle profile: batch {}, 1 thread", profile.batch));
     }
     if cores <= 2 {
         reasons.push(format!("{cores} cores – gentle profile: batch {}, 1 thread", profile.batch));
@@ -1547,12 +1544,11 @@ mod tests {
         // Cancel after the first two batches (4 of 5 symbols): a counter
         // closure, not a constant, so the run gets real work done first.
         let batches = std::cell::Cell::new(0);
-        let (idx, _) =
-            run(&repo, &st, &cfg, &(std::sync::Arc::new(MockProvider::new()) as std::sync::Arc<dyn EmbedProvider>), || {
-                batches.set(batches.get() + 1);
-                batches.get() > 2
-            })
-            .unwrap();
+        let (idx, _) = run(&repo, &st, &cfg, &(std::sync::Arc::new(MockProvider::new()) as std::sync::Arc<dyn EmbedProvider>), || {
+            batches.set(batches.get() + 1);
+            batches.get() > 2
+        })
+        .unwrap();
         assert_eq!(idx.vectors.len(), 4, "two batches landed before the cancel");
         assert_eq!(status().phase, "cancelled");
         // The rerun picks up where the cancel left off: only the fifth symbol
@@ -1566,16 +1562,13 @@ mod tests {
         // run concurrently, so only the fields' presence and types are
         // asserted here, not this run's values – phase is covered by the
         // serial-in-practice cancel test above.
-        let planned = 5usize.div_ceil(profile_for(
-            std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
-            16.0,
-            &cfg,
-        ).batch);
+        let planned = 5usize.div_ceil(profile_for(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1), 16.0, &cfg).batch);
         assert_eq!(planned, 3, "ceil(5 / 2) batches planned for the status display");
     }
 
     #[test]
-    fn symbol_text_prefixes_the_task_prompt() {        let n = Node {
+    fn symbol_text_prefixes_the_task_prompt() {
+        let n = Node {
             id: 1,
             kind: "function".into(),
             name: "parse_cfg".into(),
