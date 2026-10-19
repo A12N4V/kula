@@ -46,20 +46,6 @@ pub fn jaccard(a: &[String], b: &[String]) -> f64 {
 
 pub const MATCH_THRESHOLD: f64 = 0.6;
 
-/// Best gold index for a produced flow (None when nothing clears the bar).
-fn best_match(prod: &Flow, gold: &[Flow]) -> Option<usize> {
-    let mut best = None;
-    let mut best_j = MATCH_THRESHOLD;
-    for (i, g) in gold.iter().enumerate() {
-        let j = jaccard(&prod.members, &g.members);
-        if j > best_j {
-            best_j = j;
-            best = Some(i);
-        }
-    }
-    best
-}
-
 #[derive(Debug, Default, Serialize)]
 pub struct FlowScores {
     pub gold_flows: usize,

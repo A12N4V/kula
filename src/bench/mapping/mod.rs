@@ -20,8 +20,6 @@ use crate::{git, index, map, store::Store};
 struct GoldFile {
     repo: String,
     #[serde(default)]
-    description: String,
-    #[serde(default)]
     max_members_per_flow: usize,
     flow: Vec<GoldFlow>,
 }
@@ -29,8 +27,6 @@ struct GoldFile {
 #[derive(Debug, Deserialize)]
 struct GoldFlow {
     name: String,
-    #[serde(default)]
-    outcome: String,
     #[serde(default)]
     keywords: Vec<String>,
     members: Vec<String>,
@@ -304,7 +300,6 @@ fn candidate_flows(s: &map::Syntagm, store: &Store, member_of: &dyn Fn(i64) -> O
     let sampled = family_chains(store, 8192);
     // Greedy merge: families whose member sets overlap are one flow – the
     // seed of wave 2's merge rule, kept here so the bench baseline is fair.
-    let mut clusters: Vec<Vec<i64>> = Vec::new(); // steps per cluster (ids)
     let mut names: Vec<(String, String)> = Vec::new(); // (source, terminal) words
     let family_members = |sample: &[Vec<i64>]| -> Vec<String> {
         let mut m: Vec<String> = Vec::new();
@@ -353,9 +348,9 @@ fn candidate_flows(s: &map::Syntagm, store: &Store, member_of: &dyn Fn(i64) -> O
             continue; // merged into a root
         }
         let mut members = fam_members[i].clone();
-        for j in (i + 1)..fam_members.len() {
+        for (j, fam) in fam_members.iter().enumerate().skip(i + 1) {
             if find(j, &parent) == i {
-                for m in &fam_members[j] {
+                for m in fam {
                     if !members.contains(m) {
                         members.push(m.clone());
                     }
