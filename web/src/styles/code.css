@@ -79,7 +79,7 @@
 .cp-body { flex: 1; overflow: auto; background: var(--bg); }
 .cp-code { margin: 0; padding: 8px 0 40px; font: 12px/1.6 var(--mono); tab-size: 4; counter-reset: ln; }
 .cp-code > div { display: grid; grid-template-columns: 52px 1fr; white-space: pre; }
-.cp-code > div.lit { background: var(--accent-soft); box-shadow: inset 2px 0 0 0 transparent; }
+.cp-code > div.lit { background: var(--accent-soft); }
 .cp-code > div.lit .ln { color: var(--accent); border-right-color: var(--accent); }
 .cp-code .ln { padding-right: 12px; text-align: right; color: var(--text-3); opacity: .7; border-right: 1px solid var(--line); user-select: none; }
 .cp-code code { padding-left: 14px; font: inherit; color: var(--text); }
