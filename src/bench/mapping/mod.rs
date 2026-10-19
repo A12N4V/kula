@@ -250,8 +250,31 @@ fn bench_repo(name: &str, dir: &Path, gold: &GoldFile) -> Result<RepoResult> {
     };
     let produced = candidate_flows(&s, &store, &member_of);
     if std::env::var("KULA_BENCH_DEBUG").is_ok() {
+        // Distinct families can share a display name (e.g. two "Finish to new"
+        // chains from different files). Append a file hint to same-named flows
+        // so the dump stays readable – display only, metrics are unaffected.
+        let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        let mut used_hints: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
         for f in &produced {
-            eprintln!("FLOW {} :: {}", f.name, f.members.join(", "));
+            *counts.entry(f.name.as_str()).or_insert(0) += 1;
+        }
+        for f in &produced {
+            let label = if counts[f.name.as_str()] > 1 {
+                // Any member path that distinguishes this family from the
+                // earlier same-named one; fall back to the first member.
+                let used = used_hints.entry(f.name.clone()).or_default();
+                let file = f
+                    .members
+                    .iter()
+                    .map(|m| m.split("::").next().unwrap_or("?"))
+                    .find(|p| !used.contains(&p.to_string()))
+                    .unwrap_or_else(|| f.members.first().and_then(|m| m.split("::").next()).unwrap_or("?"));
+                used.push(file.to_string());
+                format!("{} [{}]", f.name, file)
+            } else {
+                f.name.clone()
+            };
+            eprintln!("FLOW {} :: {}", label, f.members.join(", "));
         }
     }
 

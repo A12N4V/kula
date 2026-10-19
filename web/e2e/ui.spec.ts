@@ -1478,7 +1478,9 @@ test.describe("agents A2", () => {
     // earlier tests on the same worker (T1.3b's research loop, team creation) add rows.
     for (const name of ["ship", "steer", "research", "audit"]) await expect(page.locator(".loop-row").filter({ hasText: name }).first()).toBeVisible();
     await expect(page.locator(".loop-row").filter({ hasText: "ship" })).toContainText("saved");
-    await expect(page.locator(".ag-control")).toContainText("loop is measuring anything");
+    // No loop is currently at work: on a clean fixture this is the empty
+    // state, after T1.3b on the same worker the finished e2e-loop is listed.
+    await expect(page.locator(".loop-row").filter({ hasText: "running" })).toHaveCount(0);
     // A roster cell leads to the tab that owns it.
     await rows.filter({ hasText: "Claude Code" }).locator(".roster-num").nth(5).click(); // seats → Teams
     await expect(page).toHaveURL(/#agents\/teams/);

@@ -32,7 +32,6 @@ members = [
   "src/json/array.rs::new",
   "src/json/array.rs::take",
   "src/json/object.rs::take",
-  "src/json/number.rs::new",
   "src/de/impls.rs::element",
   "src/de/impls.rs::finish",
   "src/de/impls.rs::key",
@@ -48,11 +47,11 @@ members = [
   "src/json/ser.rs::escape_str",
   "src/ser/mod.rs::begin",
   "src/ser/mod.rs::next",
-  "src/ser/mod.rs::next_key",
+  "src/ser/mod.rs::Serialize",
   "src/ser/mod.rs::Fragment",
-  "src/ser/mod.rs::Serializer",
+  "src/ser/mod.rs::Map",
   "src/ser/impls.rs::begin",
   "src/ser/impls.rs::stream_slice",
   "src/ser/impls.rs::SliceStream",
-  "src/json/value.rs::Serialize"
+  "src/json/value.rs::begin"
 ]
