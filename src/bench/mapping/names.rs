@@ -107,7 +107,9 @@ pub fn keyword_overlap(name: &str, keywords: &[String]) -> f64 {
 
 /// Baseline flow name from the family's source and terminal identifiers:
 /// "run_index → save_map" becomes "Run index to save map". Wave 2's real
-/// namer replaces this; it exists so the bench has something to score.
+/// namer replaced it in `candidate_flows`; kept for A/B reference and its
+/// own test.
+#[allow(dead_code)]
 pub fn baseline_name(source: &str, terminal: &str) -> String {
     let words = |s: &str| -> Vec<String> { s.split(['_', '-', '.']).filter(|w| !w.is_empty()).map(|w| w.to_string()).collect() };
     let src = words(source);

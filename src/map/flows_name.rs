@@ -5,30 +5,166 @@
 /// Verbs recognised at the start of a name (lowercase). Mirrors the rubric
 /// list in the bench's name scorer.
 const VERBS: &[&str] = &[
-    "add", "aggregate", "apply", "build", "check", "clean", "collect", "commit", "compare",
-    "complete", "compute", "count", "decode", "detect", "diff", "dispatch", "draw", "encode",
-    "extract", "fetch", "find", "format", "generate", "group", "handle", "import", "index",
-    "install", "list", "load", "log", "map", "merge", "name", "parse", "plan", "print", "query",
-    "read", "record", "remove", "render", "resolve", "run", "save", "scan", "search", "serve",
-    "show", "sort", "split", "store", "stream", "summarise", "summarize", "sync", "track",
-    "update", "write", "walk", "answer", "report", "respond", "route", "review", "organise",
-    "organize", "cluster", "classify", "normalise", "normalize", "traverse", "register",
+    "add",
+    "aggregate",
+    "apply",
+    "build",
+    "check",
+    "clean",
+    "collect",
+    "commit",
+    "compare",
+    "complete",
+    "compute",
+    "count",
+    "decode",
+    "detect",
+    "diff",
+    "dispatch",
+    "draw",
+    "encode",
+    "extract",
+    "fetch",
+    "find",
+    "format",
+    "generate",
+    "group",
+    "handle",
+    "import",
+    "index",
+    "install",
+    "list",
+    "load",
+    "log",
+    "map",
+    "merge",
+    "name",
+    "parse",
+    "plan",
+    "print",
+    "query",
+    "read",
+    "record",
+    "remove",
+    "render",
+    "resolve",
+    "run",
+    "save",
+    "scan",
+    "search",
+    "serve",
+    "show",
+    "sort",
+    "split",
+    "store",
+    "stream",
+    "summarise",
+    "summarize",
+    "sync",
+    "track",
+    "update",
+    "write",
+    "walk",
+    "answer",
+    "report",
+    "respond",
+    "route",
+    "review",
+    "organise",
+    "organize",
+    "cluster",
+    "classify",
+    "normalise",
+    "normalize",
+    "traverse",
+    "register",
     "respond",
 ];
 
 /// Path segments and tokens that never make a good object.
 const STOP_TOKENS: &[&str] = &[
-    "src", "lib", "main", "mod", "core", "util", "utils", "common", "impl", "internal", "pkg",
-    "app", "test", "tests", "spec", "index", "init", "the", "and", "for", "with", "from",
-    "data", "value", "item", "items", "self", "this", "result", "error", "option", "string",
-    "vec", "bool", "new", "get", "set", "run", "pub", "func", "const", "let", "var", "type",
-    "class", "struct", "enum", "trait", "interface", "module", "py", "rs", "ts", "tsx", "js",
-    "go", "sh", "homonin",
+    "src",
+    "lib",
+    "main",
+    "mod",
+    "core",
+    "util",
+    "utils",
+    "common",
+    "impl",
+    "internal",
+    "pkg",
+    "app",
+    "test",
+    "tests",
+    "spec",
+    "index",
+    "init",
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "data",
+    "value",
+    "item",
+    "items",
+    "self",
+    "this",
+    "result",
+    "error",
+    "option",
+    "string",
+    "vec",
+    "bool",
+    "new",
+    "get",
+    "set",
+    "run",
+    "pub",
+    "func",
+    "const",
+    "let",
+    "var",
+    "type",
+    "class",
+    "struct",
+    "enum",
+    "trait",
+    "interface",
+    "module",
+    "py",
+    "rs",
+    "ts",
+    "tsx",
+    "js",
+    "go",
+    "sh",
+    "homonin",
 ];
 
 /// Uppercase spellings for tokens that read better as acronyms or proper
 /// nouns in a value proposition.
-const SPELLINGS: &[(&str, &str)] = &[("pod5", "POD5"), ("cnv", "CNV"), ("sv", "SV"), ("json", "JSON"), ("http", "HTTP"), ("api", "API"), ("cli", "CLI"), ("ui", "UI"), ("id", "ID"), ("gtf", "GTF"), ("bedpe", "BEDPE"), ("vcf", "VCF"), ("bam", "BAM"), ("url", "URL"), ("html", "HTML"), ("sql", "SQL"), ("db", "database"), ("io", "IO")];
+const SPELLINGS: &[(&str, &str)] = &[
+    ("pod5", "POD5"),
+    ("cnv", "CNV"),
+    ("sv", "SV"),
+    ("json", "JSON"),
+    ("http", "HTTP"),
+    ("api", "API"),
+    ("cli", "CLI"),
+    ("ui", "UI"),
+    ("id", "ID"),
+    ("gtf", "GTF"),
+    ("bedpe", "BEDPE"),
+    ("vcf", "VCF"),
+    ("bam", "BAM"),
+    ("url", "URL"),
+    ("html", "HTML"),
+    ("sql", "SQL"),
+    ("db", "database"),
+    ("io", "IO"),
+];
 
 pub struct Named {
     pub name: String,
@@ -83,9 +219,7 @@ fn title(words: &[String]) -> String {
 /// actually delivers, not a constant template.
 fn outcome_tail(effect: Option<&str>) -> &'static str {
     match effect.unwrap_or("") {
-        "write" | "writeto" | "save" | "store" | "commit" | "insert" | "flush" => {
-            "and keep the result."
-        }
+        "write" | "writeto" | "save" | "store" | "commit" | "insert" | "flush" => "and keep the result.",
         "read" | "load" | "open" => "and report what it reads.",
         "serve" | "listen" | "send" | "post" | "connect" => "and answer over the connection.",
         "fetch" | "query" | "search" | "exec" => "and return what it finds.",
@@ -115,7 +249,7 @@ pub fn name_flow(names: &[String], paths: &[String], entry_name: &str, effect: O
     if verbs.is_empty() {
         bump(&mut verbs, &tokens(entry_name), 1);
     }
-    let verb = verbs.iter().max_by_key(|(v, c)| (**c, v.clone())).map(|(v, _)| v.clone()).unwrap_or_else(|| "run".into());
+    let verb = verbs.iter().max_by_key(|(v, c)| (**c, v.as_str())).map(|(v, _)| v.clone()).unwrap_or_else(|| "run".into());
 
     // Object: path tokens by frequency across members; longest segments win,
     // stop tokens and the crate root never do.
@@ -141,29 +275,19 @@ pub fn name_flow(names: &[String], paths: &[String], entry_name: &str, effect: O
         object_words.reverse();
     }
 
-    let obj_phrase = if object_words.is_empty() {
-        "the input".to_string()
-    } else {
-        title(&object_words)
-    };
-    let keywords: Vec<String> = std::iter::once(verb.clone())
-        .chain(object_words.iter().cloned())
-        .collect();
+    let obj_phrase = if object_words.is_empty() { "the input".to_string() } else { title(&object_words) };
+    let keywords: Vec<String> = std::iter::once(verb.clone()).chain(object_words.iter().cloned()).collect();
 
-    let name = format!("{} the {}", title(&[verb.clone()]), obj_phrase);
+    let name = format!("{} the {}", title(std::slice::from_ref(&verb)), obj_phrase);
     // Outcome: verb, object, and what the side effect delivers – capped at
     // 12 words by construction.
     let tail = outcome_tail(effect);
     let outcome = if object_words.is_empty() {
-        format!("{} the input {}", title(&[verb.clone()]), tail)
+        format!("{} the input {}", title(std::slice::from_ref(&verb)), tail)
     } else {
-        format!("{} the {} {}", title(&[verb.clone()]), obj_phrase, tail)
+        format!("{} the {} {}", title(std::slice::from_ref(&verb)), obj_phrase, tail)
     };
     let outcome_words = outcome.trim_end_matches('.').split_whitespace().count();
-    let outcome = if outcome_words > 12 {
-        format!("{} the {}.", title(&[verb]), obj_phrase)
-    } else {
-        outcome
-    };
+    let outcome = if outcome_words > 12 { format!("{} the {}.", title(&[verb]), obj_phrase) } else { outcome };
     Named { name, outcome, keywords }
 }

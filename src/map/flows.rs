@@ -42,13 +42,7 @@ pub struct FlowConfig {
 
 impl Default for FlowConfig {
     fn default() -> Self {
-        FlowConfig {
-            merge: 0.5,
-            depth: 30,
-            paths_per_entry: 2000,
-            min_members: 3,
-            max_flows: 10,
-        }
+        FlowConfig { merge: 0.5, depth: 30, paths_per_entry: 2000, min_members: 3, max_flows: 10 }
     }
 }
 
@@ -75,27 +69,8 @@ impl FlowConfig {
 /// data to the caller. Matched against the lowercased symbol name and the
 /// path segments around it.
 const SIDE_EFFECTS: &[&str] = &[
-    "write",
-    "writeto",
-    "read",
-    "open",
-    "save",
-    "load",
-    "store",
-    "fetch",
-    "send",
-    "serve",
-    "listen",
-    "connect",
-    "post",
-    "query",
-    "exec",
-    "print",
-    "emit",
-    "flush",
-    "commit",
-    "insert",
-    "delete",
+    "write", "writeto", "read", "open", "save", "load", "store", "fetch", "send", "serve", "listen", "connect", "post", "query", "exec",
+    "print", "emit", "flush", "commit", "insert", "delete",
 ];
 
 fn name_tokens(name: &str) -> Vec<String> {
@@ -126,12 +101,7 @@ fn reads_side_effect(name: &str, path: &str) -> bool {
         return true;
     }
     let lower = path.to_lowercase();
-    lower.split('/').any(|seg| {
-        matches!(
-            seg,
-            "io" | "net" | "http" | "server" | "store" | "db" | "fs" | "socket" | "api" | "cli"
-        )
-    })
+    lower.split('/').any(|seg| matches!(seg, "io" | "net" | "http" | "server" | "store" | "db" | "fs" | "socket" | "api" | "cli"))
 }
 
 /// Extract flows from the store's call graph.
@@ -179,9 +149,8 @@ pub fn extract_with(store: &Store, cfg: &FlowConfig) -> Vec<OutFlow> {
     let cond = crate::map::condense(&call_adj);
     let nc = cond.members.len();
 
-    let is_terminal_comp = |c: usize| -> bool {
-        cond.dag[c].is_empty() || cond.members[c].iter().any(|&m| reads_side_effect(&nodes[m].name, &nodes[m].path))
-    };
+    let is_terminal_comp =
+        |c: usize| -> bool { cond.dag[c].is_empty() || cond.members[c].iter().any(|&m| reads_side_effect(&nodes[m].name, &nodes[m].path)) };
 
     // Chains: per entry component, enumerate capped component paths from the
     // entry to a terminal over the condensation DAG. The chain, not the whole
@@ -190,10 +159,10 @@ pub fn extract_with(store: &Store, cfg: &FlowConfig) -> Vec<OutFlow> {
     // can never separate.
     let debug = std::env::var("KULA_FLOWS_DEBUG").is_ok();
     let mut chains: Vec<(usize, BTreeSet<usize>, usize)> = Vec::new(); // (entry comp, comps, len)
-    // Entries: DAG sources, plus near-sources – components that almost
-    // nothing reaches (a module's public decode/compute API called only by a
-    // demo script or a generic dispatcher). Their own chains are the flow;
-    // walking from the distant caller would drown them in unrelated members.
+                                                                       // Entries: DAG sources, plus near-sources – components that almost
+                                                                       // nothing reaches (a module's public decode/compute API called only by a
+                                                                       // demo script or a generic dispatcher). Their own chains are the flow;
+                                                                       // walking from the distant caller would drown them in unrelated members.
     let mut radj: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); nc];
     for c in 0..nc {
         for &d in &cond.dag[c] {
@@ -227,29 +196,21 @@ pub fn extract_with(store: &Store, cfg: &FlowConfig) -> Vec<OutFlow> {
         // DFS with a shared in-progress marker; paths are capped per entry so
         // hubs cannot explode the build. Neighbours visited in sorted order
         // for determinism.
-        fn walk(
-            at: usize,
-            path: &mut Vec<usize>,
-            onpath: &mut Vec<bool>,
-            dag: &[Vec<usize>],
-            is_term: &dyn Fn(usize) -> bool,
+        struct Walk<'a> {
+            dag: &'a [Vec<usize>],
+            is_term: &'a dyn Fn(usize) -> bool,
             depth: usize,
-            budget: &mut usize,
-            found: &mut Vec<Vec<usize>>,
-        ) {
-            if found.len() >= *budget || found.len() >= 4000 || path.len() > depth {
+        }
+        fn walk(ctx: &Walk<'_>, at: usize, path: &mut Vec<usize>, onpath: &mut Vec<bool>, budget: &mut usize, found: &mut Vec<Vec<usize>>) {
+            if found.len() >= *budget || found.len() >= 4000 || path.len() > ctx.depth {
                 return;
             }
-            let nexts: Vec<usize> = dag[at]
-                .iter()
-                .copied()
-                .filter(|&d| !onpath[d])
-                .collect();
-            if nexts.is_empty() || is_term(at) {
+            let nexts: Vec<usize> = ctx.dag[at].iter().copied().filter(|&d| !onpath[d]).collect();
+            if nexts.is_empty() || (ctx.is_term)(at) {
                 if path.len() >= 2 {
                     found.push(path.clone());
                 }
-                if is_term(at) && !nexts.is_empty() {
+                if (ctx.is_term)(at) && !nexts.is_empty() {
                     // A side-effect component can still call on – keep walking.
                 } else {
                     return;
@@ -261,7 +222,7 @@ pub fn extract_with(store: &Store, cfg: &FlowConfig) -> Vec<OutFlow> {
                 }
                 onpath[d] = true;
                 path.push(d);
-                walk(d, path, onpath, dag, is_term, depth, budget, found);
+                walk(ctx, d, path, onpath, budget, found);
                 path.pop();
                 onpath[d] = false;
             }
@@ -270,7 +231,8 @@ pub fn extract_with(store: &Store, cfg: &FlowConfig) -> Vec<OutFlow> {
         let mut path = vec![start];
         let mut onpath = vec![false; nc];
         onpath[start] = true;
-        walk(start, &mut path, &mut onpath, &cond.dag, &is_terminal_comp, cfg.depth, &mut budget, &mut found);
+        let ctx = Walk { dag: &cond.dag, is_term: &is_terminal_comp, depth: cfg.depth };
+        walk(&ctx, start, &mut path, &mut onpath, &mut budget, &mut found);
         for p in found {
             let set: BTreeSet<usize> = p.into_iter().collect();
             let len = set.len();
@@ -306,11 +268,8 @@ pub fn extract_with(store: &Store, cfg: &FlowConfig) -> Vec<OutFlow> {
     }
     // Buckets that swallowed a whole program walk (every command's members)
     // cannot be one outcome – drop them before merging.
-    let mut buckets: Vec<(usize, BTreeSet<usize>, usize)> = buckets
-        .into_iter()
-        .filter(|(_, (m, _))| m.len() >= cfg.min_members && m.len() <= 45)
-        .map(|((e, _), (m, l))| (e, m, l))
-        .collect();
+    let mut buckets: Vec<(usize, BTreeSet<usize>, usize)> =
+        buckets.into_iter().filter(|(_, (m, _))| m.len() >= cfg.min_members && m.len() <= 45).map(|((e, _), (m, l))| (e, m, l)).collect();
 
     // Merge buckets that share most of the smaller bucket's members: greedy,
     // bigger first, same entry only.
@@ -352,15 +311,12 @@ pub fn extract_with(store: &Store, cfg: &FlowConfig) -> Vec<OutFlow> {
             }
         }
     }
-    let flows: Vec<(usize, BTreeSet<usize>, usize)> =
-        flows.into_iter().zip(&keep).filter(|(_, k)| **k).map(|(s, _)| s).collect();
+    let flows: Vec<(usize, BTreeSet<usize>, usize)> = flows.into_iter().zip(&keep).filter(|(_, k)| **k).map(|(s, _)| s).collect();
 
     // Size sanity: one outcome is a handful of functions, not a whole
     // program walk.
-    let flows: Vec<(usize, BTreeSet<usize>, usize)> = flows
-        .into_iter()
-        .filter(|(_, m, _)| m.len() >= cfg.min_members && m.len() <= 45)
-        .collect();
+    let flows: Vec<(usize, BTreeSet<usize>, usize)> =
+        flows.into_iter().filter(|(_, m, _)| m.len() >= cfg.min_members && m.len() <= 45).collect();
 
     // Component ids to symbol ids.
     let debug = std::env::var("KULA_FLOWS_DEBUG").is_ok();
@@ -382,11 +338,8 @@ pub fn extract_with(store: &Store, cfg: &FlowConfig) -> Vec<OutFlow> {
     let member_sets = prune_shared(member_sets, cfg);
 
     if debug {
-        let brief: Vec<String> = member_sets
-            .iter()
-            .take(60)
-            .map(|(e, m, l)| format!("{}[{}@{}]", nodes[cond.members[*e][0]].name, m.len(), l))
-            .collect();
+        let brief: Vec<String> =
+            member_sets.iter().take(60).map(|(e, m, l)| format!("{}[{}@{}]", nodes[cond.members[*e][0]].name, m.len(), l)).collect();
         eprintln!("STAGES chains={} flows={:?}", chains.len(), brief);
     }
 
@@ -395,10 +348,7 @@ pub fn extract_with(store: &Store, cfg: &FlowConfig) -> Vec<OutFlow> {
 
 /// Drop members that sit in at least a quarter of the flows when there are
 /// enough flows for that to mean something; keep everything otherwise.
-pub fn prune_shared(
-    member_sets: Vec<(usize, BTreeSet<usize>, usize)>,
-    cfg: &FlowConfig,
-) -> Vec<(usize, BTreeSet<usize>, usize)> {
+pub fn prune_shared(member_sets: Vec<(usize, BTreeSet<usize>, usize)>, cfg: &FlowConfig) -> Vec<(usize, BTreeSet<usize>, usize)> {
     if member_sets.len() < 4 {
         return member_sets;
     }
@@ -409,8 +359,7 @@ pub fn prune_shared(
             *freq.entry(x).or_default() += 1;
         }
     }
-    let shared: BTreeSet<usize> =
-        freq.into_iter().filter(|(_, f)| *f >= threshold).map(|(x, _)| x).collect();
+    let shared: BTreeSet<usize> = freq.into_iter().filter(|(_, f)| *f >= threshold).map(|(x, _)| x).collect();
     member_sets
         .into_iter()
         .map(|(e, m, l)| (e, m.difference(&shared).copied().collect::<BTreeSet<usize>>(), l))
@@ -419,11 +368,7 @@ pub fn prune_shared(
 }
 
 /// Name, cap and shape the surviving member sets into flows.
-fn finish(
-    nodes: Vec<crate::store::Node>,
-    member_sets: Vec<(usize, BTreeSet<usize>, usize)>,
-    cfg: &FlowConfig,
-) -> Vec<OutFlow> {
+fn finish(nodes: Vec<crate::store::Node>, member_sets: Vec<(usize, BTreeSet<usize>, usize)>, cfg: &FlowConfig) -> Vec<OutFlow> {
     let n = nodes.len();
     let mut member_names: Vec<(Vec<String>, Vec<String>)> = vec![(Vec::new(), Vec::new()); n];
     let mut out: Vec<OutFlow> = Vec::new();
@@ -443,8 +388,7 @@ fn finish(
         // The outcome sentence names what the chain delivers: the strongest
         // side-effect terminal among the members, not a fixed template.
         let effect = members.iter().find_map(|&m| side_effect_token(&nodes[m].name));
-        let named =
-            crate::map::flows_name::name_flow(&names, &paths, &nodes[entry].name, effect);
+        let named = crate::map::flows_name::name_flow(&names, &paths, &nodes[entry].name, effect);
         out.push(OutFlow {
             name: named.name,
             outcome: named.outcome,
@@ -459,8 +403,7 @@ fn finish(
     // small family of them, a walk artifact scatters), then more members.
     // The coherence bar stays low because kula's serve flow honestly spans
     // server + api + map + store.
-    let path_of: std::collections::HashMap<i64, &str> =
-        nodes.iter().map(|nd| (nd.id, nd.path.as_str())).collect();
+    let path_of: std::collections::HashMap<i64, &str> = nodes.iter().map(|nd| (nd.id, nd.path.as_str())).collect();
     let dom = |f: &OutFlow| -> f64 {
         let mut dirs: BTreeMap<String, usize> = BTreeMap::new();
         for &m in &f.members {
@@ -481,10 +424,7 @@ fn finish(
     let coherent: Vec<OutFlow> = out.into_iter().filter(|f| dom(f) >= 0.25).collect();
     let mut out = coherent;
     out.sort_by(|a, b| {
-        home(b).cmp(&home(a))
-            .then(b.depth_rank.cmp(&a.depth_rank))
-            .then(b.members.len().cmp(&a.members.len()))
-            .then(a.name.cmp(&b.name))
+        home(b).cmp(&home(a)).then(b.depth_rank.cmp(&a.depth_rank)).then(b.members.len().cmp(&a.members.len())).then(a.name.cmp(&b.name))
     });
     // Disambiguate identical names: the bench produced "Parse the
     // Radiological Acquisition" three times for one repo – each occurrence

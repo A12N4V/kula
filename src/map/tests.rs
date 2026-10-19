@@ -532,10 +532,7 @@ mod flows_tests {
         // The payments chain reaches its logging side effect: pay, charge,
         // validate and log share one flow.
         let members: Vec<Vec<i64>> = flows.iter().map(|f| f.members.clone()).collect();
-        assert!(
-            members.iter().any(|m| m.contains(&2) && m.contains(&3) && m.contains(&4)),
-            "the payments chain is one flow"
-        );
+        assert!(members.iter().any(|m| m.contains(&2) && m.contains(&3) && m.contains(&4)), "the payments chain is one flow");
     }
 
     /// Same store, same flows – extraction is deterministic.
@@ -564,7 +561,11 @@ mod flows_tests {
         assert!(!flows.is_empty());
         for f in &flows {
             let first = f.name.split_whitespace().next().unwrap_or("").to_lowercase();
-            let verbs = ["add", "build", "check", "collect", "compute", "decode", "detect", "encode", "extract", "fetch", "find", "index", "list", "load", "log", "map", "parse", "query", "read", "record", "render", "resolve", "run", "save", "scan", "search", "serve", "show", "sort", "store", "sync", "update", "write"];
+            let verbs = [
+                "add", "build", "check", "collect", "compute", "decode", "detect", "encode", "extract", "fetch", "find", "index", "list",
+                "load", "log", "map", "parse", "query", "read", "record", "render", "resolve", "run", "save", "scan", "search", "serve",
+                "show", "sort", "store", "sync", "update", "write",
+            ];
             assert!(verbs.contains(&first.as_str()), "name {:?} starts with a verb", f.name);
             assert!(f.name.split_whitespace().count() <= 12, "name {:?} at most 12 words", f.name);
             assert!(!f.name.contains('_') && !f.name.contains("::"), "no identifiers in {:?}", f.name);
@@ -609,8 +610,7 @@ mod flows_tests {
         // prune must remove it from every surviving one.
         let sets: Vec<(usize, BTreeSet<usize>, usize)> = (0..6)
             .map(|i| {
-                let mut m: BTreeSet<usize> =
-                    [10 + i, 20 + i, 30 + i, 40 + i, 50 + i].into_iter().collect();
+                let mut m: BTreeSet<usize> = [10 + i, 20 + i, 30 + i, 40 + i, 50 + i].into_iter().collect();
                 m.insert(60);
                 (i, m, 5)
             })

@@ -326,28 +326,6 @@ fn candidate_flows(s: &map::Syntagm, _store: &Store, member_of: &dyn Fn(i64) -> 
     out
 }
 
-fn tail_word(member: &str) -> String {
-    member.rsplit("::").next().unwrap_or(member).to_string()
-}
-
-/// Enumerate up to `cap` chains over the whole condensation with the same
-/// lazy cursor the CLI uses; `candidate_flows` buckets them per family.
-fn family_chains(store: &Store, cap: usize) -> Vec<Vec<i64>> {
-    let (cond, node_ids) = match map::graph_condensation(store) {
-        Ok(x) => x,
-        Err(_) => return Vec::new(),
-    };
-    let mut cur = map::ChainCursor::new();
-    let mut out = Vec::new();
-    while out.len() < cap {
-        match map::ChainCursor::next(&cond, &mut cur) {
-            Some(path) => out.push(map::expand_steps(&cond, &node_ids, &path)),
-            None => break,
-        }
-    }
-    out
-}
-
 fn summarise(mut repos: Vec<RepoResult>) -> BenchReport {
     repos.sort_by(|a, b| a.repo.cmp(&b.repo));
     let mean = |pick: fn(&RepoResult) -> f64| -> f64 {
