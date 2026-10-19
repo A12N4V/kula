@@ -505,3 +505,95 @@ fn chain_family_page_enumerates_a_stored_family() {
     }
     assert_eq!(all.len() as u128, want, "pages must union to the family's stored count");
 }
+
+// ------------------------------------------------------------ M1 embeddings
+
+mod embed_tests {
+    use super::*;
+    use crate::map::embed::{cosine, DIM, HashEmbedder, STATE};
+
+    /// Same synthetic fixture as the engine tests: two production modules,
+    /// a tests directory, a barrel. Written to disk so source slices exist.
+    fn fixture_repo() -> (tempfile::TempDir, crate::git::Repo, Store) {
+        let (dir, repo, store) = temp_store();
+        fixture(&store);
+        write_sources(&dir);
+        (dir, repo, store)
+    }
+
+    fn write_sources(dir: &tempfile::TempDir) {
+        let pay = dir.path().join("payments");
+        std::fs::create_dir_all(&pay).unwrap();
+        std::fs::write(
+            pay.join("core.py"),
+            "def pay(order):\n    \"\"\"Charge a customer and record the payment.\"\"\"\n    charge(order)\n    log_payment(order)\n\ndef charge(order):\n    \"\"\"Charge the card.\"\"\"\n    validate_card(order)\n\ndef validate_card(order):\n    \"\"\"Validate the card number.\"\"\"\n    pass\n\ndef log_payment(order):\n    \"\"\"Log the payment event.\"\"\"\n    pass\n\nclass Payment:\n    pass\n",
+        )
+        .unwrap();
+        let led = dir.path().join("ledgers");
+        std::fs::create_dir_all(&led).unwrap();
+        std::fs::write(led.join("book.py"), "def record(entry):\n    append_line(entry)\n\ndef append_line(entry):\n    pass\n").unwrap();
+    }
+
+    #[test]
+    fn build_without_a_provider_wires_the_local_hash_embeddings() {
+        let (_dir, repo, store) = fixture_repo();
+        let s = build_with(&repo, &store, None, "off").expect("build");
+        // Metadata records the embedding provider state, keyed under hash-v1.
+        assert_eq!(store.meta("syntagm_embed").as_deref(), Some(STATE));
+        // Sections still exist – the similarity pass refines, never removes.
+        assert!(!s.blocks.is_empty());
+    }
+
+    #[test]
+    fn a_caller_supplied_provider_wins_over_the_local_one() {
+        struct Off;
+        impl Similarity for Off {
+            fn similarity(&self, _a: i64, _b: i64) -> f64 { 0.0 }
+        }
+        let (_dir, repo, store) = fixture_repo();
+        let sim = Off;
+        let s = build_with(&repo, &store, Some(&sim), "custom-state").expect("build");
+        assert_eq!(store.meta("syntagm_embed").as_deref(), Some("custom-state"));
+        assert!(!s.blocks.is_empty());
+    }
+
+    #[test]
+    fn test_paths_get_trivial_embeddings_and_zero_similarity() {
+        let (_dir, repo, store) = fixture_repo();
+        let e = HashEmbedder::new(&repo, &store).expect("embedder");
+        // The fixture's tests/ path symbols (ids 40+) carry empty vectors.
+        let v = e.vector_of_public(40);
+        assert!(v.iter().all(|&x| x == 0), "test symbol vector must be empty");
+        assert_eq!(e.similarity(40, 41), 0.0);
+    }
+
+    #[test]
+    fn similar_functions_score_above_dissimilar_ones() {
+        let (_dir, repo, store) = fixture_repo();
+        let e = HashEmbedder::new(&repo, &store).expect("embedder");
+        let near = e.similarity(2, 3); // pay ↔ charge: same file, calls, docs
+        let far = e.similarity(2, 11); // pay ↔ record in ledgers/
+        assert!(near > 0.0, "same-module functions must share signal: {near}");
+        assert!(near >= far, "near {near} must outrank far {far}");
+    }
+
+    #[test]
+    fn embeddings_are_deterministic_across_fresh_embedders() {
+        let (_dir, repo, store) = fixture_repo();
+        let a = HashEmbedder::new(&repo, &store).expect("a");
+        let b = HashEmbedder::new(&repo, &store).expect("b");
+        for (x, y) in [(2, 3), (2, 11), (3, 4)] {
+            assert_eq!(a.similarity(x, y), b.similarity(x, y), "{x}↔{y}");
+        }
+    }
+
+    #[test]
+    fn cosine_never_exceeds_one_and_empty_is_zero() {
+        let mut a = [0i32; DIM];
+        a[7] = 5;
+        a[9] = -2;
+        assert!((cosine(&a, &a) - 1.0).abs() < 1e-9);
+        assert_eq!(cosine(&a, &[0i32; DIM]), 0.0);
+        assert!(cosine(&a, &a) <= 1.0);
+    }
+}

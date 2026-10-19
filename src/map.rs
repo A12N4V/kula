@@ -244,8 +244,19 @@ pub fn build(repo: &Repo, store: &Store) -> Result<Syntagm> {
 }
 
 pub fn build_with(repo: &Repo, store: &Store, sim: Option<&dyn Similarity>, embed_state: &str) -> Result<Syntagm> {
-    let b = Builder { similarity: sim, threads: config_threads(repo), embed_state: embed_state.to_string() };
-    b.run(repo, store)
+    // When the caller brings no provider (no cached page-embedding index),
+    // the local deterministic hash embeddings still refine same-directory
+    // blocks – under their own state key so the stored Syntagm stays distinct.
+    let local = if sim.is_none() { embed::HashEmbedder::new(repo, store) } else { None };
+    let b = match local.as_ref() {
+        Some(e) => Builder { similarity: Some(e), threads: config_threads(repo), embed_state: embed::STATE.to_string() },
+        None => Builder { similarity: sim, threads: config_threads(repo), embed_state: embed_state.to_string() },
+    };
+    let s = b.run(repo, store);
+    if let Some(e) = local.as_ref() {
+        e.flush();
+    }
+    s
 }
 
 impl Builder<'_> {
@@ -2050,6 +2061,9 @@ pub fn print_chains(store: &Store, s: &Syntagm, from: Option<&str>) -> Result<()
     }
     Ok(())
 }
+
+pub mod embed;
+pub mod embed_cache;
 
 #[cfg(test)]
 mod tests;
