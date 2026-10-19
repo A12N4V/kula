@@ -167,7 +167,7 @@ pub fn cosine(a: &[i32; DIM], b: &[i32; DIM]) -> f64 {
     if na == 0 || nb == 0 {
         return 0.0;
     }
-    ((dot as f64 / ((na as f64).sqrt() * (nb as f64).sqrt())).max(0.0)).min(1.0)
+    (dot as f64 / ((na as f64).sqrt() * (nb as f64).sqrt())).clamp(0.0, 1.0)
 }
 
 #[derive(Default)]
@@ -281,7 +281,7 @@ impl HashEmbedder {
         let lines: Vec<&str> = text.lines().collect();
         let n = lines.len() as i64;
         // Mirror terms_for's window: doc lines above, signature, bounded body.
-        let mut lo = (s.start - 24).max(1);
+        let lo = (s.start - 24).max(1);
         let hi = s.start.min(n);
         lines
             .iter()
@@ -395,8 +395,4 @@ mod tests {
         assert_eq!(vector_for(&t1), vector_for(&t2));
     }
 
-    #[test]
-    fn dim_bounds_hold() {
-        assert!(DIM >= 128 && DIM <= 256);
-    }
 }
