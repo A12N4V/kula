@@ -501,6 +501,13 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       {live?.running && <ProgressStrip p={live} />}
       {rolesOpen && (
         <div className="sy-roles" id="map-role-filter" data-testid="map-role-filter" role="group" aria-label="Role filter">
+          {/* R0 – the lens presets live with the role filter now (no View menu). */}
+          <div className="sy-roles-presets">
+            {(["functions", "utilities", "all"] as const).map((l) => (
+              <button key={l} className={`tab-btn sy-lens-btn${lens === l ? " on" : ""}`} data-testid={`map-lens-${l}`} aria-pressed={lens === l}
+                onClick={() => setLens(l)}>{l}</button>
+            ))}
+          </div>
           {ROLES.map((role) => (
             <label key={role} className="sy-role-row" title={ROLE_RULES[role]}>
               <input type="checkbox" checked={roles.has(role)} onChange={() => toggleRole(role)} data-testid={`map-role-${role}`} />
