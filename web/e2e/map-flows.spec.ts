@@ -15,7 +15,10 @@ async function open(page: Page, hash = "map") {
 test.describe("map value flows", () => {
   test("the flows lens renders entry, flow and section tiles", async ({ page }) => {
     await open(page);
-    await expect(page.locator("[data-testid=map-view]")).toBeVisible();
+    // A cold server builds the map inside the first GET /api/map (~11 s on
+    // this repo) – the view only renders its testid once the payload lands,
+    // so give the first assert the cold-build budget, not the 5 s default.
+    await expect(page.locator("[data-testid=map-view]")).toBeVisible({ timeout: 30_000 });
     await page.locator("[data-testid=map-view-flows]").click();
     await expect(page.locator("[data-testid=map-flows]")).toBeVisible();
     // The canvas is hydrated with at least one entry tile and one flow tile.
@@ -54,12 +57,16 @@ test.describe("map value flows", () => {
     const entry = page.locator(".fc-node.fc-entry").first();
     await expect(entry).toBeVisible();
     // The D shape is the tile box's radius: round back (left), flat face (right).
-    const radii = await entry.locator(".fc-tile-box").evaluate((el) => {
-      const s = getComputedStyle(el);
-      return { tl: parseFloat(s.borderTopLeftRadius), br: parseFloat(s.borderBottomRightRadius) };
-    });
-    expect(radii.tl).toBeGreaterThan(4); // the D's round back
-    expect(radii.br).toBe(0); // the D's flat face toward the flow
+    // The virtualized canvas remounts nodes under load; poll so a mid-remount
+    // read (empty computed style) does not fail the shape check.
+    await expect(async () => {
+      const radii = await entry.locator(".fc-tile-box").evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { tl: parseFloat(s.borderTopLeftRadius), br: parseFloat(s.borderBottomRightRadius) };
+      });
+      expect(radii.tl).toBeGreaterThan(4); // the D's round back
+      expect(radii.br).toBe(0); // the D's flat face toward the flow
+    }).toPass({ timeout: 10_000 });
     // Leftmost: no tile sits to its left.
     const x = await entry.evaluate((el) => (el as HTMLElement).getBoundingClientRect().left);
     const others = await page.locator(".fc-node:not(.fc-entry)").evaluateAll((els) => els.map((e) => (e as HTMLElement).getBoundingClientRect().left));
