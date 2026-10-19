@@ -185,13 +185,23 @@ test.describe("flow canvas kit", () => {
     await page.getByTestId("fc-lock").click();
     const node = (await pickInside(page, ".react-flow__node.react-flow__node-tile"))!;
     const before = await node.boundingBox();
+    // Lock makes the node un-draggable; since drag = pan, the gesture now
+    // pans the canvas instead. Assert the node rides the viewport – its
+    // position inside the canvas is unchanged – rather than a frozen screen
+    // box, which would only hold while panning is off.
+    const tx = () => page.evaluate(() => {
+      const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(document.querySelector(".react-flow__viewport")?.getAttribute("style") ?? "");
+      return m ? { x: Number(m[1]), y: Number(m[2]) } : { x: 0, y: 0 };
+    });
+    const vp0 = await tx();
     await page.mouse.move(before!.x + 30, before!.y + 12);
     await page.mouse.down();
     await page.mouse.move(before!.x + 140, before!.y + 100, { steps: 5 });
     await page.mouse.up();
     await page.waitForTimeout(200);
     const after = await node.boundingBox();
-    expect(Math.abs(after!.x - before!.x)).toBeLessThan(4);
+    const vp1 = await tx();
+    expect(Math.abs(after!.x - before!.x - (vp1.x - vp0.x))).toBeLessThan(4);
   });
 
   test("edge stroke is zoom-compensated: visual width stays ~2px at 50%", async ({ page }) => {
