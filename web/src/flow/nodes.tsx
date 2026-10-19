@@ -7,6 +7,7 @@ import { Handle, NodeToolbar, Position, type NodeProps } from "@xyflow/react";
 import { Icon } from "../ui";
 import { CIRCLE, TILE, WIDE, type FlowNode } from "./types";
 import { useFc } from "./fcContext";
+import BlockCard from "./BlockNode";
 
 type FcData = FlowNode;
 
@@ -155,4 +156,4 @@ const StickyNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
 });
 StickyNode.displayName = "StickyNode";
 
-export const nodeTypes = { sticky: StickyNode, tile: TileNode, wide: WideNode, circle: CircleNode, group: GroupNode, loop: LoopNode };
+export const nodeTypes = { sticky: StickyNode, tile: TileNode, wide: WideNode, circle: CircleNode, group: GroupNode, loop: LoopNode, block: BlockCard };

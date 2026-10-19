@@ -17,6 +17,9 @@ export const FcCtx = createContext<{
   /** The edge under the pointer – its hover tools show. */
   hoverEdge?: string | null;
   setHoverEdge?: (id: string | null) => void;
+  /** Corner resize of a resizable node: commit=false during the drag (live
+      size only), commit=true on release (the kit persists + re-measures). */
+  onResize?: (id: string, size: { w: number; h: number }, commit: boolean) => void;
 }>({});
 
 export const useFc = () => useContext(FcCtx);

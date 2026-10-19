@@ -148,91 +148,93 @@ function edgeWeight(weight: number, max: number): number {
   return Math.min(4, Math.max(1, Math.round(1 + 3 * Math.sqrt(weight / m))));
 }
 
-/** Sub-node icons keep the graph's kind glyphs; tiles carry the role mark. */
+/** The busiest section: the one the most flow runs through (R0 – the
+    readable-by-default landing centred on it). */
+export function busiestSection(data: MapData & { flows?: Flow[] }): string | null {
+  try {
+    const { flows, sections } = mapFlowLayout(data);
+    const through = (id: string) => flows.reduce((acc, f) => acc + (f.from === id || f.to === id ? f.weight : 0), 0);
+    let best: string | null = null, bestW = -1;
+    for (const id of Object.keys(sections)) {
+      const w = through(id);
+      if (w > bestW) { best = id; bestW = w; }
+    }
+    return best;
+  } catch {
+    return null;
+  }
+}
+
+/** Sub-node icons keep the graph's kind glyphs; cards carry the role mark. */
 function fnIcon(kind: string) {
   return <KindIcon kind={kind} />;
 }
 
-/** The flow lens on the kit canvas. Selection is single-writer (the kit):
-    function circles and "+ more" chips are intercepted here and never
-    become the block selection; everything else maps to the block id. */
-export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, expanded: expandedProp, onToggleExpand, onClearExpand, marks, steps = [], onStepTool, scheme = "role", canvas }: Props) {
+/** The flow lens on the kit canvas – R0's one canvas: every block is the
+    information-rich card (name, role, logo, files, symbol count, in/out
+    degree, the flows and chains it belongs to); sections render as frames
+    holding their cards. Selection is single-writer (the kit); a focused
+    chain dims everything it does not cross through the kit's `dim` flag. */
+export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
-  const [expandedState, setExpanded] = useState<Set<string>>(() => new Set());
-  const expanded = expandedProp ?? expandedState;
-  const toggleExpand = onToggleExpand ?? ((id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  });
-  const [openSecs, setOpenSecs] = useState<Set<string>>(() => new Set());
-  const toggleSec = (id: string) => setOpenSecs((prev) => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
-  const secTool = (id: string, open: boolean) => (
-    <button className="fc-tool" data-testid="map-open-section" onClick={(e) => { e.stopPropagation(); toggleSec(id); }}
-      title={open ? "Close section" : "Open section – show its blocks"}>
-      {open ? "−" : "+"}
-    </button>
-  );
   const lit = (id: string) => !focus?.chain || focus.on.has(id);
   const shown = (b: Block) => roles.has(b.role);
-  // Expansion lives in the node's hover/selection toolbar slot: the only
-  // affordance the kit gives a tile without faking DOM into it.
-  const expandTool = (b: Block, open: boolean) => (
-    <button className="fc-tool" data-testid="map-expand-node" onClick={(e) => { e.stopPropagation(); toggleExpand(b.id); }}
-      title={open ? "Collapse functions" : "Expand functions"}>
-      {open ? "−" : "+"}
-    </button>
-  );
+
+  // Membership + degree, computed once per payload: the cards read them from
+  // the kit payload instead of walking the map per render.
+  const meta = useMemo(() => {
+    const inDeg = new Map<string, number>(), outDeg = new Map<string, number>();
+    for (const f of flows) {
+      outDeg.set(f.from, (outDeg.get(f.from) ?? 0) + 1);
+      inDeg.set(f.to, (inDeg.get(f.to) ?? 0) + 1);
+    }
+    const chainNames = new Map<string, string[]>();
+    for (const fam of data.families) {
+      for (const b of fam.blocks) {
+        const sid = secOf[b] ?? b;
+        if (!chainNames.has(sid)) chainNames.set(sid, []);
+        chainNames.get(sid)!.push(`${data.leaves[fam.source]?.name ?? fam.source} → ${data.leaves[fam.terminal]?.name ?? fam.terminal}`);
+      }
+    }
+    const flowNames = new Map<string, string[]>();
+    for (const f of data.value_flows ?? []) for (const b of f.sections) {
+      if (!flowNames.has(b)) flowNames.set(b, []);
+      flowNames.get(b)!.push(f.name);
+    }
+    return { inDeg, outDeg, chainNames, flowNames };
+  }, [data, flows, secOf]);
 
   // The built graph is memoised: new array identities would re-run the kit's
   // layout effect on every parent re-render (a selection change included),
   // which wipes the kit's selection flags and re-fits the viewport.
-  const { nodes, edges, groups } = useMemo((): { nodes: FlowNode[]; edges: FlowEdge[]; groups: FlowGroup[] } => {
+  const { nodes, edges, groups, reps } = useMemo((): { nodes: FlowNode[]; edges: FlowEdge[]; groups: FlowGroup[]; reps: Map<string, string> } => {
     const nodes: FlowNode[] = [];
     const edges: FlowEdge[] = [];
     const groups: FlowGroup[] = [];
-    const fnNodes: FlowNode[] = [];
-    const secShown: string[] = [];
-
+    const reps = new Map<string, string>();
 
   const colorOf = (b: Block, sec: string) =>
     scheme === "section" ? `hsl(${hue(sec)} 60% 58%)`
     : scheme === "mono" ? "var(--text-3)"
     : scheme === "heat" ? (marks?.[sec]?.changed ? "var(--red)" : marks?.[sec]?.fence ? "var(--accent)" : "var(--line-2)")
     : ROLE_COLOR[b.role];
-  const blockNode = (b: Block, sec = b.id): FlowNode => {
-    return {
-      id: b.id, kind: "tile", title: title(b), subtitle: b.theme ? b.name : undefined,
-      icon: sectionLogo(`${b.theme ?? ""} ${b.name} ${b.summary ?? ""}`, b.role), color: colorOf(b, sec),
-      entry: b.role === "entry", dim: !lit(b.id), hasSub: expanded.has(b.id),
-      toolbar: expandTool(b, expanded.has(b.id)),
-    };
-  };
 
-  // A block's functions: shown when the block is expanded (cap 40).
-  const fnSubs = (b: Block) => {
-    if (!expanded.has(b.id)) return [];
-    const syms = symbolsUnder(data.blocks, b.id).filter((id) => data.leaves[id]);
-    const cap = Math.min(syms.length, FN_CAP);
-    const subs: FlowNode[] = syms.slice(0, cap).map((id) => {
-      const l = data.leaves[id];
-      return {
-        id: fnId(id), kind: "circle", sub: true, parent: b.id,
-        title: l.name, subtitle: `${l.path}:${l.line}`, icon: fnIcon(l.kind),
-        color: ROLE_COLOR[l.role] ?? undefined, dim: !lit(b.id),
-      };
-    });
-    if (syms.length > cap) subs.push({
-      id: moreId(b), kind: "wide", sub: true, parent: b.id,
-      title: `+ ${syms.length - FN_CAP} more`, color: "var(--text-3)", dim: !lit(b.id),
-    });
-    return subs;
+  // The block card node (R0): the old Blocks-lens card is the node itself.
+  const blockCard = (b: Block, sec = b.id): FlowNode => {
+    const fnIds = symbolsUnder(data.blocks, b.id).filter((id) => data.leaves[id]);
+    return {
+      id: b.id, kind: "block",
+      title: title(b), subtitle: b.theme ? b.name : undefined,
+      color: colorOf(b, sec), entry: b.role === "entry", dim: !lit(b.id),
+      card: {
+        role: b.role, roleColor: colorOf(b, sec),
+        logo: sectionLogo(`${b.theme ?? ""} ${b.name} ${b.summary ?? ""}`, b.role),
+        files: b.files, symbols: fnIds.length,
+        inDeg: meta.inDeg.get(sec), outDeg: meta.outDeg.get(sec),
+        flows: meta.flowNames.get(sec), chains: meta.chainNames.get(sec),
+        functions: fnIds.slice(0, FN_CAP).map((id) => ({ name: data.leaves[id].name, kind: data.leaves[id].kind })),
+      },
+    };
   };
 
   // Overlay marks → ring and badge (a section's mark also rings its blocks).
@@ -246,57 +248,42 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     return { ring, badge };
   };
   // The view owns the layout (the kit's preset mode): one column per
-  // pipeline layer, left to right, shared utilities last. A closed section
-  // is one coloured wide node; an open one is a frame with its blocks in a
-  // small grid. Complexity stays behind a click – nothing opens by default.
-  const CELL_W = 176, CELL_H = 192, GAP_Y = 48, GAP_X = 160, HEAD = 48;
+  // pipeline layer, left to right, shared utilities last. Every section is
+  // a frame (depth 2) holding its block cards, or a single card at depth 1.
+  const CELL_W = 240, CELL_H = 224, GAP_Y = 48, GAP_X = 160, HEAD = 48;
   const columns: string[][] = [...layers.map((l) => l.filter((id) => sections[id] && shown(sections[id])))];
   const bandShown = band.filter((id) => sections[id] && shown(sections[id]));
   if (bandShown.length) columns.push(bandShown);
   const colOf = new Map<string, number>();
-  const repOf = new Map<string, string>();
   let x = 0;
   columns.forEach((col, ci) => {
     if (!col.length) return;
-    let y = 0, colW = 256;
+    let y = 0, colW = 288;
     for (const id of col) {
       const s = sections[id];
       colOf.set(id, ci);
-      secShown.push(id);
       const kids = s.children.map((c) => data.blocks[c]).filter((k): k is Block => !!k && shown(k));
-      const open = depth >= 2 || openSecs.has(id);
-      if (!open || !kids.length) {
-        // Graph's square node: the section's logo in the box, its name and
-        // size under it – a glance reads what each part of the code does.
-        nodes.push({
-          ...blockNode(s), kind: "tile", title: title(s),
-          subtitle: kids.length ? `${kids.length} blocks · ${s.files} files` : `${s.files} files · ${s.symbols.length} fns`,
-          icon: sectionLogo(`${s.theme ?? ""} ${s.name} ${s.summary ?? ""}`, s.role),
-          size: { w: 96, h: 160 },
-          toolbar: kids.length ? secTool(id, false) : expandTool(s, expanded.has(s.id)),
-          pos: { x: x + 80, y },
-          ...markOf(id, true),
-        });
-        fnNodes.push(...fnSubs(s));
-        repOf.set(id, s.id);
-        y += 160 + GAP_Y;
+      const open = depth >= 2 && kids.length > 0;
+      if (!open) {
+        // The section card: same information-rich card, its blocks listed inside.
+        nodes.push({ ...blockCard(s), pos: { x: x + 40, y }, ...markOf(id, true), card: { ...blockCard(s).card, members: kids.map((k) => ({ id: k.id, title: title(k), color: colorOf(k, id) })) } });
+        reps.set(id, s.id);
+        y += (blockCard(s).card?.members?.length ? 304 : 192) + GAP_Y;
         continue;
       }
       const cols = Math.min(3, Math.ceil(Math.sqrt(kids.length)));
       kids.forEach((k, i) => {
         const r = Math.floor(i / cols), c = i % cols;
-        nodes.push({ ...blockNode(k, id), pos: { x: x + c * CELL_W, y: y + HEAD + r * CELL_H }, ...markOf(id, i === 0) });
-        fnNodes.push(...fnSubs(k));
+        nodes.push({ ...blockCard(k, id), pos: { x: x + c * CELL_W, y: y + HEAD + r * CELL_H }, ...markOf(id, i === 0) });
       });
-      groups.push({ id: secId(s), label: title(s), members: kids.map((k) => k.id) });
-      repOf.set(id, kids[0].id);
+      groups.push({ id: secId(s), label: `${title(s)} · ${kids.length} blocks`, members: kids.map((k) => k.id) });
+      reps.set(id, kids[0].id);
       const rows = Math.ceil(kids.length / cols);
       y += HEAD + rows * CELL_H + GAP_Y;
       colW = Math.max(colW, cols * CELL_W);
     }
     x += colW + GAP_X;
   });
-  nodes.push(...fnNodes);
 
   // The pipeline lane: blocks left to right above the map as n8n's square
   // nodes, wired in order, each with a dashed wire down to the section it acts
@@ -306,7 +293,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   const LANE_Y = -288, STEP_W = 176;
   const fenceSize = (sid: string) => { const set = new Set<string>(); for (const sym of symbolsUnder(data.blocks, sid)) { const p = data.leaves[sym]?.path; if (p) set.add(p); } return set.size; };
   const nodeIdsSoFar = new Set(nodes.map((n) => n.id));
-  const repOfSec = (sid: string) => { const r = repOf.get(sid); return r && nodeIdsSoFar.has(r) ? r : null; };
+  const repOfSec = (sid: string) => { const r = reps.get(sid); return r && nodeIdsSoFar.has(r) ? r : null; };
   const name = (id: string | null) => (id ? data.blocks[id]?.theme || data.blocks[id]?.name : null);
   let prevStep: Step | null = null, lastAgent: string | null = null, li = 0;
   const flowOf = (st: Step) => st.status === "success" || st.status === "skipped" ? "ok" : st.status === "error" ? "err" : undefined;
@@ -356,7 +343,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   const laneIds = run.map((x) => `step:${x.id}`);
   if (laneIds.length) groups.push({ id: "lane", label: "Pipeline", members: laneIds });
   // Sections accept a wire dragged from a block: that block now acts on it.
-  if (steps.length) for (const n of nodes) if (!n.id.startsWith("step:") && n.kind !== "circle") n.accepts = true;
+  if (steps.length) for (const n of nodes) if (!n.id.startsWith("step:") && n.kind === "block") n.accepts = true;
   const nodeIds = new Set(nodes.map((n) => n.id));
 
   // Edges: each section keeps its two heaviest outgoing flows (every flow as
@@ -368,7 +355,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   for (const f of flows) {
     if (!colOf.has(f.from) || !colOf.has(f.to)) continue;
     if ((outCount.get(f.from) ?? 0) >= 2) continue;
-    const a = repOf.get(f.from)!, b = repOf.get(f.to)!;
+    const a = reps.get(f.from)!, b = reps.get(f.to)!;
     if (a === b || !nodeIds.has(a) || !nodeIds.has(b)) continue;
     // Flows back into an earlier column (or within one) would wrap the whole
     // canvas; the default view reads left to right, the sidebar lists them.
@@ -379,47 +366,45 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     outCount.set(f.from, (outCount.get(f.from) ?? 0) + 1);
     edges.push({ id: key, source: a, target: b, weight: edgeWeight(f.weight, maxW) });
   }
-    return { nodes, edges, groups };
+    return { nodes, edges, groups, reps };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, roles, focus, depth, expanded, openSecs, marks, steps, scheme]);
+  }, [data, roles, focus, depth, marks, steps, scheme, meta]);
 
-  // Intercepted selections: function circles open the code panel, "+ more"
-  // chips toggle the expansion – neither becomes the block selection.
-  // Selections that open panels or mutate the graph must not run inside
+  // The landing zoom (R0, readable by default): the busiest section, at a
+  // scale where the card labels are legible – fit stays one key away.
+  const busiest = useMemo(() => {
+    const id = busiestSection(data);
+    return reps.get(id ?? "") ?? null;
+  }, [data, reps]);
+
+  // Intercepted selections: a group frame selects its section block – the
+  // sidebar reads blocks. Selections that open panels must not run inside
   // React Flow's click dispatch – a synchronous parent update there
   // re-enters the store (React error 185). Defer them a tick.
   const select = (id: string | null) => {
     if (!id || id === "lane") { onSelect?.(null); return; }
-    if (id.startsWith("fn:")) { const n = Number(id.slice(3)); setTimeout(() => onLeaf(n), 0); return; }
-    if (id.startsWith("more:")) { const bid = id.slice(5); setTimeout(() => toggleExpand(bid), 0); return; }
-    // a group frame selects its section block – the sidebar reads blocks
     onSelect?.(id.startsWith("sec:") ? id.slice(4) : id);
   };
   const open = (id: string) => {
     if (id.startsWith("step:")) { onStepTool?.(id.slice(5), "open"); return; }
     if (id === "lane") return;
-    if (id.startsWith("fn:")) { const n = Number(id.slice(3)); setTimeout(() => onLeaf(n), 0); return; }
-    if (id.startsWith("more:")) { const bid = id.slice(5); setTimeout(() => onDrill(bid), 0); return; }
-    if (id.startsWith("sec:")) { const sid = id.slice(4); setTimeout(() => toggleSec(sid), 0); return; }
-    if (sections[id] && data.blocks[id]?.children.length && depth < 2) { setTimeout(() => toggleSec(id), 0); return; }
+    if (id.startsWith("sec:")) { const sid = id.slice(4); setTimeout(() => onDrill(sid), 0); return; }
     onDrill(id);
   };
 
-  const anyExpanded = expanded.size > 0;
+  const dense = edges.length > 120;
   return (
-    <div className="sy-canvas fm-flow" data-testid="map-flow">
+    <div className={`sy-canvas fm-flow${dense ? " map-canvas--dense" : ""}`} data-testid="map-flow" data-fc-chainfocus={focus?.chain ? "1" : undefined}>
       <div className="fm-headline" data-testid="map-headline">
         <span className="fm-headline-k">executes</span>
         <span className="fm-headline-v">{headline || "–"}</span>
-        <span className="fm-headline-tools">
-          <button className="tab-btn sy-lens-btn" data-testid="map-collapse-all" title="collapse every expanded block" aria-pressed={anyExpanded}
-            onClick={() => onClearExpand?.()}>collapse</button>
-        </span>
       </div>
       <FlowCanvas
         {...canvas}
         reveal={selection?.startsWith("step:") ? selection : null}
         minZoom={0.1}
+        initialFocus={busiest}
+        initialZoom={0.85}
         nodes={nodes} edges={edges} groups={groups}
         selection={selection ?? null} onSelect={select} onOpen={open}
         // the focus state rides the layout key: the kit's layout cache keys on
