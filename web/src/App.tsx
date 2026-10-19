@@ -303,7 +303,7 @@ export default function App() {
         <span className="spacer" />
         <span>{changes ? `${changes} changed` : "clean"}</span>
         <span className="mono">{repo?.head?.slice(0, 8)}</span>
-        <span>{repo?.user}</span>
+        <span className="sb-user">{repo?.user}</span>
         <button className="sb-help" data-testid="sb-dock" onClick={() => setDock((d) => !d)} title="Terminal and run log  ctrl+`"><Icon.console /> panel</button>
         <button className="sb-help" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
       </footer>

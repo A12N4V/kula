@@ -153,6 +153,9 @@
 @media (max-width: 600px) {
   .fc-wrap { position: relative; }
   .fc-ctl { width: 40px; height: 40px; }
+  /* the transport floats bottom-centre on phones – keep the zoom stack and the minimap above it */
+  .react-flow__panel.bottom.left.fc-controls { bottom: 64px; }
+  .react-flow__minimap.fc-minimap { bottom: 64px; }
   .fc-side-toggle { width: 40px; height: 40px; }
   .fc-side {
     position: absolute; inset: 0 0 0 auto; width: min(320px, 88vw); z-index: 30;

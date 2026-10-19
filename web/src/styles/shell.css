@@ -160,6 +160,8 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .statusbar > * { flex-shrink: 0; white-space: nowrap; }
 /* the class, not nth-child: the reindexing span shifts the position of everything after it */
 .statusbar > .sb-stats { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* on very narrow phones the user name is the drop – the two help buttons stay */
+@media (max-width: 480px) { .statusbar .sb-user { display: none; } .statusbar { gap: 8px; padding: 0 8px; } }
 /* icons without their own size take the text's */
 .chip svg, .btn svg, .tag svg { width: 14px; height: 14px; flex: none; }
 .rail button svg { width: 18px; height: 18px; }

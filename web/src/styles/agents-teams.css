@@ -134,8 +134,8 @@ input.mi-title { font: 600 14px var(--mono); }
 .team-side { min-width: 0; }
 @media (max-width: 1400px) { .team-split { grid-template-columns: 1fr; } .soc-graph { height: 520px; } }
 
-.notes-split { display: grid; grid-template-columns: minmax(0, 1fr) var(--size-notes-side, 400px); height: 100%; min-height: 0; }
-.notes-split > .notes-side { border-left: 1px solid var(--line); overflow: auto; min-height: 0; }
+.notes-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, var(--size-notes-side, 400px)); height: 100%; min-height: 0; }
+.notes-split > .notes-side { border-left: 1px solid var(--line); overflow: auto; min-height: 0; min-width: 0; margin: 0; }
 .notes-graph { position: relative; height: 100%; min-height: 420px; background: var(--bg); }
 @media (max-width: 1100px) { .notes-split { grid-template-columns: 1fr; height: auto; } .notes-graph { height: 460px; } }
 /* the team graph takes the whole width; the other Agents tabs keep their measure */

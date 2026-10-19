@@ -325,6 +325,7 @@
 .tp-btn:hover:not(:disabled) { background: var(--bg-3); color: var(--text); }
 .tp-btn:disabled { opacity: .35; cursor: default; }
 .tp-btn[aria-pressed="true"] { color: var(--accent); }
+@media (max-width: 640px) { .tp-btn { height: 40px; min-width: 40px; } }
 .tp-go { background: var(--accent); color: var(--bg); font-weight: 600; padding: 0 14px 0 10px; }
 .tp-go:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--text)); color: var(--bg); }
 .tp-stop { color: var(--red); }

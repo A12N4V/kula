@@ -296,7 +296,12 @@
 .fm-headline-tools { margin-left: auto; display: flex; gap: 8px; }
 /* The flow canvas has no scrollbar to reserve, so the headline clears the
    structure panel's grip strip (28 px, reaching 26 px into the canvas). */
-.fm-flow .fm-headline { padding-right: 44px; }
+.fm-flow .fm-headline { padding-right: 436px; }
+@media (max-width: 640px) {
+  /* the wrapped headline fills the canvas top on phones – the HUD drops below it */
+  .sy-split .map-hud { top: 72px; }
+  .fm-flow .fm-headline { padding-right: 258px; }
+}
 /* The kit sizes its canvas with flex: 1 only when it renders its own
    sidebar; the map keeps its own structure panel, so stretch it here. */
 .fm-flow .fc-canvas, .fm-caps .fc-canvas { flex: 1 1 auto; min-width: 0; }
