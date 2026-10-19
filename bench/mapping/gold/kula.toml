@@ -1,8 +1,8 @@
-# Gold set – kula itself. Written against real engine output
-# (KULA_BENCH_DEBUG=1 kula map --bench).
+# Gold set – kula itself. Hand-written from the README's outcomes (what the
+# program achieves) and the source files that implement them. Not copied from
+# engine output; producibility is checked afterwards with KULA_BENCH_DEBUG=1.
 repo = "kula"
 description = "kula – local git client with a code knowledge graph"
-max_members_per_flow = 24
 
 [[flow]]
 name = "Index the repository"
@@ -12,27 +12,23 @@ members = [
   "src/main.rs::main",
   "src/main.rs::run",
   "src/main.rs::open_or_index",
-  "src/main.rs::guard_cmd",
-  "src/store.rs::search",
+  "src/index/mod.rs::run",
+  "src/index/mod.rs::walk",
+  "src/index/mod.rs::parse_source",
+  "src/index/mod.rs::build",
+  "src/index/mod.rs::build_with",
+  "src/index/mod.rs::resolve_import",
+  "src/index/mod.rs::probe",
+  "src/index/langs.rs::detect",
   "src/index/langs.rs::prepare",
-  "src/store.rs::nodes_where",
-  "src/embed.rs::similarity_for",
-  "src/embed.rs::coverage",
-  "src/graph.rs::resolve_one",
-  "src/store.rs::communities",
-  "src/isolate.rs::pick",
-  "src/graph.rs::context",
-  "src/store.rs::neighbours",
-  "src/embed.rs::install",
-  "src/embed_ort.rs::install_model",
-  "src/map.rs::pool",
-  "src/map.rs::build",
-  "src/map.rs::build_with",
-  "src/map.rs::run",
-  "src/map.rs::compute",
-  "src/store.rs::all_edges",
-  "src/map.rs::file_rev",
-  "src/map.rs::store_stored"
+  "src/index/langs.rs::compile",
+  "src/index/langs.rs::load",
+  "src/index/langs.rs::build_lang",
+  "src/graph.rs::detect_communities",
+  "src/graph.rs::node_keys",
+  "src/store.rs::create",
+  "src/store.rs::open",
+  "src/store.rs::write_all"
 ]
 
 [[flow]]
@@ -40,29 +36,55 @@ name = "Build the map of sections and chains"
 outcome = "Cluster the call graph into sections, blocks and chains."
 keywords = ["map", "build", "sections", "chains"]
 members = [
-  "src/main.rs::main",
   "src/main.rs::run",
   "src/main.rs::open_or_index",
-  "src/main.rs::guard_cmd",
-  "src/map.rs::pool",
   "src/map.rs::build",
   "src/map.rs::build_with",
   "src/map.rs::run",
   "src/map.rs::compute",
-  "src/map.rs::new",
-  "src/map.rs::lower_priority",
+  "src/map.rs::pool",
   "src/map.rs::build_level",
   "src/map.rs::part_tree",
   "src/map.rs::cut_by_dir",
+  "src/map.rs::merge_smallest",
   "src/map.rs::partition",
-  "src/map.rs::emit_tree",
+  "src/map.rs::classify_all",
+  "src/map.rs::classify_role",
   "src/map.rs::dominant_role",
+  "src/map.rs::emit_tree",
   "src/map.rs::name_block",
   "src/map.rs::tokens",
   "src/map.rs::condense",
+  "src/map.rs::path_counts",
+  "src/map.rs::flow_of",
+  "src/map.rs::flow_weight",
   "src/map.rs::block_maps",
   "src/map.rs::build_all_chains",
   "src/map.rs::expand_steps",
-  "src/map.rs::sample_family"
+  "src/map.rs::sample_family",
+  "src/map.rs::file_rev",
+  "src/map.rs::store_stored",
+  "src/map.rs::load_stored"
 ]
 
+[[flow]]
+name = "Serve the map and API"
+outcome = "Answer graph, map and memory requests over local HTTP."
+keywords = ["serve", "api", "router"]
+members = [
+  "src/main.rs::run",
+  "src/server.rs::router",
+  "src/server.rs::serve",
+  "src/map_api.rs::map_json",
+  "src/map_api.rs::block_json",
+  "src/map_api.rs::family_json",
+  "src/map.rs::all_json_with",
+  "src/map.rs::block_json",
+  "src/map.rs::chain_json",
+  "src/map.rs::chain_family_page",
+  "src/graph.rs::context",
+  "src/graph.rs::impact",
+  "src/graph.rs::trace",
+  "src/store.rs::search",
+  "src/store.rs::neighbours"
+]

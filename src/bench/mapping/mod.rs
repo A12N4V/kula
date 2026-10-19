@@ -19,8 +19,6 @@ use crate::{git, index, map, store::Store};
 #[derive(Debug, Deserialize)]
 struct GoldFile {
     repo: String,
-    #[serde(default)]
-    max_members_per_flow: usize,
     flow: Vec<GoldFlow>,
 }
 
@@ -250,7 +248,7 @@ fn bench_repo(name: &str, dir: &Path, gold: &GoldFile) -> Result<RepoResult> {
                 && !lower.contains("/tests/")
         })
     };
-    let produced = candidate_flows(&s, &store, &member_of, gold.max_members_per_flow);
+    let produced = candidate_flows(&s, &store, &member_of);
     if std::env::var("KULA_BENCH_DEBUG").is_ok() {
         for f in &produced {
             eprintln!("FLOW {} :: {}", f.name, f.members.join(", "));
@@ -294,7 +292,7 @@ fn bench_repo(name: &str, dir: &Path, gold: &GoldFile) -> Result<RepoResult> {
 /// Baseline flow adapter (wave 1): the top chain families by chain count,
 /// each becoming one candidate flow whose members are the union of a capped
 /// sample of its chains' steps. Wave 2's `src/map/flows.rs` replaces this.
-fn candidate_flows(s: &map::Syntagm, store: &Store, member_of: &dyn Fn(i64) -> Option<String>, cap_members: usize) -> Vec<metrics::Flow> {
+fn candidate_flows(s: &map::Syntagm, store: &Store, member_of: &dyn Fn(i64) -> Option<String>) -> Vec<metrics::Flow> {
     let mut families: Vec<&map::ChainFamily> = s.families.iter().collect();
     families.sort_by(|a, b| b.count.cmp(&a.count).then(a.id.cmp(&b.id)));
     let sampled = family_chains(store, 8192);
@@ -324,6 +322,17 @@ fn candidate_flows(s: &map::Syntagm, store: &Store, member_of: &dyn Fn(i64) -> O
             member_of(fam.terminal).map(|m| tail_word(&m)).unwrap_or_default(),
         ));
     }
+    // Families sharing a (source, terminal) pair are the same family seen
+    // twice; keep the first so the printed flow list is not duplicated.
+    let mut seen_pairs: std::collections::HashSet<(i64, i64)> = std::collections::HashSet::new();
+    let mut keep: Vec<usize> = Vec::new();
+    for (i, fam) in families.iter().enumerate().take(40) {
+        if seen_pairs.insert((fam.source, fam.terminal)) {
+            keep.push(i);
+        }
+    }
+    let fam_members: Vec<Vec<String>> = keep.iter().map(|&i| fam_members[i].clone()).collect();
+    let names: Vec<(String, String)> = keep.iter().map(|&i| names[i].clone()).collect();
     // Union-find over families with member Jaccard ≥ 0.6.
     let mut parent: Vec<usize> = (0..fam_members.len()).collect();
     let find = |mut x: usize, parent: &[usize]| -> usize {
@@ -357,7 +366,6 @@ fn candidate_flows(s: &map::Syntagm, store: &Store, member_of: &dyn Fn(i64) -> O
                 }
             }
         }
-        members.truncate(cap_members);
         if members.len() < 2 {
             continue;
         }

@@ -1,39 +1,58 @@
-# Gold set – homonin-scripts (copied to /tmp at bench time).
-# Written against real engine output (KULA_BENCH_DEBUG=1 kula map --bench).
+# Gold set – homonin-scripts. Hand-written from the README's outcomes (the
+# six operations decode → resolve → normalise → bind → compute → express,
+# the reviewed Binding record and the travelling VersionState) and the source
+# files that implement them. Not copied from engine output; producibility is
+# checked afterwards with KULA_BENCH_DEBUG=1.
+# Source: KULA_BENCH_HOMONIN, default ~/Desktop/projects/homonin/homonin-scripts.
 repo = "homonin-scripts"
 description = "homonin-scripts – genomics, signal and clinical analysis scripts"
-max_members_per_flow = 24
 
 [[flow]]
 name = "Decode a POD5 long-read signal file"
 outcome = "Read raw signal records out of a POD5 container."
 keywords = ["decode", "signal", "pod5"]
 members = [
-  "src/homonin/genomic/raw_long_read_signal/pod5.py::text",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::decode",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::decode_official",
   "src/homonin/genomic/raw_long_read_signal/pod5.py::_parse_records",
   "src/homonin/genomic/raw_long_read_signal/pod5.py::_parse",
   "src/homonin/genomic/raw_long_read_signal/pod5.py::_parse_stream",
-  "src/homonin/genomic/raw_long_read_signal/pod5.py::decode",
-  "src/homonin/genomic/raw_long_read_signal/pod5.py::_Invalid",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::text",
   "src/homonin/genomic/raw_long_read_signal/pod5.py::take",
-  "src/homonin/genomic/raw_long_read_signal/pod5.py::_read_chunk",
   "src/homonin/genomic/raw_long_read_signal/pod5.py::u8",
   "src/homonin/genomic/raw_long_read_signal/pod5.py::u16",
   "src/homonin/genomic/raw_long_read_signal/pod5.py::u32",
   "src/homonin/genomic/raw_long_read_signal/pod5.py::u64",
   "src/homonin/genomic/raw_long_read_signal/pod5.py::f64",
   "src/homonin/genomic/raw_long_read_signal/pod5.py::skip",
-  "src/homonin/genomic/raw_long_read_signal/pod5.py::ensure_exhausted"
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::ensure_exhausted",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::_read_chunk",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::bind",
+  "src/homonin/genomic/raw_long_read_signal/pod5.py::to_binding"
 ]
 
 [[flow]]
 name = "Compute the copy-number burden"
-outcome = "Read segment and variant sources and decline burden values."
+outcome = "Read segment, SV and gene sources and decline burden values."
 keywords = ["copy", "number", "burden", "compute"]
 members = [
   "src/homonin/genomic/copy_number/burden.py::compute_cnv_burden",
-  "src/homonin/_shared/declination.py::Declination",
   "src/homonin/genomic/copy_number/burden.py::_coerce_seg",
+  "src/homonin/genomic/copy_number/burden.py::_coerce_bedpe",
+  "src/homonin/genomic/copy_number/burden.py::_coerce_gtf",
+  "src/homonin/genomic/copy_number/burden.py::_coerce_ped",
+  "src/homonin/genomic/copy_number/burden.py::_merge_intervals",
+  "src/homonin/genomic/copy_number/burden.py::_total_bp",
+  "src/homonin/genomic/copy_number/burden.py::_intervals_overlap",
+  "src/homonin/genomic/copy_number/burden.py::_child_contained_in_parents",
+  "src/homonin/genomic/copy_number/burden.py::_gene_index",
+  "src/homonin/genomic/copy_number/burden.py::_norm_chrom",
+  "src/homonin/genomic/copy_number/burden.py::_overlap_genes",
+  "src/homonin/genomic/copy_number/burden.py::_bedpe_sample",
+  "src/homonin/genomic/copy_number/burden.py::_parent_segment_ivs",
+  "src/homonin/genomic/copy_number/burden.py::_parent_sv_ivs",
+  "src/homonin/genomic/copy_number/burden.py::SampleBurden",
+  "src/homonin/genomic/copy_number/burden.py::CNVBurdenSummary",
   "src/homonin/genomic/copy_number/seg.py::_read_lines",
   "src/homonin/genomic/copy_number/seg.py::_read_bytes",
   "src/homonin/genomic/copy_number/seg.py::decode",
@@ -45,13 +64,9 @@ members = [
   "src/homonin/phenotypic/pedigree/ped.py::_read_lines_and_locator",
   "src/homonin/phenotypic/pedigree/ped.py::decode",
   "src/homonin/phenotypic/pedigree/ped.py::_resolve_parent",
-  "src/homonin/genomic/copy_number/burden.py::_coerce_bedpe",
-  "src/homonin/genomic/copy_number/burden.py::_coerce_gtf",
-  "src/homonin/genomic/copy_number/burden.py::_coerce_ped",
-  "src/homonin/genomic/copy_number/burden.py::_decline",
-  "src/homonin/_shared/declination.py::record",
+  "src/homonin/_shared/declination.py::Declination",
   "src/homonin/_shared/declination.py::DeclinationError",
-  "src/homonin/_shared/version_state.py::VersionState"
+  "src/homonin/_shared/declination.py::record"
 ]
 
 [[flow]]
@@ -59,17 +74,25 @@ name = "Decode actigraphy device files"
 outcome = "Parse Geneactiv and Actiwatch recordings into datasets."
 keywords = ["decode", "actigraphy", "geneactiv"]
 members = [
+  "src/homonin/signal/actigraphy/actigraphy.py::decode",
   "src/homonin/signal/actigraphy/actigraphy.py::_decode_geneactiv",
   "src/homonin/signal/actigraphy/actigraphy.py::_looks_geneactiv",
-  "src/homonin/signal/actigraphy/actigraphy.py::decode",
-  "src/homonin/_shared/declination.py::DeclinationError",
-  "src/homonin/_shared/units.py::normalise_to",
-  "src/homonin/signal/actigraphy/actigraphy.py::_resolve_accel_unit",
-  "src/homonin/signal/actigraphy/actigraphy.py::_decline_or_raise",
   "src/homonin/signal/actigraphy/actigraphy.py::_decode_actiwatch",
   "src/homonin/signal/actigraphy/actigraphy.py::_actiwatch_epoch_hz",
-  "src/homonin/_shared/declination.py::record",
-  "src/homonin/_shared/declination.py::Declination"
+  "src/homonin/signal/actigraphy/actigraphy.py::_split_actiwatch_preamble",
+  "src/homonin/signal/actigraphy/actigraphy.py::_parse_timestamp",
+  "src/homonin/signal/actigraphy/actigraphy.py::_resolve_assume_tz",
+  "src/homonin/signal/actigraphy/actigraphy.py::_resolve_accel_unit",
+  "src/homonin/signal/actigraphy/actigraphy.py::_read_raw",
+  "src/homonin/signal/actigraphy/actigraphy.py::_empty_dataset",
+  "src/homonin/signal/actigraphy/actigraphy.py::_decline_or_raise",
+  "src/homonin/signal/actigraphy/actigraphy.py::bind",
+  "src/homonin/signal/actigraphy/actigraphy.py::to_binding",
+  "src/homonin/signal/actigraphy/actigraphy.py::num_samples",
+  "src/homonin/_shared/units.py::normalise_to",
+  "src/homonin/_shared/declination.py::Declination",
+  "src/homonin/_shared/declination.py::DeclinationError",
+  "src/homonin/_shared/declination.py::record"
 ]
 
 [[flow]]
@@ -79,9 +102,27 @@ keywords = ["eeg", "quality", "compute"]
 members = [
   "src/homonin/signal/neural_electrophysiology/eeg_quality.py::compute_eeg_quality",
   "src/homonin/signal/neural_electrophysiology/eeg_quality.py::EEGQualitySummary",
-  "src/homonin/_shared/version_state.py::VersionState",
-  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::_zeroed_quality_summary",
-  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::_extract_records",
-  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::_decline_zero_quality"
+  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::ChannelQuality",
+  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::BandpowerEpoch",
+  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::to_dict",
+  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::to_binding",
+  "src/homonin/signal/neural_electrophysiology/eeg_quality.py::_is_hostile_label",
+  "src/homonin/_shared/version_state.py::VersionState"
 ]
 
+[[flow]]
+name = "Record a reviewed binding"
+outcome = "Draft, review and decline bindings; store and look them up."
+keywords = ["binding", "review", "decline"]
+members = [
+  "src/homonin/_shared/binding.py::Binding",
+  "src/homonin/_shared/binding.py::draft",
+  "src/homonin/_shared/binding.py::review",
+  "src/homonin/_shared/binding.py::decline",
+  "src/homonin/_shared/binding.py::BindingStore",
+  "src/homonin/_shared/binding.py::for_input",
+  "src/homonin/_shared/binding.py::active_for_input",
+  "src/homonin/_shared/binding.py::get",
+  "src/homonin/_shared/binding.py::put",
+  "src/homonin/_shared/version_state.py::VersionState"
+]

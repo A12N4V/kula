@@ -41,8 +41,10 @@ Three gold repos, each with hand-written expected flows:
 
 Each gold set is a TOML file: per flow, the expected `name`, `outcome`,
 `members` (qualified names, `path::fn`, tail-matched) and `keywords` for the
-name rubric. Gold is written against what the engine can actually produce,
-not against imagination – write it after inspecting `kula map` output.
+name rubric. Gold members are hand-written from the repo's README outcomes
+(what the program achieves) and the source files that implement them – full
+member lists, no cap – and then checked for producibility against engine
+output (`KULA_BENCH_DEBUG=1 kula map --bench`), never copied from it.
 
 ### Metrics (printed as JSON by `kula map --bench`)
 
