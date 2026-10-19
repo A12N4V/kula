@@ -6,7 +6,7 @@
 // Three size stages (BLOCK_SIZES): more room shows more detail, up to the
 // function list. Nothing here talks to React Flow – the kit wraps it.
 import { memo, useCallback } from "react";
-import type { NodeProps } from "@xyflow/react";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { RoleMark, ROLE_COLOR } from "../views/map/icons";
 import { sectionLogo } from "../views/map/icons";
 import type { BlockCardData, FlowNode } from "./types";
@@ -108,6 +108,10 @@ const BlockCard = memo((props: NodeProps) => {
         </div>
       ) : null}
       {!data.members && <ResizeHandle id={id ?? data.id} w={w} h={h} />}
+      {/* The kit wires edges to handles: left accepts a dragged wire, right
+          emits one. Hidden dots, like the tiles' – the card edge is the target. */}
+      <Handle type="target" position={Position.Left} id="l" className="fc-dot" isConnectable={false} />
+      <Handle type="source" position={Position.Right} id="r" className="fc-dot" isConnectable={false} />
     </div>
   );
 });

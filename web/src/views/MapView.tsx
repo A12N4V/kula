@@ -505,7 +505,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           <div className="sy-roles-presets">
             {(["functions", "utilities", "all"] as const).map((l) => (
               <button key={l} className={`tab-btn sy-lens-btn${lens === l ? " on" : ""}`} data-testid={`map-lens-${l}`} aria-pressed={lens === l}
-                onClick={() => setLens(l)}>{l}</button>
+                onClick={() => { setLens(l); setRolesOpen(false); }}>{l}</button>
             ))}
           </div>
           {ROLES.map((role) => (
