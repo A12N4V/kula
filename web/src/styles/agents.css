@@ -429,3 +429,38 @@
 @media (max-width: 760px) {
   .team-tabs button, .team-tabs .team-tab-add, .tpl-card, .chip-toggle, .org-card { min-height: 40px; min-width: 40px; }
 }
+
+/* ================================================================ R1: the one add flow – a single + control per kind,
+   opening the compact form in place (agents tabs, roster header, Workspace HUD) */
+.ag-add { flex: none; }
+.ag-add-form { display: grid; align-content: start; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-2); background: var(--bg-2); margin: 0 0 10px; min-width: 0; }
+.ag-add-kind { font: 600 10.5px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--accent); }
+.ag-add-err { color: var(--red); font-size: 12px; }
+.ag-add-actions { flex-wrap: wrap; gap: 6px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.ag-add-form .mi-field { min-width: 0; }
+.ag-add-form .input, .ag-add-form textarea { width: 100%; max-width: 100%; box-sizing: border-box; }
+.ag-add-seats { display: grid; gap: 6px; min-width: 0; }
+.ag-add-seat { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 28px; gap: 6px; align-items: center; }
+.ag-add-seat .input { min-width: 0; }
+/* On the phone the form is a full-width sheet above the statusbar, with
+   touch-sized targets; on the agents page it stays in flow. */
+@media (max-width: 480px) {
+  /* the Workspace rail's Library card hosts the same form – it must break out
+     of the sidebar and become the same full-width sheet. Two traps: ws-card's
+     pop-in animation leaves an identity transform behind (which traps
+     position:fixed against the 317px card), and the view wrapper's enter
+     animation does the same – both are dropped at the sheet breakpoint. */
+  .ws-card.ws-lib, .view-enter { animation: none; transform: none; }
+  .map-insp .ag-add-form, .ws-lib .ag-add-form { position: fixed; left: 0; right: 0; bottom: 28px; z-index: 40; border-left: 0; border-right: 0; border-bottom: 0; background: var(--panel); max-height: calc(100dvh - 120px); overflow: auto; }
+  .ag-add-form .input, .ag-add-form textarea { min-height: 40px; }
+  .ag-add-form .btn { min-height: 40px; }
+  .ag-add-seat { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ag-add-seat .input, .ag-add-seat select { min-height: 40px; }
+  /* the roster header's actions wrap instead of colliding with the statusbar */
+  .page { padding-bottom: 64px; }
+}
+/* Phone: the teams card head sits just under the statusbar band at 390 – give
+   the stack a clear break there so no control is clipped behind the statusbar. */
+@media (max-width: 480px) {
+  .ag-control > .card:nth-child(2) { margin-top: 48px; }
+}

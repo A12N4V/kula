@@ -13,8 +13,9 @@ import { Mark } from "../../brands";
 import { Chips } from "../../Autofill";
 import { Empty, Icon } from "../../ui";
 import { FlowCanvas, FlowSidebar } from "../../flow";
-import { blank, type Act, type Tab } from "./data";
+import { blank, takeStashedAdd, type Act, type Tab } from "./data";
 import { SuggestionRow, TabStrip } from "./parts";
+import { AddForm } from "./AddForm";
 
 const BUILTIN = ["explore", "fix", "refactor", "tests", "docs", "autoresearch"];
 const NATIVE: [string, string, string][] = [["claude", "Claude Code subagent", ".claude/agents/kula-"], ["cursor", "Cursor rule", ".cursor/rules/kula-"], ["gemini", "Gemini CLI command", ".gemini/commands/kula/"]];
@@ -38,12 +39,22 @@ export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; ac
   const own = info.workflows.filter((w) => !w.builtin);
   const dirty = !!draft && !!cur && JSON.stringify({ ...blank(), ...cur, memory: cur.memory || "write", builtin: undefined }) !== JSON.stringify({ ...draft, builtin: undefined });
   const isNew = orig === null;
+  // The one add flow (module R1): the strip's + opens the compact AddForm –
+  // name, role, fence, start-from – instead of a half-built draft editor.
+  const [adding, setAdding] = useState(false);
+  useEffect(() => { if (takeStashedAdd() === "agent") { setDraft(null); setOrig(null); setAdding(true); } }, []);
 
   const save = async () => {
     if (!draft) return;
     const next = [...own.filter((w) => w.name !== orig && w.name !== draft.name), { ...draft, builtin: undefined, memory: draft.memory === "write" ? "" : draft.memory }];
     await act("workflows_save", { workflows: next }, `Saved ${draft.name} to kula.toml`).catch(() => {});
     setSel(draft.name);
+  };
+  const createFrom = async (wf: Workflow) => {
+    const next = [...own.filter((w) => w.name !== wf.name), { ...wf, builtin: undefined, memory: wf.memory === "write" ? "" : wf.memory }];
+    await act("workflows_save", { workflows: next }, `Saved ${wf.name} to kula.toml`).catch(() => {});
+    setAdding(false);
+    setSel(wf.name);
   };
   const remove = async () => {
     if (!draft || !orig) return;
@@ -60,9 +71,10 @@ export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; ac
       {sugg.map((s) => <SuggestionRow key={s.id} s={s} act={act} />)}
       <TabStrip label="Workflows" addLabel="New workflow" cur={isNew ? "" : sel}
         items={info.workflows.map((w) => ({ key: w.name, label: w.name, dot: info.workflow?.name === w.name, title: w.builtin ? `${w.about ?? "built in"} – double-click makes a renamed copy` : w.about || undefined }))}
-        onPick={setSel} onAdd={() => { setDraft(blank()); setOrig(null); setSel(""); }}
+        onPick={setSel} onAdd={() => { setDraft(null); setOrig(null); setAdding(true); }}
         onRename={(from, to) => act("workflow_rename", { workflow: from, name: to }, `${from} renamed to ${to}`).then(() => setSel(to)).catch(() => {})} />
-      {isNew && draft && (
+      {adding && <AddForm kind="agent" info={info} onCreate={createFrom} onCancel={() => setAdding(false)} />}
+      {!adding && isNew && draft && (
         <div className="wf-from">
           <span className="muted">start from</span>
           {info.workflows.map((w) => (
@@ -71,7 +83,7 @@ export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; ac
           <button className="chip-toggle" onClick={() => setDraft(blank())}>blank</button>
         </div>
       )}
-      {draft ? <WorkflowGraph draft={draft} set={set} isNew={isNew} /> : null}
+      {!adding && draft ? <WorkflowGraph draft={draft} set={set} isNew={isNew} /> : null}
       {draft ? (
         <section className="card wf-edit">
           <div className="card-head">
