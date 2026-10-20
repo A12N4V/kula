@@ -90,7 +90,7 @@ function AgentAddForm({ info, base, free, onCreate, onCancel }: {
   return (
     <FormShell title="New agent – a work mode in kula.toml" err={err} onCreate={make} ok={!err} onCancel={onCancel}>
       <label className="mi-field"><span>name</span>
-        <input className="input mono" data-testid="ag-add-name" value={name} autoFocus
+        <input className="input mono" data-testid="ag-add-name" value={name} autoFocus onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => setName(clean(e.target.value))} placeholder="db-migrate" aria-label="Agent name" />
       </label>
       <label className="mi-field"><span>role</span>
@@ -147,7 +147,7 @@ function TeamAddForm({ info, base, free, onCreate, onCancel }: {
   return (
     <FormShell title="New team" err={err} onCreate={make} ok={!err} onCancel={onCancel}>
       <label className="mi-field"><span>name</span>
-        <input className="input mono" data-testid="ag-add-name" value={team.name} autoFocus
+        <input className="input mono" data-testid="ag-add-name" value={team.name} autoFocus onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => set({ name: clean(e.target.value) })} aria-label="Team name" />
       </label>
       <label className="mi-field"><span>shape</span>
