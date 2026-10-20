@@ -44,14 +44,20 @@ function FormShell({ title, err, children, onCreate, onCancel, ok }: {
 }) {
   return (
     <form className="ag-add-form" data-testid="ag-add-form" onSubmit={(e) => { e.preventDefault(); onCreate(); }}
-      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel?.(); } }}>
+      onKeyDown={(e) => {
+        if (e.key === "Escape") { e.stopPropagation(); onCancel?.(); return; }
+        // Enter creates – explicit, because the Autofill pop inside the form
+        // eats the browser's implicit submit; text inputs only, and never when
+        // a child (the fence Chips) already consumed the key.
+        if (e.key === "Enter" && ok && !e.defaultPrevented && e.target instanceof HTMLInputElement && e.target.type === "text") { e.preventDefault(); onCreate(); }
+      }}>
       <div className="ag-add-kind">{title}</div>
       {children}
       {err && <div className="ag-add-err" role="alert">{err}</div>}
       <div className="row ag-add-actions">
         {onCancel && <button type="button" className="btn sm ghost" data-testid="ag-add-cancel" onClick={onCancel}>Cancel</button>}
         <span className="spacer" />
-        <button type="submit" className="btn sm primary" data-testid="ag-add-create" disabled={!ok} onClick={onCreate}>Create</button>
+        <button type="submit" className="btn sm primary" data-testid="ag-add-create" disabled={!ok}>Create</button>
       </div>
       <div className="muted ag-meta">enter creates · esc cancels</div>
     </form>

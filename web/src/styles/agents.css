@@ -446,7 +446,10 @@
    touch-sized targets; on the agents page it stays in flow. */
 @media (max-width: 480px) {
   /* the Workspace rail's Library card hosts the same form – it must break out
-     of the sidebar and become the same full-width sheet */
+     of the sidebar and become the same full-width sheet. ws-card's pop-in
+     animation leaves a transform behind, which would trap position:fixed
+     against the 317px card – drop it so the sheet spans the phone. */
+  .ws-lib { animation: none; transform: none; }
   .map-insp .ag-add-form, .ws-lib .ag-add-form { position: fixed; left: 0; right: 0; bottom: 28px; z-index: 40; border-left: 0; border-right: 0; border-bottom: 0; background: var(--panel); max-height: calc(100dvh - 120px); overflow: auto; }
   .ag-add-form .input, .ag-add-form textarea { min-height: 40px; }
   .ag-add-form .btn { min-height: 40px; }
