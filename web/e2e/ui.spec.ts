@@ -783,28 +783,41 @@ test.describe("agents", () => {
     await page.screenshot({ path: `test-results/${info.project.name}-agents-full.png`, fullPage: true });
   });
 
-  test("a workflow: create it with fences and steps, preview it on the graph, delete it", async ({ page }, info) => {
+  test("a workflow: create it in the compact form, finish it in the editor, preview it on the graph, delete it", async ({ page }, info) => {
     desktopOnly(info);
     await open(page, "agents/workflows");
+    // The one add flow: + opens the compact form in place – defaults prefilled,
+    // inline validation, Enter creates, Esc cancels. No modal, no second step.
     await page.getByRole("button", { name: "New workflow" }).click();
-    const form = page.locator(".wf-edit");
-    await form.getByPlaceholder("db-migrate").fill("e2e-migrate");
-    await form.getByPlaceholder("One line").fill("Schema changes, nothing else");
-    const scope = form.locator(".ff-open input");
+    const form = page.locator("[data-testid=ag-add-form]");
+    await expect(form).toBeVisible();
+    await expect(form.locator("[data-testid=ag-add-name]")).toHaveValue(/new-workflow/);
+    await expect(form.getByLabel("Fence scope")).toBeVisible();
+    // inline validation: an existing name is refused before anything saves
+    await form.locator("[data-testid=ag-add-name]").fill("fix");
+    await expect(form.locator(".ag-add-err")).toContainText("already exists");
+    await expect(form.locator("[data-testid=ag-add-create]")).toBeDisabled();
+    await form.locator("[data-testid=ag-add-name]").fill("e2e-migrate");
+    await form.getByLabel("Role").fill("Schema changes, nothing else");
+    const scope = form.getByLabel("Fence scope");
     await scope.fill("src/store");
     await scope.press("Enter");
-    const lock = form.locator(".ff-locked input");
-    await lock.fill("Cargo.toml");
-    await lock.press("Enter");
-    await form.getByRole("button", { name: "recall only", exact: true }).click();
-    await form.getByRole("button", { name: "Add step" }).click();
-    await form.getByLabel("Step 1").fill("Write a migration and its rollback");
-    await form.getByRole("button", { name: "Create" }).click();
-    // The editor card takes over after create: name, kula.toml tag, locked
-    // chip and the memory segment show what was saved. The saved workflow
-    // also becomes a tab in the strip, sourced from kula.toml.
+    // Enter creates (the form submits): the full editor opens on the new agent
+    await form.locator("[data-testid=ag-add-name]").press("Enter");
     const edit = page.locator(".wf-edit");
     await expect(edit.locator(".card-head h2")).toHaveText("e2e-migrate");
+    // The compact form carried role and fence; the editor takes the rest
+    // (lock, memory, steps) – every field editable inline from there.
+    await expect(edit.locator(".ff-open")).toContainText("src/store");
+    const lock = edit.locator(".ff-locked input");
+    await lock.fill("Cargo.toml");
+    await lock.press("Enter");
+    await edit.getByRole("button", { name: "recall only", exact: true }).click();
+    await edit.getByRole("button", { name: "Add step" }).click();
+    await edit.getByLabel("Step 1").fill("Write a migration and its rollback");
+    await edit.getByRole("button", { name: "Save" }).click();
+    // The editor card shows what was saved: name, kula.toml tag, locked chip
+    // and the memory segment. The saved workflow becomes a tab in the strip.
     await expect(edit.locator(".card-head .tag")).toContainText("kula.toml");
     await expect(edit.locator(".ff-locked")).toContainText("Cargo.toml");
     await expect(edit.locator(".seg .on")).toContainText("recall only");
@@ -827,6 +840,117 @@ test.describe("agents", () => {
     page.once("dialog", (d) => d.accept());
     await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
     await expect(page.locator(".wf-tabs [role=tab]").filter({ hasText: "e2e-migrate" })).toHaveCount(0);
+  });
+
+  test("a team: create it in the compact form, edit and delete it – asserted by name", async ({ page, request }, info) => {
+    desktopOnly(info);
+    await open(page, "agents/teams");
+    // One add flow for teams: the strip's + opens the compact form with the
+    // default shape prefilled (a lead seat from the first template).
+    await page.getByRole("button", { name: "New team from a template" }).click();
+    const form = page.locator("[data-testid=ag-add-form]");
+    await expect(form).toBeVisible();
+    await expect(form.locator("[data-testid=ag-add-name]")).toHaveValue(/new-team/);
+    await expect(form.locator("[data-testid=ag-add-seats] .ag-add-seat")).toHaveCount(3);
+    // inline validation: a name that already exists is refused, and the empty
+    // name too – nothing saves until the name is required-unique.
+    await form.locator("[data-testid=ag-add-name]").fill("steer");
+    await expect(form.locator(".ag-add-err")).toContainText("already exists");
+    await expect(form.locator("[data-testid=ag-add-create]")).toBeDisabled();
+    await form.locator("[data-testid=ag-add-name]").fill("");
+    await expect(form.locator(".ag-add-err")).toContainText("name");
+    await form.locator("[data-testid=ag-add-name]").fill("e2e-crew");
+    await form.getByLabel("Team about").fill("an e2e crew");
+    await form.getByLabel("Seat 1 name").fill("crew-lead");
+    // Enter creates; the new team is selected and visible in the strip.
+    await form.locator("[data-testid=ag-add-name]").press("Enter");
+    const tab = page.locator(".team-tabs [role=tab]").filter({ hasText: "e2e-crew" });
+    await expect(tab).toBeVisible();
+    await expect(tab).toHaveClass(/on/);
+    await expect(tab).toBeInViewport();
+    await expect(page.locator(".map-inspector").getByLabel("Team name")).toHaveValue("e2e-crew");
+    // Edit: rename through the strip's rename-in-place; the server sees it.
+    await tab.dblclick();
+    await page.locator(".tab-rename").fill("e2e-crew-2");
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".team-tabs [role=tab]").filter({ hasText: "e2e-crew-2" })).toBeVisible();
+    const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
+    expect(toml.content).toContain('name = "e2e-crew-2"');
+    expect(toml.content).not.toContain('name = "e2e-crew"');
+    // Delete: the editor's delete (existing confirm-free local remove, then
+    // the card's Save) takes the team out of kula.toml by name.
+    await page.locator(".map-inspector").getByRole("button", { name: "Delete team" }).click();
+    await page.locator(".team-card").getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.locator(".team-tabs [role=tab]").filter({ hasText: "e2e-crew-2" })).toHaveCount(0);
+    const toml2 = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
+    expect(toml2.content).not.toContain('name = "e2e-crew-2"');
+  });
+
+  test("the add flow works by keyboard alone: esc cancels, enter creates", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents/workflows");
+    await page.getByRole("button", { name: "New workflow" }).focus();
+    await page.keyboard.press("Enter");
+    const form = page.locator("[data-testid=ag-add-form]");
+    await expect(form).toBeVisible();
+    // esc cancels: the form closes and nothing was saved
+    await page.keyboard.press("Escape");
+    await expect(form).toHaveCount(0);
+    const kbd = `e2e-kb-${Date.now()}`;
+    await page.getByRole("button", { name: "New workflow" }).focus();
+    await page.keyboard.press("Enter");
+    await page.keyboard.type(kbd); // the name input is autofocused
+    await page.keyboard.press("Enter"); // enter creates
+    const tab = page.locator(".wf-tabs [role=tab]").filter({ hasText: kbd });
+    await expect(tab).toBeVisible();
+    await expect(page.locator(".wf-edit .card-head h2")).toHaveText(kbd);
+    // and it is really in kula.toml – clean up after ourselves
+    page.once("dialog", (d) => d.accept());
+    await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
+    await expect(tab).toHaveCount(0);
+  });
+
+  test("@responsive no overlap on the agents view at 1440 and 390", async ({ page }, info) => {
+    await open(page, "agents");
+    for (const [w, h] of [[1440, 900], [390, 844]]) {
+      await page.setViewportSize({ width: w, height: h });
+      await page.waitForTimeout(300);
+      for (const tab of ["", "teams", "workflows"]) {
+        if (tab) await page.getByRole("tab", { name: new RegExp(tab) }).click();
+        const hits = await page.evaluate(() => {
+          // Clip-aware overlap: an element's rect counts only inside the
+          // scrollport that clips it – content scrolled out of a pane is not
+          // an overlap with the chrome sitting below the pane.
+          const vis = (el: Element) => {
+            const s = getComputedStyle(el);
+            if (s.display === "none" || s.visibility === "hidden") return null;
+            let r = el.getBoundingClientRect();
+            let n = el.parentElement;
+            while (n && n !== document.body) {
+              const cs = getComputedStyle(n);
+              if (cs.overflowY !== "visible" || cs.overflowX !== "visible") {
+                const c = n.getBoundingClientRect();
+                const t = { x: Math.max(r.left, c.left), y: Math.max(r.top, c.top), x2: Math.min(r.right, c.right), y2: Math.min(r.bottom, c.bottom) };
+                r = { left: t.x, right: t.x2, top: t.y, bottom: t.y2 } as DOMRect;
+                if (r.bottom - r.top < 4 || r.right - r.left < 4) return null;
+              }
+              n = n.parentElement;
+            }
+            return r;
+          };
+          const els = [...document.querySelectorAll("button, input, h1, h2")].map(vis).filter((r): r is DOMRect => !!r);
+          let worst = 0;
+          for (let i = 0; i < els.length; i++) for (let j = i + 1; j < els.length; j++) {
+            const a = els[i], b = els[j];
+            const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+            const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+            if (ox > 3 && oy > 3) worst++;
+          }
+          return worst;
+        });
+        expect(hits, `${tab || "overview"} overlaps at ${w}x${h}`).toBe(0);
+      }
+    }
   });
 
   test("fences: add one with autofill, save it to kula.toml, accept an agent's suggestion, take both away", async ({ page, request }, info) => {
@@ -1212,10 +1336,14 @@ test.describe("teams and research (T1)", () => {
     await expect(org).toContainText("bench");
     await soc.getByRole("button", { name: /^ship/ }).click();
     await expect(page.locator(".map-inspector").getByLabel("Answers to team")).toHaveValue("steer");
-    // Create a team: the tab strip's picker, then the template form names it.
+    // Create a team: the strip's + opens the one compact add form (name,
+    // shape, seats); Enter or the Create button saves it at once.
     await page.getByRole("button", { name: "New team from a template" }).click();
-    await page.locator(".tpl-form").getByLabel("Team name").fill("e2e-crew");
-    await page.locator(".tpl-form").getByRole("button", { name: "Create e2e-crew" }).click();
+    const add = page.locator("[data-testid=ag-add-form]");
+    await expect(add).toBeVisible();
+    await expect(add.locator("[data-testid=ag-add-name]")).toHaveValue(/new-team/);
+    await add.getByLabel("Team name").fill("e2e-crew");
+    await add.locator("[data-testid=ag-add-create]").click();
     const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
     expect(toml.content).toContain('name = "e2e-crew"');
     // A template team is named generic agents run by any connected agent:
@@ -2860,34 +2988,72 @@ test.describe("agents add from the map rail (U3)", () => {
   test.use({ baseURL: ({ fx }, use) => use(fx) });
   const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
 
-  test("the Library rail's add buttons create a team and an agent and open the editor on them", async ({ page }, info) => {
+  test("the Library rail's add buttons open the compact form; creating it lands the editor on the new item", async ({ page }, info) => {
     desktopOnly(info);
     test.setTimeout(90_000);
     await open(page, "map");
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
     await page.locator("[data-testid=map-side-toggle]").click();
     await page.locator("[data-testid=ws-tab-library]").click();
-    // one obvious add per kind, in the rail's head
+    // one obvious add per kind, in the rail's head – both open the same form
     await expect(page.locator("[data-testid=lib-add-team]")).toBeVisible();
     await expect(page.locator("[data-testid=lib-add-agent]")).toBeVisible();
     // agent and team items carry their harmonograph mark
     await expect(page.locator("[data-testid='ws-library'] .lib-item svg[data-figure='harmonograph']").first()).toBeVisible();
-    // add team: the editor opens on the new team, name and role prefilled
+    // add team: the form opens in the rail, defaults prefilled; esc cancels
     await page.locator("[data-testid=lib-add-team]").click();
+    const form = page.locator("[data-testid=ag-add-form]");
+    await expect(form).toBeVisible();
+    await expect(form.locator("[data-testid=ag-add-name]")).toHaveValue(/new-team/);
+    await page.keyboard.press("Escape");
+    await expect(form).toHaveCount(0);
+    // create a team from the rail: the agents editor opens on it, selected
+    await page.locator("[data-testid=lib-add-team]").click();
+    const teamName = `rail-team-${Date.now()}`;
+    await form.locator("[data-testid=ag-add-name]").fill(teamName);
+    await form.locator("[data-testid=ag-add-name]").press("Enter");
     await expect(page).toHaveURL(/#agents\/teams/);
-    await expect(page.locator("input.mi-title")).toHaveValue(/new-team/);
-    // the solo template's one seat (role lead) is in the org, the team fields in the inspector
-    await expect(page.locator(".org").first()).toContainText(/lead/i);
-    await expect(page.locator(".map-inspector")).toContainText("team prompt");
-    // add agent: the workflow editor opens on the new workflow, fence prefilled
+    const teamTab = page.locator(".team-tabs [role=tab]").filter({ hasText: teamName });
+    await expect(teamTab).toHaveClass(/on/);
+    await expect(teamTab).toBeInViewport();
+    await expect(page.locator(".map-inspector").getByLabel("Team name")).toHaveValue(teamName);
+    // add agent from the rail: the workflow editor opens on it, fence prefilled
     await open(page, "map");
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
     await page.locator("[data-testid=map-side-toggle]").click();
     await page.locator("[data-testid=ws-tab-library]").click();
-    await expect(page.locator("[data-testid=lib-add-agent]")).toBeVisible();
     await page.locator("[data-testid=lib-add-agent]").click();
+    const wfName = `rail-agent-${Date.now()}`;
+    await form.locator("[data-testid=ag-add-name]").fill(wfName);
+    await form.locator("[data-testid=ag-add-name]").press("Enter");
     await expect(page).toHaveURL(/#agents\/workflows/);
-    await expect(page.locator(".wf-edit input.mono").first()).toHaveValue(/new-workflow/);
+    await expect(page.locator(".wf-edit .card-head h2")).toHaveText(wfName);
     await expect(page.locator(".wf-edit")).toContainText("src/**");
+    // clean up: delete both from their editors
+    page.once("dialog", (d) => d.accept());
+    await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
+    await expect(page.locator(".wf-tabs [role=tab]").filter({ hasText: wfName })).toHaveCount(0);
+    await open(page, "agents/teams");
+    await page.locator(".team-tabs [role=tab]").filter({ hasText: teamName }).click();
+    await page.locator(".map-inspector").getByRole("button", { name: "Delete team" }).click();
+    await page.locator(".team-card").getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.locator(".team-tabs [role=tab]").filter({ hasText: teamName })).toHaveCount(0);
+  });
+
+  test("@responsive on a phone the rail's add form is a full-width sheet with touch targets", async ({ page }, info) => {
+    test.skip(info.project.name !== "phone", "the sheet layout is the 390 form");
+    await open(page, "map");
+    await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
+    await page.locator("[data-testid=map-side-toggle]").click();
+    await page.locator("[data-testid=ws-tab-library]").click();
+    await page.locator("[data-testid=lib-add-team]").click();
+    const form = page.locator("[data-testid=ag-add-form]");
+    await expect(form).toBeVisible();
+    const box = await form.boundingBox();
+    const vh = page.viewportSize()?.height ?? 844;
+    expect(box?.width, "the form spans the phone width").toBeGreaterThanOrEqual(384);
+    expect(box?.y ?? 0, "the sheet sits above the statusbar").toBeLessThan(vh - 28);
+    const name = form.locator("[data-testid=ag-add-name]");
+    expect((await name.boundingBox())?.height).toBeGreaterThanOrEqual(38);
   });
 });

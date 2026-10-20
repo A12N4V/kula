@@ -34,4 +34,18 @@ export function useAgentsInfo(version: number) {
   return { info, err, load };
 }
 export type Act = (action: Parameters<typeof api.agentAction>[0], body: Record<string, unknown>, done: string) => Promise<unknown>;
+
+/** Hand the tab strip the wish to add something: an entry point elsewhere
+    (the roster header, the Workspace HUD) stashes the kind before navigating,
+    and the tab that owns the add form opens it on mount. */
+export const stashAdd = (kind: "team" | "agent") => {
+  try { sessionStorage.setItem("kula.agents.add", kind); } catch { /* private mode */ }
+};
+export const takeStashedAdd = (): "team" | "agent" | null => {
+  try {
+    const k = sessionStorage.getItem("kula.agents.add");
+    if (k === "team" || k === "agent") sessionStorage.removeItem("kula.agents.add");
+    return k === "team" || k === "agent" ? k : null;
+  } catch { return null; }
+};
 export type Tab = "overview" | "workflows" | "research" | "teams" | "skills" | "fences" | "memory" | "docs" | "connect";

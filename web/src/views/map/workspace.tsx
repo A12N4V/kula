@@ -12,8 +12,8 @@ import type { Block, MapData } from "./types";
 import { Icon, Harmonograph } from "../../ui";
 import type { Go } from "../../nav";
 import { ITEM_DRAG, type Item } from "./pipeline";
-import { TEAM_TEMPLATES, teamFrom } from "../agents/templates";
 import { blank } from "../agents/data";
+import { AddForm } from "../agents/AddForm";
 
 export type Mode = "explore" | "build" | "run" | "review";
 
@@ -155,26 +155,22 @@ export const stashNewItem = (kind: "team" | "agent", name: string) => {
 
 export function Library({ info, go, onPick }: { info: AgentsInfo | null; go?: Go; onPick: (it: Item) => void }) {
   const [open, setOpen] = useState<string>("workflows");
+  // The one add flow (module R1): the rail's + opens the same compact AddForm
+  // the agents tabs use, right here in the rail; Enter creates and the agents
+  // editor opens on the new item, selected and scrolled into view.
+  const [addKind, setAddKind] = useState<"team" | "agent" | null>(null);
   if (!info) return <section className="ws-card"><p className="ws-note">Loading agents…</p></section>;
   const conns = info.connections.filter((c) => c.mcp || c.hook);
   const unique = (base: string, taken: string[]) => { let n = base, i = 2; while (taken.includes(n)) n = `${base}-${i++}`; return n; };
-  // One obvious add: the item is created at once with sensible defaults
-  // (a solo-lead team, a workflow fenced to src/**), and the agents editor
-  // opens on it – every field editable inline from there.
-  const addTeam = () => {
+  const createTeam = (team: Team) => {
     if (!go) return;
-    const tpl = TEAM_TEMPLATES.find((t) => t.id === "solo") ?? TEAM_TEMPLATES[0];
-    const name = unique("new-team", info.teams.map((t) => t.name));
-    const team = teamFrom(tpl, name, [], "");
     api.agentAction("teams_save", { teams: [...info.teams, team] }).catch(() => { /* the editor shows the server's state */ })
-      .then(() => { stashNewItem("team", name); go("agents", { tab: "teams" }); });
+      .then(() => { stashNewItem("team", team.name); go("agents", { tab: "teams" }); });
   };
-  const addAgent = () => {
+  const createAgent = (wf: Workflow) => {
     if (!go) return;
-    const name = unique("new-workflow", info.workflows.map((w) => w.name));
-    const wf: Workflow = { ...blank(), name, scope: ["src/**"] };
     api.agentAction("workflows_save", { workflows: [...info.workflows.filter((w) => !w.builtin), wf] }).catch(() => { /* the editor shows the server's state */ })
-      .then(() => { stashNewItem("agent", name); go("agents", { tab: "workflows" }); });
+      .then(() => { stashNewItem("agent", wf.name); go("agents", { tab: "workflows" }); });
   };
   const wf = info.workflows.filter((w) => !w.research);
   const loops = info.workflows.filter((w) => !!w.research);
@@ -202,8 +198,10 @@ export function Library({ info, go, onPick }: { info: AgentsInfo | null; go?: Go
       <div className="ws-card-head"><span className="ws-eyebrow">Library</span>
         <span className={`lib-conn${conns.length ? " on" : ""}`} title="agents connected over MCP and hooks">{conns.length ? `${conns.map((c) => c.name).join(", ")} connected` : "no agent connected"}</span>
         <span className="spacer" />
-        <button className="lib-add" data-testid="lib-add-team" onClick={addTeam} title="Create a team from the default template and open it in the editor"><Icon.plus /> team</button>
-        <button className="lib-add" data-testid="lib-add-agent" onClick={addAgent} title="Create a workflow and open it in the editor"><Icon.plus /> agent</button></div>
+        <button className="lib-add" data-testid="lib-add-team" onClick={() => setAddKind("team")} title="Add a team – a compact form right here in the rail"><Icon.plus /> team</button>
+        <button className="lib-add" data-testid="lib-add-agent" onClick={() => setAddKind("agent")} title="Add an agent – a compact form right here in the rail"><Icon.plus /> agent</button></div>
+      {addKind === "team" && <AddForm kind="team" info={info} onCreate={createTeam} onCancel={() => setAddKind(null)} />}
+      {addKind === "agent" && <AddForm kind="agent" info={info} onCreate={createAgent} onCancel={() => setAddKind(null)} />}
       <div className="dd">
         {sec("workflows", "Workflows", wf.length, "workflows", wf.map((w) => item({ kind: "agent", ref: w.name, name: title(w.name), about: w.about ?? "" })))}
         {sec("teams", "Teams", info.teams.length, "teams", info.teams.length ? info.teams.map((t) => item({ kind: "crew", ref: t.name, name: title(t.name), about: t.about ?? "" }, `${t.members.length} agents`)) : <p className="ws-note">No teams yet.</p>)}

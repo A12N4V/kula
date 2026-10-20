@@ -17,7 +17,7 @@ import { Icon, StatTable } from "../../ui";
 import type { Act } from "./data";
 import type { Tab } from "./data";
 import { AgentMark, Card, Loop, ListFilter, RunSummary, SuggestionRow, StartTask, WorkflowTile, useFilterList } from "./parts";
-import { AGENT_NAME } from "./data";
+import { AGENT_NAME, stashAdd } from "./data";
 
 /** One agent's row in the roster, computed from what /api/agents actually reports. */
 type RosterRow = {
@@ -50,7 +50,11 @@ export default function Overview({ info, act, setTab, onGraph, open }: { info: A
   return (
     <>
       <Card title="Roster" sub="every agent, what it may do, what it has done"
-        right={<ListFilter inputRef={inputRef} value={filter} onChange={setFilter} label="Filter roster" />}>
+        right={<>
+          <ListFilter inputRef={inputRef} value={filter} onChange={setFilter} label="Filter roster" />
+          <button className="btn sm ghost ag-add" data-testid="ag-add-agent" title="Add an agent – a compact form in the Workflows tab"
+            onClick={() => { stashAdd("agent"); setTab("workflows"); }}><Icon.plus /> agent</button>
+        </>}>
         <div className="roster" role="grid" aria-label="Agent roster" {...rosterNav}>
           <div className="roster-head" role="row" aria-hidden="true">
             <span>agent</span><span>wired</span><span>skills</span><span>mcp</span><span>last seen</span><span>fence hits</span><span>research</span><span>seats</span>
@@ -103,7 +107,8 @@ export default function Overview({ info, act, setTab, onGraph, open }: { info: A
         </Card>
 
         <Card title="Teams" sub={info.team ? `${info.team.name} at work` : info.teams.length ? `${info.teams.length} saved – none at work` : undefined}
-          right={<button className="btn sm ghost" onClick={() => setTab("teams")}>{info.teams.length ? "Open" : "Set up"} <Icon.arrow /></button>}>
+          right={<button className="btn sm ghost ag-add" data-testid="ag-add-team" title="Add a team – a compact form in the Teams tab"
+            onClick={() => { stashAdd("team"); setTab("teams"); }}><Icon.plus /> team</button>}>
           {info.teams.map((t) => (
             <button key={t.name} className="loop-row" onClick={() => setTab("teams")} title={`open ${t.name} in Teams`}>
               <b className="mono">{t.name}</b>

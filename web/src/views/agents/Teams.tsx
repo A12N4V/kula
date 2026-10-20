@@ -11,9 +11,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type AgentsInfo, type Team } from "../../api";
 import { Icon, useToast } from "../../ui";
-import { AGENT_IDS, AGENT_NAME, MODELS, type Act, type Tab } from "./data";
-import { TEAM_TEMPLATES, teamFrom, type TeamTemplate } from "./templates";
-import { Card, SeatMark, TabStrip, fenceSummary, keyName, seatName } from "./parts";
+import { AGENT_IDS, AGENT_NAME, MODELS, takeStashedAdd, type Act, type Tab } from "./data";
+import { Card, SeatMark, TabStrip, fenceSummary, keyName } from "./parts";
+import { AddForm } from "./AddForm";
 import { Harmonograph } from "../../harmonograph";
 import { freeName, seatKey, titleFor } from "../../roster";
 import { Society, SocietyGraph, societyOrder } from "./Society";
@@ -35,6 +35,9 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
       const { kind, name } = JSON.parse(raw) as { kind: string; name: string };
       if (kind === "team") { const i = teams.findIndex((t) => t.name === name); if (i >= 0) { setCur(i); setPicking(false); } }
     } catch { /* private mode */ }
+    // An add entry point elsewhere (roster header, Workspace HUD) hands the
+    // wish to add a team over before navigating; this tab opens the form.
+    if (takeStashedAdd() === "team") setPicking(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Follow the server only when its teams change: the 5 s agents poll hands
@@ -73,7 +76,7 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
       <TabStrip label="Teams" addLabel="New team from a template" cur={picking ? "" : String(cur)}
         items={societyOrder(teams).map(({ t: x, depth }) => ({ key: String(teams.indexOf(x)), label: x.name || "unnamed", depth, dot: info.team?.name === x.name, fixed: !info.teams.some((y) => y.name === x.name) }))}
         onPick={(k) => { setCur(Number(k)); setPicking(false); }} onAdd={() => setPicking(true)} onRename={(k, to) => rename(teams[Number(k)].name, to)} />
-      {picking ? <TeamPicker info={info} create={create} cancel={teams.length ? () => setPicking(false) : undefined} setTab={setTab} />
+      {picking ? <AddForm kind="team" info={info} onCreate={create} onCancel={teams.length ? () => setPicking(false) : undefined} />
         : t ? <TeamEditor key={cur} team={t} all={teams} info={info} on={info.team?.name === t.name} saved={info.teams.some((x) => x.name === t.name)} dirty={dirty}
         set={set} remove={() => { setTeams(teams.filter((_, j) => j !== cur).map((y) => (y.under === t.name ? { ...y, under: t.under ?? "" } : y))); setCur(0); }} act={act} /> : <div className="muted ag-empty">No teams.</div>}
     </>
@@ -265,60 +268,6 @@ function within(all: Team[], name: string, top: string) {
     cur = all.find((x) => x.name === cur)?.under;
   }
   return false;
-}
-
-/** Pick a starting shape: each template drawn as the org it makes, seats filled by the agents connected here. */
-function TeamPicker({ info, create, cancel, setTab }: { info: AgentsInfo; create: (t: Team) => void; cancel?: () => void; setTab?: (t: Tab) => void }) {
-  const connected = info.connections.filter((c) => c.mcp).map((c) => c.id);
-  const loops = info.workflows.filter((w) => w.research?.metric).map((w) => w.name);
-  const [pick, setPick] = useState<TeamTemplate>(TEAM_TEMPLATES[0]);
-  const [loop, setLoop] = useState(loops[0] ?? "autoresearch");
-  const free = (base: string) => { let n = base, i = 2; while (info.teams.some((t) => t.name === n)) n = `${base}-${i++}`; return n; };
-  const [name, setName] = useState(free(TEAM_TEMPLATES[0].id));
-  const team = teamFrom(pick, name, connected, loop);
-  const missing = [...new Set(team.members.map((m) => m.workflow))].filter((w) => w && !info.workflows.some((x) => x.name === w));
-  return (
-    <div className="tpl">
-      <div className="tpl-grid" role="radiogroup" aria-label="Team templates">
-        {TEAM_TEMPLATES.map((x) => {
-          const preview = teamFrom(x, x.id, connected, loop);
-          return (
-            <button key={x.id} role="radio" aria-checked={pick.id === x.id} className={`tpl-card ${pick.id === x.id ? "on" : ""}`}
-              onClick={() => { setPick(x); setName(free(x.id)); }}>
-              <b>{x.title}</b>
-              <span className="tpl-about">{x.about}</span>
-              <span className="tpl-seats">
-                {preview.members.map((m, i) => (
-                  <span key={i} className="tpl-seat" style={{ marginLeft: m.reports_to ? 14 : 0, borderLeftColor: workflowColor(info.workflows, m.workflow) }}>
-                    <SeatMark m={m} size={12} /> {seatName(m)} <span className="muted">{titleFor(m.role)}</span> <i className="mono">{m.workflow}</i>
-                  </span>
-                ))}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <form className="tpl-form" onSubmit={(e) => { e.preventDefault(); create(team); }}>
-        <label className="mi-field"><span>name</span><input className="input mono" value={name} onChange={(e) => setName(e.target.value.replace(/[^\w-]/g, ""))} aria-label="Team name" /></label>
-        {pick.seats.some((s) => s.workflow === "@loop") && (
-          <label className="mi-field"><span>loop to attack</span>
-            {loops.length
-              ? <select className="input" value={loop} onChange={(e) => setLoop(e.target.value)} aria-label="Research loop">{loops.map((l) => <option key={l}>{l}</option>)}</select>
-              : <span className="muted">no loop yet – <button type="button" className="linkish" onClick={() => setTab?.("research")}>set one up in Research</button>; the built-in autoresearch is used until then</span>}
-          </label>
-        )}
-        <div className="tpl-note muted">
-          Each seat is a named agent that any connected agent can take; pin one to a specific agent in the seat after.
-          {missing.length > 0 && <> Needs the workflow {missing.join(", ")}.</>}
-        </div>
-        <div className="row">
-          {cancel && <button type="button" className="btn sm ghost" onClick={cancel}>Cancel</button>}
-          <span className="spacer" />
-          <button className="btn sm primary" disabled={!name || info.teams.some((t) => t.name === name)}>Create {name}</button>
-        </div>
-      </form>
-    </div>
-  );
 }
 
 /**
