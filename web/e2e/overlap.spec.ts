@@ -42,6 +42,8 @@ async function open(page: Page, spot: Spot) {
   await page.goto(`${spot.base ?? ""}/#${spot.hash}`);
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
   await expect(page.locator(".loading, .view-loading")).toHaveCount(0, { timeout: 30_000 });
+  // the graph's layout checklist overlays the legend until layout settles
+  await expect(page.locator(".gl-step")).toHaveCount(0, { timeout: 30_000 });
   if (spot.then) await spot.then(page);
   await page.waitForTimeout(500);
 }

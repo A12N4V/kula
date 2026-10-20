@@ -23,7 +23,7 @@ import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf } from "./map/chainFocus";
 import { Library, ReviewPanel, RunPanel, sectionAtPoint, sectionOf, useLive, useMarks } from "./map/workspace";
 import { RoleMark } from "./map/icons";
-import { ContextMenu, Executions, FLOW, KIND_COLOR, KindIco, NodePanel, PipelinePanel, StepDetails, droppedItem, isItemDrag, runnable, usePipeline, useRunner, type Item, type MenuItem } from "./map/pipeline";
+import { ContextMenu, Executions, FLOW, KIND_COLOR, KindIco, NodePanel, PipelinePanel, StepDetails, droppedItem, isItemDrag, runnable, usePipeline, useRunner, type Item, type MenuItem, type Step } from "./map/pipeline";
 import { log } from "../dock/bus";
 import { SCHEMES, type Scheme } from "./map/flowKit";
 import type { Go } from "../nav";
@@ -524,7 +524,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
               hint={insert?.after ? `Insert after ${pipe.steps.find((x) => x.id === insert.after)?.name ?? "block"}` : lastSec ? `Add on ${data.blocks[lastSec]?.theme || data.blocks[lastSec]?.name}` : "Add a block"} />
             {menu && <ContextMenu at={menu.at} items={menuItems(menu)} onClose={() => setMenu(null)} />}
             {ndvStep && <StepDetails data={data} s={ndvStep} pipe={pipe} runner={runner} sections={sections} prev={ndvPrev} onClose={() => setNdv(null)} />}
-            <Transport runner={runner} blocks={runnable(pipe.steps).length} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} />
+            <Transport runner={runner} steps={runnable(pipe.steps)} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} sel={selStep} onPick={(id) => setSelBlock(`step:${id}`)} />
           </div>}
 
         {/* The canvas is everything until a click: then Graph's inspector – a
@@ -595,33 +595,59 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   );
 }
 
-/** The run transport – an IDE's debug toolbar on a CI run header, after
-    sema's transport strip: run / pause-continue / step / re-run failed / stop,
-    then where the run is and how long it has taken (tabular, so it does not
-    jitter), and the hand-off when an agent block is waiting. */
-function Transport({ runner, blocks, waiting, last }: { runner: ReturnType<typeof useRunner>; blocks: number; waiting: { id: string; name: string } | null; last: { status: string; ms: number } | null }) {
+/** The run transport, after sema's time bar: docked under the canvas, one
+    row of controls – run / pause-continue / step / re-run failed / stop, the
+    clock as elapsed over expected, where the run is – and under it the run as
+    a timeline. Each pipeline block is a segment sized by how long it took last
+    time and filled by its state; the block in flight is the lit region, the
+    way sema shades the window on its recording strip. Click a segment to open
+    that block. */
+function Transport({ runner, steps, waiting, last, sel, onPick }: { runner: ReturnType<typeof useRunner>; steps: Step[]; waiting: { id: string; name: string } | null; last: { status: string; ms: number } | null; sel: string | null; onPick: (id: string) => void }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { if (!runner.running) return; const t = window.setInterval(() => setNow(Date.now()), 250); return () => window.clearInterval(t); }, [runner.running]);
+  const blocks = steps.length;
   const el = runner.cursor ? now - runner.cursor.t0 : 0;
   const clock = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
   const state = runner.running ? (runner.paused ? "paused" : waiting ? "waiting" : "running") : last ? last.status : "idle";
+  // Segment widths: last run's time per block, an even share where unknown.
+  const known = steps.map((s) => s.ms ?? 0);
+  const fallback = Math.max(1, known.filter(Boolean).reduce((a, b) => a + b, 0) / Math.max(1, known.filter(Boolean).length));
+  const span = known.map((ms) => Math.max(ms || fallback, fallback * 0.25));
+  const total = span.reduce((a, b) => a + b, 0) || 1;
+  const expected = last?.ms ?? 0;
+  const label = runner.running
+    ? `${runner.paused ? "Paused" : waiting ? "Waiting" : "Running"} ${runner.cursor ? `${runner.cursor.at}/${runner.cursor.of}` : ""}`
+    : last ? `${last.status[0].toUpperCase()}${last.status.slice(1)}` : blocks ? "Ready" : "Pipeline empty";
   return (
-    <div className={`tp tp-${state}`} data-testid="ws-runbar" role="toolbar" aria-label="Run">
-      {!runner.running
-        ? <button className="tp-btn tp-go" onClick={() => void runner.run()} data-testid="ws-run-btn" title="Run pipeline  ⌘↵" disabled={!blocks}><Icon.play /><span>Run</span></button>
-        : <button className="tp-btn" onClick={runner.togglePause} data-testid="ws-pause" title={runner.paused ? "Continue  F8" : "Pause before the next block  F8"} aria-pressed={runner.paused}>{runner.paused ? <Icon.play /> : <Icon.pause />}</button>}
-      <button className="tp-btn" onClick={() => runner.step()} data-testid="ws-step" title="Step – run the next block, then pause  F10" disabled={!blocks || (runner.running && !runner.paused)}><Icon.stepOver /></button>
-      {!runner.running && runner.failedAt && <button className="tp-btn" onClick={runner.rerunFailed} data-testid="ws-rerun" title="Re-run from the failed block"><Icon.rerun /></button>}
-      {runner.running && <button className="tp-btn tp-stop" onClick={runner.stop} data-testid="ws-stop" title="Stop  ⇧F5"><Icon.stop /></button>}
-      <span className="tp-sep" />
-      <span className="tp-dot" />
-      <span className="tp-state" data-testid="ws-run-state">
-        {runner.running
-          ? `${runner.paused ? "Paused" : waiting ? "Waiting" : "Running"} ${runner.cursor ? `${runner.cursor.at}/${runner.cursor.of}` : ""}`
-          : last ? `${last.status[0].toUpperCase()}${last.status.slice(1)}` : blocks ? `${blocks} blocks` : "Pipeline empty"}
-      </span>
-      <span className="tp-clock mono">{runner.running ? clock(el) : last ? clock(last.ms) : ""}</span>
-      {runner.running && waiting && <button className="tp-done" onClick={() => runner.markDone(waiting.id)} data-testid="ws-done" title="The agent finished – hand on to the next block">{waiting.name}: done</button>}
+    <div className={`tp tp-${state}`} data-testid="ws-runbar">
+      <div className="tp-row" role="toolbar" aria-label="Run">
+        {!runner.running
+          ? <button className="tp-btn tp-go" onClick={() => void runner.run()} data-testid="ws-run-btn" title="Run pipeline  ⌘↵" disabled={!blocks}><Icon.play /><span>Run</span></button>
+          : <button className="tp-btn" onClick={runner.togglePause} data-testid="ws-pause" title={runner.paused ? "Continue  F8" : "Pause before the next block  F8"} aria-pressed={runner.paused}>{runner.paused ? <Icon.play /> : <Icon.pause />}</button>}
+        <button className="tp-btn" onClick={() => runner.step()} data-testid="ws-step" title="Step – run the next block, then pause  F10" disabled={!blocks || (runner.running && !runner.paused)}><Icon.stepOver /></button>
+        {!runner.running && runner.failedAt && <button className="tp-btn" onClick={runner.rerunFailed} data-testid="ws-rerun" title="Re-run from the failed block"><Icon.rerun /></button>}
+        {runner.running && <button className="tp-btn tp-stop" onClick={runner.stop} data-testid="ws-stop" title="Stop  ⇧F5"><Icon.stop /></button>}
+        <span className="tp-clock mono">{runner.running ? clock(el) : last ? clock(last.ms) : "0:00"}{expected > 0 && runner.running ? ` / ${clock(expected)}` : ""}</span>
+        <span className="tp-dot" />
+        <span className="tp-state" data-testid="ws-run-state">{label}</span>
+        {runner.running && waiting && <button className="tp-done" onClick={() => runner.markDone(waiting.id)} data-testid="ws-done" title="The agent finished – hand on to the next block">{waiting.name}: done</button>}
+        <span className="tp-ctx mono">Pipeline · {blocks} {blocks === 1 ? "block" : "blocks"}{runner.runs.length ? ` · ${runner.runs.length} ${runner.runs.length === 1 ? "run" : "runs"}` : ""}</span>
+      </div>
+      {blocks > 0 && (
+        <div className="tp-strip" role="list" aria-label="Run timeline" data-testid="ws-timeline">
+          {steps.map((s, i) => {
+            const st = s.status ?? "idle";
+            const live = runner.running && runner.cursor && runner.cursor.at === i + 1;
+            return (
+              <button key={s.id} role="listitem" className={`tp-seg tp-seg-${st}${live ? " live" : ""}${sel === s.id ? " sel" : ""}`}
+                style={{ flexGrow: span[i] / total }} onClick={() => onPick(s.id)} data-testid={`ws-seg-${s.id}`}
+                title={`${i + 1}. ${s.name} – ${st}${s.ms ? ` · ${clock(s.ms)}` : ""}`}>
+                <span className="tp-seg-n mono">{i + 1}</span><span className="tp-seg-name">{s.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

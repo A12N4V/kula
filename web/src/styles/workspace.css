@@ -314,27 +314,50 @@
 .ex-step { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 8px; font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .np-list > *, .cm, .ndv { animation: none !important; } }
 
-/* ---- Transport: run · pause · step · re-run · stop · state · clock ---- */
-.tp { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 24; display: flex; align-items: center; gap: 2px;
-  height: 40px; padding: 0 10px 0 4px; border-radius: var(--radius); background: var(--bg-2); border: 1px solid var(--line-2); font-size: 12px; color: var(--text-2); white-space: nowrap; }
-.tp-btn { height: 32px; min-width: 32px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 4px; background: none; border: 0; color: var(--text-2); font: inherit; cursor: pointer; transition: background .12s, color .12s; }
-.tp-btn svg { width: 14px; height: 14px; }
-.tp-btn:hover:not(:disabled) { background: var(--bg-3); color: var(--text); }
+/* ---- Transport, after sema's time bar: docked under the canvas, a row of
+   controls over the run as a timeline strip ---- */
+.tp { position: absolute; left: 0; right: 0; bottom: 0; z-index: 24; display: flex; flex-direction: column;
+  background: var(--bg); border-top: 1px solid var(--line); font-size: 12px; color: var(--text-2); }
+.tp-row { display: flex; align-items: center; gap: 2px; height: 36px; padding: 0 10px 0 4px; white-space: nowrap; min-width: 0; }
+.tp-btn { height: 28px; min-width: 28px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--radius-sm, 4px); background: none; border: 1px solid var(--line); color: var(--text-2); font: inherit; cursor: pointer; transition: border-color .12s, color .12s; }
+.tp-btn svg { width: 12px; height: 12px; }
+.tp-btn:hover:not(:disabled) { border-color: var(--line-2); color: var(--text); }
 .tp-btn:disabled { opacity: .35; cursor: default; }
 .tp-btn[aria-pressed="true"] { color: var(--accent); }
-@media (max-width: 640px) { .tp-btn { height: 40px; min-width: 40px; } }
-.tp-go { background: var(--accent); color: var(--bg); font-weight: 600; padding: 0 14px 0 10px; }
-.tp-go:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--text)); color: var(--bg); }
+.tp-go { color: var(--accent); border-color: var(--accent); padding: 0 10px 0 8px; }
+.tp-go:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
 .tp-stop { color: var(--red); }
-.tp-sep { width: 1px; height: 20px; background: var(--line-2); margin: 0 8px 0 6px; }
-.tp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); margin-right: 6px; flex: none; }
-.tp-running .tp-dot, .tp-waiting .tp-dot { background: var(--accent); animation: ws-pulse 1.2s ease-in-out infinite; }
+.tp-clock { margin: 0 10px 0 8px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tp-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); margin-right: 6px; flex: none; }
+.tp-running .tp-dot, .tp-waiting .tp-dot { background: var(--accent); }
 .tp-paused .tp-dot { background: var(--yellow, #d9b54a); }
 .tp-passed .tp-dot { background: var(--green); }
 .tp-failed .tp-dot { background: var(--red); }
 .tp-state { color: var(--text); font-variant-numeric: tabular-nums; }
-.tp-clock { margin-left: 10px; color: var(--text-3); font-variant-numeric: tabular-nums; min-width: 4ch; }
-.tp-done { margin-left: 10px; height: 28px; padding: 0 10px; border-radius: 4px; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+.tp-ctx { margin-left: auto; padding-left: 12px; color: var(--text-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tp-done { margin-left: 10px; height: 28px; padding: 0 10px; border-radius: var(--radius-sm, 4px); border: 1px solid var(--accent); background: none; color: var(--accent); font: inherit; cursor: pointer; }
+/* The strip: the run's silhouette, chrome-less, one segment per block. */
+.tp-strip { display: flex; height: 28px; border-top: 1px solid var(--line); }
+.tp-seg { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-right: 1px solid var(--line);
+  background: none; color: var(--text-3); font: inherit; font-size: 11px; cursor: pointer; text-align: left; }
+.tp-seg:last-child { border-right: 0; }
+.tp-seg:hover { background: var(--bg-2); color: var(--text-2); }
+.tp-seg-n { color: var(--text-3); flex: none; }
+.tp-seg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tp-seg-success { color: var(--text-2); background: color-mix(in srgb, var(--green) 10%, transparent); }
+.tp-seg-error { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+.tp-seg-skipped .tp-seg-name { text-decoration: line-through; }
+.tp-seg-waiting { color: var(--yellow, #d9b54a); }
+/* the block in flight is the lit region, as sema shades its window */
+.tp-seg.live, .tp-seg-running { color: var(--text); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.tp-seg.sel { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+@media (max-width: 640px) {
+  .tp-row { height: 44px; }
+  .tp-btn { height: 40px; min-width: 40px; }
+  .tp-ctx { display: none; }
+  .tp-seg { padding: 0 4px; }
+  .tp-seg-name { display: none; }
+}
 @media (max-width: 640px) { .tp-clock { display: none; } .tp { bottom: 8px; } }
 .pl-row { grid-template-columns: 28px 24px 1fr auto auto; }
 .pl-n { font-size: 10.5px; color: var(--text-3); }
@@ -386,3 +409,6 @@
 @media (max-width: 760px) {
   body:has([data-testid=map-inspector]) .tp { display: none; }
 }
+/* The docked transport owns the canvas's bottom edge: lift the canvas kit. */
+.ws-drop .react-flow__panel.bottom, .ws-drop .react-flow__minimap.fc-minimap { bottom: 76px !important; }
+@media (max-width: 640px) { .ws-drop .react-flow__panel.bottom, .ws-drop .react-flow__minimap.fc-minimap { bottom: 84px !important; } }
