@@ -877,10 +877,10 @@ test.describe("agents", () => {
     const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
     expect(toml.content).toContain('name = "e2e-crew-2"');
     expect(toml.content).not.toContain('name = "e2e-crew"');
-    // Delete: the editor's delete (existing confirm-free local remove, then
-    // the card's Save) takes the team out of kula.toml by name.
+    // the editor's Save – the one in the row with Delete team (the card head
+    // also has a Save, so scope it)
     await page.locator(".map-inspector").getByRole("button", { name: "Delete team" }).click();
-    await page.locator(".team-card").getByRole("button", { name: "Save", exact: true }).click();
+    await page.locator(".team-card").locator(".row", { has: page.getByRole("button", { name: "Delete team" }) }).getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.locator(".team-tabs [role=tab]").filter({ hasText: "e2e-crew-2" })).toHaveCount(0);
     const toml2 = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
     expect(toml2.content).not.toContain('name = "e2e-crew-2"');
@@ -916,7 +916,7 @@ test.describe("agents", () => {
       await page.setViewportSize({ width: w, height: h });
       await page.waitForTimeout(300);
       for (const tab of ["", "teams", "workflows"]) {
-        if (tab) await page.getByRole("tab", { name: new RegExp(tab) }).click();
+        if (tab) await page.getByRole("tab", { name: new RegExp(tab, "i") }).click();
         const hits = await page.evaluate(() => {
           // Clip-aware overlap: an element's rect counts only inside the
           // scrollport that clips it – content scrolled out of a pane is not
@@ -2418,8 +2418,22 @@ test.describe("map", () => {
     test.skip(info.project.name !== "desktop", "resize needs a pointer and a wide canvas");
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
-    // pick a block card (the last in DOM renders on top of the frames)
-    const card0 = page.locator(".fc-card:not(.fc-card-sec)").last();
+    // pick a block card whose corner is actually draggable: fully inside the
+    // viewport with room to drag out (the statusbar covers the canvas bottom,
+    // so a card near it swallows the pointerdown) – the last in DOM renders
+    // on top of the frames
+    const pickable = await page.evaluate(() => {
+      const vw = innerWidth, vh = innerHeight;
+      return [...document.querySelectorAll(".fc-card:not(.fc-card-sec)")]
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.top > 60 && r.left > 60 && r.bottom < vh - 60 && r.right + 300 < vw;
+        })
+        .map((el) => (el.closest("[data-testid^=fc-node-]") as HTMLElement)?.dataset.testid)
+        .filter((id): id is string => !!id);
+    });
+    expect(pickable.length, "a card with drag room exists").toBeGreaterThan(0);
+    const card0 = page.locator(`[data-testid=${pickable[0]}]`);
     await card0.dispatchEvent("click");
     // pin the card by its node id: a resize re-measure can re-stack siblings
     const testid = await card0.getAttribute("data-testid");
@@ -3036,7 +3050,8 @@ test.describe("agents add from the map rail (U3)", () => {
     await open(page, "agents/teams");
     await page.locator(".team-tabs [role=tab]").filter({ hasText: teamName }).click();
     await page.locator(".map-inspector").getByRole("button", { name: "Delete team" }).click();
-    await page.locator(".team-card").getByRole("button", { name: "Save", exact: true }).click();
+    // the editor's Save – the row with Delete team (the card head has one too)
+    await page.locator(".team-card").locator(".row", { has: page.getByRole("button", { name: "Delete team" }) }).getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.locator(".team-tabs [role=tab]").filter({ hasText: teamName })).toHaveCount(0);
   });
 

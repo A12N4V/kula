@@ -68,6 +68,7 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   const rename = (from: string, to: string) => {
     if (teams.some((x) => x.name === to)) return;
     const next = teams.map((y) => (y.name === from ? { ...y, name: to } : y.under === from ? { ...y, under: to } : y));
+    setTeams(next); // the tab label must move at once – the poll is 5 s away
     act("teams_save", { teams: next }, `${from} renamed to ${to}`).catch(() => {});
   };
   const nest = (name: string, under: string) => setTeams(teams.map((y) => (y.name === name ? { ...y, under } : y)));

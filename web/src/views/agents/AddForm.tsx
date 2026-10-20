@@ -123,7 +123,19 @@ function TeamAddForm({ info, base, free, onCreate, onCancel }: {
   const err = !team.name.trim() ? "give the team a name" : info.teams.some((t) => t.name === team.name) ? `${team.name} already exists` : null;
   const set = (x: Partial<Team>) => setTeam((t) => ({ ...t, ...x }));
   const setM = (i: number, m: Partial<Team["members"][number]>) =>
-    setTeam((t) => ({ ...t, members: t.members.map((x, j) => (j === i ? { ...x, ...m } : x)) }));
+    setTeam((t) => {
+      const was = t.members[i] && (t.members[i].name || t.members[i].agent);
+      let members = t.members.map((x, j) => (j === i ? { ...x, ...m } : x));
+      // seats point at each other by key – renaming a seat carries its
+      // reports_to / hands_off references along, or the server refuses the
+      // team ("points at Zeno, which is not another member")
+      if (m.name !== undefined && was) {
+        const key = m.name || "";
+        members = members.map((x, j) =>
+          j === i ? x : { ...x, reports_to: x.reports_to === was ? key : x.reports_to, hands_off: x.hands_off?.map((h) => (h === was ? key : h)) });
+      }
+      return { ...t, members };
+    });
   const addSeat = () => setTeam((t) => {
     const lead = t.members.find((m) => !m.reports_to);
     const names = t.members.map((m) => seatName(m));
