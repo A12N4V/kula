@@ -380,3 +380,9 @@
   .map-hud .btn:not(:first-child) { font-size: 0; gap: 0; }
   .map-hud .btn:not(:first-child) b { font-size: 10.5px; }
 }
+
+/* Phone: the inspector is a full-width sheet; the run bar would sit on top of
+   its rows, so it steps aside until the sheet closes. */
+@media (max-width: 760px) {
+  body:has([data-testid=map-inspector]) .tp { display: none; }
+}

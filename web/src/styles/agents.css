@@ -413,12 +413,12 @@
   .ag-control .stat-table tr.go th, .ag-control .stat-table tr.go td { padding-top: 11px; padding-bottom: 11px; }
   .roster-row, .loop-row { min-height: 40px; }
   .roster { overflow-x: visible; }
-  .roster-head, .roster-row { grid-template-columns: minmax(0, 1fr) auto; min-width: 0; }
   .roster-head { display: none; }
-  .roster-row > span { grid-column: auto; }
-  .roster-row .roster-agent { grid-column: 1; grid-row: 1; }
-  .roster-row .roster-wired { grid-column: 2; grid-row: 1; }
-  .roster-row .roster-num { grid-column: 1 / 3; grid-row: 2; min-height: 28px; }
+  /* The agent on its own line, then wiring and counts side by side – a grid
+     here stacked every count into one cell. */
+  .roster-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; min-width: 0; }
+  .roster-row .roster-agent { flex: 1 0 100%; min-width: 0; }
+  .roster-row .roster-num { min-height: 28px; }
   .rf-time-svg { min-width: 480px; }
 }
 /* A2: the control row – loops, teams and the stat table side by side */

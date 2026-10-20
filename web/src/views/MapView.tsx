@@ -618,7 +618,7 @@ function Transport({ runner, blocks, waiting, last }: { runner: ReturnType<typeo
       <span className="tp-state" data-testid="ws-run-state">
         {runner.running
           ? `${runner.paused ? "Paused" : waiting ? "Waiting" : "Running"} ${runner.cursor ? `${runner.cursor.at}/${runner.cursor.of}` : ""}`
-          : last ? `${last.status[0].toUpperCase()}${last.status.slice(1)}` : blocks ? `${blocks} blocks` : "0 blocks – add one from Pipeline"}
+          : last ? `${last.status[0].toUpperCase()}${last.status.slice(1)}` : blocks ? `${blocks} blocks` : "Pipeline empty"}
       </span>
       <span className="tp-clock mono">{runner.running ? clock(el) : last ? clock(last.ms) : ""}</span>
       {runner.running && waiting && <button className="tp-done" onClick={() => runner.markDone(waiting.id)} data-testid="ws-done" title="The agent finished – hand on to the next block">{waiting.name}: done</button>}
