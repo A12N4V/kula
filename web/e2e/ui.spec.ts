@@ -2338,12 +2338,22 @@ test.describe("map", () => {
     test.skip(info.project.name !== "desktop", "a phone fits legitimately lower");
     const zoomText = page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom]");
     await expect.poll(async () => Number((await zoomText.textContent())?.replace("%", ""))).toBeGreaterThan(50);
-    // long names truncate with an ellipsis and a full-name title
-    const name = page.locator(".fc-card .fc-card-name").first();
+    // long names truncate with an ellipsis and a full-name title – on a card
+    // that is actually in the viewport (React Flow cannot scroll, so an
+    // off-canvas card is never hoverable)
+    const visibleTid = await page.evaluate(() => {
+      const el = [...document.querySelectorAll("[data-testid=map-flow] .fc-card:not(.fc-card-sec)")].find((e) => {
+        const r = e.getBoundingClientRect();
+        return r.top > 70 && r.left > 70 && r.bottom < innerHeight - 60 && r.right < innerWidth - 40 && e.querySelector(".fc-card-name");
+      });
+      return (el?.closest("[data-testid^=fc-node-]") as HTMLElement)?.dataset.testid ?? null;
+    });
+    expect(visibleTid).toBeTruthy();
+    const name = page.locator(`[data-testid=${visibleTid}] .fc-card-name`);
     await expect(name).toHaveCSS("text-overflow", "ellipsis");
     await expect(name).toHaveAttribute("title", /.+/);
     // opening a card drills into the nested boxes; Esc returns to the flow
-    await page.locator(".fc-card").first().dblclick();
+    await page.locator(`[data-testid=${visibleTid}]`).dblclick();
     await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
     await page.locator("body").press("Escape");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
@@ -2403,14 +2413,27 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=map-readout] [data-testid=map-block-table]")).toBeVisible();
     await expect(page.locator("[data-testid=map-block-table] [data-testid=map-role-line]")).toContainText(/entry|orchestrator|core|utility|adapter|model|config|test|glue/);
     await expect(page.locator("[data-testid=map-readout] h2")).toContainText(picked.split(/\s+/)[0]);
-    // the tinker rail: pin, hide tests, re-layout. Pin first: the role
-    // toggles and a re-layout replace the node objects and React Flow's
-    // selection echo clears the selection
-    await page.locator("[data-testid=map-pin]").click();
-    await expect(page.locator("[data-testid=map-pin]")).toHaveAttribute("aria-pressed", "true");
-    // R0 – no View menu: the controls ride the lens bar (re-layout there,
-    // test fixtures hide/show moved to the map harness).
-    await page.locator("[data-testid=map-relayout]").click();
+    // the node toolbar: pin rides the hovered node's toolbar now (the old
+    // "re-layout · pin · roles" row is gone). Hover the card first – the
+    // toolbar floats above it (n8n §4, nothing on the node face).
+    // toolbar floats above it (n8n §4, nothing on the node face). Hover a card
+    // that is actually in the viewport – React Flow cannot scroll, so an
+    // off-canvas card is never hoverable.
+    const hoverTid = await page.evaluate(() => {
+      const el = [...document.querySelectorAll("[data-testid=map-flow] .fc-card:not(.fc-card-sec)")].find((e) => {
+        const r = e.getBoundingClientRect();
+        return r.top > 70 && r.left > 70 && r.bottom < innerHeight - 60 && r.right < innerWidth - 40;
+      });
+      return (el?.closest("[data-testid^=fc-node-]") as HTMLElement)?.dataset.testid ?? null;
+    });
+    expect(hoverTid).toBeTruthy();
+    const card = page.locator(`[data-testid=${hoverTid}]`);
+    await card.hover();
+    await page.locator("[data-testid^=fn-pin-]").first().click();
+    await expect(page.locator("[data-testid^=fn-pin-]").first()).toHaveClass(/on/);
+    // re-layout is tidy now, one key on the canvas zoom controls (U2 moves
+    // them to the zoom bar) – the map survives it
+    await page.locator("[data-testid=fc-tidy]").click();
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
 
@@ -2441,6 +2464,9 @@ test.describe("map", () => {
     const card = page.locator(`[data-testid=${testid}]`);
     const handle = card.locator(".fc-card-resize");
     await expect(handle).toBeAttached();
+    // let the selection re-render settle, or the drag can start on a handle
+    // React is about to replace
+    await page.waitForTimeout(400);
     const before = await card.boundingBox();
     expect(before!.width).toBeLessThan(400);
     // drag the corner handle out past the detail stage (320): the function
@@ -2495,12 +2521,9 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=ws-library]")).toBeVisible();
     await page.locator("[data-testid=lib-teams]").click();
     await expect(page.locator("[data-testid=lib-teams]")).toHaveAttribute("aria-expanded", "true");
-    // colours: a scheme is one click on the lens bar (R0 – no View menu)
-    await page.locator("[data-testid=map-scheme-btn]").click(); // section
+    // colours: the scheme toggle row is gone (grey nodes, n8n §6) – the map
+    // just stays in its scheme
     await expect(page.locator("[data-testid=map-flow]")).toHaveClass(/fm-flow/);
-    await page.locator("[data-testid=map-scheme-btn]").click(); // mono
-    await page.locator("[data-testid=map-scheme-btn]").click(); // heat
-    await page.locator("[data-testid=map-scheme-btn]").click(); // back to role
   });
 
   test("pipeline: blocks land on the map, Run opens a fenced task, Done hands on to the gate, the log streams it", async ({ page }) => {
@@ -2621,7 +2644,7 @@ test.describe("map", () => {
     await page.locator("[data-testid=map-roles-btn]").click();
     // the flows list is an inspector overlay, not a canvas of its own –
     // open the inspector with a selection first
-    await page.locator(".fc-card").first().click();
+    await (await cardInView(page)).click();
     await expect(page.locator("[data-testid=map-inspector]")).toBeVisible();
     await expect(page.locator("[data-testid=map-flows-list]")).toBeAttached();
   });
@@ -2643,13 +2666,25 @@ test.describe("map", () => {
       const [r, g, b] = rgb.split(",").map(Number);
       expect(r + g + b).toBeLessThan(700); // anything near-white sums over ~700
     }
-    // hover a node: its wires brighten to full opacity (--text)
-    const node = page.locator("[data-testid=map-flow] .fc-card").first();
+    // hover a node: its wires climb the brightness ladder by stroke colour –
+    // resting edges sit on --text-3, lit edges on --text (opacity stays 1;
+    // the ladder is luminance, not transparency). Only edges of the hovered
+    // node are lit, so sample one attached to it.
+    const node = await cardInView(page);
     await node.hover();
     const lit = page.locator("[data-testid=map-flow] .fc-edge-lit").first();
     await expect(lit).toBeAttached();
-    const litOp = await lit.evaluate((el) => getComputedStyle(el).opacity);
-    expect(Number(litOp)).toBeGreaterThan(Number(atRest.split("|")[0]));
+    const lum = (rgb: string | undefined) => {
+      if (!rgb) return -1;
+      const [r, g, b] = rgb.split(",").map(Number);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const litStroke = await lit.evaluate((el) => {
+      const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(getComputedStyle(el).stroke) ?? null;
+      return m ? `${m[1]},${m[2]},${m[3]}` : undefined;
+    });
+    // the lit edge is brighter than the resting edge – the ladder's edge rung
+    expect(lum(litStroke)).toBeGreaterThan(lum(atRest.split("|")[1]));
   });
 
   test("R0: no node label overlaps another node or an edge label (1440, 1100, 390)", async ({ page }) => {
@@ -2749,21 +2784,27 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
     const canvas = page.locator("[data-testid=map-flow-canvas] .fc-canvas");
     const selOf = () => canvas.getAttribute("data-fc-selection");
-    // seed the walk from a card with an outgoing main edge: cards are tried
-    // from the top of the stacking order down (sibling frames cover earlier
-    // groups' children), each probed with one ArrowRight. The canvas
-    // virtualizes its node set, so re-resolve the card list every attempt –
-    // an index captured from an earlier render can be gone by now
+    // seed the walk from a card that is known by construction to carry an
+    // outgoing main edge: the canvas records its main-edge list on
+    // window.__fcLayout after every layout run, so the seed is a real edge
+    // source, not whichever card happens to sit last in the stacking order
+    // (most cards are children inside frames – only rep cards emit edges).
     let start = "", moved = "";
-    for (let skip = 0; skip < 14 && !moved; skip++) {
-      const cards = page.locator(".fc-card");
-      const i = (await cards.count()) - 1 - skip;
-      if (i < 0) break;
-      const tile = cards.nth(i);
+    for (let attempt = 0; attempt < 20 && !moved; attempt++) {
+      const seed = await page.evaluate(() => {
+        const me = (window as unknown as { __fcLayout?: { mainEdges: [string, string][] } }).__fcLayout?.mainEdges ?? [];
+        for (const [src] of me) {
+          if (src.startsWith("step:")) continue;
+          if (document.querySelector(`[data-testid=fc-node-${src}]`)) return src;
+        }
+        return null;
+      });
+      if (!seed) { await page.waitForTimeout(1000); continue; }
+      const tile = page.locator(`[data-testid=fc-node-${seed}]`);
       try {
         await tile.dispatchEvent("click", { timeout: 5000 });
       } catch {
-        continue; // the node unmounted between count and click – next card
+        continue; // the node unmounted between query and click – next round
       }
       await canvas.focus();
       await expect.poll(selOf).not.toBe("");
@@ -2773,7 +2814,7 @@ test.describe("map", () => {
       moved = (await selOf()) ?? "";
       if (moved === start) {
         moved = "";
-        await page.keyboard.press("Escape"); // clear and try the next tile
+        await page.keyboard.press("Escape"); // clear and retry the seed
         await expect.poll(selOf).toBe("");
       }
     }
@@ -3072,3 +3113,19 @@ test.describe("agents add from the map rail (U3)", () => {
     expect((await name.boundingBox())?.height).toBeGreaterThanOrEqual(38);
   });
 });
+
+/** A block card that is on screen inside the canvas – the landing view zooms
+ *  in on the busiest section (R0), so the first card in the DOM can be
+ *  off-canvas, and React Flow cannot scroll a card into view. */
+async function cardInView(page: import("@playwright/test").Page) {
+  const id = await page.evaluate(() => {
+    const c = document.querySelector("[data-testid=map-flow] .react-flow")?.getBoundingClientRect();
+    if (!c) return null;
+    const el = [...document.querySelectorAll(".fc-card:not(.fc-card-sec)")].find((e) => {
+      const r = e.getBoundingClientRect();
+      return r.left > c.left + 20 && r.top > c.top + 60 && r.right < c.right - 20 && r.bottom < c.bottom - 90;
+    });
+    return (el?.closest("[data-testid^=fc-node-]") as HTMLElement | null)?.dataset.testid ?? null;
+  });
+  return id ? page.locator(`[data-testid=${id}]`) : page.locator(".fc-card").first();
+}

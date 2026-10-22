@@ -39,15 +39,18 @@ export function backwardPath(sx: number, sy: number, tx: number, ty: number, r =
   ], r);
 }
 
-const clampW = (w: number | undefined) => Math.max(1, Math.min(4, w ?? 1));
+const clampW = (w: number | undefined) => Math.max(1.5, Math.min(2, w ?? 1));
 
 const FlowEdgeView = memo((props: EdgeProps) => {
   const { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected, markerEnd } = props;
   const zoom = useStore((s) => s.transform[2]);
   const main = data?.main !== false;
   const dashed = data?.dashed === true;
+  // The brightness ladder (n8n §4): text > node border > resting edge. Every
+  // wire sits at 1.5–2 px – weight (chain/flow weight) only steps inside that
+  // band, so a heavy edge reads denser, never fatter.
   const weight = clampW(data?.weight as number | undefined);
-  const base = main ? Math.max(weight, dashed ? 1 : 2) : 1;
+  const base = main ? weight : 1.5;
   const stroke = base / zoom; // zoom-compensated: visual px stays constant
   const backward = data?.backward === true || targetX < sourceX;
 
@@ -73,6 +76,7 @@ const FlowEdgeView = memo((props: EdgeProps) => {
   return (
     <>
       <BaseEdge id={props.id} path={path} markerEnd={markerEnd} className={cls} style={{ strokeWidth: stroke }} data-testid={data?.testid as string | undefined} />
+      {/* 40 px invisible hit path (n8n §4) – thin wires stay easy to hover. */}
       {tools && <path d={path} className="fc-edge-hit" onPointerEnter={() => setHoverEdge?.(props.id)} onPointerLeave={() => setHoverEdge?.(null)} />}
       {tools && (
         <EdgeLabelRenderer>

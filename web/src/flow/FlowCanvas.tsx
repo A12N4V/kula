@@ -117,6 +117,9 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   const tidySeq = useRef(0);
   // The viewport is the user's: fit once per layout key, never on a data refresh.
   const fittedKey = useRef<string | null>(null);
+  // Node ids the user has already seen a viewport of – fresh arrivals (a late
+  // lane load) expand the view; refreshes of known ids never move the camera.
+  const shownRef = useRef<Set<string>>(new Set());
 
   // Layout (cached, worker-offloaded) whenever the data or layoutKey changes.
   useEffect(() => {
@@ -145,7 +148,12 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       };
       const sorted = [...withDrags].sort((a, b) => depth(a) - depth(b) || (a.pos!.x - b.pos!.x) || (a.pos!.y - b.pos!.y));
       const FIRST = 400;
-      setRfNodes(sorted.slice(0, FIRST).map((n) => toRf(n, selRef.current, new Set(), new Set())));
+      // Fresh arrivals (a late lane load, an undo bring-back) may land outside
+      // the current viewport; a poll refresh of known ids never moves the
+      // camera – it would snap the user's zoom back to the fit every second.
+      const freshArrivals = shownRef.current.size > 0 && sorted.some((n) => !shownRef.current.has(n.id));
+      shownRef.current = new Set(sorted.map((n) => n.id));
+      setRfNodes(sorted.slice(0, FIRST).map(sized));
       didFit.current = true;
       // Hydrate the rest in small chunks (no 600 ms long task), then fit.
       let done = FIRST;
@@ -158,7 +166,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
           edgesSet = true;
           setRfEdges(edges.map((e) => ({
             id: e.id, source: e.source, target: e.target, type: "flow-edge",
-            data: { ...e }, zIndex: e.main === false ? 0 : 1,
+            data: { ...e }, zIndex: 0, // edges under nodes (n8n §5): the 40 px hit path must never eat a card's hover or drag
           })));
         }
         if (done >= sorted.length) {
@@ -181,9 +189,50 @@ function FlowCanvasInner(props: FlowCanvasProps) {
               }
             });
           }
+          {
+            // Nodes outside the current viewport (the late pipeline lane, an
+            // undo/redo bring-back) can never be seen or mounted under
+            // onlyRenderVisibleElements – the fit above only saw mounted
+            // nodes. Only a run that brings fresh ids expands the viewport:
+            // the first landing stays at the readable zoom (R0), and a poll
+            // refresh of known ids must never move the camera.
+            window.requestAnimationFrame(() => {
+              if (!live || !freshArrivals) return;
+              const el = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
+              if (!el) return;
+              const t = rf.getViewport();
+              // The app topbar is a grid row above the canvas, but a node
+              // sitting above the canvas top still centres its click point
+              // over the topbar – treat everything above the topbar's bottom
+              // edge as off-canvas.
+              const topbarBottom = document.querySelector("header.topbar")?.getBoundingClientRect().bottom ?? el.top;
+              const top = Math.max(el.top, topbarBottom);
+              const clipped = sorted.some((n) => {
+                const s = nodeSize(n);
+                const sx = el.left + t.x + n.pos!.x * t.zoom, sy = el.top + t.y + n.pos!.y * t.zoom;
+                return sx < el.left - 2 || sy < top - 2 || sx + s.w * t.zoom > el.right + 2 || sy + s.h * t.zoom > el.bottom + 2;
+              });
+              if (!clipped) return;
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              for (const n of sorted) {
+                const s = nodeSize(n);
+                minX = Math.min(minX, n.pos!.x); minY = Math.min(minY, n.pos!.y);
+                maxX = Math.max(maxX, n.pos!.x + s.w); maxY = Math.max(maxY, n.pos!.y + s.h);
+              }
+              if (maxX <= minX) return;
+              const availH = el.bottom - top;
+              const z = Math.max(0.1, Math.min(t.zoom, el.width / (maxX - minX + 160), availH / (maxY - minY + 160)));
+              // Content taller than the viewport at the floor zoom would
+              // centre with a negative offset – the top rows (the pipeline
+              // lane) would land above the canvas, under the topbar. Align
+              // the union top instead of centring when it overflows.
+              const offY = Math.max(0, (availH - (maxY - minY) * z) / 2);
+              rf.setViewport({ x: (el.width - (maxX - minX) * z) / 2 - minX * z, y: (top - el.top) + offY - minY * z, zoom: z });
+            });
+          }
           return;
         }
-        setRfNodes((prev) => prev.concat(sorted.slice(done, done + CHUNK).map((n) => toRf(n, selRef.current, new Set(), new Set()))));
+        setRfNodes((prev) => prev.concat(sorted.slice(done, done + CHUNK).map(sized)));
         done += CHUNK;
         window.setTimeout(step, 50);
       };
@@ -286,6 +335,16 @@ function FlowCanvasInner(props: FlowCanvasProps) {
 
   // Corner resize (R0): live size updates the node; release persists once and
   // re-measures internals so the virtualizer never hides the grown node.
+  // Sizes the user set by dragging a handle. A poll refresh rebuilds rfNodes
+  // from props – persisted sizes only rejoin on the next layout rebuild –
+  // so the overrides are re-applied on every rebuild or a resize snaps back.
+  const sizeOverrides = useRef(new Map<string, { w: number; h: number }>());
+  const sized = useCallback((n: FlowNode) => {
+    const rf = toRf(n, selRef.current, new Set(), new Set());
+    const o = sizeOverrides.current.get(n.id);
+    if (!o) return rf;
+    return { ...rf, width: o.w, height: o.h, style: { ...rf.style, width: o.w, height: o.h }, data: { ...(rf.data as object), size: o } } as typeof rf;
+  }, []);
   const onNodeResize = useCallback((id: string, size: { w: number; h: number }, commit: boolean) => {
     setRfNodes((prev) => prev.map((n) => {
       if (n.id !== id) return n;
@@ -293,6 +352,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       return { ...n, width: size.w, height: size.h, style: { ...n.style, width: size.w, height: size.h }, data: { ...d, size } };
     }));
     if (commit) {
+      sizeOverrides.current.set(id, size);
       persistSizes(ns, layoutKey, [{ id, size }]);
       window.setTimeout(() => updateInternals([id]), 50);
     }
@@ -370,7 +430,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     (async () => {
       const res = await layout(applySizes(ns, layoutKey, nodes), edges, groups, `${layoutKey}:tidy${tidySeq.current}`);
       setRfNodes(res.nodes.map((n) => toRf(n, null, collapsed, new Set())));
-      setRfEdges(edges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: "flow-edge", data: { ...e }, zIndex: e.main === false ? 0 : 1 })));
+      setRfEdges(edges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: "flow-edge", data: { ...e }, zIndex: 0 })));
       rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 });
     })();
   }, [nodes, edges, groups, layoutKey, ns, rf, collapsed]);
@@ -387,9 +447,14 @@ function FlowCanvasInner(props: FlowCanvasProps) {
 
   // Live zoom readout (the store subscription keeps it current between zooms).
   const zoomPct = Math.round(useStore((s) => s.transform[2]) * 100);
+  const zoom = useStore((s) => s.transform[2]);
+  // Semantic zoom thresholds – contract §6 (X1 hand-off): far < 0.55 (the
+  // caption under the tile), mid to 1.0 (facts), near above (the function
+  // list). A resize forces a level regardless of scale.
+  const zoomLevel: "far" | "mid" | "near" = zoom < 0.55 ? "far" : zoom < 1 ? "mid" : "near";
 
   return (
-    <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel, hovered, onStub, hoverEdge, setHoverEdge, onResize: onNodeResize }}>
+    <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel, hovered, onStub, hoverEdge, setHoverEdge, onResize: onNodeResize, zoom, zoomLevel }}>
       <div className={`fc-wrap${sidebar ? " fc-with-side" : ""}`} data-testid={testId} data-fc-ready={rfNodes.length > 0 ? "1" : "0"} data-fc-hydrated={hydrated ? "1" : "0"}>
         <div className="fc-canvas" tabIndex={0} onKeyDown={onKeyDown} aria-label="Flow canvas" data-fc-selection={sel ?? ""}>
           <ReactFlow
@@ -439,7 +504,13 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             edgesFocusable={false}
             snapToGrid
             snapGrid={[16, 16]}
-            onlyRenderVisibleElements
+            // Virtualization (the 2 600-node FlowLab canvas needs it) races
+            // the late pipeline lane under the map's ~100 nodes: the lane
+            // mounts only inside the viewport, and the viewport repair runs
+            // a frame later than React Flow's own unmount. Small canvases
+            // skip the dance entirely – chunked hydration already bounds
+            // their first paint.
+            onlyRenderVisibleElements={rfNodes.length > 400}
             // Drag pans (n8n, Figma); Shift-drag draws a marquee; Shift-click adds.
             panOnDrag
             selectionKeyCode="Shift"

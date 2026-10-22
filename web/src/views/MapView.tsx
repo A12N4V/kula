@@ -25,7 +25,7 @@ import { Library, ReviewPanel, RunPanel, sectionAtPoint, sectionOf, useLive, use
 import { RoleMark } from "./map/icons";
 import { ContextMenu, Executions, FLOW, KIND_COLOR, KindIco, NodePanel, PipelinePanel, StepDetails, droppedItem, isItemDrag, runnable, usePipeline, useRunner, type Item, type MenuItem, type Step } from "./map/pipeline";
 import { log } from "../dock/bus";
-import { SCHEMES, type Scheme } from "./map/flowKit";
+import { type Scheme } from "./map/flowKit";
 import type { Go } from "../nav";
 import type { Chain, ChainPage, Lens, MapData, MapProgress, Role } from "./map/types";
 import { LENS_ROLES, ROLES, ROLE_RULES } from "./map/types";
@@ -66,7 +66,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   const [tab, setTab] = useState<Tab>("inspect");
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [panel, setPanel] = useState(false);
-  const [scheme, setScheme] = useState<Scheme>(() => { try { return (localStorage.getItem("kula.map.scheme") as Scheme) || "role"; } catch { return "role"; } });
+  const [scheme, setScheme] = useState<Scheme>(() => { try { return (localStorage.getItem("kula.map.scheme") as Scheme) || "mono"; } catch { return "mono"; } });
   useEffect(() => { try { localStorage.setItem("kula.map.scheme", scheme); } catch { /* private */ } }, [scheme]);
   const [viewSec, setViewSec] = useState<string>("show");
   const ws = useLive(true);
@@ -483,20 +483,9 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   return (
     <div className="sy-root" ref={rootRef} data-testid="map-view">
       {/* One canvas (R0): no lens switcher, no View menu, no Add block button.
-          The option filters live in the inspector's Overview tab; the canvas
-          tinker controls (re-layout, pin) ride the canvas chrome. */}
-      <div className="sy-lens" data-testid="map-lens" role="toolbar" aria-label="Canvas controls">
-        <button className="tab-btn sy-lens-btn" data-testid="map-relayout" title="re-run the layout"
-          onClick={() => setLayoutKey((k) => k + 1)}>re-layout</button>
-        <button className={`tab-btn sy-lens-btn${selBlock && pinned === selBlock ? " on" : ""}`} data-testid="map-pin" aria-pressed={!!selBlock && pinned === selBlock} title="pin this selection"
-          onClick={() => setPinned((p) => (selBlock && p !== selBlock ? selBlock : null))}>pin</button>
-        <button className={`tab-btn sy-lens-btn${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
-          onClick={() => setRolesOpen((o) => !o)}>roles</button>
-        <button className="tab-btn sy-lens-btn" data-testid="map-scheme-btn" title="colour scheme"
-          onClick={() => { const i = SCHEMES.findIndex((x) => x.id === scheme); setScheme(SCHEMES[(i + 1) % SCHEMES.length].id); }}>
-          {SCHEMES.find((x) => x.id === scheme)?.label ?? "role"}
-        </button>
-      </div>
+          The leftover "re-layout · pin · roles · Role" toolbar row is gone –
+          tidy lives in the canvas zoom controls, pin on the node toolbar and
+          in the inspector, roles opens from the canvas HUD. */}
       {live?.running && <ProgressStrip p={live} />}
       {rolesOpen && (
         <div className="sy-roles" id="map-role-filter" data-testid="map-role-filter" role="group" aria-label="Role filter">
@@ -519,7 +508,13 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       <div className="sy-split" style={listWidth("map", 360)}>
         {path.length
           ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
-          : <div className="ws-drop" onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={marks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey} />
+          : <div className="ws-drop" onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={marks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
+            pinned={pinned && !selStep ? pinned : null}
+            onNodeTool={(id, action) => {
+              if (action === "open") { drill(id); setSelBlock(id); setInspForced(true); }
+              else if (action === "run") void runner.run(id); // not a step id → the whole pipeline
+              else setPinned((p) => (p === id ? null : id));
+            }} />
             <NodePanel info={ws.info} open={panel} onClose={() => { setPanel(false); setInsert(null); }} onPick={pick}
               hint={insert?.after ? `Insert after ${pipe.steps.find((x) => x.id === insert.after)?.name ?? "block"}` : lastSec ? `Add on ${data.blocks[lastSec]?.theme || data.blocks[lastSec]?.name}` : "Add a block"} />
             {menu && <ContextMenu at={menu.at} items={menuItems(menu)} onClose={() => setMenu(null)} />}
@@ -531,10 +526,22 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             floating panel with a header (kind, name, facts, actions) and sub-tabs. */}
         {!insp && (
           <div className="map-hud" data-testid="map-hud">
+            <button className={`btn sm${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
+              onClick={() => setRolesOpen((o) => !o)}>Roles</button>
             <button className="btn sm" onClick={() => openInsp("pipeline")} data-testid="hud-pipeline"><Icon.flows /> Pipeline{pipe.steps.length ? <b>{runnable(pipe.steps).length}</b> : null}</button>
             <button className="btn sm" onClick={() => openInsp("live")} data-testid="hud-live"><Icon.agents /> Agents{(ws.info?.task || ws.info?.team) && <i className="hud-dot" />}</button>
             <button className="btn sm" onClick={() => openInsp("changes")} data-testid="hud-changes"><Icon.changes /> Changes{ws.files.length ? <b>{ws.files.length}</b> : null}</button>
             <button className="btn sm" onClick={() => openInsp("structure")} data-testid="map-side-toggle"><Icon.sidebar /> Structure</button>
+          </div>
+        )}
+        {/* With the inspector open the other HUD buttons would hide behind it
+            (the inspector covers the top-right), but Roles must stay reachable
+            – the lens presets and role filter live in its popover. It docks to
+            the left of the inspector instead of vanishing. */}
+        {insp && (
+          <div className="map-hud map-hud-side" data-testid="map-hud">
+            <button className={`btn sm${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
+              onClick={() => setRolesOpen((o) => !o)}>Roles</button>
           </div>
         )}
         {/* The add-block palette shares the inspector's corner – while it is

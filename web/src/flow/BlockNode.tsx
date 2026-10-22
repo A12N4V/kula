@@ -10,6 +10,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { GLYPH } from "../colors";
 import { RoleMark, ROLE_COLOR } from "../views/map/icons";
 import { sectionLogo } from "../views/map/icons";
+import { TBar } from "./nodes";
 import type { BlockCardData, FlowNode } from "./types";
 import { BLOCK_SIZES, RESIZE_MAX, RESIZE_MIN, snap } from "./types";
 import { useFc } from "./fcContext";
@@ -28,7 +29,10 @@ function ResizeHandle({ id, w, h }: { id: string; w: number; h: number }) {
     e.stopPropagation();
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
-    el.setPointerCapture(e.pointerId);
+    // Capture is best-effort: a synthetic pointerId (tests) has no active
+    // pointer and throws – a failed capture must not abort the drag before
+    // its listeners exist.
+    try { el.setPointerCapture(e.pointerId); } catch { /* no active pointer */ }
     const sx = e.clientX, sy = e.clientY, sw = w, sh = h;
     const move = (ev: PointerEvent) => {
       const nw = Math.min(RESIZE_MAX.w, Math.max(RESIZE_MIN.w, snap(sw + ev.clientX - sx)));
@@ -36,16 +40,18 @@ function ResizeHandle({ id, w, h }: { id: string; w: number; h: number }) {
       if (nw !== w || nh !== h) onResize(id, { w: nw, h: nh }, false);
     };
     const up = (ev: PointerEvent) => {
-      el.releasePointerCapture(ev.pointerId);
-      el.removeEventListener("pointermove", move);
-      el.removeEventListener("pointerup", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
       onResize(id, { w: sw, h: sh }, false); // settle back to the start size first
       const nw = Math.min(RESIZE_MAX.w, Math.max(RESIZE_MIN.w, snap(sw + ev.clientX - sx)));
       const nh = Math.min(RESIZE_MAX.h, Math.max(RESIZE_MIN.h, snap(sh + ev.clientY - sy)));
       onResize(id, { w: nw, h: nh }, true);
     };
-    el.addEventListener("pointermove", move);
-    el.addEventListener("pointerup", up);
+    // Window-level listeners: a re-render (selection, live data) can replace
+    // the handle element mid-drag and would otherwise orphan the drag – the
+    // drag must survive to its pointerup wherever the DOM goes.
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   }, [id, w, h, onResize]);
   return <div className="fc-card-resize nodrag nopan" data-testid={`fc-resize-${id}`} onPointerDown={start} title="Drag to resize" />;
 }
@@ -69,22 +75,51 @@ const BlockCard = memo((props: NodeProps) => {
   const w = data.size?.w ?? BLOCK_SIZES[1].w;
   const h = data.size?.h ?? BLOCK_SIZES[1].h;
   const role = (data.role ?? "core") as Parameters<typeof RoleMark>[0]["role"];
-  const stage = data.members ? 3 : w >= BLOCK_SIZES[2].w ? 3 : w >= BLOCK_SIZES[1].w ? 2 : 1;
+  // Semantic zoom (docs/design/fused-canvas.md §zoom): far = the caption under
+  // the tile, mid = role, files, symbols, in/out, flow badges, fence badge and
+  // the last-run dot, near = the function list. A resize forces a level – the
+  // width the user drags the card to wins over the canvas zoom, never the
+  // reverse, so content is only ever revealed, never hidden by zooming in.
+  const { zoomLevel = "mid" } = useFc();
+  // Size against the default: full width forces near, compact forces far,
+  // and a default-sized card follows the canvas zoom (semantic zoom).
+  const sizeStage = w >= BLOCK_SIZES[2].w ? 3 : w <= BLOCK_SIZES[0].w ? 1 : 0;
+  const zoomStage = zoomLevel === "near" ? 3 : zoomLevel === "mid" ? 2 : 1;
+  const stage = Math.max(sizeStage, sizeStage === 0 ? zoomStage : Math.min(sizeStage, zoomStage));
   return (
     <div
-      className={`fc-node fc-card${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}${data.members ? " fc-card-sec" : ""}`}
+      className={`fc-node fc-card${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}${data.members ? " fc-card-sec" : ""} fc-stage-${stage}`}
       style={{ width: w, height: h, ["--fc-role" as string]: data.roleColor ?? ROLE_COLOR[role] }}
       data-testid={`fc-node-${id}`}
+      data-fc-stage={stage}
       title={`${data.title}${data.subtitle ? ` – ${data.subtitle}` : ""}`}
     >
-      <div className="fc-card-head">
-        <span className="fc-card-role"><RoleMark role={role} /></span>
-        <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>
-        <span className="fc-card-name" title={data.title}>{data.title}</span>
-        {data.status && <span className={`fc-status fc-st-${data.status === "success" ? "ok" : data.status === "error" ? "err" : "run"}`} title={data.status} />}
-      </div>
-      {data.subtitle && <div className="fc-card-sub" title={data.subtitle}>{data.subtitle}</div>}
-      <Meta data={data} />
+      <TBar id={id ?? data.id} data={data} />
+      {stage === 1 ? (
+        // Far zoom: the tile itself, the name as a caption under it (n8n §2).
+        <div className="fc-card-tile" data-testid={`fc-card-tile-${id}`}>
+          <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>
+          {data.status && <span className={`fc-status fc-st-${data.status === "success" ? "ok" : data.status === "error" ? "err" : "run"}`} title={data.status} />}
+          {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} />}
+          {data.ring === "fence" && <span className="fc-card-fence-badge" title="fenced by an agent" />}
+        </div>
+      ) : null}
+      {stage === 1 ? (
+        <span className="fc-card-name fc-card-caption" title={data.title}>{data.title}</span>
+      ) : (
+        <>
+          <div className="fc-card-head">
+            <span className="fc-card-role"><RoleMark role={role} /></span>
+            <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>
+            <span className="fc-card-name" title={data.title}>{data.title}</span>
+            {data.status && <span className={`fc-status fc-st-${data.status === "success" ? "ok" : data.status === "error" ? "err" : "run"}`} title={data.status} />}
+            {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} title={data.lastRun === "ok" ? "last run – passed" : "last run – failed"} />}
+            {data.ring === "fence" && <span className="fc-card-fence-badge" title="fenced by an agent" />}
+          </div>
+          {data.subtitle && <div className="fc-card-sub" title={data.subtitle}>{data.subtitle}</div>}
+        </>
+      )}
+      {stage >= 2 && <Meta data={data} />}
       {stage >= 2 && (data.flows?.length || data.chains?.length) ? (
         <div className="fc-card-flows mono">
           {data.flows?.length ? <span title={`flows: ${data.flows.join(", ")}`}>{data.flows.length} flows</span> : null}
