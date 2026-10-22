@@ -512,6 +512,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             pinned={pinned && !selStep ? pinned : null}
             onNodeTool={(id, action) => {
               if (action === "open") { drill(id); setSelBlock(id); setInspForced(true); }
+              else if (action === "run") void runner.run(id); // not a step id → the whole pipeline
               else setPinned((p) => (p === id ? null : id));
             }} />
             <NodePanel info={ws.info} open={panel} onClose={() => { setPanel(false); setInsert(null); }} onPick={pick}
@@ -531,6 +532,16 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             <button className="btn sm" onClick={() => openInsp("live")} data-testid="hud-live"><Icon.agents /> Agents{(ws.info?.task || ws.info?.team) && <i className="hud-dot" />}</button>
             <button className="btn sm" onClick={() => openInsp("changes")} data-testid="hud-changes"><Icon.changes /> Changes{ws.files.length ? <b>{ws.files.length}</b> : null}</button>
             <button className="btn sm" onClick={() => openInsp("structure")} data-testid="map-side-toggle"><Icon.sidebar /> Structure</button>
+          </div>
+        )}
+        {/* With the inspector open the other HUD buttons would hide behind it
+            (the inspector covers the top-right), but Roles must stay reachable
+            – the lens presets and role filter live in its popover. It docks to
+            the left of the inspector instead of vanishing. */}
+        {insp && (
+          <div className="map-hud map-hud-side" data-testid="map-hud">
+            <button className={`btn sm${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
+              onClick={() => setRolesOpen((o) => !o)}>Roles</button>
           </div>
         )}
         {/* The add-block palette shares the inspector's corner – while it is

@@ -148,11 +148,6 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       };
       const sorted = [...withDrags].sort((a, b) => depth(a) - depth(b) || (a.pos!.x - b.pos!.x) || (a.pos!.y - b.pos!.y));
       const FIRST = 400;
-      // Fresh arrivals: the pipeline lane loads after the first paint and lands
-      // outside the fitted viewport – fit can never see unmounted nodes under
-      // onlyRenderVisibleElements, so after hydration the viewport expands to
-      // include them (union of every laid node, capped at the current zoom).
-      const freshArrivals = shownRef.current.size > 0 && sorted.some((n) => !shownRef.current.has(n.id));
       shownRef.current = new Set(sorted.map((n) => n.id));
       setRfNodes(sorted.slice(0, FIRST).map((n) => toRf(n, selRef.current, new Set(), new Set())));
       didFit.current = true;
@@ -190,24 +185,48 @@ function FlowCanvasInner(props: FlowCanvasProps) {
               }
             });
           }
-          if (freshArrivals) {
-            // Second hydration pass with nodes the first viewport never held:
-            // expand to the union of every laid node (the fit above can only
-            // see mounted nodes – unmounted arrivals are invisible to it).
+          {
+            // Nodes outside the current viewport (the late pipeline lane, an
+            // undo/redo bring-back) can never be seen or mounted under
+            // onlyRenderVisibleElements – the fit above only saw mounted
+            // nodes. Every layout run re-checks: expand the viewport to the
+            // union of every laid node when something falls outside it (a
+            // cancelled run's rAF never fires, so this cannot be gated on
+            // "fresh ids" alone – a poll refresh of known ids must still
+            // repair the viewport). A refresh that leaves nothing clipped
+            // never moves the camera.
             window.requestAnimationFrame(() => {
               if (!live) return;
+              const el = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
+              if (!el) return;
+              const t = rf.getViewport();
+              // The app topbar is a grid row above the canvas, but a node
+              // sitting above the canvas top still centres its click point
+              // over the topbar – treat everything above the topbar's bottom
+              // edge as off-canvas.
+              const topbarBottom = document.querySelector("header.topbar")?.getBoundingClientRect().bottom ?? el.top;
+              const top = Math.max(el.top, topbarBottom);
+              const clipped = sorted.some((n) => {
+                const s = nodeSize(n);
+                const sx = el.left + t.x + n.pos!.x * t.zoom, sy = el.top + t.y + n.pos!.y * t.zoom;
+                return sx < el.left - 2 || sy < top - 2 || sx + s.w * t.zoom > el.right + 2 || sy + s.h * t.zoom > el.bottom + 2;
+              });
+              if (!clipped) return;
               let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
               for (const n of sorted) {
                 const s = nodeSize(n);
                 minX = Math.min(minX, n.pos!.x); minY = Math.min(minY, n.pos!.y);
                 maxX = Math.max(maxX, n.pos!.x + s.w); maxY = Math.max(maxY, n.pos!.y + s.h);
               }
-              const t = rf.getViewport();
-              const el = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
-              if (el && maxX > minX) {
-                const z = Math.max(0.1, Math.min(t.zoom, el.width / (maxX - minX + 160), el.height / (maxY - minY + 160)));
-                rf.setViewport({ x: (el.width - (maxX - minX) * z) / 2 - minX * z, y: (el.height - (maxY - minY) * z) / 2 - minY * z, zoom: z });
-              }
+              if (maxX <= minX) return;
+              const availH = el.bottom - top;
+              const z = Math.max(0.1, Math.min(t.zoom, el.width / (maxX - minX + 160), availH / (maxY - minY + 160)));
+              // Content taller than the viewport at the floor zoom would
+              // centre with a negative offset – the top rows (the pipeline
+              // lane) would land above the canvas, under the topbar. Align
+              // the union top instead of centring when it overflows.
+              const offY = Math.max(0, (availH - (maxY - minY) * z) / 2);
+              rf.setViewport({ x: (el.width - (maxX - minX) * z) / 2 - minX * z, y: (top - el.top) + offY - minY * z, zoom: z });
             });
           }
           return;
@@ -417,9 +436,10 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   // Live zoom readout (the store subscription keeps it current between zooms).
   const zoomPct = Math.round(useStore((s) => s.transform[2]) * 100);
   const zoom = useStore((s) => s.transform[2]);
-  // Semantic zoom thresholds (docs/design/fused-canvas.md §zoom): far below
-  // 0.45 (captions only), mid to 0.9 (facts), near above (the function list).
-  const zoomLevel: "far" | "mid" | "near" = zoom < 0.45 ? "far" : zoom < 0.9 ? "mid" : "near";
+  // Semantic zoom thresholds – contract §6 (X1 hand-off): far < 0.55 (the
+  // caption under the tile), mid to 1.0 (facts), near above (the function
+  // list). A resize forces a level regardless of scale.
+  const zoomLevel: "far" | "mid" | "near" = zoom < 0.55 ? "far" : zoom < 1 ? "mid" : "near";
 
   return (
     <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel, hovered, onStub, hoverEdge, setHoverEdge, onResize: onNodeResize, zoom, zoomLevel }}>
@@ -472,7 +492,13 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             edgesFocusable={false}
             snapToGrid
             snapGrid={[16, 16]}
-            onlyRenderVisibleElements
+            // Virtualization (the 2 600-node FlowLab canvas needs it) races
+            // the late pipeline lane under the map's ~100 nodes: the lane
+            // mounts only inside the viewport, and the viewport repair runs
+            // a frame later than React Flow's own unmount. Small canvases
+            // skip the dance entirely – chunked hydration already bounds
+            // their first paint.
+            onlyRenderVisibleElements={rfNodes.length > 400}
             // Drag pans (n8n, Figma); Shift-drag draws a marquee; Shift-click adds.
             panOnDrag
             selectionKeyCode="Shift"

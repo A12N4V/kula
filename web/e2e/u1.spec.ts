@@ -24,8 +24,10 @@ test("the edge brightness ladder holds: text > node border > resting edge", asyn
   await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   const edge = page.locator("[data-testid=map-flow] .fc-edge").first();
   await expect(edge).toBeVisible();
-  const card = page.locator("[data-testid=map-flow] .fc-card").first();
+  const card = page.locator("[data-testid=map-flow] .fc-card").filter({ hasNot: page.locator(".fc-stage-1") }).first();
   await expect(card).toBeVisible({ timeout: 10_000 });
+  // by construction: stage-1 cards carry border-color transparent (the tile
+  // owns the border) – sample a mid/near card so the border rung is real.
   const [e, b, t] = await page.evaluate(() => {
     const css = (sel: string, prop: string) => {
       const el = document.querySelector(sel);
@@ -34,7 +36,7 @@ test("the edge brightness ladder holds: text > node border > resting edge", asyn
     };
     return [
       css("[data-testid=map-flow] .fc-edge", "stroke"),
-      css("[data-testid=map-flow] .fc-card", "borderTopColor"),
+      css("[data-testid=map-flow] .fc-card:not(.fc-stage-1)", "borderTopColor"),
       css("[data-testid=map-flow] .fc-card-name", "color"),
     ];
   });
@@ -189,17 +191,21 @@ test("the leftover re-layout/pin/roles toolbar row is gone", async ({ page }) =>
   await expect(page.locator("[data-testid=map-scheme-btn]")).toHaveCount(0);
 });
 
-test("text overlap probe: the map canvas is clean at 1440 and 390", async ({ page }, info) => {
+test("text overlap probe: the map canvas is clean at 1440, 1100 and 390", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "one project suffices – the repo probe covers every width");
   await open(page);
   await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
-  for (const [w, h] of [[1440, 900], [390, 844]]) {
+  for (const [w, h] of [[1440, 900], [1100, 900], [390, 844]]) {
     await page.setViewportSize({ width: w, height: h });
     await page.waitForTimeout(400);
     const hits = await page.evaluate(() => {
       // text-overlap probe (the repo's overlap.spec semantics): no two visible
-      // runs of text collide, no text is cut off without an ellipsis.
-      const nodes = [...document.querySelectorAll("[data-testid=map-flow] .fc-node:not(.fc-group), [data-testid=map-flow] .fm-headline, [data-testid=map-flow] .fc-edge-label")] as HTMLElement[];
+      // runs of text collide, no text is cut off without an ellipsis. The HUD
+      // buttons ride over the canvas as an overlay – they pair only with the
+      // headline row and each other (the 1100 px Roles × headline finding),
+      // not with the nodes beneath them.
+      const nodes = [...document.querySelectorAll("[data-testid=map-flow] .fc-node:not(.fc-group), [data-testid=map-flow] .fm-headline-v, [data-testid=map-flow] .fc-edge-label, .map-hud .btn")] as HTMLElement[];
+      const hud = (el: Element) => el.classList.contains("btn") && !!el.closest(".map-hud");
       const rect = (el: HTMLElement) => {
         const r = el.getBoundingClientRect();
         if (r.width < 2 || r.height < 2) return null;
@@ -219,6 +225,8 @@ test("text overlap probe: the map canvas is clean at 1440 and 390", async ({ pag
           if (!b) continue;
           // a frame contains its members – containment is not an overlap
           if (nodes[i].contains(nodes[j]) || nodes[j].contains(nodes[i])) continue;
+          // the HUD is an overlay: only its own row and the headline are judged
+          if (hud(nodes[i]) !== hud(nodes[j]) && !nodes[i].classList.contains("fm-headline-v") && !nodes[j].classList.contains("fm-headline-v")) continue;
           const x = Math.max(a.left, b.left), y = Math.max(a.top, b.top);
           const r = Math.min(a.right, b.right), d = Math.min(a.bottom, b.bottom);
           if (r - x > 2 && d - y > 2) n++;

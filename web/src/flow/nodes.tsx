@@ -229,7 +229,7 @@ AgentNode.displayName = "AgentNode";
 /** The harmonograph mark (agents-teams.css draws it as an svg curve). */
 function Hgraph() {
   return (
-    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" data-figure>
       <path d="M12 2c6 0 10 4 10 10 0 5-4 8-8 7-3-1-4-3-4-6 0-2 1.5-3.5 3.5-3.5 1.6 0 2.8 1.1 2.8 2.6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       <circle cx="5.5" cy="6" r="1.6" fill="currentColor" opacity=".55" />
       <circle cx="18.5" cy="18" r="1.6" fill="currentColor" opacity=".55" />

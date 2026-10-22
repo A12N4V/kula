@@ -57,7 +57,7 @@ type Props = {
   scheme?: Scheme;
   /** The node hover toolbar's actions (Run, Open code, Pin – n8n §4: nothing
       on the node face; the toolbar floats above it). */
-  onNodeTool?: (id: string, action: "open" | "pin") => void;
+  onNodeTool?: (id: string, action: "open" | "pin" | "run") => void;
   /** Blocks whose pin is on – the toolbar shows the state. */
   pinned?: string | null;
 };
@@ -227,8 +227,12 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   // The block card node (R0): the old Blocks-lens card is the node itself.
   const blockCard = (b: Block, sec = b.id): FlowNode => {
     const fnIds = symbolsUnder(data.blocks, b.id).filter((id) => data.leaves[id]);
+    // n8n §7 hover toolbar: Run first, then Open code, Pin. Run shares the
+    // runner path the transport owns – the runner falls back to the whole
+    // pipeline when the id is not a pipeline step.
     const nodeTools = onNodeTool ? (
       <>
+        <button className="fc-tool" data-testid={`fn-run-${b.id}`} title="Run from here" onClick={(e) => { e.stopPropagation(); onNodeTool(b.id, "run"); }}><Icon.play /></button>
         <button className="fc-tool" data-testid={`fn-open-${b.id}`} title="Open code" onClick={(e) => { e.stopPropagation(); onNodeTool(b.id, "open"); }}><Icon.doc /></button>
         <button className={`fc-tool${pinned === b.id ? " on" : ""}`} data-testid={`fn-pin-${b.id}`} title={pinned === b.id ? "Unpin" : "Pin"} onClick={(e) => { e.stopPropagation(); onNodeTool(b.id, "pin"); }}><Icon.target /></button>
       </>
@@ -278,7 +282,9 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
       const open = depth >= 2 && kids.length > 0;
       if (!open) {
         // The section card: same information-rich card, its blocks listed inside.
-        nodes.push({ ...blockCard(s), pos: { x: x + 40, y }, ...markOf(id, true), card: { ...blockCard(s).card, members: kids.map((k) => ({ id: k.id, title: title(k), color: colorOf(k, id) })) } });
+        // Only sections that actually hold shown blocks carry a member list –
+        // an empty list renders a dead .fc-card-members div.
+        nodes.push({ ...blockCard(s), pos: { x: x + 40, y }, ...markOf(id, true), card: { ...blockCard(s).card, members: kids.length ? kids.map((k) => ({ id: k.id, title: title(k), color: colorOf(k, id) })) : undefined } });
         reps.set(id, s.id);
         y += (blockCard(s).card?.members?.length ? 304 : 192) + GAP_Y;
         continue;

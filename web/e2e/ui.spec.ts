@@ -2642,13 +2642,25 @@ test.describe("map", () => {
       const [r, g, b] = rgb.split(",").map(Number);
       expect(r + g + b).toBeLessThan(700); // anything near-white sums over ~700
     }
-    // hover a node: its wires brighten to full opacity (--text)
+    // hover a node: its wires climb the brightness ladder by stroke colour –
+    // resting edges sit on --text-3, lit edges on --text (opacity stays 1;
+    // the ladder is luminance, not transparency). Only edges of the hovered
+    // node are lit, so sample one attached to it.
     const node = page.locator("[data-testid=map-flow] .fc-card").first();
     await node.hover();
     const lit = page.locator("[data-testid=map-flow] .fc-edge-lit").first();
     await expect(lit).toBeAttached();
-    const litOp = await lit.evaluate((el) => getComputedStyle(el).opacity);
-    expect(Number(litOp)).toBeGreaterThan(Number(atRest.split("|")[0]));
+    const lum = (rgb: string | undefined) => {
+      if (!rgb) return -1;
+      const [r, g, b] = rgb.split(",").map(Number);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const litStroke = await lit.evaluate((el) => {
+      const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(getComputedStyle(el).stroke) ?? null;
+      return m ? `${m[1]},${m[2]},${m[3]}` : undefined;
+    });
+    // the lit edge is brighter than the resting edge – the ladder's edge rung
+    expect(lum(litStroke)).toBeGreaterThan(lum(atRest.split("|")[1]));
   });
 
   test("R0: no node label overlaps another node or an edge label (1440, 1100, 390)", async ({ page }) => {
@@ -2748,21 +2760,27 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
     const canvas = page.locator("[data-testid=map-flow-canvas] .fc-canvas");
     const selOf = () => canvas.getAttribute("data-fc-selection");
-    // seed the walk from a card with an outgoing main edge: cards are tried
-    // from the top of the stacking order down (sibling frames cover earlier
-    // groups' children), each probed with one ArrowRight. The canvas
-    // virtualizes its node set, so re-resolve the card list every attempt –
-    // an index captured from an earlier render can be gone by now
+    // seed the walk from a card that is known by construction to carry an
+    // outgoing main edge: the canvas records its main-edge list on
+    // window.__fcLayout after every layout run, so the seed is a real edge
+    // source, not whichever card happens to sit last in the stacking order
+    // (most cards are children inside frames – only rep cards emit edges).
     let start = "", moved = "";
-    for (let skip = 0; skip < 14 && !moved; skip++) {
-      const cards = page.locator(".fc-card");
-      const i = (await cards.count()) - 1 - skip;
-      if (i < 0) break;
-      const tile = cards.nth(i);
+    for (let attempt = 0; attempt < 20 && !moved; attempt++) {
+      const seed = await page.evaluate(() => {
+        const me = (window as unknown as { __fcLayout?: { mainEdges: [string, string][] } }).__fcLayout?.mainEdges ?? [];
+        for (const [src] of me) {
+          if (src.startsWith("step:")) continue;
+          if (document.querySelector(`[data-testid=fc-node-${CSS.escape(src)}]`)) return src;
+        }
+        return null;
+      });
+      if (!seed) { await page.waitForTimeout(1000); continue; }
+      const tile = page.locator(`[data-testid=fc-node-${CSS.escape(seed)}]`);
       try {
         await tile.dispatchEvent("click", { timeout: 5000 });
       } catch {
-        continue; // the node unmounted between count and click – next card
+        continue; // the node unmounted between query and click – next round
       }
       await canvas.focus();
       await expect.poll(selOf).not.toBe("");
@@ -2772,7 +2790,7 @@ test.describe("map", () => {
       moved = (await selOf()) ?? "";
       if (moved === start) {
         moved = "";
-        await page.keyboard.press("Escape"); // clear and try the next tile
+        await page.keyboard.press("Escape"); // clear and retry the seed
         await expect.poll(selOf).toBe("");
       }
     }

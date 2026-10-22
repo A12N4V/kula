@@ -377,6 +377,7 @@
 .map-insp .tabs { overflow-x: auto; scrollbar-width: none; }
 .map-insp .tabs button { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 .map-hud { position: absolute; top: 12px; right: 12px; z-index: 22; display: flex; gap: 6px; }
+.map-hud-side { right: calc(var(--size-inspector, 400px) + 24px); z-index: 27; }
 .map-hud .btn { background: var(--panel); display: inline-flex; align-items: center; gap: 6px; }
 .map-hud .btn svg { width: 13px; height: 13px; }
 .map-hud b { font: 600 10.5px var(--mono); padding: 0 5px; background: var(--bg-3); }
