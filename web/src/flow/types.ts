@@ -2,7 +2,7 @@
 // dev lab. Sizes live on the 16 px grid (docs/design/flow-canvas.md §1).
 import type { ReactNode } from "react";
 
-export type FlowNodeKind = "tile" | "wide" | "circle" | "group" | "loop" | "sticky" | "block";
+export type FlowNodeKind = "tile" | "wide" | "circle" | "group" | "loop" | "sticky" | "block" | "gate" | "agent";
 export type FlowStatus = "running" | "success" | "error" | "pinned" | "disabled";
 
 /** A node for the canvas. Sizes come from the kind unless the caller overrides. */
@@ -44,7 +44,15 @@ export type FlowNode = {
   accepts?: boolean;
   /** The block card's payload (R0). */
   card?: BlockCardData;
+  /** Typed labelled ports (n8n §3): each renders a visible 12 px handle with
+      its 11 px label – agents hang capabilities on the bottom edge (Model,
+      Tools, Fence, Memory), gates fork on the right edge (pass, fail). */
+  ports?: PortSpec[];
+  /** A last-run dot on the node (state without colouring the whole node). */
+  lastRun?: "ok" | "err";
 };
+
+export type PortSpec = { id: string; label: string; side: "bottom" | "right" | "left" | "top" };
 
 export type FlowEdge = {
   id: string;
@@ -118,6 +126,7 @@ export function nodeSize(n: Pick<FlowNode, "kind" | "size">): { w: number; h: nu
   if (n.kind === "block") return BLOCK_DEFAULT;
   if (n.kind === "wide") return WIDE;
   if (n.kind === "circle") return CIRCLE;
+  if (n.kind === "agent") return { w: 176, h: 96 }; // wide body so the typed bottom ports fit (n8n §2)
   if (n.kind === "group") return { w: 256, h: 128 };
   return TILE;
 }

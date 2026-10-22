@@ -55,6 +55,11 @@ type Props = {
   /** n8n canvas callbacks, passed through to the kit. */
   canvas?: Partial<Pick<React.ComponentProps<typeof FlowCanvas>, "onContextMenu" | "onConnect" | "onConnectToPane" | "onStub" | "onKey" | "onMoved" | "reveal">>;
   scheme?: Scheme;
+  /** The node hover toolbar's actions (Run, Open code, Pin – n8n §4: nothing
+      on the node face; the toolbar floats above it). */
+  onNodeTool?: (id: string, action: "open" | "pin") => void;
+  /** Blocks whose pin is on – the toolbar shows the state. */
+  pinned?: string | null;
 };
 
 const title = (b: Block) => b.theme || b.name;
@@ -175,7 +180,7 @@ function fnIcon(kind: string) {
     degree, the flows and chains it belongs to); sections render as frames
     holding their cards. Selection is single-writer (the kit); a focused
     chain dims everything it does not cross through the kit's `dim` flag. */
-export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas }: Props) {
+export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   const lit = (id: string) => !focus?.chain || focus.on.has(id);
   const shown = (b: Block) => roles.has(b.role);
@@ -222,10 +227,17 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   // The block card node (R0): the old Blocks-lens card is the node itself.
   const blockCard = (b: Block, sec = b.id): FlowNode => {
     const fnIds = symbolsUnder(data.blocks, b.id).filter((id) => data.leaves[id]);
+    const nodeTools = onNodeTool ? (
+      <>
+        <button className="fc-tool" data-testid={`fn-open-${b.id}`} title="Open code" onClick={(e) => { e.stopPropagation(); onNodeTool(b.id, "open"); }}><Icon.doc /></button>
+        <button className={`fc-tool${pinned === b.id ? " on" : ""}`} data-testid={`fn-pin-${b.id}`} title={pinned === b.id ? "Unpin" : "Pin"} onClick={(e) => { e.stopPropagation(); onNodeTool(b.id, "pin"); }}><Icon.target /></button>
+      </>
+    ) : undefined;
     return {
       id: b.id, kind: "block",
       title: title(b), subtitle: b.theme ? b.name : undefined,
       color: colorOf(b, sec), entry: b.role === "entry", dim: !lit(b.id),
+      toolbar: nodeTools,
       card: {
         role: b.role, roleColor: colorOf(b, sec),
         logo: sectionLogo(`${b.theme ?? ""} ${b.name} ${b.summary ?? ""}`, b.role),
@@ -250,7 +262,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   // The view owns the layout (the kit's preset mode): one column per
   // pipeline layer, left to right, shared utilities last. Every section is
   // a frame (depth 2) holding its block cards, or a single card at depth 1.
-  const CELL_W = 240, CELL_H = 224, GAP_Y = 48, GAP_X = 160, HEAD = 48;
+  const CELL_W = 336, CELL_H = 320, GAP_Y = 48, GAP_X = 160, HEAD = 48; // cells clear the 320×304 full card in both axes
   const columns: string[][] = [...layers.map((l) => l.filter((id) => sections[id] && shown(sections[id])))];
   const bandShown = band.filter((id) => sections[id] && shown(sections[id]));
   if (bandShown.length) columns.push(bandShown);
@@ -290,7 +302,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   // on. A retry loops back to the last agent. Wires carry the run: marching
   // while data moves, green once passed, red where it failed; hovering one
   // shows "+" to insert a block there. Stickies sit where they were dropped.
-  const LANE_Y = -288, STEP_W = 176;
+  const LANE_Y = -288, STEP_W = 208; // lane steps clear each other – the 176 agent body plus a gap
   const fenceSize = (sid: string) => { const set = new Set<string>(); for (const sym of symbolsUnder(data.blocks, sid)) { const p = data.leaves[sym]?.path; if (p) set.add(p); } return set.size; };
   const nodeIdsSoFar = new Set(nodes.map((n) => n.id));
   const repOfSec = (sid: string) => { const r = reps.get(sid); return r && nodeIdsSoFar.has(r) ? r : null; };
@@ -305,22 +317,51 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
       return;
     }
     const status = st.disabled ? "disabled" : st.status === "waiting" || st.status === "running" ? "running" : st.status === "success" ? "success" : st.status === "error" ? "error" : undefined;
+    const lastRun = st.status === "success" ? "ok" : st.status === "error" ? "err" : undefined;
     const tools = (
       <>
         {st.status === "waiting" && <button className="fc-tool" data-testid="step-done" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "done"); }} title="The agent finished – hand on">done</button>}
         <button className="fc-tool" data-testid="step-run" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "run"); }} title="Run from this block"><Icon.play /></button>
+        <button className="fc-tool" data-testid="step-open" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "open"); }} title="Open the step detail"><Icon.arrow /></button>
         <button className="fc-tool" data-testid="step-toggle" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "toggle"); }} title={st.disabled ? "Activate (D)" : "Deactivate (D)"}><Icon.lock /></button>
         <button className="fc-tool" data-testid="step-remove" onClick={(e) => { e.stopPropagation(); onStepTool?.(st.id, "remove"); }} title="Delete (Del)"><Icon.close /></button>
       </>
     );
     const last = li === run.length - 1;
-    nodes.push({
-      id, kind: "tile", title: st.name,
-      subtitle: st.note ?? (st.status === "waiting" ? "waiting for an agent" : name(st.section) ?? (st.kind === "gate" ? `kula ${st.ref}` : st.kind === "retry" ? `up to ${st.max ?? 3} rounds` : st.ref)),
-      icon: <span className="fc-step-ico" style={{ color: KIND_COLOR[st.kind] }}><KindIco kind={st.kind} /></span>,
-      color: KIND_COLOR[st.kind], status, entry: st.kind === "trigger", noOut: last,
-      toolbar: tools, pos: { x: li * STEP_W, y: LANE_Y }, connectable: true, accepts: li > 0,
-    });
+    // Shape by kind (n8n §2): triggers keep the rounded leading edge, gates
+    // are diamonds with labelled pass/fail forks, agents are wide softer
+    // nodes with typed capability ports on the bottom edge.
+    const agentPorts = [
+      { id: "model", label: "Model", side: "bottom" as const },
+      { id: "tools", label: "Tools", side: "bottom" as const },
+      { id: "fence", label: "Fence", side: "bottom" as const },
+      { id: "memory", label: "Memory", side: "bottom" as const },
+    ];
+    if (st.kind === "gate" || st.kind === "trigger") {
+      nodes.push({
+        id, kind: st.kind === "gate" ? "gate" : "tile", title: st.name,
+        subtitle: st.note ?? (st.status === "waiting" ? "waiting for an agent" : name(st.section) ?? (st.kind === "gate" ? `kula ${st.ref}` : st.ref)),
+        icon: <span className="fc-step-ico" style={{ color: KIND_COLOR[st.kind] }}><KindIco kind={st.kind} /></span>,
+        color: KIND_COLOR[st.kind], status, entry: st.kind === "trigger", lastRun,
+        ports: st.kind === "gate" ? undefined : undefined, noOut: last,
+        toolbar: tools, pos: { x: li * STEP_W, y: LANE_Y }, connectable: true, accepts: li > 0,
+      });
+    } else if (st.kind === "agent" || st.kind === "crew") {
+      nodes.push({
+        id, kind: "agent", title: st.name,
+        subtitle: st.note ?? (st.status === "waiting" ? "waiting" : name(st.section) ?? st.ref),
+        color: KIND_COLOR[st.kind], status, lastRun, ports: agentPorts,
+        toolbar: tools, pos: { x: li * STEP_W, y: LANE_Y }, connectable: true, accepts: li > 0,
+      });
+    } else {
+      nodes.push({
+        id, kind: "tile", title: st.name,
+        subtitle: st.note ?? (st.status === "waiting" ? "waiting for an agent" : name(st.section) ?? (st.kind === "retry" ? `up to ${st.max ?? 3} rounds` : st.ref)),
+        icon: <span className="fc-step-ico" style={{ color: KIND_COLOR[st.kind] }}><KindIco kind={st.kind} /></span>,
+        color: KIND_COLOR[st.kind], status, lastRun, noOut: last,
+        toolbar: tools, pos: { x: li * STEP_W, y: LANE_Y }, connectable: true, accepts: li > 0,
+      });
+    }
     li++;
     if (prevStep) {
       const pid = `step:${prevStep.id}`;
@@ -366,9 +407,13 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     outCount.set(f.from, (outCount.get(f.from) ?? 0) + 1);
     edges.push({ id: key, source: a, target: b, weight: edgeWeight(f.weight, maxW) });
   }
-    return { nodes, edges, groups, reps };
+    // The card payload rides flat on the node data (the kit's BlockCard contract:
+// BlockCardDataWithSize = the FlowNode with the card's fields spread over it),
+// so the renderers read files/symbols/functions without reaching into .card.
+    const flat = nodes.map((n) => (n.card ? { ...n, ...n.card } : n));
+    return { nodes: flat, edges, groups, reps };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, roles, focus, depth, marks, steps, scheme, meta]);
+  }, [data, roles, focus, depth, marks, steps, scheme, meta, onNodeTool, pinned]);
 
   // The landing zoom (R0, readable by default): the busiest section, at a
   // scale where the card labels are legible – fit stays one key away.

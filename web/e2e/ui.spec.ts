@@ -2403,14 +2403,16 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=map-readout] [data-testid=map-block-table]")).toBeVisible();
     await expect(page.locator("[data-testid=map-block-table] [data-testid=map-role-line]")).toContainText(/entry|orchestrator|core|utility|adapter|model|config|test|glue/);
     await expect(page.locator("[data-testid=map-readout] h2")).toContainText(picked.split(/\s+/)[0]);
-    // the tinker rail: pin, hide tests, re-layout. Pin first: the role
-    // toggles and a re-layout replace the node objects and React Flow's
-    // selection echo clears the selection
-    await page.locator("[data-testid=map-pin]").click();
-    await expect(page.locator("[data-testid=map-pin]")).toHaveAttribute("aria-pressed", "true");
-    // R0 – no View menu: the controls ride the lens bar (re-layout there,
-    // test fixtures hide/show moved to the map harness).
-    await page.locator("[data-testid=map-relayout]").click();
+    // the node toolbar: pin rides the hovered node's toolbar now (the old
+    // "re-layout · pin · roles" row is gone). Hover the card first – the
+    // toolbar floats above it (n8n §4, nothing on the node face).
+    const card = page.locator("[data-testid=map-flow] .fc-card").first();
+    await card.hover();
+    await page.locator("[data-testid^=fn-pin-]").first().click();
+    await expect(page.locator("[data-testid^=fn-pin-]").first()).toHaveClass(/on/);
+    // re-layout is tidy now, one key on the canvas zoom controls (U2 moves
+    // them to the zoom bar) – the map survives it
+    await page.locator("[data-testid=fc-tidy]").click();
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
 
@@ -2495,12 +2497,9 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=ws-library]")).toBeVisible();
     await page.locator("[data-testid=lib-teams]").click();
     await expect(page.locator("[data-testid=lib-teams]")).toHaveAttribute("aria-expanded", "true");
-    // colours: a scheme is one click on the lens bar (R0 – no View menu)
-    await page.locator("[data-testid=map-scheme-btn]").click(); // section
+    // colours: the scheme toggle row is gone (grey nodes, n8n §6) – the map
+    // just stays in its scheme
     await expect(page.locator("[data-testid=map-flow]")).toHaveClass(/fm-flow/);
-    await page.locator("[data-testid=map-scheme-btn]").click(); // mono
-    await page.locator("[data-testid=map-scheme-btn]").click(); // heat
-    await page.locator("[data-testid=map-scheme-btn]").click(); // back to role
   });
 
   test("pipeline: blocks land on the map, Run opens a fenced task, Done hands on to the gate, the log streams it", async ({ page }) => {

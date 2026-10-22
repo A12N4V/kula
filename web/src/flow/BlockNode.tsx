@@ -10,6 +10,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { GLYPH } from "../colors";
 import { RoleMark, ROLE_COLOR } from "../views/map/icons";
 import { sectionLogo } from "../views/map/icons";
+import { TBar } from "./nodes";
 import type { BlockCardData, FlowNode } from "./types";
 import { BLOCK_SIZES, RESIZE_MAX, RESIZE_MIN, snap } from "./types";
 import { useFc } from "./fcContext";
@@ -69,22 +70,48 @@ const BlockCard = memo((props: NodeProps) => {
   const w = data.size?.w ?? BLOCK_SIZES[1].w;
   const h = data.size?.h ?? BLOCK_SIZES[1].h;
   const role = (data.role ?? "core") as Parameters<typeof RoleMark>[0]["role"];
-  const stage = data.members ? 3 : w >= BLOCK_SIZES[2].w ? 3 : w >= BLOCK_SIZES[1].w ? 2 : 1;
+  // Semantic zoom (docs/design/fused-canvas.md §zoom): far = the caption under
+  // the tile, mid = role, files, symbols, in/out, flow badges, fence badge and
+  // the last-run dot, near = the function list. A resize forces a level – the
+  // width the user drags the card to wins over the canvas zoom, never the
+  // reverse, so content is only ever revealed, never hidden by zooming in.
+  const { zoomLevel = "mid" } = useFc();
+  // Size against the default: full width forces near, compact forces far,
+  // and a default-sized card follows the canvas zoom (semantic zoom).
+  const sizeStage = w >= BLOCK_SIZES[2].w ? 3 : w <= BLOCK_SIZES[0].w ? 1 : 0;
+  const zoomStage = zoomLevel === "near" ? 3 : zoomLevel === "mid" ? 2 : 1;
+  const stage = Math.max(sizeStage, sizeStage === 0 ? zoomStage : Math.min(sizeStage, zoomStage));
   return (
     <div
-      className={`fc-node fc-card${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}${data.members ? " fc-card-sec" : ""}`}
+      className={`fc-node fc-card${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}${data.members ? " fc-card-sec" : ""} fc-stage-${stage}`}
       style={{ width: w, height: h, ["--fc-role" as string]: data.roleColor ?? ROLE_COLOR[role] }}
       data-testid={`fc-node-${id}`}
+      data-fc-stage={stage}
       title={`${data.title}${data.subtitle ? ` – ${data.subtitle}` : ""}`}
     >
-      <div className="fc-card-head">
-        <span className="fc-card-role"><RoleMark role={role} /></span>
-        <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>
-        <span className="fc-card-name" title={data.title}>{data.title}</span>
-        {data.status && <span className={`fc-status fc-st-${data.status === "success" ? "ok" : data.status === "error" ? "err" : "run"}`} title={data.status} />}
-      </div>
-      {data.subtitle && <div className="fc-card-sub" title={data.subtitle}>{data.subtitle}</div>}
-      <Meta data={data} />
+      <TBar id={id ?? data.id} data={data} />
+      {stage === 1 ? (
+        // Far zoom: the tile itself, the name as a caption under it (n8n §2).
+        <div className="fc-card-tile" data-testid={`fc-card-tile-${id}`}>
+          <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>
+          {data.status && <span className={`fc-status fc-st-${data.status === "success" ? "ok" : data.status === "error" ? "err" : "run"}`} title={data.status} />}
+          {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} />}
+          {data.ring === "fence" && <span className="fc-card-fence-badge" title="fenced by an agent" />}
+        </div>
+      ) : (
+        <>
+          <div className="fc-card-head">
+            <span className="fc-card-role"><RoleMark role={role} /></span>
+            <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>
+            <span className="fc-card-name" title={data.title}>{data.title}</span>
+            {data.status && <span className={`fc-status fc-st-${data.status === "success" ? "ok" : data.status === "error" ? "err" : "run"}`} title={data.status} />}
+            {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} title={data.lastRun === "ok" ? "last run – passed" : "last run – failed"} />}
+            {data.ring === "fence" && <span className="fc-card-fence-badge" title="fenced by an agent" />}
+          </div>
+          {data.subtitle && <div className="fc-card-sub" title={data.subtitle}>{data.subtitle}</div>}
+        </>
+      )}
+      {stage >= 2 && <Meta data={data} />}
       {stage >= 2 && (data.flows?.length || data.chains?.length) ? (
         <div className="fc-card-flows mono">
           {data.flows?.length ? <span title={`flows: ${data.flows.join(", ")}`}>{data.flows.length} flows</span> : null}

@@ -20,6 +20,11 @@ export const FcCtx = createContext<{
   /** Corner resize of a resizable node: commit=false during the drag (live
       size only), commit=true on release (the kit persists + re-measures). */
   onResize?: (id: string, size: { w: number; h: number }, commit: boolean) => void;
+  /** The canvas zoom – semantic zoom (far / mid / near) reads it. */
+  zoom?: number;
+  /** Semantic zoom level of the canvas: far (captions only), mid (facts),
+      near (the function list) – resize forces a level up (docs §2). */
+  zoomLevel?: "far" | "mid" | "near";
 }>({});
 
 export const useFc = () => useContext(FcCtx);

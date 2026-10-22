@@ -117,6 +117,9 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   const tidySeq = useRef(0);
   // The viewport is the user's: fit once per layout key, never on a data refresh.
   const fittedKey = useRef<string | null>(null);
+  // Node ids the user has already seen a viewport of – fresh arrivals (a late
+  // lane load) expand the view; refreshes of known ids never move the camera.
+  const shownRef = useRef<Set<string>>(new Set());
 
   // Layout (cached, worker-offloaded) whenever the data or layoutKey changes.
   useEffect(() => {
@@ -145,6 +148,12 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       };
       const sorted = [...withDrags].sort((a, b) => depth(a) - depth(b) || (a.pos!.x - b.pos!.x) || (a.pos!.y - b.pos!.y));
       const FIRST = 400;
+      // Fresh arrivals: the pipeline lane loads after the first paint and lands
+      // outside the fitted viewport – fit can never see unmounted nodes under
+      // onlyRenderVisibleElements, so after hydration the viewport expands to
+      // include them (union of every laid node, capped at the current zoom).
+      const freshArrivals = shownRef.current.size > 0 && sorted.some((n) => !shownRef.current.has(n.id));
+      shownRef.current = new Set(sorted.map((n) => n.id));
       setRfNodes(sorted.slice(0, FIRST).map((n) => toRf(n, selRef.current, new Set(), new Set())));
       didFit.current = true;
       // Hydrate the rest in small chunks (no 600 ms long task), then fit.
@@ -178,6 +187,26 @@ function FlowCanvasInner(props: FlowCanvasProps) {
                 rf.setCenter(cx, cy, { zoom: props.initialZoom ?? 0.85, duration: reduced.current ? 0 : 200 });
               } else {
                 rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 });
+              }
+            });
+          }
+          if (freshArrivals) {
+            // Second hydration pass with nodes the first viewport never held:
+            // expand to the union of every laid node (the fit above can only
+            // see mounted nodes – unmounted arrivals are invisible to it).
+            window.requestAnimationFrame(() => {
+              if (!live) return;
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              for (const n of sorted) {
+                const s = nodeSize(n);
+                minX = Math.min(minX, n.pos!.x); minY = Math.min(minY, n.pos!.y);
+                maxX = Math.max(maxX, n.pos!.x + s.w); maxY = Math.max(maxY, n.pos!.y + s.h);
+              }
+              const t = rf.getViewport();
+              const el = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
+              if (el && maxX > minX) {
+                const z = Math.max(0.1, Math.min(t.zoom, el.width / (maxX - minX + 160), el.height / (maxY - minY + 160)));
+                rf.setViewport({ x: (el.width - (maxX - minX) * z) / 2 - minX * z, y: (el.height - (maxY - minY) * z) / 2 - minY * z, zoom: z });
               }
             });
           }
@@ -387,9 +416,13 @@ function FlowCanvasInner(props: FlowCanvasProps) {
 
   // Live zoom readout (the store subscription keeps it current between zooms).
   const zoomPct = Math.round(useStore((s) => s.transform[2]) * 100);
+  const zoom = useStore((s) => s.transform[2]);
+  // Semantic zoom thresholds (docs/design/fused-canvas.md §zoom): far below
+  // 0.45 (captions only), mid to 0.9 (facts), near above (the function list).
+  const zoomLevel: "far" | "mid" | "near" = zoom < 0.45 ? "far" : zoom < 0.9 ? "mid" : "near";
 
   return (
-    <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel, hovered, onStub, hoverEdge, setHoverEdge, onResize: onNodeResize }}>
+    <FcCtx.Provider value={{ open: onOpen, toggleGroup, activeId: hovered ?? sel, hovered, onStub, hoverEdge, setHoverEdge, onResize: onNodeResize, zoom, zoomLevel }}>
       <div className={`fc-wrap${sidebar ? " fc-with-side" : ""}`} data-testid={testId} data-fc-ready={rfNodes.length > 0 ? "1" : "0"} data-fc-hydrated={hydrated ? "1" : "0"}>
         <div className="fc-canvas" tabIndex={0} onKeyDown={onKeyDown} aria-label="Flow canvas" data-fc-selection={sel ?? ""}>
           <ReactFlow

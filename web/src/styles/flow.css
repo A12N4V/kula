@@ -71,7 +71,7 @@
 
 /* ---- Block card node (R0) – the Blocks lens card as the node --------- */
 .fc-card {
-  box-sizing: border-box; background: var(--panel); border: 1px solid var(--line);
+  box-sizing: border-box; background: var(--panel); border: 1px solid var(--text-2);
   border-radius: var(--radius, 8px); padding: 8px 12px; overflow: hidden;
   display: flex; flex-direction: column; gap: 4px; position: relative;
   font-family: var(--font); color: var(--text);
@@ -132,23 +132,20 @@
 .fc-stub:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ---- Edges ---------------------------------------------------------- */
-/* R0 – dimmer connections, matching the Graph tab: resting edges sit on
-   --line-2 (the dim warm line, no new token) at a lowered opacity, and
-   brighten to --text (hover, a hovered node's wires) or --accent (selected,
-   running) only on interaction. Dense graphs fade further, so the tangle
-   never reads as a bright net. Never invisible: 0.55 at rest keeps a resting
-   edge traceable against --bg. */
-.fc-edge { stroke: var(--line-2); fill: none; opacity: .55; transition: opacity var(--dur) var(--ease); }
-.fc-edge.fc-back { stroke: var(--text-3); opacity: .45; }
-.fc-edge.fc-dashed { stroke-dasharray: 6 4; opacity: .45; }
+/* The brightness ladder (n8n §4): text > node border > resting edge.
+   Resting edges sit on --text-3 (mid grey, one step under the node border),
+   full opacity – never invisible, never competing with the nodes. */
+.fc-edge { stroke: var(--text-3); fill: none; opacity: 1; transition: opacity var(--dur) var(--ease); }
+.fc-edge.fc-back { stroke: var(--text-3); opacity: .75; }
+.fc-edge.fc-dashed { stroke-dasharray: 6 4; opacity: .8; }
 /* Dense canvases (the hook is set by the view when edges exceed 120): the
-   resting opacity falls linearly to 0.35 at ~400 edges. */
-.map-canvas--dense .fc-edge { opacity: .42; }
-.map-canvas--dense .fc-edge.fc-dashed, .map-canvas--dense .fc-edge.fc-back { opacity: .35; }
+   resting edge steps down a rung on the same ladder – still traceable. */
+.map-canvas--dense .fc-edge { opacity: .65; }
+.map-canvas--dense .fc-edge.fc-dashed, .map-canvas--dense .fc-edge.fc-back { opacity: .55; }
 /* The second step of the falloff: past ~400 edges the resting wire dims
    further, so the tangle never reads as a bright net. */
-.map-canvas--denser .fc-edge { opacity: .35; }
-.map-canvas--denser .fc-edge.fc-dashed, .map-canvas--denser .fc-edge.fc-back { opacity: .3; }
+.map-canvas--denser .fc-edge { opacity: .5; }
+.map-canvas--denser .fc-edge.fc-dashed, .map-canvas--denser .fc-edge.fc-back { opacity: .45; }
 /* Interaction restores full brightness: hover, selected, the running wires
    and the wires of the node under the pointer. */
 /* The brightened states flip synchronously (no opacity transition) so a
@@ -156,7 +153,7 @@
 .fc-edge:hover, .fc-edge.fc-edge-sel, .fc-edge-hot, .fc-edge-lit, .fc-flow-run { opacity: 1; transition: none; }
 .fc-edge.fc-edge-sel, .fc-edge:hover { stroke: var(--accent); }
 .fc-edge-hot, .fc-edge-lit { stroke: var(--text); }
-.fc-edge-faint { opacity: .18; }
+.fc-edge-faint { opacity: .25; }
 /* A focused chain keeps its own wires lit and dims nothing about colour –
    the chain's non-members already sit at fc-dim. */
 [data-fc-chainfocus="1"] .fc-edge { opacity: .3; }
@@ -243,16 +240,19 @@ html[data-rm="1"] .fc-side, html[data-rm="1"] .fc-tile-box,
 html[data-rm="1"] .fc-wide-in, html[data-rm="1"] .fc-circle-in,
 html[data-rm="1"] .fc-dot { transition: none; }
 
-/* ---- Colour: every node carries its role (n8n-style tinted tiles) ------ */
+/* ---- Colour: nodes stay neutral grey (n8n §6) – colour is reserved for
+   state (running, error, success) and the accent. Role lives in shape and
+   glyph, never in a per-category tint. Borders sit one rung above the
+   resting edge on the ladder: text > node border > edge. */
 .fc-tile-box, .fc-wide-in, .fc-loop-box {
-  background: color-mix(in srgb, var(--fc-role, var(--text-3)) 12%, var(--panel));
-  border-color: color-mix(in srgb, var(--fc-role, var(--line)) 45%, var(--line));
+  background: var(--panel);
+  border-color: var(--text-2);
 }
-.fc-wide-in { border-left: 4px solid var(--fc-role, var(--line-2)); }
-.fc-circle-in { border-color: color-mix(in srgb, var(--fc-role, var(--line-2)) 55%, var(--line)); }
+.fc-wide-in { border-left: 4px solid var(--text-2); }
+.fc-circle-in { border-color: var(--text-2); }
 .fc-node:hover .fc-tile-box, .fc-node:hover .fc-wide-in {
-  border-color: var(--fc-role, var(--line-2));
-  background: color-mix(in srgb, var(--fc-role, var(--text-3)) 20%, var(--panel));
+  border-color: var(--text);
+  background: var(--bg-2);
 }
 .fc-wide-title { font-size: 14px; font-weight: 500; }
 .fc-title { color: var(--text-2); }
@@ -277,7 +277,7 @@ html[data-rm="1"] .fc-dot { transition: none; }
 .fc-flow-err { stroke: var(--red) !important; }
 @keyframes fc-march { to { stroke-dashoffset: -12; } }
 .fc-edge-hot { stroke: var(--text) !important; }
-.fc-edge-hit { fill: none; stroke: transparent; stroke-width: 18px; pointer-events: stroke; cursor: pointer; }
+.fc-edge-hit { fill: none; stroke: transparent; stroke-width: 40px; pointer-events: stroke; cursor: pointer; }
 .fc-edge-tools { position: absolute; pointer-events: all; display: flex; gap: 4px; opacity: 0; transition: opacity .12s ease-out; }
 .fc-edge-tools.on { opacity: 1; }
 .fc-edge-tools button { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; background: var(--bg-2); border: 1px solid var(--line-2); color: var(--text-2); font: 600 14px var(--mono); cursor: pointer; }
@@ -304,3 +304,65 @@ html[data-rm="1"] .fc-dot { transition: none; }
 /* Wires meet the box, not the label under it. */
 .fc-tile > .react-flow__handle-left, .fc-tile > .react-flow__handle-right { top: 48px; }
 .fc-tile .fc-title, .fc-tile .fc-sub { width: 156px; margin-left: -30px; }
+
+/* ---- U1: shape by kind, typed ports, semantic zoom stages ------------- */
+/* Gate: the diamond tile. Shape says "a fork in the run". */
+.fc-gate { display: flex; flex-direction: column; align-items: center; }
+.fc-gate-diamond {
+  width: 68px; height: 68px; margin-top: 4px;
+  display: grid; place-items: center; position: relative;
+  background: var(--panel); border: 1px solid var(--text-2);
+  transform: rotate(45deg);
+}
+.fc-gate-diamond > * { transform: rotate(-45deg); }
+.fc-gate.fc-sel .fc-gate-diamond { border-color: var(--accent); background: var(--accent-soft); }
+.fc-gate .fc-title { margin-top: 8px; }
+
+/* Agent: a wide softer body with its harmonograph mark; the typed
+   capability ports hang on the bottom edge (the axis says the type). */
+.fc-agent-in {
+  width: 100%; height: 100%; box-sizing: border-box; padding: 12px 16px;
+  display: flex; gap: 12px; align-items: center;
+  background: var(--panel); border: 1px solid var(--text-2);
+  border-radius: 20px; position: relative; color: var(--text-2);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.fc-agent.fc-sel .fc-agent-in { border-color: var(--accent); background: var(--accent-soft); }
+.fc-agent-hg { flex: none; color: var(--accent); display: grid; place-items: center; }
+
+/* Typed labelled ports (n8n §3): a visible 12 px handle, an 11 px label. */
+.fc-port { position: absolute; display: flex; align-items: center; gap: 4px; z-index: 2; }
+.fc-port .fc-dot-typed { position: static; }
+.fc-port-bottom { bottom: -6px; }
+.fc-port-right { right: -8px; top: 50%; transform: translateY(-50%); flex-direction: row; }
+.fc-port-fail { top: auto; bottom: 12px; transform: none; }
+.fc-port-left { left: -8px; top: 50%; transform: translateY(-50%); flex-direction: row-reverse; }
+.fc-port-top { top: -6px; }
+.fc-port-label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .04em;
+  color: var(--text-3); background: var(--bg); padding: 0 3px;
+  white-space: nowrap; pointer-events: none;
+}
+.fc-port-right .fc-port-label, .fc-port-left .fc-port-label { order: 2; }
+
+/* Handles: visible 12 px ports – n8n never hides the connection point.
+   React Flow's base handle style fights for width, so this wins on purpose. */
+.fc-dot, .fc-diamond, .react-flow__handle.fc-dot { width: 12px !important; height: 12px !important; background: var(--panel) !important; border: 1.5px solid var(--text-2) !important; border-radius: 50%; transition: none; min-width: 0; min-height: 0; }
+.fc-dot:hover, .react-flow__handle.fc-dot:hover { width: 14px !important; height: 14px !important; background: var(--accent) !important; border-color: var(--accent) !important; }
+
+/* Last-run dot: state without colouring the whole node (n8n §8.4). */
+.fc-lastrun { position: absolute; top: 5px; left: 5px; width: 8px; height: 8px; border-radius: 50%; }
+.fc-lastrun-ok { background: var(--green); }
+.fc-lastrun-err { background: var(--red); }
+
+/* Far zoom (stage 1): the tile and its caption, nothing else. */
+.fc-card.fc-stage-1 { padding: 0; background: none; border-color: transparent; gap: 0; align-items: center; }
+.fc-card.fc-stage-1::before { display: none; }
+.fc-card-tile {
+  width: 96px; height: 96px; border-radius: var(--radius, 8px);
+  background: var(--panel); border: 1px solid var(--text-2);
+  display: grid; place-items: center; position: relative;
+  font-size: 30px; color: var(--text-2);
+}
+.fc-card.fc-sel .fc-card-tile { border-color: var(--accent); background: var(--accent-soft); }
+.fc-card-fence-badge { position: absolute; top: -5px; right: -5px; width: 10px; height: 10px; background: var(--accent); border: 2px solid var(--bg); border-radius: 50%; }

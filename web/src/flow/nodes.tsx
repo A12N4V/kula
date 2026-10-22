@@ -5,9 +5,26 @@
 import { memo } from "react";
 import { Handle, NodeToolbar, Position, type NodeProps } from "@xyflow/react";
 import { Icon } from "../ui";
-import { CIRCLE, TILE, WIDE, type FlowNode } from "./types";
+import { CIRCLE, TILE, WIDE, type FlowNode, type PortSpec } from "./types";
 import { useFc } from "./fcContext";
 import BlockCard from "./BlockNode";
+
+const SIDE = { bottom: Position.Bottom, right: Position.Right, left: Position.Left, top: Position.Top };
+
+/** Typed labelled ports (n8n §3): a visible 12 px handle with its label.
+    The axis says the type: horizontal = data flow, vertical = capability. */
+function TypedPorts({ ports }: { ports: PortSpec[] }) {
+  return (
+    <>
+      {ports.map((pt) => (
+        <span key={pt.id} className={`fc-port fc-port-${pt.side}`} data-testid={`fc-port-${pt.id}`}>
+          <Handle type="source" position={SIDE[pt.side]} id={pt.id} className="fc-dot fc-dot-typed" isConnectable />
+          <span className="fc-port-label">{pt.label}</span>
+        </span>
+      ))}
+    </>
+  );
+}
 
 type FcData = FlowNode;
 
@@ -19,8 +36,9 @@ function Glyph({ icon, size }: { icon?: string | React.ReactNode; size: number }
 }
 
 /** The hover/selection toolbar: one per active node, never always-on.
-    Renders nothing when the slot is empty – no dead chrome. */
-function TBar({ id, data }: { id: string; data: FcData }) {
+    Renders nothing when the slot is empty – no dead chrome. Exported for the
+    block card, which carries the same slot. */
+export function TBar({ id, data }: { id: string; data: FcData }) {
   const { open, toggleGroup, activeId } = useFc();
   if (activeId !== id) return null;
   const content = data.toolbar ?? (
@@ -70,11 +88,13 @@ const TileNode = memo(({ data, selected, id }: NodeProps & { data: FcData }) => 
       <div className="fc-tile-box" style={{ ["--fc-role" as string]: data.color }}>
         <Glyph icon={data.icon} size={32} />
         {data.status && <span className={`fc-status fc-st-${STATUS_MARK[data.status] ?? data.status}`} title={data.status} />}
+        {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} title={`last run – ${data.lastRun === "ok" ? "passed" : "failed"}`} data-testid={`fc-lastrun-${id}`} />}
       </div>
       {data.badge && <span className="fc-badge">{data.badge}</span>}
       <div className="fc-title">{data.title}</div>
       {data.subtitle && <div className="fc-sub">{data.subtitle}</div>}
       <Handles data={data} nodeW={w} nodeH={h} />
+      {data.ports && <TypedPorts ports={data.ports} />}
       {data.noOut && data.kind !== "circle" && <Stub id={id ?? data.id} />}
     </div>
   );
@@ -144,6 +164,79 @@ const LoopNode = memo(({ data, selected }: NodeProps & { data: FcData }) => (
 LoopNode.displayName = "LoopNode";
 
 /** A sticky note (n8n): text on a tinted card, never wired, never run. */
+/** A gate: the diamond tile (shape says "a fork in the run"), its branch
+    outputs labelled at the port (pass, fail) so a fork reads without
+    opening the node (n8n §3). */
+const GateNode = memo(({ data, selected, id }: NodeProps & { data: FcData }) => {
+  const w = data.size?.w ?? TILE.w, h = data.size?.h ?? TILE.h;
+  return (
+    <div className={`fc-node fc-gate${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${stCls(data)}`} style={{ width: w, height: h }} data-testid={`fc-node-${id}`}>
+      <TBar id={id ?? data.id} data={data} />
+      <div className="fc-gate-diamond" style={{ ["--fc-role" as string]: data.color }}>
+        <Glyph icon={data.icon} size={20} />
+        {data.status && <span className={`fc-status fc-st-${STATUS_MARK[data.status] ?? data.status}`} title={data.status} />}
+        {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} title={`last run – ${data.lastRun === "ok" ? "passed" : "failed"}`} />}
+      </div>
+      {data.badge && <span className="fc-badge">{data.badge}</span>}
+      <div className="fc-title">{data.title}</div>
+      {data.subtitle && <div className="fc-sub">{data.subtitle}</div>}
+      <Handle type="target" position={Position.Left} id="l" className="fc-dot" isConnectable={!!data.accepts} />
+      {data.connectable && (
+        <>
+          <span className="fc-port fc-port-right" data-testid={`fc-port-${id}-pass`}>
+            <Handle type="source" position={Position.Right} id="pass" className="fc-dot fc-dot-typed" isConnectable />
+            <span className="fc-port-label">pass</span>
+          </span>
+          <span className="fc-port fc-port-right fc-port-fail" data-testid={`fc-port-${id}-fail`}>
+            <Handle type="source" position={Position.Right} id="fail" className="fc-dot fc-dot-typed" isConnectable />
+            <span className="fc-port-label">fail</span>
+          </span>
+        </>
+      )}
+      {data.ports && <TypedPorts ports={data.ports} />}
+      {data.noOut && <Stub id={id ?? data.id} />}
+    </div>
+  );
+});
+GateNode.displayName = "GateNode";
+
+/** An agent: a wide, softer node with its harmonograph mark, and the typed
+    capability ports along the bottom edge (Model, Tools, Fence, Memory) –
+    the axis tells the type: capability plugs downward (n8n §3). */
+const AgentNode = memo(({ data, selected, id }: NodeProps & { data: FcData }) => {
+  const w = data.size?.w ?? WIDE.w, h = data.size?.h ?? 96;
+  return (
+    <div className={`fc-node fc-agent${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${stCls(data)}`} style={{ width: w, height: h }} data-testid={`fc-node-${id}`}>
+      <TBar id={id ?? data.id} data={data} />
+      <div className="fc-agent-in" style={{ ["--fc-role" as string]: data.color }}>
+        <span className="fc-agent-hg" data-figure aria-hidden="true"><Hgraph /></span>
+        <div className="fc-wide-text">
+          <div className="fc-wide-title">{data.title}</div>
+          {data.subtitle && <div className="fc-sub">{data.subtitle}</div>}
+        </div>
+        {data.status && <span className={`fc-status fc-st-${STATUS_MARK[data.status] ?? data.status}`} title={data.status} />}
+        {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} title={`last run – ${data.lastRun === "ok" ? "passed" : "failed"}`} />}
+      </div>
+      {data.badge && <span className="fc-badge">{data.badge}</span>}
+      <Handles data={data} nodeW={w} nodeH={h} />
+      {data.ports && <TypedPorts ports={data.ports} />}
+      {data.noOut && <Stub id={data.id} />}
+    </div>
+  );
+});
+AgentNode.displayName = "AgentNode";
+
+/** The harmonograph mark (agents-teams.css draws it as an svg curve). */
+function Hgraph() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <path d="M12 2c6 0 10 4 10 10 0 5-4 8-8 7-3-1-4-3-4-6 0-2 1.5-3.5 3.5-3.5 1.6 0 2.8 1.1 2.8 2.6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="5.5" cy="6" r="1.6" fill="currentColor" opacity=".55" />
+      <circle cx="18.5" cy="18" r="1.6" fill="currentColor" opacity=".55" />
+    </svg>
+  );
+}
+
 const StickyNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
   const w = data.size?.w ?? 240, h = data.size?.h ?? 160;
   return (
@@ -156,4 +249,4 @@ const StickyNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
 });
 StickyNode.displayName = "StickyNode";
 
-export const nodeTypes = { sticky: StickyNode, tile: TileNode, wide: WideNode, circle: CircleNode, group: GroupNode, loop: LoopNode, block: BlockCard };
+export const nodeTypes = { sticky: StickyNode, tile: TileNode, wide: WideNode, circle: CircleNode, group: GroupNode, loop: LoopNode, block: BlockCard, gate: GateNode, agent: AgentNode };
