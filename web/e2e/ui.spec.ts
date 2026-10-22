@@ -48,6 +48,16 @@ const test = base.extend({
         const out = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "(no log)";
         throw new Error(`fixture on port ${port} did not come up in 180s\nfixture log:\n${out}`);
       }
+      // The port was free a moment ago, but a foreign kula server (another
+      // checkout's run) can take it in between. A fixture answers /api/agents
+      // with token "test" and carries this run's marker guard; anything else
+      // means the tests would silently read the wrong repo.
+      const probe = await fetch(`${url}/api/agents`, { headers: { "x-kula-token": "test" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      const ours = probe && Array.isArray(probe.rules) && probe.rules.some((r: { reason?: string }) => r.reason === "release pipeline: signed packages");
+      if (!ours) {
+        const out = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "(no log)";
+        throw new Error(`something else is serving on fixture port ${port} – not this run's fixture\nfixture log:\n${out}`);
+      }
       await use(url);
       proc.kill("SIGTERM");
       fs.closeSync(log);
