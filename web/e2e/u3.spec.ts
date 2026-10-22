@@ -20,6 +20,7 @@ async function opened(page: Page, base = "") {
   await expect(page.locator('[data-testid="actor-band"]')).toBeVisible();
 }
 
+const FENCE_DROP = `fence-drop-${Date.now()}`;
 const DIM_MAX = 0.35; // contract §8.5
 
 async function selectAgent(page: Page, name: string) {
@@ -58,13 +59,13 @@ test("dragging a block onto a fenced-in agent adds its section to the fence", as
   await page.locator('[data-testid="at-band-add"]').click();
   const form = page.locator('[data-testid="map-inspector"] [data-testid="ag-add-form"]');
   await expect(form).toBeVisible();
-  await form.locator('[data-testid="ag-add-name"]').fill("fence-drop");
+  await form.locator('[data-testid="ag-add-name"]').fill(FENCE_DROP);
   // Clear the default fence chip so the drop has a deterministic before/after.
   await form.locator('button[aria-label="Remove src/**"]').click();
   await form.locator('[data-testid="ag-add-create"]').click();
-  await expect(page.locator('[data-testid="at-agent-fence-drop"]')).toBeVisible({ timeout: 10_000 });
-  await selectAgent(page, "fence-drop");
-  expect(await fenceCount(page, "fence-drop")).toBe(0);
+  await expect(page.locator(`[data-testid=at-agent-${FENCE_DROP}]`)).toBeVisible({ timeout: 10_000 });
+  await selectAgent(page, FENCE_DROP);
+  expect(await fenceCount(page, FENCE_DROP)).toBe(0);
   // The drop handler reads the ITEM_DRAG payload the palette and library
   // drags produce; the physical drag-from-canvas-block gesture itself needs a
   // flow-level hook (recorded in the hand-off for U1).
@@ -74,20 +75,20 @@ test("dragging a block onto a fenced-in agent adds its section to the fence", as
     return el ? el.getAttribute("data-testid")!.replace("fc-node-", "").replace(/^sec:/, "") : "";
   });
   expect(ref, "a block to drag exists on the canvas").toBeTruthy();
-  await page.locator('[data-testid="at-agent-fence-drop"]').evaluate((el, ref) => {
+  await page.locator(`[data-testid=at-agent-${FENCE_DROP}]`).evaluate((el, ref) => {
     const dt = new DataTransfer();
     dt.setData("application/x-kula-block", JSON.stringify({ kind: "note", ref, name: ref, about: "" }));
     el.dispatchEvent(new DragEvent("dragenter", { bubbles: true, dataTransfer: dt }));
     el.dispatchEvent(new DragEvent("dragover", { bubbles: true, dataTransfer: dt }));
     el.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: dt }));
   }, ref);
-  await expect.poll(() => fenceCount(page, "fence-drop"), { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(() => fenceCount(page, FENCE_DROP), { timeout: 10_000 }).toBeGreaterThan(0);
 });
 
 test("edit fence on canvas: clicking a block toggles its section in the fence", async ({ page }) => {
   await opened(page);
-  await selectAgent(page, "fence-drop"); // created in the drag test, or below
-  if (!await page.locator('[data-testid="at-agent-fence-drop"]').count()) {
+  await selectAgent(page, FENCE_DROP); // created in the drag test, or below
+  if (!await page.locator(`[data-testid=at-agent-${FENCE_DROP}]`).count()) {
     await selectAgent(page, "polish");
   }
   await page.locator('[data-testid="at-edit-fence"]').click();
@@ -104,7 +105,7 @@ test("edit fence on canvas: clicking a block toggles its section in the fence", 
     return null;
   });
   expect(id, "a visible block was clickable").toBeTruthy();
-  await expect.poll(() => fenceCount(page, "fence-drop"), { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(() => fenceCount(page, FENCE_DROP), { timeout: 10_000 }).toBeGreaterThan(0);
   await expect(page.locator('[data-testid="fence-hull"]')).toBeVisible(); // hull redraws
 });
 
@@ -178,7 +179,8 @@ test("Script tab: @block chips resolve live and select the block on the canvas",
     const t = (document.querySelector('meta[name="kula-token"]') as HTMLMetaElement)?.content ?? "probe";
     const d = await (await fetch("/api/map", { headers: { "x-kula-token": t } })).json();
     const sec = Object.values(d.blocks ?? {}).find((b: { name?: string; theme?: string }) =>
-      /^[\w:-]+$/.test((b.theme ?? b.name ?? "")));
+      // chips resolve by full name (longest first), spaces included
+      !!(b.theme ?? b.name ?? "").trim());
     return sec ? ((sec as { theme?: string; name?: string }).theme ?? (sec as { name?: string }).name ?? "") : "";
   });
   expect(secName).toBeTruthy();

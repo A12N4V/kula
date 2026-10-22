@@ -60,8 +60,16 @@
 .at-role { font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .at-meta { display: flex; gap: 10px; font-size: 10.5px; color: var(--text-3); }
 .at-run { color: var(--accent); }
+.at-run::before, .at-team-glyph {
+  content: ""; display: inline-block; width: 6px; height: 6px;
+  margin-right: 5px; background: var(--accent); vertical-align: 1px;
+}
+.at-team-glyph { border: 1px solid var(--accent); background: none; margin-right: 6px; }
 .at-ports { display: flex; gap: 6px; margin-top: auto; padding-top: 2px; }
 .at-port { position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; }
+/* flow.css positions .fc-port absolutely for canvas nodes – the band's ports
+   are a flex row on the card's bottom edge, evenly spread, never overlapping. */
+.at-ports .at-port { position: static; flex: 1 1 0; display: flex; justify-content: center; }
 .at-port .fc-port-label { font-size: 9px; letter-spacing: .04em; }
 .at-port.err .fc-dot { border-color: var(--red); }
 .at-port-add { align-self: flex-end; margin-left: 4px; min-width: 16px; height: 16px; padding: 0; font-size: 11px; line-height: 1; }

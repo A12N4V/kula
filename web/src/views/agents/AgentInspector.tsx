@@ -172,10 +172,10 @@ export function AgentInspector({ info, agent, data, onSaved, onFocusBlock, focus
       {tab === "Runs" && (
         <div className="at-pane" data-testid="at-pane-runs">
           {info.task?.workflow === agent ? (
-            <div className="at-run-row"><span className="at-run">● running</span> {info.task.title} <span className="mono">fence {info.task.scope.length} paths</span></div>
+            <div className="at-run-row"><span className="at-run">running</span> {info.task.title} <span className="mono">fence {info.task.scope.length} paths</span></div>
           ) : <p className="at-hint">Not running. Use the card's Run verb on the canvas.</p>}
           {info.research.filter((r) => r.workflow === agent).map((r) => (
-            <div className="at-run-row" key={r.workflow}><span className={r.active ? "at-run" : ""}>{r.active ? "● loop" : "loop idle"}</span>
+            <div className="at-run-row" key={r.workflow}><span className={r.active ? "at-run" : ""}>{r.active ? "loop" : "loop idle"}</span>
               <span className="mono">{r.metric} {r.best} from {r.baseline} · {r.experiments.length} experiments</span></div>
           ))}
         </div>

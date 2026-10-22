@@ -69,7 +69,7 @@ export function ActorCard({ info, wf, selected, onSelect, fencePaths, onDropBloc
       <div className="at-meta mono">
         <span title="fenced paths">{paths.length ? `⧉ ${paths.length}` : "no fence"}</span>
         <span title={`autonomy – ${AUTONOMY_LABEL[autonomy]}`}>{AUTONOMY_LABEL[autonomy]}</span>
-        {info.task?.workflow === wf.name && <span className="at-run" title="running now">● run</span>}
+        {info.task?.workflow === wf.name && <span className="at-run" title="running now">run</span>}
       </div>
       <div className="at-ports" role="group" aria-label={`${wf.name} ports`}>
         {(["Model", "Tools", "Fence", "Memory"] as const).map((p) => (
@@ -108,7 +108,7 @@ export function ActorBand({ info, selected, onSelect, fencePaths, editFence, onE
       <div className="at-band-row">
         {teams.map((t) => (
           <div className="at-team" key={t.name} data-testid={`at-team-${t.name}`}>
-            <div className="at-team-head mono"><span className="at-team-glyph" aria-hidden="true">◇</span> {titleCase(t.name)} <span className="at-team-n">{t.members.length}</span></div>
+            <div className="at-team-head mono"><span className="at-team-glyph" aria-hidden="true" /> {titleCase(t.name)} <span className="at-team-n">{t.members.length}</span></div>
             <div className="at-team-members">
               {t.members.map((m) => {
                 const wf = agents.find((w) => w.name === (m.workflow || m.agent));
