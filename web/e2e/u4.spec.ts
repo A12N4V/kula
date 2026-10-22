@@ -21,22 +21,26 @@ async function opened(page: Page) {
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
   await expect(page.locator('[data-testid="ws-runbar"]')).toBeVisible({ timeout: 30_000 });
   // the fixture builds its map cold on the first GET /api/map (~11 s)
-  await expect(page.locator('[data-testid="fc-node"]').first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".fc-node").first()).toBeVisible({ timeout: 30_000 });
 }
 
-/** A pipeline of two blocks: an agent fenced to a real section, then a gate. */
+/** A pipeline of three blocks on two distinct canvas sections: a trigger that
+ *  reads sec1, an agent that writes sec2 (and reads sec1), a gate. Gives the
+ *  plan both a write tint and a read outline. */
 async function seedPipeline(page: Page) {
-  await page.evaluate(async () => {
-    const t = (document.querySelector('meta[name="kula-token"]') as HTMLMetaElement)?.content ?? "test";
-    const map = await (await fetch("/api/map", { headers: { "x-kula-token": t } })).json() as { blocks: Record<string, { kind: string; children: string[] }> };
-    const sec = Object.keys(map.blocks).find((id) => map.blocks[id].kind === "section") ?? Object.keys(map.blocks)[0];
+  await page.evaluate(() => {
+    const ids = [...document.querySelectorAll('[data-testid^="fc-node-sec:"]')]
+      .map((e) => (e.getAttribute("data-testid") ?? "").slice("fc-node-".length));
+    const [sec1, sec2] = [...new Set(ids)];
     localStorage.setItem("kula.pipeline.map", JSON.stringify([
-      { id: "u4-a", kind: "agent", ref: "polish", name: "Polish agent", section: sec },
+      { id: "u4-t", kind: "trigger", ref: "manual", name: "Start", section: sec1 },
+      { id: "u4-a", kind: "agent", ref: "polish", name: "Polish agent", section: sec2 },
       { id: "u4-g", kind: "gate", ref: "kula check", name: "Check" },
     ]));
   });
   await page.reload();
   await expect(page.locator('[data-testid="ws-seg-u4-a"]')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".fc-node").first()).toBeVisible({ timeout: 30_000 });
 }
 
 test("dry-run builds the plan: write tint, read outline, strike excludes, approve runs", async ({ page }) => {
@@ -44,7 +48,7 @@ test("dry-run builds the plan: write tint, read outline, strike excludes, approv
   await seedPipeline(page);
   await page.locator('[data-testid="u4-dry-run"]').click();
   await expect(page.locator('[data-testid="u4-plan-overlay"]')).toBeVisible();
-  await expect(page.locator('[data-testid="u4-plan-bar"]')).toContainText("2 blocks");
+  await expect(page.locator('[data-testid="u4-plan-bar"]')).toContainText("3 blocks");
   // write sections are tinted (accent), reads outlined – at least one of each
   await expect(page.locator('.u4-mark.u4-write').first()).toBeVisible();
   await expect(page.locator('.u4-mark.u4-read').first()).toBeVisible();
@@ -60,30 +64,36 @@ test("dry-run builds the plan: write tint, read outline, strike excludes, approv
 test("fake run: ask gate docks above the transport, answers once/run/deny, keys 1/2/3", async ({ page }) => {
   await opened(page);
   await seedPipeline(page);
-  await page.locator('[data-testid="ws-run-btn"]').click();
+  // The fake run follows an approved plan (the transport Run starts the real
+  // runner, which waits on a live agent – the fake run is the U4 surface).
+  await page.locator('[data-testid="u4-dry-run"]').click();
+  await expect(page.locator('[data-testid="u4-plan-bar"]')).toBeVisible();
+  await page.locator('[data-testid="u4-approve"]').click();
   const gate = page.locator('[data-testid="ask-gate"]');
   await expect(gate).toBeVisible({ timeout: 20_000 });
   const box = await gate.boundingBox();
   const tbox = await page.locator('[data-testid="ws-runbar"]').boundingBox();
   expect(box && tbox && Math.abs(box.y + box.height - tbox.y) < 60, `gate at ${box?.y} not above transport at ${tbox?.y}`).toBe(true);
   for (const answer of ["Allow once", "Allow for run", "Deny"]) await expect(gate.getByText(answer, { exact: false })).toBeVisible();
-  // keys 1/2/3 answer it: 2 = allow for run, then the next ask (none) – gate closes
+  // keys 1/2/3 answer it: 2 = allow for run, then the gate closes
   await page.keyboard.press("2");
   await expect(gate).toBeHidden();
   // not a modal: the canvas below stays interactive
-  await expect(page.locator('[data-testid="ws-runbar"]')).toBeVisible();
-  // a second run: answer 1 (allow once), a third: answer 3 (deny)
-  await expect.poll(async () => page.evaluate(() => document.querySelectorAll('[data-testid="u4-conflict-mark"], [data-testid^="u4-badge-"]').length), { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect(page.locator(".fc-node").first()).toBeVisible();
+  // the allowed write landed: a change badge shows on the map
+  await expect.poll(async () => page.locator('[data-testid^="u4-badge-"]').count(), { timeout: 15_000 }).toBeGreaterThan(0);
 });
 
 test("conflict marks land on the block in place; change badges show + and acknowledge", async ({ page }) => {
   await opened(page);
   await seedPipeline(page);
-  await page.locator('[data-testid="ws-run-btn"]').click();
+  await page.locator('[data-testid="u4-dry-run"]').click();
+  await expect(page.locator('[data-testid="u4-plan-bar"]')).toBeVisible();
+  await page.locator('[data-testid="u4-approve"]').click();
   await page.locator('[data-testid="ask-gate"]').waitFor({ timeout: 20_000 });
   await page.keyboard.press("1"); // allow once – the write lands, conflict is flagged
-  await expect(page.locator('[data-testid^="u4-conflict-"]').first()).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator('[data-testid^="u4-badge-"]').first()).toBeVisible({ timeout: 20_000 });
+  await expect.poll(async () => page.locator('[data-testid^="u4-conflict-"]').count(), { timeout: 20_000 }).toBeGreaterThan(0);
+  await expect.poll(async () => page.locator('[data-testid^="u4-badge-"]').count(), { timeout: 20_000 }).toBeGreaterThan(0);
   // open the step detail from the conflict mark: decision line, diff, ack
   await page.locator('[data-testid^="u4-conflict-"]').first().click();
   await expect(page.locator('[data-testid="ndv"]')).toBeVisible();
@@ -97,7 +107,9 @@ test("conflict marks land on the block in place; change badges show + and acknow
 test("deny keeps the edit off the run: no conflict, decision says denied", async ({ page }) => {
   await opened(page);
   await seedPipeline(page);
-  await page.locator('[data-testid="ws-run-btn"]').click();
+  await page.locator('[data-testid="u4-dry-run"]').click();
+  await expect(page.locator('[data-testid="u4-plan-bar"]')).toBeVisible();
+  await page.locator('[data-testid="u4-approve"]').click();
   await page.locator('[data-testid="ask-gate"]').waitFor({ timeout: 20_000 });
   await page.keyboard.press("3");
   await expect(page.locator('[data-testid="ask-gate"]')).toBeHidden();

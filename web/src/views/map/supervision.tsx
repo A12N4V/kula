@@ -144,6 +144,7 @@ export function useSupervision(data: MapData | null, steps: Step[]) {
   stepsRef.current = steps;
   const sectionOfStep = (stepId: string) => stepsRef.current.find((x) => x.id === stepId)?.section ?? null;
   const answerAsk = useCallback((id: string, ans: "once" | "run" | "deny") => {
+    console.log("U4DBG answer", id, ans, JSON.stringify(asks));
     setAsks((a) => a.filter((x) => x.id !== id));
     const ask = asks.find((x) => x.id === id);
     if (!ask) return;
@@ -156,6 +157,7 @@ export function useSupervision(data: MapData | null, steps: Step[]) {
       // The allowed write lands now: the change badges the block that made it
       // and the out-of-fence edit is flagged in place (a red corner mark).
       const sec = sectionOfStep(ask.stepId);
+      console.warn("U4 allow", ask.stepId, "sec", sec, ask.target);
       emitChange(ask.stepId, ask.target, "+", sec);
       setConflicts((cs) => [...cs, { id: `k${changeSeq.current}`, stepId: ask.stepId, section: sec, path: ask.target, reason: "write outside the fence" }]);
       setDecision((d) => ({ ...d, [ask.stepId]: `Allowed ${ans === "run" ? "for the run" : "once"}: ${ask.action} ${ask.target}.` }));
@@ -197,7 +199,11 @@ function useBoxes(canvas: React.RefObject<HTMLElement | null>, ids: string[]): M
     const ro = new ResizeObserver(measure);
     ro.observe(canvas.current!);
     window.addEventListener("scroll", measure, true);
-    return () => { ro.disconnect(); window.removeEventListener("scroll", measure, true); };
+    // The canvas re-hydrates asynchronously (cold map build): re-measure when
+    // nodes appear or the camera moves, not only on resize.
+    const mo = new MutationObserver(measure);
+    mo.observe(canvas.current!, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class"] });
+    return () => { ro.disconnect(); mo.disconnect(); window.removeEventListener("scroll", measure, true); };
   }, [canvas, key]);
   return boxes;
 }
