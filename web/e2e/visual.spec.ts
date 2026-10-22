@@ -50,7 +50,10 @@ async function at(page: Page, hash: string, opts: { light?: boolean; panel?: boo
 }
 
 /** Pixels that change with the repo or the clock, not with the design: the
-    status bar (changed count, HEAD), canvases (the graph layout, dither, life). */
+    status bar (changed count, HEAD), canvases (the graph layout, dither, life).
+    The Overview additionally masks its branch-dependent text – the header
+    branch name, the file/symbol facts and the Branches table names and
+    ahead/behind counts, all of which differ per module branch. */
 const volatile = (page: Page) => [page.locator(".statusbar"), page.locator("canvas"), page.locator(".graph-canvas")];
 
 const VIEWS = [
@@ -76,7 +79,7 @@ test.describe("visual baselines", () => {
             fullPage: false,
             // Changes lists whatever is dirty right now (this run's own test
             // output included) – keep its chrome, mask the file data.
-            mask: [...volatile(page), ...(name === "changes" ? [page.locator(".main ul, .main ol, .main table, .main pre, .main [class*=diff], .main [class*=file]")] : [])],
+            mask: [...volatile(page), ...(name === "overview" ? [page.locator(".ov-title .mono, .ov-facts, .br-table")] : []), ...(name === "changes" ? [page.locator(".main ul, .main ol, .main table, .main pre, .main [class*=diff], .main [class*=file]")] : [])],
           });
         }
       });
