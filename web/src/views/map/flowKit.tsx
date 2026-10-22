@@ -60,6 +60,9 @@ type Props = {
   onNodeTool?: (id: string, action: "open" | "pin" | "run") => void;
   /** Blocks whose pin is on – the toolbar shows the state. */
   pinned?: string | null;
+  /** U2: a block id to pan the camera to (search). Camera-only – the layout
+      key does not change, so no re-layout can follow (PLAN P4.6). */
+  reveal?: string | null;
 };
 
 const title = (b: Block) => b.theme || b.name;
@@ -180,7 +183,7 @@ function fnIcon(kind: string) {
     degree, the flows and chains it belongs to); sections render as frames
     holding their cards. Selection is single-writer (the kit); a focused
     chain dims everything it does not cross through the kit's `dim` flag. */
-export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned }: Props) {
+export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   const lit = (id: string) => !focus?.chain || focus.on.has(id);
   const shown = (b: Block) => roles.has(b.role);
@@ -453,7 +456,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
       </div>
       <FlowCanvas
         {...canvas}
-        reveal={selection?.startsWith("step:") ? selection : null}
+        reveal={reveal ?? (selection?.startsWith("step:") ? selection : null)}
         minZoom={0.1}
         initialFocus={busiest}
         initialZoom={0.85}

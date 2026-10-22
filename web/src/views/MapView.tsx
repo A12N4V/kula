@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import type { Workflow } from "../api";
 import { Icon } from "../ui";
 import { useCode } from "../CodePanel";
 import { Grip, listWidth } from "../resize";
@@ -21,7 +22,12 @@ import { FlowKitView } from "./map/flowKit";
 import { FlowsPanel, FlowsOverlay } from "./map/flowsPanel";
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf } from "./map/chainFocus";
-import { Library, ReviewPanel, RunPanel, sectionAtPoint, sectionOf, useLive, useMarks } from "./map/workspace";
+import { Library, ReviewPanel, RunPanel, sectionAtPoint, sectionOf, stashNewItem, useLive, useMarks } from "./map/workspace";
+// U2 chrome: rail, layers, Map·Runs·Evals, tidy (undoable) – new file, so
+// this diff stays wiring-only.
+import { DEFAULT_LAYERS, EvalsBoard, FrameSwitch, LayerBar, MapRail, TidyStrip, type Frame, type LayerId, type Layers } from "./map/chrome";
+import { AddForm } from "./agents/AddForm";
+import { clearPersisted } from "../flow/positions";
 import { RoleMark } from "./map/icons";
 import { ContextMenu, Executions, FLOW, KIND_COLOR, KindIco, NodePanel, PipelinePanel, StepDetails, droppedItem, isItemDrag, runnable, usePipeline, useRunner, type Item, type MenuItem, type Step } from "./map/pipeline";
 import { log } from "../dock/bus";
@@ -59,6 +65,31 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   // a re-layout key and a pinned selection are the tinker levers.
   const [selBlock, setSelBlock] = useState<string | null>(null);
   const [layoutKey, setLayoutKey] = useState(0);
+  // U2: layers (contract §5 defaults), the Map·Runs·Evals frame, the rail's
+  // search + add surfaces, the search camera target and the tidy undo.
+  const [layers, setLayers] = useState<Layers>(() => {
+    try { return { ...DEFAULT_LAYERS, ...JSON.parse(localStorage.getItem("kula.map.layers") ?? "{}") }; } catch { return DEFAULT_LAYERS; }
+  });
+  useEffect(() => { try { localStorage.setItem("kula.map.layers", JSON.stringify(layers)); } catch { /* private */ } }, [layers]);
+  // Picking a chain from a list turns the Chains layer on (contract §5:
+  // "Flows and Chains off until picked from a list") – selection is the pick.
+  useEffect(() => { if (selChain) setLayers((l) => l.chains ? l : { ...l, chains: true }); }, [selChain]);
+  const toggleLayer = useCallback((id: LayerId) => {
+    setLayers((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+  const [frame, setFrame] = useState<Frame>("map");
+  const [addOpen, setAddOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [reveal, setReveal] = useState<string | null>(null);
+  // Tidy snapshot: the persisted drag positions + sizes, kept so one undo
+  // puts every card back exactly where it was (PLAN P4: explicit, undoable).
+  const [tidyUndo, setTidyUndo] = useState<{ key: string; map: Record<string, { x: number; y: number }>; sizes: Record<string, { w: number; h: number }> } | null>(() => {
+    try { return JSON.parse(localStorage.getItem("kula.map.tidyUndo") ?? "null"); } catch { return null; }
+  });
+  useEffect(() => {
+    try { if (tidyUndo) localStorage.setItem("kula.map.tidyUndo", JSON.stringify(tidyUndo)); else localStorage.removeItem("kula.map.tidyUndo"); } catch { /* private */ }
+  }, [tidyUndo]);
   const code = useCode();
   const setInspForcedRef = useRef<(v: boolean) => void>(() => {});
   // Workspace: one canvas for code and agents. The sidebar's tabs manage and
@@ -305,6 +336,67 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   const [menu, setMenu] = useState<{ at: { x: number; y: number }; id: string | null; flow: { x: number; y: number } } | null>(null);
   const select = (id: string | null) => setSelBlock(id ? `step:${id}` : null);
   const addSticky = (pos?: { x: number; y: number }) => { const id = pipe.add(FLOW[1], null, undefined, pos); select(id); setTab("pipeline"); };
+  // U2 – tidy, explicit and undoable: snapshot the persisted drags and sizes,
+  // clear them, and let the kit re-lay out on the bumped layout key. The undo
+  // writes the snapshot back and bumps again – no re-fit beyond the kit's own.
+  // The storage keys mirror flow/positions.ts (v1, ns "map", kit layoutKey
+  // `map-<depth>-<layoutKey>-<focus>`); flow/* itself is not edited.
+  const kitKey = `map-2-${layoutKey}-${selChain ? `f${selChain.id}` : "n"}`;
+  const tidy = useCallback(() => {
+    const posKey = `kula.flow.pos.v1.map.${kitKey}`;
+    const sizeKey = `kula.flow.size.v1.map.${kitKey}`;
+    let map: Record<string, { x: number; y: number }> = {};
+    let sizes: Record<string, { w: number; h: number }> = {};
+    try { map = JSON.parse(localStorage.getItem(posKey) ?? "{}"); sizes = JSON.parse(localStorage.getItem(sizeKey) ?? "{}"); } catch { /* private */ }
+    if (Object.keys(map).length || Object.keys(sizes).length) setTidyUndo({ key: posKey, map, sizes });
+    else setTidyUndo(null);
+    clearPersisted("map", kitKey);
+    setLayoutKey((k) => k + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kitKey]);
+  const undoTidy = useCallback(() => {
+    if (!tidyUndo) return;
+    // Write the snapshot back under the key the kit will read AFTER this
+    // undo's layout bump – the bump moves the kit on to layoutKey + 1.
+    const nextKey = `map-2-${layoutKey + 1}-${selChain ? `f${selChain.id}` : "n"}`;
+    try {
+      localStorage.setItem(`kula.flow.pos.v1.map.${nextKey}`, JSON.stringify(tidyUndo.map));
+      const sizeKey = `kula.flow.size.v1.map.${nextKey}`;
+      if (Object.keys(tidyUndo.sizes).length) localStorage.setItem(sizeKey, JSON.stringify(tidyUndo.sizes));
+    } catch { /* private */ }
+    setTidyUndo(null);
+    setLayoutKey((k) => k + 1);
+  }, [tidyUndo, layoutKey, selChain]);
+  // U2 – search moves the camera, never re-lays-out: the hit's symbol resolves
+  // to the block that owns it, the block is selected and the kit's reveal pans
+  // to it. No position is written, so B8 stays 0.
+  const searchGo = useCallback(async () => {
+    const s = q.trim();
+    if (!s || !data) return;
+    try {
+      const hits = await api.search(s);
+      const hit = hits[0];
+      if (!hit) { setSearchOpen(false); return; }
+      let blockId: string | null = null;
+      for (const b of Object.values(data.blocks)) {
+        if (b.symbols.includes(hit.id)) { blockId = b.id; break; }
+        if (!blockId && (b.name === hit.path || b.theme === hit.name)) blockId = blockId ?? b.id;
+      }
+      if (!blockId) {
+        // Last resort: the hit's directory against block names (paths often
+        // name their block).
+        const dir = hit.path.split("/").slice(0, -1).join("/");
+        for (const b of Object.values(data.blocks)) if (b.name.includes(dir) || hit.path.includes(b.name)) { blockId = b.id; break; }
+      }
+      if (!blockId) { setSearchOpen(false); return; }
+      setSelBlock(blockId);
+      setReveal(blockId);
+      setInspForced(true);
+      setSearchOpen(false);
+      setQ("");
+    } catch { /* offline – the input stays open */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, data]);
   const removeStep = (id: string) => { pipe.remove(id); setSelBlock((b) => (b === `step:${id}` ? null : b)); };
   const toggleStep = (id: string) => { const st = pipe.steps.find((x) => x.id === id); if (st) pipe.update(id, { disabled: !st.disabled }); };
   const rename = () => { setTab("pipeline"); window.setTimeout(() => { const el = document.querySelector<HTMLInputElement>("[data-testid=pl-name]"); el?.focus(); el?.select(); }, 60); };
@@ -319,7 +411,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     if (key === "F5") { if (ev.shiftKey) runner.stop(); else if (!runner.running) void runner.run(); return true; }
     if (key === "F8") { if (runner.running) runner.togglePause(); else void runner.run(); return true; }
     if (key === "F10") { runner.step(); return true; }
-    if (mod && key.toLowerCase() === "z") { if (ev.shiftKey) pipe.redo(); else pipe.undo(); return true; }
+    if (mod && key.toLowerCase() === "z") { if (ev.shiftKey) pipe.redo(); else if (tidyUndo) undoTidy(); else pipe.undo(); return true; }
     if (mod && key.toLowerCase() === "c" && cur && !window.getSelection()?.toString()) return pipe.copy(cur);
     if (mod && key.toLowerCase() === "v") { const id = pipe.paste(cur); if (id) select(id); return !!id; }
     if (mod && key.toLowerCase() === "d" && cur) { select(pipe.duplicate(cur)); return true; }
@@ -335,6 +427,9 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   };
   const keysRef = useRef(keys);
   keysRef.current = keys;
+  // The keys closure reads tidyUndo through keysRef, but the effect's deps
+  // need the guard too, so re-binding on tidyUndo keeps ⌘Z undo-current.
+  useEffect(() => { keysRef.current = keys; });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest?.("input, textarea, select, [role=dialog], .fc-canvas")) return; // the canvas routes its own keys
@@ -480,12 +575,49 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   }
 
 
+  // Layers off → marks hidden, never navigated (contract §5): a root class
+  // carries each off state into the CSS; the chain focus is gated here so a
+  // Chains-off toggle simply stops showing focus, not a navigation.
+  const layerCls = (["blocks", "flows", "chains", "fences", "agents", "runs"] as LayerId[])
+    .filter((l) => !layers[l]).map((l) => `u2-l-${l}-off`).join(" ");
   return (
-    <div className="sy-root" ref={rootRef} data-testid="map-view">
+    <div className={`sy-root${layerCls ? ` ${layerCls}` : ""}`} ref={rootRef} data-testid="map-view">
       {/* One canvas (R0): no lens switcher, no View menu, no Add block button.
           The leftover "re-layout · pin · roles · Role" toolbar row is gone –
           tidy lives in the canvas zoom controls, pin on the node toolbar and
           in the inspector, roles opens from the canvas HUD. */}
+      {/* U2: centred Map · Runs · Evals switch – the segments re-frame the
+          same canvas, they are not new views. */}
+      <FrameSwitch frame={frame} onFrame={(f) => { setFrame(f); if (f === "runs") openInsp("pipeline"); }} />
+      {frame === "evals" && <EvalsBoard onRuns={() => { setFrame("runs"); openInsp("pipeline"); }} />}
+      {/* U2: the bottom-left chrome stack – layer toggle, tidy strip, then the
+          canvas zoom bar (fit · in · out · minimap) below them. */}
+      <div className="u2-hud-bl">
+        <LayerBar layers={layers} onToggle={toggleLayer} />
+        <TidyStrip onTidy={tidy} canUndo={!!tidyUndo} onUndo={undoTidy} />
+      </div>
+      {/* U2: the right rail – add, search, note, panel. With the inspector
+          open it docks beside it like the Roles HUD, so both stay reachable. */}
+      <MapRail
+        onAdd={() => setAddOpen(true)}
+        onSearch={() => setSearchOpen((s) => !s)}
+        onNote={() => addSticky()}
+        onPanel={() => openInsp("pipeline")}
+        search={searchOpen && (
+          <form className="u2-rail-search" data-testid="u2-rail-search-form"
+            onSubmit={(e) => { e.preventDefault(); void searchGo(); }}>
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search code…"
+              data-testid="u2-rail-search-input" aria-label="Search the map" />
+          </form>
+        )}
+      />
+      {addOpen && ws.info && (
+        <div className="u2-add-pop" data-testid="u2-add-pop">
+          <AddForm kind="agent" info={ws.info}
+            onCreate={(wf: Workflow) => { stashNewItem("agent", wf.name); setAddOpen(false); }}
+            onCancel={() => setAddOpen(false)} />
+        </div>
+      )}
       {live?.running && <ProgressStrip p={live} />}
       {rolesOpen && (
         <div className="sy-roles" id="map-role-filter" data-testid="map-role-filter" role="group" aria-label="Role filter">
@@ -508,7 +640,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       <div className="sy-split" style={listWidth("map", 360)}>
         {path.length
           ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
-          : <div className="ws-drop" onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={marks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
+          : <div className="ws-drop" onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={marks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={layers.chains && chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
+            reveal={reveal}
             pinned={pinned && !selStep ? pinned : null}
             onNodeTool={(id, action) => {
               if (action === "open") { drill(id); setSelBlock(id); setInspForced(true); }

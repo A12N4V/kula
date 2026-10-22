@@ -413,3 +413,95 @@
 /* The docked transport owns the canvas's bottom edge: lift the canvas kit. */
 .ws-drop .react-flow__panel.bottom, .ws-drop .react-flow__minimap.fc-minimap { bottom: 76px !important; }
 @media (max-width: 640px) { .ws-drop .react-flow__panel.bottom, .ws-drop .react-flow__minimap.fc-minimap { bottom: 84px !important; } }
+
+/* ---- U2: Map chrome – right rail, layers, Map·Runs·Evals, tidy ---------- */
+/* The right rail: the canvas's edge column (n8n keeps canvas tools on one
+   edge). The HUD owns the top-right corner; the rail sits mid-edge so
+   map-roles-btn stays reachable with the inspector open (critic finding c). */
+.u2-rail { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 22;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.u2-rail-btn { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-sm, 6px);
+  color: var(--text-2); cursor: pointer; transition: border-color .12s, color .12s; }
+.u2-rail-btn svg { width: 14px; height: 14px; }
+.u2-rail-btn:hover { border-color: var(--text-2); color: var(--text); }
+.u2-rail-btn.on { border-color: var(--accent); color: var(--accent); }
+.u2-rail-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
+.u2-rail-search input { width: 220px; height: 36px; padding: 0 10px; font: 12.5px var(--mono); color: var(--text);
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-sm, 6px); }
+.u2-rail-search input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+/* With the inspector open the rail docks left of it, like the Roles HUD. */
+body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspector, 400px) + 24px); }
+
+/* The rail's add surface: the R1 add form, floating at the rail's edge –
+   never a modal stack (AddForm's own contract). */
+.u2-add-pop { position: absolute; right: 60px; top: 50%; transform: translateY(-50%);
+  z-index: 30; width: 320px; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius, 8px); padding: 8px; }
+.u2-add-pop .ag-add-form { border: 0; }
+
+/* Centred Map · Runs · Evals (ux §7.217): flat square tabs, fill selection.
+   Floating centred HUD under the docked headline row: the headline owns the
+   full width of the top band (overlap gate at 1100), so the switch hangs
+   just below it, over the canvas top edge like the n8n floating chrome. */
+.u2-frames { position: fixed; top: 44px; left: 50%; transform: translateX(-50%); z-index: 22;
+  display: inline-flex; border: 1px solid var(--line-2); background: var(--panel); border-radius: var(--radius-sm, 6px); overflow: hidden; }
+.u2-frame { background: none; border: 0; color: var(--text-2); font: 500 12px var(--mono); padding: 0 14px; height: var(--ctl-h, 30px); cursor: pointer;
+  transition: background .12s, color .12s; }
+.u2-frame + .u2-frame { border-left: 1px solid var(--line-2); }
+.u2-frame:hover { color: var(--text); background: var(--hover-bg); }
+.u2-frame.on { background: var(--text); color: var(--bg); }
+.u2-frame:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
+
+/* Bottom-left chrome stack: layers, tidy, then the canvas zoom bar. */
+/* Offset clear of the canvas zoom controls (fit · in · out · minimap), which
+   are the react-flow control column at the canvas bottom-left: the layer and
+   tidy chrome sits beside them, never on top. */
+.u2-hud-bl { position: absolute; left: 122px; bottom: 118px; z-index: 22; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.u2-layers { display: inline-flex; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-sm, 6px); overflow: hidden; }
+.u2-layer { background: none; border: 0; color: var(--text-2); font: 500 11px var(--mono); padding: 0 9px; height: 28px; cursor: pointer;
+  transition: background .12s, color .12s; white-space: nowrap; }
+.u2-layer + .u2-layer { border-left: 1px solid var(--line); }
+.u2-layer:hover { color: var(--text); background: var(--hover-bg); }
+.u2-layer.on { background: var(--text); color: var(--bg); }
+.u2-layer:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
+.u2-tidy { display: inline-flex; gap: 6px; }
+.u2-tidy-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-sm, 6px);
+  color: var(--text-2); font: 500 11px var(--mono); cursor: pointer; transition: border-color .12s, color .12s; }
+.u2-tidy-btn svg { width: 12px; height: 12px; }
+.u2-tidy-btn:hover { border-color: var(--text-2); color: var(--text); }
+.u2-tidy-undo { border-color: var(--accent); color: var(--accent); }
+.u2-tidy-undo:hover { color: var(--accent); }
+
+/* The Evals frame teaches (contract §7) – one card, centred over the canvas. */
+.u2-evals { position: absolute; inset: 0; z-index: 24; display: grid; place-items: center; pointer-events: none; }
+.u2-evals-card { pointer-events: auto; width: 340px; padding: 16px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius, 8px); }
+.u2-evals-card h2 { margin: 0; font-size: 15px; }
+
+/* Tidy's old canvas-panel button is replaced by the undoable one above it –
+   the same verb, one home (the ⌘K/verb list keeps the name "Tidy"). */
+.ws-drop [data-testid=fc-tidy] { display: none; }
+/* The zoom bar never floats over cards unread: it is docked chrome with an
+   opaque ground and a warm line, so an overlap reads as a dock, not a stain. */
+.ws-drop .fc-controls { background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-sm, 6px); padding: 2px; }
+
+/* Layers off – marks hidden, never navigated (contract §5). */
+.u2-l-flows-off .fm-flow .react-flow__edge { display: none; }
+.u2-l-blocks-off .fm-flow .react-flow__node { opacity: 0; pointer-events: none; }
+.u2-l-fences-off .fence-hull { display: none; }
+.u2-l-fences-off .fc-ring-fence .fc-tile-box, .u2-l-fences-off .fc-ring-fence .fc-wide-in { outline: none; }
+.u2-l-runs-off .fc-lastrun-ok, .u2-l-runs-off .fc-lastrun-err { display: none; }
+.u2-l-agents-off .at-band { display: none; }
+
+@media (max-width: 720px) {
+  .u2-rail { flex-direction: row; top: auto; bottom: 96px; right: 8px; transform: none; }
+  .u2-rail-search input { width: 140px; }
+  .u2-frames { top: 8px; }
+  .u2-frame { padding: 0 10px; }
+  .u2-layers { max-width: calc(100vw - 24px); overflow-x: auto; scrollbar-width: none; }
+  .u2-hud-bl { bottom: 130px; left: 8px; }
+  body:has([data-testid=map-inspector]) .u2-rail { right: 8px; }
+  .u2-add-pop { right: 8px; left: 8px; width: auto; top: auto; bottom: 96px; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .u2-frame, .u2-layer, .u2-rail-btn, .u2-tidy-btn { transition: none; } }

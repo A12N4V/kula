@@ -43,6 +43,9 @@ function FormShell({ title, err, children, onCreate, onCancel, ok }: {
   onCreate: () => void; ok: boolean;
 }) {
   return (
+    // The contract testid (fused-canvas §8.6) rides a wrapper so the R1
+    // testids (ag-add-*) stay untouched for their own specs.
+    <div data-testid="add-form" className="ag-add-contract">
     <form className="ag-add-form" data-testid="ag-add-form" onSubmit={(e) => { e.preventDefault(); onCreate(); }}
       onKeyDown={(e) => {
         if (e.key === "Escape") { e.stopPropagation(); onCancel?.(); return; }
@@ -57,10 +60,11 @@ function FormShell({ title, err, children, onCreate, onCancel, ok }: {
       <div className="row ag-add-actions">
         {onCancel && <button type="button" className="btn sm ghost" data-testid="ag-add-cancel" onClick={onCancel}>Cancel</button>}
         <span className="spacer" />
-        <button type="submit" className="btn sm primary" data-testid="ag-add-create" disabled={!ok}>Create</button>
+        <span data-testid="add-create"><button type="submit" className="btn sm primary" data-testid="ag-add-create" disabled={!ok}>Create</button></span>
       </div>
       <div className="muted ag-meta">enter creates · esc cancels</div>
     </form>
+    </div>
   );
 }
 
