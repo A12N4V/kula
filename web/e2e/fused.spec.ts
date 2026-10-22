@@ -243,6 +243,97 @@ test.fixme("hover toolbar shows the contract verbs and the leftover chrome rows 
   expect(text).not.toContain("EXECUTES");
 });
 
+// Wave-2 interaction tests (docs/design/fused-interactions.md). Written
+// failing-first by X3; each names the module that owns the behaviour.
+// B7 (interactions §7) – U2 owns the rail + add form, U3 the drag + run.
+test.fixme("b7 scripted path: rail add, fence drag, run – 3/2/1 actions", async ({ page }) => {
+  await opened(page, "map", FIXTURE);
+  await page.locator('[data-testid="map-rail-add"]').click();
+  const form = page.locator('[data-testid="map-inspector"] [data-testid="add-form"]');
+  await expect(form).toBeVisible();
+  await form.locator('input[name="name"], [data-testid="add-name"]').fill("reviewer-2");
+  await page.locator('[data-testid="add-create"]').click();
+  // fence: drag block session.rs onto the agent = add to fence (1 action)
+  const block = page.locator('[data-testid="canvas-node"][data-kind="block"]', { hasText: "session.rs" }).first();
+  const agent = page.locator('[data-testid="canvas-node"][data-kind="agent"]', { hasText: "reviewer-2" }).first();
+  await block.dragTo(agent);
+  await expect(page.locator('[data-testid="fence-hull"]')).toBeVisible();
+  // run: exactly one action
+  await agent.hover();
+  await page.locator('[data-testid^="fn-run-"]').first().click();
+  await expect(page.locator('[data-testid="run-transport"]')).toBeVisible({ timeout: 20_000 });
+});
+
+// Landing framing (interactions §6.1) – U2 owns the corrected landing.
+test.fixme("landing is centred on the busiest section with margin; zoom bar and rail never overlap cards", async ({ page }) => {
+  await opened(page, "map");
+  await page.waitForTimeout(1200); // landing fit settles
+  const vp = page.viewportSize()!;
+  const cards = await page.locator('[data-testid="canvas-node"]').evaluateAll((els) =>
+    els.map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0));
+  expect(cards.length, "cards must be mounted to judge framing").toBeGreaterThan(0);
+  const inside = cards.filter((r) => r.x >= 0 && r.y >= 0 && r.right <= vp.width && r.bottom <= vp.height);
+  expect(inside.length, `${vp.width - inside.length} of ${cards.length} cards off-viewport at landing`).toBe(cards.length);
+  for (const bar of ['[data-testid="map-zoombar"]', '[data-testid="map-rail-add"]']) {
+    const el = page.locator(bar);
+    if (await el.count()) {
+      const b = await el.first().boundingBox();
+      const hit = cards.some((r) => b && r.x < b.x + b.width && r.x + r.width > b.x && r.y < b.y + b.height && r.y + r.height > b.y);
+      expect(hit, `${bar} overlaps a card`).toBe(false);
+    }
+  }
+});
+
+// Resize neighbour rule (interactions §6.3) – U3 owns the clamp.
+test.fixme("resizing a card stops at the neighbour below and never overlaps it", async ({ page }) => {
+  await opened(page, "map");
+  const cards = page.locator('[data-testid="canvas-node"][data-kind="block"]');
+  await expect(cards.nth(1)).toBeVisible({ timeout: 10_000 });
+  const a = await cards.nth(0).boundingBox();
+  const b = await cards.nth(1).boundingBox();
+  if (!a || !b || b.y < a.y + a.height) test.skip(true, "need a neighbour directly below");
+  const handle = cards.nth(0).locator("[class*=resize], [data-testid=node-resize]").first();
+  await handle.dragTo(page.locator("body"), { targetPosition: { x: a.x + 100, y: b.y + 120 } });
+  const after = await cards.nth(0).boundingBox();
+  expect(after!.y + after!.height, "resized card overlaps the neighbour below").toBeLessThanOrEqual(b.y + 1);
+});
+
+// Function-list dedupe (interactions §6.4) – U3 owns the presentation.
+test.fixme("near-zoom function list dedupes repeated names with a xN count", async ({ page }) => {
+  await opened(page, "map");
+  const block = page.locator('[data-testid="canvas-node"][data-kind="block"]').first();
+  await expect(block).toBeVisible({ timeout: 10_000 });
+  const handle = block.locator("[class*=resize], [data-testid=node-resize]").first();
+  const box = await block.boundingBox();
+  await handle.dragTo(page.locator("body"), { targetPosition: { x: (box?.x ?? 0) + 260, y: (box?.y ?? 0) + 300 } });
+  const list = block.locator("[class*=functions]");
+  await expect(list).toBeVisible();
+  const names = await list.locator("li, [class*=fn-row]").allInnerTexts();
+  const seen = new Set<string>();
+  for (const row of names) {
+    const name = row.replace(/×\d+/g, "").trim();
+    expect(seen.has(name), `function name "${name}" appears twice – dedupe with a xN chip`).toBe(false);
+    seen.add(name);
+  }
+});
+
+// Keyboard map (interactions §3) – U2 owns zoom-bar keys, U3 the fence key.
+test.fixme("keyboard map works and never spends keys 1/2/3", async ({ page }) => {
+  await opened(page, "map");
+  await expect(page.locator('[data-testid="canvas-node"]').first()).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press("f");
+  await page.keyboard.press("m");
+  await expect(page.locator('[data-testid="map-minimap"], [data-testid="map-zoombar"] [aria-pressed=true]')).toBeVisible();
+  await page.keyboard.press("l");
+  await expect(page.locator('[data-testid="map-layers"]')).toBeVisible();
+  await page.keyboard.press("Escape");
+  // keys 1/2/3 do nothing on the map: no dialog, no selection change
+  for (const k of ["1", "2", "3"]) {
+    await page.keyboard.press(k);
+    await expect(page.locator('[data-testid="ask-gate"], [role=dialog]')).toHaveCount(0);
+  }
+});
+
 // Ask gate (contract §8.11) – U4 owns run supervision.
 test.fixme("ask gate docks above the transport with three answers and keys 1/2/3, not a modal", async ({ page }) => {
   await opened(page, "map", FIXTURE);

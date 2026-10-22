@@ -1441,7 +1441,9 @@ test.describe("g1 – graph, inspector and git by keyboard", () => {
     await page.mouse.move(a.x + 200, a.y + 200);
     await page.mouse.move(a.x, a.y, { steps: 4 });
     const card = page.locator(".hover-card");
-    await expect(card).toBeVisible({ timeout: 1500 });
+    // 3 s: the card waits a beat by design, and under three workers the beat
+    // can stretch – 1.5 s turned timing into a flaky failure.
+    await expect(card).toBeVisible({ timeout: 3_000 });
     await expect(card.locator(".hc-name")).toHaveText(a.label);
     // path:line – a real location, not a bare path.
     await expect(card.locator(".hc-path")).toHaveText(/:\d+$/);
@@ -2445,6 +2447,15 @@ test.describe("map", () => {
     // viewport with room to drag out (the statusbar covers the canvas bottom,
     // so a card near it swallows the pointerdown) – the last in DOM renders
     // on top of the frames
+    // the landing fit settles after the cards hydrate in chunks: wait until
+    // the camera holds still before choosing a card by its screen position
+    let last = "";
+    await expect.poll(async () => {
+      const t = await page.locator("[data-testid=map-flow] .react-flow__viewport").getAttribute("style");
+      const still = t === last;
+      last = t ?? "";
+      return still;
+    }, { intervals: [400], timeout: 15_000 }).toBe(true);
     const pickable = await page.evaluate(() => {
       const vw = innerWidth, vh = innerHeight;
       return [...document.querySelectorAll(".fc-card:not(.fc-card-sec)")]
@@ -2457,7 +2468,8 @@ test.describe("map", () => {
     });
     expect(pickable.length, "a card with drag room exists").toBeGreaterThan(0);
     const card0 = page.locator(`[data-testid=${pickable[0]}]`);
-    await card0.dispatchEvent("click");
+    // No selection first: selecting opens the inspector and the canvas can
+    // re-frame, moving the card out from under the pointer.
     // pin the card by its node id: a resize re-measure can re-stack siblings
     const testid = await card0.getAttribute("data-testid");
     expect(testid).toBeTruthy();

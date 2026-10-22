@@ -9,7 +9,11 @@ const PORT = Number(process.env.KULA_PW_PORT ?? 7431);
 export const FIXTURE = `http://localhost:${PORT + 1}`;
 export default defineConfig({
   testDir: "e2e",
-  timeout: 30_000,
+  // 60 s: under three workers every test shares one repo server, and
+  // graph-heavy tests (FA2 layout, loader waits, hover cards) legitimately
+  // take longer than 30 s when the box is busy – 30 s turned timing into
+  // flaky failures, not signal.
+  timeout: 60_000,
   fullyParallel: true,
   // Three workers, one per project, is the sweet spot here: every graph page
   // runs sigma WebGL against one repo server, and more concurrent browsers

@@ -35,12 +35,16 @@ export function Changes({ onChanged, version }: Nav) {
   const code = (f: FileStatus, s: boolean) => (s ? f.index : f.untracked ? "?" : f.worktree);
   const color = (c: string) => ({ A: "green", "?": "green", D: "red", M: "yellow", R: "violet" } as Record<string, string>)[c] ?? "";
 
+  const committing = useRef(false);
   const commit = async () => {
+    if (committing.current) return; // ⌘↵ can reach commit twice (textarea + window handler)
+    committing.current = true;
     try {
       await api.git("commit", { message: msg, amend });
       toast(amend ? "Amended last commit" : "Committed"); setMsg(""); setAmend(false); setSel(null);
       await refresh(); onChanged();
     } catch (e: any) { toast(e.message, "err"); }
+    committing.current = false;
   };
 
   // Keyboard: j/k walks the files, s stages, u unstages, ⌘/ctrl+↵ commits.
@@ -96,7 +100,7 @@ export function Changes({ onChanged, version }: Nav) {
         {files.length > 0 && <VerifyPanel version={files.map((f) => f.path + f.index + f.worktree).join("|") + version} />}
         <div style={{ padding: 12, borderTop: "1px solid var(--line)" }} className="stack">
           <textarea className="textarea" placeholder="Commit message  (⌘↵ to commit)" value={msg} onChange={(e) => setMsg(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && msg.trim()) commit(); }} style={{ minHeight: 70 }} />
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && msg.trim()) { e.stopPropagation(); commit(); } }} style={{ minHeight: 70 }} />
           <div className="row">
             <label className="row muted" style={{ gap: 6, cursor: "pointer" }}><input type="checkbox" checked={amend} onChange={(e) => setAmend(e.target.checked)} /> Amend</label>
             <span className="muted hide-sm row" style={{ gap: 4 }}>j/k walk · s stage · u unstage</span>
