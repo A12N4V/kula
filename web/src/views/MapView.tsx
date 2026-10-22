@@ -71,6 +71,9 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     try { return { ...DEFAULT_LAYERS, ...JSON.parse(localStorage.getItem("kula.map.layers") ?? "{}") }; } catch { return DEFAULT_LAYERS; }
   });
   useEffect(() => { try { localStorage.setItem("kula.map.layers", JSON.stringify(layers)); } catch { /* private */ } }, [layers]);
+  // Picking a chain from a list turns the Chains layer on (contract §5:
+  // "Flows and Chains off until picked from a list") – selection is the pick.
+  useEffect(() => { if (selChain) setLayers((l) => l.chains ? l : { ...l, chains: true }); }, [selChain]);
   const toggleLayer = useCallback((id: LayerId) => {
     setLayers((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
@@ -353,14 +356,17 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   }, [kitKey]);
   const undoTidy = useCallback(() => {
     if (!tidyUndo) return;
+    // Write the snapshot back under the key the kit will read AFTER this
+    // undo's layout bump – the bump moves the kit on to layoutKey + 1.
+    const nextKey = `map-2-${layoutKey + 1}-${selChain ? `f${selChain.id}` : "n"}`;
     try {
-      localStorage.setItem(tidyUndo.key, JSON.stringify(tidyUndo.map));
-      const sizeKey = tidyUndo.key.replace("kula.flow.pos.v1.", "kula.flow.size.v1.");
+      localStorage.setItem(`kula.flow.pos.v1.map.${nextKey}`, JSON.stringify(tidyUndo.map));
+      const sizeKey = `kula.flow.size.v1.map.${nextKey}`;
       if (Object.keys(tidyUndo.sizes).length) localStorage.setItem(sizeKey, JSON.stringify(tidyUndo.sizes));
     } catch { /* private */ }
     setTidyUndo(null);
     setLayoutKey((k) => k + 1);
-  }, [tidyUndo]);
+  }, [tidyUndo, layoutKey, selChain]);
   // U2 – search moves the camera, never re-lays-out: the hit's symbol resolves
   // to the block that owns it, the block is selected and the kit's reveal pans
   // to it. No position is written, so B8 stays 0.

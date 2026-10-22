@@ -440,10 +440,10 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
 .u2-add-pop .ag-add-form { border: 0; }
 
 /* Centred Map · Runs · Evals (ux §7.217): flat square tabs, fill selection.
-   Docked in the app header band (fixed, centred): the docked headline row
-   below it owns the full width at narrow widths, so an absolutely centred
-   overlay there collided with the crumb (overlap gate at 1100). */
-.u2-frames { position: fixed; top: 9px; left: 50%; transform: translateX(-50%); z-index: 22;
+   Floating centred HUD under the docked headline row: the headline owns the
+   full width of the top band (overlap gate at 1100), so the switch hangs
+   just below it, over the canvas top edge like the n8n floating chrome. */
+.u2-frames { position: fixed; top: 44px; left: 50%; transform: translateX(-50%); z-index: 22;
   display: inline-flex; border: 1px solid var(--line-2); background: var(--panel); border-radius: var(--radius-sm, 6px); overflow: hidden; }
 .u2-frame { background: none; border: 0; color: var(--text-2); font: 500 12px var(--mono); padding: 0 14px; height: var(--ctl-h, 30px); cursor: pointer;
   transition: background .12s, color .12s; }

@@ -2431,9 +2431,9 @@ test.describe("map", () => {
     await card.hover();
     await page.locator("[data-testid^=fn-pin-]").first().click();
     await expect(page.locator("[data-testid^=fn-pin-]").first()).toHaveClass(/on/);
-    // re-layout is tidy now, one key on the canvas zoom controls (U2 moves
-    // them to the zoom bar) – the map survives it
-    await page.locator("[data-testid=fc-tidy]").click();
+    // re-layout is tidy now, one undoable home in the U2 chrome strip (the
+    // canvas's plain fc-tidy is hidden on the map) – the map survives it
+    await page.locator("[data-testid=u2-tidy]").click();
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
 
@@ -2652,6 +2652,8 @@ test.describe("map", () => {
   test("R0: resting edges are dim and brighten on interaction (computed style)", async ({ page }) => {
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible({ timeout: 30_000 });
+    // U2 layer contract: Flows is off until picked from a list (§5).
+    await page.locator("[data-testid=u2-layer-flows]").click();
     const edge = page.locator("[data-testid=map-flow] .fc-edge").first();
     await expect(edge).toBeAttached();
     const stroke = () => edge.evaluate((el) => {
@@ -2834,8 +2836,10 @@ test.describe("map", () => {
   test("the canvas kit works on the map: drag persists, tidy, fit and the minimap", async ({ page }) => {
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
-    // the kit controls are present on the map canvas
-    await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-tidy]")).toBeVisible();
+    // the kit controls are present on the map canvas. Tidy has one undoable
+    // home since U2 (the chrome strip, contract §5) – the canvas's own plain
+    // fc-tidy is hidden there.
+    await expect(page.locator("[data-testid=u2-tidy]")).toBeVisible();
     await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-fit]")).toBeVisible();
     await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-minimap-toggle]")).toBeVisible();
     // the minimap starts hidden and toggles on
@@ -2867,7 +2871,7 @@ test.describe("map", () => {
     });
     expect(persisted).toBe(true);
     // tidy re-runs dagre and clears persisted drags; fit recentres the view
-    await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-tidy]").click();
+    await page.locator("[data-testid=u2-tidy]").click();
     await page.waitForTimeout(600);
     expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("kula.flow.pos.v1.map.")).length)).toBe(0);
     const zoomBefore = Number((await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom]").textContent())?.replace("%", ""));
