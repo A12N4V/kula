@@ -10,6 +10,7 @@
 @import "./styles/agents.css";
 @import "./styles/agents-memory.css";
 @import "./styles/agents-teams.css";
+@import "./styles/agents-terrain.css"; /* U3 – actors on the terrain */
 @import "./styles/settings.css";
 @import "./styles/type.css";
 @import "./styles/sweep.css";

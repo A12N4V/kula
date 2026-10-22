@@ -129,6 +129,15 @@ test("semantic zoom: resize forces a level and the function list appears", async
     await page.locator("[data-testid=fc-zoom-in]").click();
     await page.waitForTimeout(120);
   }
+  // the camera keeps settling while cards hydrate: wait until it holds still
+  // so a handle picked by screen position is still there when the drag starts
+  let lastT = "";
+  await expect.poll(async () => {
+    const t = (await page.locator("[data-testid=map-flow] .react-flow__viewport").getAttribute("style")) ?? "";
+    const still = t === lastT;
+    lastT = t;
+    return still;
+  }, { intervals: [400], timeout: 15_000 }).toBe(true);
   // pick a card by its resize handle. Camera state (landing fit, poll pan)
   // varies, so bring the card into the viewport first: drag the card body to
   // the canvas centre, then resize from the handle's live position – the
@@ -208,9 +217,11 @@ test("node hover toolbar floats above the node, nothing on the node face", async
   await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   // hover a card clear of the zoom controls (bottom-left) and the HUD
   const cid = await page.evaluate(() => {
-    for (const el of document.querySelectorAll("[data-testid=map-flow] .fc-card")) {
+    for (const el of document.querySelectorAll("[data-testid=map-flow] .fc-card:not(.fc-card-sec)")) {
       const r = el.getBoundingClientRect();
-      if (r.left > 260 && r.bottom < innerHeight - 120 && r.top > 120) return el.getAttribute("data-testid");
+      // on top at its centre: not under the actor band, the HUD or a panel
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (r.left > 260 && r.bottom < innerHeight - 120 && r.top > 120 && hit && el.contains(hit)) return el.getAttribute("data-testid");
     }
     return null;
   });

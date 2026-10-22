@@ -9,8 +9,7 @@
 // in, so the swap is a one-line change.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api";
-import type { Workflow } from "../api";
+import { api, type Workflow } from "../api";
 import { Icon } from "../ui";
 import { useCode } from "../CodePanel";
 import { Grip, listWidth } from "../resize";
@@ -21,11 +20,13 @@ import { MapViewSidebar } from "./map/sidebar";
 import { FlowKitView } from "./map/flowKit";
 import { FlowsPanel, FlowsOverlay } from "./map/flowsPanel";
 import { ProgressStrip, useMapProgress } from "./map/progress";
-import { focusOf } from "./map/chainFocus";
-import { Library, ReviewPanel, RunPanel, sectionAtPoint, sectionOf, stashNewItem, useLive, useMarks } from "./map/workspace";
+import { focusOf, type Focus } from "./map/chainFocus";
+import { Library, ReviewPanel, RunPanel, fencedSectionsOf, filesOf, sectionAtPoint, sectionOf, stashNewItem, useAgentFence, useLive, useMarks, type Marks } from "./map/workspace";
 // U2 chrome: rail, layers, Map·Runs·Evals, tidy (undoable) – new file, so
 // this diff stays wiring-only.
 import { DEFAULT_LAYERS, EvalsBoard, FrameSwitch, LayerBar, MapRail, TidyStrip, type Frame, type LayerId, type Layers } from "./map/chrome";
+import { ActorBand, FenceHull } from "./agents/actors";
+import { AgentInspector } from "./agents/AgentInspector";
 import { AddForm } from "./agents/AddForm";
 import { clearPersisted } from "../flow/positions";
 import { RoleMark } from "./map/icons";
@@ -42,6 +43,7 @@ const PROGRESS_LABEL: Record<string, string> = {
 };
 // The run reports phases as strings – the bar's percent follows the phase list.
 const PHASES = ["load", "graph", "similarity", "map", "done"];
+const EMPTY_PATHS: string[] = [];
 
 // The view owns its own sidebar visibility on phones (390 px): a drawer.
 type Tab = "inspect" | "structure" | "pipeline" | "live" | "changes" | "library";
@@ -101,6 +103,13 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   useEffect(() => { try { localStorage.setItem("kula.map.scheme", scheme); } catch { /* private */ } }, [scheme]);
   const [viewSec, setViewSec] = useState<string>("show");
   const ws = useLive(true);
+  // U3 – actors on the terrain: the selected agent, its fence, and the R1
+  // add form the band and the Fence port "+" both open.
+  const [selAgent, setSelAgent] = useState<string | null>(null);
+  const [editFence, setEditFence] = useState(false);
+  const [agentAdd, setAgentAdd] = useState(false);
+  const fence = useAgentFence(ws.info, ws.reload);
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
   const pipe = usePipeline("map");
   const runner = useRunner(data, pipe, ws.reload);
   const waiting = pipe.steps.find((x) => x.status === "waiting");
@@ -299,6 +308,50 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
 
   const marks = useMarks(data, "review", ws.info, ws.files, dropTarget);
   const sections = useMemo(() => data ? Object.values(data.blocks).filter((b) => b.depth === 0 && b.parent !== null).map((b) => b.id) : [], [data]);
+  // U3 · fence focus: the selected agent's fence rings its sections and dims
+  // everything else to ≤ 35% (contract §8.5). Fences auto-on when an agent is
+  // selected – the ring rides the existing marks, the dim rides the kit's
+  // focus path, so no flow-level change.
+  const selPaths = selAgent ? fence.fencePaths(selAgent) : EMPTY_PATHS;
+  const fenced = useMemo(() => (selAgent ? fencedSectionsOf(data, selPaths) : []), [data, selAgent, selPaths.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fenceMarks = useMemo(() => {
+    if (!fenced.length) return marks;
+    const m: Marks = { ...marks };
+    for (const id of fenced) m[id] = { ...m[id], fence: true, agent: (selAgent ?? "").slice(0, 1).toUpperCase() };
+    return m;
+  }, [marks, fenced, selAgent]);
+  // The kit dims on focus.chain's truthiness and focus.on's membership, so a
+  // fence focus carries a stub chain: the agent's fence is the focused "path".
+  const fenceFocus = useMemo((): Focus | null => (selAgent
+    ? { chain: { id: "fence" } as unknown as Chain, on: new Set(fenced), sections: new Set(fenced), still: true }
+    : null), [fenced, selAgent]);
+  // Edit fence on canvas: with the mode armed, a block click adds or removes
+  // its section's files from the fence and the hull redraws (PLAN P4.3).
+  useEffect(() => {
+    if (!editFence || !selAgent || !selBlock || selBlock.startsWith("step:") || !data) return;
+    const sec = sectionOf(data, selBlock) ?? selBlock;
+    const files = filesOf(data, sec);
+    if (!files.length) return;
+    if (fenced.includes(sec)) void fence.dropPaths(selAgent, files); else void fence.addPaths(selAgent, files);
+    setSelBlock(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editFence, selBlock, selAgent, data, fenced]);
+  const openAgentAdd = useCallback(() => { setAgentAdd(true); setInspForced(true); }, []);
+  const createAgent = useCallback((wf: Workflow) => {
+    api.agentAction("workflows_save", { workflows: [...(ws.info?.workflows ?? []).filter((w) => !w.builtin), wf] })
+      .catch(() => { /* the editor shows the server's state */ })
+      .then(() => { stashNewItem("agent", wf.name); ws.reload(); setAgentAdd(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ws.info, ws.reload]);
+  const dropOnAgent = useCallback((agent: string, item: import("./map/pipeline").Item | null) => {
+    if (!data || !item) return;
+    // A palette block's ref is the block (or section) it acts on; a step's
+    // section rides the payload's section field when the step has one.
+    const sec = data.blocks[item.ref] ? sectionOf(data, item.ref) ?? item.ref : null;
+    if (!sec) return;
+    void fence.addPaths(agent, filesOf(data, sec));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, fence]);
   // A palette click adds the block on the selected section (or at the end).
   // The section a click-added block lands on: the last section selected (a
   // selected block stays the target while the new blocks take the selection).
@@ -619,6 +672,11 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
         </div>
       )}
       {live?.running && <ProgressStrip p={live} />}
+      {/* U3 – the actor band on top (contract §1): one row, 144px, never wraps. */}
+      <ActorBand info={ws.info} selected={selAgent}
+        onSelect={(name) => { setSelAgent(name); setEditFence(false); if (name) setInspForced(true); }}
+        fencePaths={fence.fencePaths} editFence={editFence} onEditFence={setEditFence}
+        onDropBlock={dropOnAgent} onAdd={openAgentAdd} />
       {rolesOpen && (
         <div className="sy-roles" id="map-role-filter" data-testid="map-role-filter" role="group" aria-label="Role filter">
           {/* R0 – the lens presets live with the role filter now (no View menu). */}
@@ -640,7 +698,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       <div className="sy-split" style={listWidth("map", 360)}>
         {path.length
           ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
-          : <div className="ws-drop" onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={marks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={layers.chains && chain ? focusOf(data, chain) : null} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
+          : <div className="ws-drop" ref={canvasWrapRef} onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={fenceMarks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={fenceFocus ?? (layers.chains && chain ? focusOf(data, chain) : null)} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
             reveal={reveal}
             pinned={pinned && !selStep ? pinned : null}
             onNodeTool={(id, action) => {
@@ -653,6 +711,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             {menu && <ContextMenu at={menu.at} items={menuItems(menu)} onClose={() => setMenu(null)} />}
             {ndvStep && <StepDetails data={data} s={ndvStep} pipe={pipe} runner={runner} sections={sections} prev={ndvPrev} onClose={() => setNdv(null)} />}
             <Transport runner={runner} steps={runnable(pipe.steps)} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} sel={selStep} onPick={(id) => setSelBlock(`step:${id}`)} />
+            {/* U3 – the fence hull around the selected agent's sections (§8.5). */}
+            <FenceHull canvas={canvasWrapRef} fencedIds={fenced} agent={selAgent} />
           </div>}
 
         {/* The canvas is everything until a click: then Graph's inspector – a
@@ -706,6 +766,12 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             ))}
           </div>
           <div className="body">
+          {selAgent && ws.info && (
+            <AgentInspector info={ws.info} agent={selAgent} data={data} onSaved={ws.reload}
+              onFocusBlock={(id) => { setSelBlock(id); setInspForced(true); }}
+              focusModel={!!ws.info && !ws.info.connections.some((c) => (c.mcp || c.hook) && c.workflows.includes(selAgent))} />
+          )}
+          {agentAdd && ws.info && <AddForm kind="agent" info={ws.info} onCreate={createAgent} onCancel={() => setAgentAdd(false)} />}
           {tab === "pipeline" && <PipelinePanel data={data} pipe={pipe} runner={runner} sel={selStep} onSel={(id) => setSelBlock(id ? `step:${id}` : null)} sections={sections} onOpen={setNdv} onAdd={() => openPanel(insert?.after ?? null)} />}
           {tab === "live" && <><RunPanel data={data} info={ws.info} onChanged={ws.reload} onSection={(id) => setSelBlock(id)} /><Executions runner={runner} /></>}
           {tab === "changes" && <ReviewPanel data={data} files={ws.files} onSection={(id) => setSelBlock(id)} onFile={(p) => code.open({ path: p, name: p.split("/").pop() })} />}

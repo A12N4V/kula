@@ -48,6 +48,16 @@ const test = base.extend({
         const out = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "(no log)";
         throw new Error(`fixture on port ${port} did not come up in 180s\nfixture log:\n${out}`);
       }
+      // The port was free a moment ago, but a foreign kula server (another
+      // checkout's run) can take it in between. A fixture answers /api/agents
+      // with token "test" and carries this run's marker guard; anything else
+      // means the tests would silently read the wrong repo.
+      const probe = await fetch(`${url}/api/agents`, { headers: { "x-kula-token": "test" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      const ours = probe && Array.isArray(probe.rules) && probe.rules.some((r: { reason?: string }) => r.reason === "release pipeline: signed packages");
+      if (!ours) {
+        const out = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "(no log)";
+        throw new Error(`something else is serving on fixture port ${port} – not this run's fixture\nfixture log:\n${out}`);
+      }
       await use(url);
       proc.kill("SIGTERM");
       fs.closeSync(log);
@@ -2685,7 +2695,13 @@ test.describe("map", () => {
     // the ladder is luminance, not transparency). Only edges of the hovered
     // node are lit, so sample one attached to it.
     const node = await cardInView(page);
-    await node.hover();
+    // hover by mouse coordinates, not locator.hover(): React Flow's
+    // transformed canvas makes Playwright's auto-scroll report the card as
+    // "outside of the viewport" even though it is visible on screen.
+    const nb = await node.boundingBox();
+    if (!nb) throw new Error("the picked card has no bounding box");
+    await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2, { steps: 3 });
+    await page.waitForTimeout(150);
     const lit = page.locator("[data-testid=map-flow] .fc-edge-lit").first();
     await expect(lit).toBeAttached();
     const lum = (rgb: string | undefined) => {
@@ -3137,9 +3153,14 @@ async function cardInView(page: import("@playwright/test").Page) {
   const id = await page.evaluate(() => {
     const c = document.querySelector("[data-testid=map-flow] .react-flow")?.getBoundingClientRect();
     if (!c) return null;
+    // a card whose centre is on screen inside the canvas and on top there –
+    // not under the actor band, the HUD, the zoom bar or the transport
     const el = [...document.querySelectorAll(".fc-card:not(.fc-card-sec)")].find((e) => {
       const r = e.getBoundingClientRect();
-      return r.left > c.left + 20 && r.top > c.top + 60 && r.right < c.right - 20 && r.bottom < c.bottom - 90;
+      const x = r.left + r.width / 2, y = r.top + r.height / 2; // where hover() and click() aim
+      if (x < c.left + 20 || x > c.right - 20 || y < c.top + 20 || y > c.bottom - 90) return false;
+      const hit = document.elementFromPoint(x, y);
+      return !!hit && e.contains(hit);
     });
     return (el?.closest("[data-testid^=fc-node-]") as HTMLElement | null)?.dataset.testid ?? null;
   });
