@@ -1441,7 +1441,9 @@ test.describe("g1 – graph, inspector and git by keyboard", () => {
     await page.mouse.move(a.x + 200, a.y + 200);
     await page.mouse.move(a.x, a.y, { steps: 4 });
     const card = page.locator(".hover-card");
-    await expect(card).toBeVisible({ timeout: 1500 });
+    // 3 s: the card waits a beat by design, and under three workers the beat
+    // can stretch – 1.5 s turned timing into a flaky failure.
+    await expect(card).toBeVisible({ timeout: 3_000 });
     await expect(card.locator(".hc-name")).toHaveText(a.label);
     // path:line – a real location, not a bare path.
     await expect(card.locator(".hc-path")).toHaveText(/:\d+$/);
