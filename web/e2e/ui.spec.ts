@@ -2691,7 +2691,13 @@ test.describe("map", () => {
     // the ladder is luminance, not transparency). Only edges of the hovered
     // node are lit, so sample one attached to it.
     const node = await cardInView(page);
-    await node.hover();
+    // hover by mouse coordinates, not locator.hover(): React Flow's
+    // transformed canvas makes Playwright's auto-scroll report the card as
+    // "outside of the viewport" even though it is visible on screen.
+    const nb = await node.boundingBox();
+    if (!nb) throw new Error("the picked card has no bounding box");
+    await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2, { steps: 3 });
+    await page.waitForTimeout(150);
     const lit = page.locator("[data-testid=map-flow] .fc-edge-lit").first();
     await expect(lit).toBeAttached();
     const lum = (rgb: string | undefined) => {
