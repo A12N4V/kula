@@ -30,17 +30,27 @@ const oneLine = (s: string) => s.split(/(?<=[.!?])\s/)[0] ?? s;
 const autonomyOf = (wf: Workflow): Autonomy => readCfg(wf.name).autonomy ?? defaultAutonomy(wf);
 
 /** Parse a prompt into prose and live @block chips: `@name` or `@sec:name`
-    resolves against the map, unknown names stay plain text. */
+    resolves against the map by longest name first, so names with spaces
+    ("benches · input_json") still chip. Unknown names stay plain text. */
 export function promptParts(prompt: string, data: import("../map/types").MapData | null): { text: string; block?: { id: string; name: string } }[] {
+  const names = data
+    ? Object.values(data.blocks).map((b) => ({ id: b.id, name: b.theme || b.name })).filter((n) => n.name)
+    : [];
+  names.sort((a, b) => b.name.length - a.name.length);
   const parts: { text: string; block?: { id: string; name: string } }[] = [];
-  for (const tok of prompt.split(/(@[\w:-]+)/g)) {
-    if (tok.startsWith("@") && tok.length > 1) {
-      const name = tok.slice(1).replace(/^sec:/, "");
-      const hit = data ? Object.values(data.blocks).find((b) => b.name === name || b.theme === name) : null;
-      parts.push(hit ? { text: tok, block: { id: hit.id, name: hit.theme || hit.name } } : { text: tok });
-    } else if (tok) parts.push({ text: tok });
+  let i = 0;
+  while (i < prompt.length) {
+    const at = prompt.indexOf("@", i);
+    if (at < 0) { parts.push({ text: prompt.slice(i) }); break; }
+    if (at > i) parts.push({ text: prompt.slice(i, at) });
+    const hit = names.find((n) => prompt.startsWith("@" + n.name, at) || prompt.startsWith("@sec:" + n.name, at));
+    if (hit) {
+      const len = (prompt.startsWith("@sec:", at) ? 5 : 1) + hit.name.length;
+      parts.push({ text: prompt.slice(at, at + len), block: hit });
+      i = at + len;
+    } else { parts.push({ text: "@" }); i = at + 1; }
   }
-  return parts;
+  return parts.filter((p) => p.text);
 }
 
 export function AgentInspector({ info, agent, data, onSaved, onFocusBlock, focusModel }: AgentInspectorProps) {

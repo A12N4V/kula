@@ -21,7 +21,7 @@
 }
 .at-team {
   border: 1px dashed var(--line-2);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 4px 8px 8px;
   flex: none;
 }
@@ -35,7 +35,7 @@
   position: relative;
   width: 220px; flex: none;
   border: 1px solid var(--line-2);
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: var(--bg-raised, var(--bg));
   padding: 8px 10px 6px;
   cursor: pointer;
@@ -49,7 +49,7 @@
 .at-card-head { display: flex; align-items: center; gap: 6px; }
 .at-mark { color: var(--accent); display: grid; place-items: center; flex: none; }
 .at-name { font-size: 12px; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.at-sel-dot { margin-left: auto; width: 6px; height: 6px; background: var(--accent); border-radius: 1px; }
+.at-sel-dot { margin-left: auto; width: 6px; height: 6px; background: var(--accent); }
 .at-missing {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--red);
@@ -64,13 +64,13 @@
 .at-port { position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; }
 .at-port .fc-port-label { font-size: 9px; letter-spacing: .04em; }
 .at-port.err .fc-dot { border-color: var(--red); }
-.at-port-add { position: absolute; top: -18px; right: -6px; }
+.at-port-add { align-self: flex-end; margin-left: 4px; min-width: 16px; height: 16px; padding: 0; font-size: 11px; line-height: 1; }
 
 /* Fence hull (contract §8.5) – dashed frame, warm line, label at top-left. */
 .at-hull {
   position: absolute;
   border: 2px dashed var(--accent);
-  border-radius: 10px;
+  border-radius: var(--radius);
   pointer-events: none;
   z-index: 4;
 }
@@ -78,7 +78,7 @@
   position: absolute; top: -18px; left: 0;
   font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
   color: var(--accent); background: var(--bg);
-  padding: 1px 6px; border: 1px solid var(--accent); border-radius: 3px;
+  padding: 1px 6px; border: 1px solid var(--accent); border-radius: var(--radius);
   white-space: nowrap;
 }
 

@@ -313,7 +313,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       .catch(() => { /* the editor shows the server's state */ })
       .then(() => { stashNewItem("agent", wf.name); ws.reload(); setAgentAdd(false); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ws.info, ws.reload]);
   const dropOnAgent = useCallback((agent: string, item: import("./map/pipeline").Item | null) => {
     if (!data || !item) return;
     // A palette block's ref is the block (or section) it acts on; a step's

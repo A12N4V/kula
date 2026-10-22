@@ -76,7 +76,7 @@ export function ActorCard({ info, wf, selected, onSelect, fencePaths, onDropBloc
           <span key={p} className={`fc-port at-port${missing && p === "Model" ? " err" : ""}`} data-testid={`port-${p}`}>
             <span className="fc-dot fc-dot-typed" aria-hidden="true" />
             <span className="fc-port-label">{p}{p === "Model" ? "*" : ""}</span>
-            {p === "Fence" && !paths.length && (
+            {p === "Fence" && (
               <button className="fc-stub fc-stub-btn at-port-add" data-testid="port-add" title="Add the fenced block"
                 onClick={(e) => { e.stopPropagation(); onAdd(); }}>+</button>
             )}
