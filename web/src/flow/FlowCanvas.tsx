@@ -148,6 +148,10 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       };
       const sorted = [...withDrags].sort((a, b) => depth(a) - depth(b) || (a.pos!.x - b.pos!.x) || (a.pos!.y - b.pos!.y));
       const FIRST = 400;
+      // Fresh arrivals (a late lane load, an undo bring-back) may land outside
+      // the current viewport; a poll refresh of known ids never moves the
+      // camera – it would snap the user's zoom back to the fit every second.
+      const freshArrivals = shownRef.current.size > 0 && sorted.some((n) => !shownRef.current.has(n.id));
       shownRef.current = new Set(sorted.map((n) => n.id));
       setRfNodes(sorted.slice(0, FIRST).map((n) => toRf(n, selRef.current, new Set(), new Set())));
       didFit.current = true;
@@ -162,7 +166,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
           edgesSet = true;
           setRfEdges(edges.map((e) => ({
             id: e.id, source: e.source, target: e.target, type: "flow-edge",
-            data: { ...e }, zIndex: e.main === false ? 0 : 1,
+            data: { ...e }, zIndex: 0, // edges under nodes (n8n §5): the 40 px hit path must never eat a card's hover or drag
           })));
         }
         if (done >= sorted.length) {
@@ -189,14 +193,11 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             // Nodes outside the current viewport (the late pipeline lane, an
             // undo/redo bring-back) can never be seen or mounted under
             // onlyRenderVisibleElements – the fit above only saw mounted
-            // nodes. Every layout run re-checks: expand the viewport to the
-            // union of every laid node when something falls outside it (a
-            // cancelled run's rAF never fires, so this cannot be gated on
-            // "fresh ids" alone – a poll refresh of known ids must still
-            // repair the viewport). A refresh that leaves nothing clipped
-            // never moves the camera.
+            // nodes. Only a run that brings fresh ids expands the viewport:
+            // a poll refresh of known ids must never move the camera, or the
+            // user's zoom snaps back to the fit every second.
             window.requestAnimationFrame(() => {
-              if (!live) return;
+              if (!live || !freshArrivals) return;
               const el = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
               if (!el) return;
               const t = rf.getViewport();
@@ -418,7 +419,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     (async () => {
       const res = await layout(applySizes(ns, layoutKey, nodes), edges, groups, `${layoutKey}:tidy${tidySeq.current}`);
       setRfNodes(res.nodes.map((n) => toRf(n, null, collapsed, new Set())));
-      setRfEdges(edges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: "flow-edge", data: { ...e }, zIndex: e.main === false ? 0 : 1 })));
+      setRfEdges(edges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: "flow-edge", data: { ...e }, zIndex: 0 })));
       rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 });
     })();
   }, [nodes, edges, groups, layoutKey, ns, rf, collapsed]);

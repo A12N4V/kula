@@ -24,7 +24,13 @@ test("the edge brightness ladder holds: text > node border > resting edge", asyn
   await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   const edge = page.locator("[data-testid=map-flow] .fc-edge").first();
   await expect(edge).toBeVisible();
-  const card = page.locator("[data-testid=map-flow] .fc-card").filter({ hasNot: page.locator(".fc-stage-1") }).first();
+  // The fit zoom is far (captions only) – walk in until a mid/near card
+  // exists, so the border rung of the ladder is sampled by construction.
+  const card = page.locator("[data-testid=map-flow] .fc-card:not(.fc-stage-1)").first();
+  for (let i = 0; i < 12 && !(await card.isVisible()); i++) {
+    await page.locator("[data-testid=fc-zoom-in]").click();
+    await page.waitForTimeout(150);
+  }
   await expect(card).toBeVisible({ timeout: 10_000 });
   // by construction: stage-1 cards carry border-color transparent (the tile
   // owns the border) – sample a mid/near card so the border rung is real.
@@ -107,40 +113,67 @@ test("semantic zoom: resize forces a level and the function list appears", async
   test.skip(info.project.name !== "desktop", "resize needs a pointer and a wide canvas");
   await open(page);
   await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
-  // pick a card whose corner is actually draggable: fully inside the viewport
-  // with room to drag out (as the map resize test does)
-  const pickable = await page.evaluate(() => {
+  // The union fit of ~90 cards lands near 0.1 zoom – far below the semantic
+  // near level. Walk in first (each step is ×1.2), then pick a card: at far
+  // zoom the 12 px handle is ~1 px on screen and most cards sit outside the
+  // viewport, so the resize must happen at readable zoom by construction.
+  for (let i = 0; i < 30; i++) {
+    const z = await page.evaluate(() => {
+      const vp = document.querySelector("[data-testid=map-flow-canvas] .react-flow__viewport");
+      return vp ? new DOMMatrix(getComputedStyle(vp).transform).a : 1;
+    });
+    if (z >= 0.85) break;
+    await page.locator("[data-testid=fc-zoom-in]").click();
+    await page.waitForTimeout(120);
+  }
+  // pick a card by its resize handle: the handle must sit inside the viewport
+  // (at near zoom the cards are large and columned – full visibility is too
+  // strict; the drag itself uses pointer capture, so only the start matters).
+  // Prefer cards that carry a function list to reveal.
+  let handles: { tid: string; x: number; y: number; fns: boolean; in: boolean }[] = [];
+  const scanHandles = () => page.evaluate(() => {
     const vw = innerWidth, vh = innerHeight;
-    const roomy = [...document.querySelectorAll("[data-testid=map-flow] .fc-card:not(.fc-card-sec)")]
-      .filter((el) => {
-        const r = el.getBoundingClientRect();
-        return r.top > 60 && r.left > 60 && r.bottom < vh - 60 && r.right + 300 < vw;
-      });
-    // cards that carry symbols (the meta row shows "N fns") have a function
-    // list to reveal – prefer them, then chain-crossers, then any roomy card
-    const withFns = roomy.filter((el) => /[1-9]\d*\s*fns?/.test(el.querySelector(".fc-card-meta")?.textContent ?? ""));
-    const withFlows = roomy.filter((el) => el.querySelector(".fc-card-flows"));
-    const pool = withFns.length ? withFns : withFlows.length ? withFlows : roomy;
-    return pool.map((el) => (el.closest("[data-testid^=fc-node-]") as HTMLElement)?.dataset.testid)
-      .filter((id): id is string => !!id);
+    return [...document.querySelectorAll("[data-testid=map-flow] .fc-card:not(.fc-card-sec) .fc-card-resize")]
+      .map((h) => {
+        const r = (h as HTMLElement).getBoundingClientRect();
+        const card = h.closest("[data-testid^=fc-node-]") as HTMLElement;
+        const fns = !!card?.querySelector(".fc-card-meta");
+        // The handle must be the topmost element at its own centre – the
+        // bottom-left controls panel and the inspector ride over the canvas,
+        // and a handle under them belongs to a zoom click, not a resize.
+        const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+        const top = document.elementFromPoint(cx, cy);
+        return { tid: card?.dataset.testid, x: cx, y: cy, fns, in: r.top > 70 && r.left > 70 && r.bottom < vh - 40 && r.right < vw - 40 && top === h };
+      })
+      .filter((h): h is { tid: string; x: number; y: number; fns: boolean; in: boolean } => !!h.tid && h.in);
   });
-  expect(pickable.length, "a card with drag room exists").toBeGreaterThan(0);
+  // The overlays (controls bottom-left, inspector right) cover the margins of
+  // the canvas: pan the pane a little between scans until a handle is clear.
+  for (let i = 0; i < 6 && handles.length === 0; i++) {
+    if (i > 0) {
+      await page.mouse.move(820, 460);
+      await page.mouse.down();
+      await page.mouse.move(820 - 220 * i, 460 - 140 * i, { steps: 4 });
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+    }
+    handles = await scanHandles();
+  }
+  expect(handles.length, "a draggable handle exists in the viewport").toBeGreaterThan(0);
+  handles.sort((a, b) => Number(b.fns) - Number(a.fns));
   // resize forces a level: drag the corner handle wide at readable zoom – the
   // card jumps straight to near (the function list) whatever the zoom was.
-  // Try up to three cards: one that crosses no chain carries no functions.
+  // Try up to five cards: one that carries no symbols has no function list.
   let fnsSeen = false;
   let lastCard: ReturnType<typeof page.locator> | null = null;
-  for (const tid of pickable.slice(0, 5)) {
-    const card = page.locator(`[data-testid=${tid}]`);
+  for (const h of handles.slice(0, 5)) {
+    const card = page.locator(`[data-testid=${h.tid}]`);
     if (!(await card.count())) continue;
     await card.dispatchEvent("click");
-    const handle = card.locator(".fc-card-resize");
-    if (!(await handle.count())) continue; // a re-render replaced the card
-    const bb = await card.boundingBox();
-    if (!bb) continue;
-    await page.mouse.move(bb!.x + bb!.width - 6, bb!.y + bb!.height - 6);
+    if (!(await card.locator(".fc-card-resize").count())) continue; // re-rendered
+    await page.mouse.move(h.x, h.y);
     await page.mouse.down();
-    await page.mouse.move(bb!.x + bb!.width + 280, bb!.y + bb!.height + 180, { steps: 6 });
+    await page.mouse.move(h.x + 200, h.y + 160, { steps: 6 });
     await page.mouse.up();
     lastCard = card;
     await expect(card).toHaveAttribute("data-fc-stage", "3", { timeout: 5_000 });

@@ -2338,12 +2338,22 @@ test.describe("map", () => {
     test.skip(info.project.name !== "desktop", "a phone fits legitimately lower");
     const zoomText = page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom]");
     await expect.poll(async () => Number((await zoomText.textContent())?.replace("%", ""))).toBeGreaterThan(50);
-    // long names truncate with an ellipsis and a full-name title
-    const name = page.locator(".fc-card .fc-card-name").first();
+    // long names truncate with an ellipsis and a full-name title – on a card
+    // that is actually in the viewport (React Flow cannot scroll, so an
+    // off-canvas card is never hoverable)
+    const visibleTid = await page.evaluate(() => {
+      const el = [...document.querySelectorAll("[data-testid=map-flow] .fc-card:not(.fc-card-sec)")].find((e) => {
+        const r = e.getBoundingClientRect();
+        return r.top > 70 && r.left > 70 && r.bottom < innerHeight - 60 && r.right < innerWidth - 40 && e.querySelector(".fc-card-name");
+      });
+      return (el?.closest("[data-testid^=fc-node-]") as HTMLElement)?.dataset.testid ?? null;
+    });
+    expect(visibleTid).toBeTruthy();
+    const name = page.locator(`[data-testid=${visibleTid}] .fc-card-name`);
     await expect(name).toHaveCSS("text-overflow", "ellipsis");
     await expect(name).toHaveAttribute("title", /.+/);
     // opening a card drills into the nested boxes; Esc returns to the flow
-    await page.locator(".fc-card").first().dblclick();
+    await page.locator(`[data-testid=${visibleTid}]`).dblclick();
     await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
     await page.locator("body").press("Escape");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
@@ -2406,7 +2416,18 @@ test.describe("map", () => {
     // the node toolbar: pin rides the hovered node's toolbar now (the old
     // "re-layout · pin · roles" row is gone). Hover the card first – the
     // toolbar floats above it (n8n §4, nothing on the node face).
-    const card = page.locator("[data-testid=map-flow] .fc-card").first();
+    // toolbar floats above it (n8n §4, nothing on the node face). Hover a card
+    // that is actually in the viewport – React Flow cannot scroll, so an
+    // off-canvas card is never hoverable.
+    const hoverTid = await page.evaluate(() => {
+      const el = [...document.querySelectorAll("[data-testid=map-flow] .fc-card:not(.fc-card-sec)")].find((e) => {
+        const r = e.getBoundingClientRect();
+        return r.top > 70 && r.left > 70 && r.bottom < innerHeight - 60 && r.right < innerWidth - 40;
+      });
+      return (el?.closest("[data-testid^=fc-node-]") as HTMLElement)?.dataset.testid ?? null;
+    });
+    expect(hoverTid).toBeTruthy();
+    const card = page.locator(`[data-testid=${hoverTid}]`);
     await card.hover();
     await page.locator("[data-testid^=fn-pin-]").first().click();
     await expect(page.locator("[data-testid^=fn-pin-]").first()).toHaveClass(/on/);
@@ -2771,12 +2792,12 @@ test.describe("map", () => {
         const me = (window as unknown as { __fcLayout?: { mainEdges: [string, string][] } }).__fcLayout?.mainEdges ?? [];
         for (const [src] of me) {
           if (src.startsWith("step:")) continue;
-          if (document.querySelector(`[data-testid=fc-node-${CSS.escape(src)}]`)) return src;
+          if (document.querySelector(`[data-testid=fc-node-${src}]`)) return src;
         }
         return null;
       });
       if (!seed) { await page.waitForTimeout(1000); continue; }
-      const tile = page.locator(`[data-testid=fc-node-${CSS.escape(seed)}]`);
+      const tile = page.locator(`[data-testid=fc-node-${seed}]`);
       try {
         await tile.dispatchEvent("click", { timeout: 5000 });
       } catch {
