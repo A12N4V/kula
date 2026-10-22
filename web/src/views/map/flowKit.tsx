@@ -343,7 +343,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
         subtitle: st.note ?? (st.status === "waiting" ? "waiting for an agent" : name(st.section) ?? (st.kind === "gate" ? `kula ${st.ref}` : st.ref)),
         icon: <span className="fc-step-ico" style={{ color: KIND_COLOR[st.kind] }}><KindIco kind={st.kind} /></span>,
         color: KIND_COLOR[st.kind], status, entry: st.kind === "trigger", lastRun,
-        ports: st.kind === "gate" ? undefined : undefined, noOut: last,
+        noOut: last,
         toolbar: tools, pos: { x: li * STEP_W, y: LANE_Y }, connectable: true, accepts: li > 0,
       });
     } else if (st.kind === "agent" || st.kind === "crew") {
