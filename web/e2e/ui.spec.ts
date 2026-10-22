@@ -3141,9 +3141,14 @@ async function cardInView(page: import("@playwright/test").Page) {
   const id = await page.evaluate(() => {
     const c = document.querySelector("[data-testid=map-flow] .react-flow")?.getBoundingClientRect();
     if (!c) return null;
+    // a card whose centre is on screen inside the canvas and on top there –
+    // not under the actor band, the HUD, the zoom bar or the transport
     const el = [...document.querySelectorAll(".fc-card:not(.fc-card-sec)")].find((e) => {
       const r = e.getBoundingClientRect();
-      return r.left > c.left + 20 && r.top > c.top + 60 && r.right < c.right - 20 && r.bottom < c.bottom - 90;
+      const x = r.left + r.width / 2, y = r.top + r.height / 2; // where hover() and click() aim
+      if (x < c.left + 20 || x > c.right - 20 || y < c.top + 20 || y > c.bottom - 90) return false;
+      const hit = document.elementFromPoint(x, y);
+      return !!hit && e.contains(hit);
     });
     return (el?.closest("[data-testid^=fc-node-]") as HTMLElement | null)?.dataset.testid ?? null;
   });
