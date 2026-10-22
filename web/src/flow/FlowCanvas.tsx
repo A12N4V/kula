@@ -153,7 +153,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       // camera – it would snap the user's zoom back to the fit every second.
       const freshArrivals = shownRef.current.size > 0 && sorted.some((n) => !shownRef.current.has(n.id));
       shownRef.current = new Set(sorted.map((n) => n.id));
-      setRfNodes(sorted.slice(0, FIRST).map((n) => toRf(n, selRef.current, new Set(), new Set())));
+      setRfNodes(sorted.slice(0, FIRST).map(sized));
       didFit.current = true;
       // Hydrate the rest in small chunks (no 600 ms long task), then fit.
       let done = FIRST;
@@ -175,7 +175,8 @@ function FlowCanvasInner(props: FlowCanvasProps) {
           // Readable by default (R0): when the caller names an initialFocus,
           // land centred on it at a readable zoom instead of fitting every
           // node into 12 %. The focus node must be in the laid-out set.
-          if (fittedKey.current !== layoutKey) {
+          const wasUnfitted = fittedKey.current !== layoutKey;
+          if (wasUnfitted) {
             fittedKey.current = layoutKey;
             const focusId = props.initialFocus;
             window.requestAnimationFrame(() => {
@@ -193,11 +194,11 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             // Nodes outside the current viewport (the late pipeline lane, an
             // undo/redo bring-back) can never be seen or mounted under
             // onlyRenderVisibleElements – the fit above only saw mounted
-            // nodes. Only a run that brings fresh ids expands the viewport:
-            // a poll refresh of known ids must never move the camera, or the
-            // user's zoom snaps back to the fit every second.
+            // nodes. A fresh run or the first fit on a layout expands the
+            // viewport: a poll refresh of known ids must never move the
+            // camera, or the user's zoom snaps back to the fit every second.
             window.requestAnimationFrame(() => {
-              if (!live || !freshArrivals) return;
+              if (!live || (!freshArrivals && !wasUnfitted)) return;
               const el = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
               if (!el) return;
               const t = rf.getViewport();
@@ -232,7 +233,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
           }
           return;
         }
-        setRfNodes((prev) => prev.concat(sorted.slice(done, done + CHUNK).map((n) => toRf(n, selRef.current, new Set(), new Set()))));
+        setRfNodes((prev) => prev.concat(sorted.slice(done, done + CHUNK).map(sized)));
         done += CHUNK;
         window.setTimeout(step, 50);
       };
@@ -335,6 +336,16 @@ function FlowCanvasInner(props: FlowCanvasProps) {
 
   // Corner resize (R0): live size updates the node; release persists once and
   // re-measures internals so the virtualizer never hides the grown node.
+  // Sizes the user set by dragging a handle. A poll refresh rebuilds rfNodes
+  // from props – persisted sizes only rejoin on the next layout rebuild –
+  // so the overrides are re-applied on every rebuild or a resize snaps back.
+  const sizeOverrides = useRef(new Map<string, { w: number; h: number }>());
+  const sized = useCallback((n: FlowNode) => {
+    const rf = toRf(n, selRef.current, new Set(), new Set());
+    const o = sizeOverrides.current.get(n.id);
+    if (!o) return rf;
+    return { ...rf, width: o.w, height: o.h, style: { ...rf.style, width: o.w, height: o.h }, data: { ...(rf.data as object), size: o } } as typeof rf;
+  }, []);
   const onNodeResize = useCallback((id: string, size: { w: number; h: number }, commit: boolean) => {
     setRfNodes((prev) => prev.map((n) => {
       if (n.id !== id) return n;
@@ -342,6 +353,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       return { ...n, width: size.w, height: size.h, style: { ...n.style, width: size.w, height: size.h }, data: { ...d, size } };
     }));
     if (commit) {
+      sizeOverrides.current.set(id, size);
       persistSizes(ns, layoutKey, [{ id, size }]);
       window.setTimeout(() => updateInternals([id]), 50);
     }

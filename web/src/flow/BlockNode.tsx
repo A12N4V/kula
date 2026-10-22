@@ -29,7 +29,10 @@ function ResizeHandle({ id, w, h }: { id: string; w: number; h: number }) {
     e.stopPropagation();
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
-    el.setPointerCapture(e.pointerId);
+    // Capture is best-effort: a synthetic pointerId (tests) has no active
+    // pointer and throws – a failed capture must not abort the drag before
+    // its listeners exist.
+    try { el.setPointerCapture(e.pointerId); } catch { /* no active pointer */ }
     const sx = e.clientX, sy = e.clientY, sw = w, sh = h;
     const move = (ev: PointerEvent) => {
       const nw = Math.min(RESIZE_MAX.w, Math.max(RESIZE_MIN.w, snap(sw + ev.clientX - sx)));
@@ -37,16 +40,18 @@ function ResizeHandle({ id, w, h }: { id: string; w: number; h: number }) {
       if (nw !== w || nh !== h) onResize(id, { w: nw, h: nh }, false);
     };
     const up = (ev: PointerEvent) => {
-      el.releasePointerCapture(ev.pointerId);
-      el.removeEventListener("pointermove", move);
-      el.removeEventListener("pointerup", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
       onResize(id, { w: sw, h: sh }, false); // settle back to the start size first
       const nw = Math.min(RESIZE_MAX.w, Math.max(RESIZE_MIN.w, snap(sw + ev.clientX - sx)));
       const nh = Math.min(RESIZE_MAX.h, Math.max(RESIZE_MIN.h, snap(sh + ev.clientY - sy)));
       onResize(id, { w: nw, h: nh }, true);
     };
-    el.addEventListener("pointermove", move);
-    el.addEventListener("pointerup", up);
+    // Window-level listeners: a re-render (selection, live data) can replace
+    // the handle element mid-drag and would otherwise orphan the drag – the
+    // drag must survive to its pointerup wherever the DOM goes.
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   }, [id, w, h, onResize]);
   return <div className="fc-card-resize nodrag nopan" data-testid={`fc-resize-${id}`} onPointerDown={start} title="Drag to resize" />;
 }

@@ -126,10 +126,11 @@ test("semantic zoom: resize forces a level and the function list appears", async
     await page.locator("[data-testid=fc-zoom-in]").click();
     await page.waitForTimeout(120);
   }
-  // pick a card by its resize handle: the handle must sit inside the viewport
-  // (at near zoom the cards are large and columned – full visibility is too
-  // strict; the drag itself uses pointer capture, so only the start matters).
-  // Prefer cards that carry a function list to reveal.
+  // pick a card by its resize handle. Camera state (landing fit, poll pan)
+  // varies, so bring the card into the viewport first: drag the card body to
+  // the canvas centre, then resize from the handle's live position – the
+  // resize must work wherever the card is, not only when the camera left it
+  // centered. Prefer cards that carry a function list to reveal.
   let handles: { tid: string; x: number; y: number; fns: boolean; in: boolean }[] = [];
   const scanHandles = () => page.evaluate(() => {
     const vw = innerWidth, vh = innerHeight;
@@ -138,26 +139,33 @@ test("semantic zoom: resize forces a level and the function list appears", async
         const r = (h as HTMLElement).getBoundingClientRect();
         const card = h.closest("[data-testid^=fc-node-]") as HTMLElement;
         const fns = !!card?.querySelector(".fc-card-meta");
-        // The handle must be the topmost element at its own centre – the
-        // bottom-left controls panel and the inspector ride over the canvas,
-        // and a handle under them belongs to a zoom click, not a resize.
         const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
         const top = document.elementFromPoint(cx, cy);
         return { tid: card?.dataset.testid, x: cx, y: cy, fns, in: r.top > 70 && r.left > 70 && r.bottom < vh - 40 && r.right < vw - 40 && top === h };
       })
       .filter((h): h is { tid: string; x: number; y: number; fns: boolean; in: boolean } => !!h.tid && h.in);
   });
-  // The overlays (controls bottom-left, inspector right) cover the margins of
-  // the canvas: pan the pane a little between scans until a handle is clear.
-  for (let i = 0; i < 6 && handles.length === 0; i++) {
-    if (i > 0) {
-      await page.mouse.move(820, 460);
-      await page.mouse.down();
-      await page.mouse.move(820 - 220 * i, 460 - 140 * i, { steps: 4 });
-      await page.mouse.up();
+  handles = await scanHandles();
+  if (handles.length === 0) {
+    // No handle is on screen: pick any handle and pan the pane (middle
+    // drag) so that handle lands at the canvas centre – deterministic from
+    // any camera state, unlike hope-the-pan-lands-well scanning.
+    const anyHandle = await page.evaluate(() => {
+      const h = document.querySelector("[data-testid=map-flow] .fc-card:not(.fc-card-sec) .fc-card-resize") as HTMLElement | null;
+      const card = h?.closest("[data-testid^=fc-node-]") as HTMLElement | null;
+      if (!card || !h) return null;
+      const r = h.getBoundingClientRect();
+      return { tid: card.dataset.testid, x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    if (anyHandle) {
+      const dx = 720 - anyHandle.x, dy = 420 - anyHandle.y;
+      await page.mouse.move(720, 420);
+      await page.mouse.down({ button: "middle" });
+      await page.mouse.move(720 + dx, 420 + dy, { steps: 8 });
+      await page.mouse.up({ button: "middle" });
       await page.waitForTimeout(300);
+      handles = await scanHandles();
     }
-    handles = await scanHandles();
   }
   expect(handles.length, "a draggable handle exists in the viewport").toBeGreaterThan(0);
   handles.sort((a, b) => Number(b.fns) - Number(a.fns));
@@ -169,8 +177,9 @@ test("semantic zoom: resize forces a level and the function list appears", async
   for (const h of handles.slice(0, 5)) {
     const card = page.locator(`[data-testid=${h.tid}]`);
     if (!(await card.count())) continue;
-    await card.dispatchEvent("click");
-    if (!(await card.locator(".fc-card-resize").count())) continue; // re-rendered
+    // No selection click: selecting opens the inspector, which covers the
+    // right side of the canvas and buries the handle – the resize itself
+    // needs no selection.
     await page.mouse.move(h.x, h.y);
     await page.mouse.down();
     await page.mouse.move(h.x + 200, h.y + 160, { steps: 6 });
