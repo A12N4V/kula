@@ -12,16 +12,20 @@ import { FIXTURE } from "../playwright.config";
 // worktree's kula.toml stages a change every git test then trips over.
 test.use({ baseURL: FIXTURE });
 
-// The fixture writes its own kula.toml: give it the fenced agent these tests
-// select ("polish", scoped to src/**), keeping whatever workflows it has.
-test.beforeAll(async ({ request }) => {
+/** The fixture writes its own kula.toml, and other suites save the workflow
+ *  list there in parallel: (re)seed the fenced agent these tests select
+ *  ("polish", scoped to src/**) right before each test, keeping the rest. */
+async function seedPolish(request: import("@playwright/test").APIRequestContext) {
   const h = { "x-kula-token": "test" };
   const info = await (await request.get(`${FIXTURE}/api/agents`, { headers: h })).json();
-  const own = ((info.workflows ?? []) as { name: string; builtin?: boolean }[]).filter((w) => !w.builtin && w.name !== "polish");
+  const all = (info.workflows ?? []) as { name: string; builtin?: boolean }[];
+  if (all.some((w) => w.name === "polish" && !w.builtin)) return;
+  const own = all.filter((w) => !w.builtin);
   const polish = { name: "polish", about: "Small cleanups", scope: ["src/**"], steps: ["Tidy", "verify"] };
   const r = await request.post(`${FIXTURE}/api/agents/workflows_save`, { headers: h, data: { workflows: [...own, polish] } });
   expect(r.ok(), await r.text()).toBeTruthy();
-});
+}
+test.beforeEach(async ({ request }) => { await seedPolish(request); });
 
 // Serial: every test saves agent config through the same kula.toml – parallel
 // writes clobber each other (the stale-guard catches the UI side, not this).
