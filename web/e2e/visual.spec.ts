@@ -88,7 +88,9 @@ async function stabilise(page: Page) {
     set(".topbar .crumb-repo", "repo");
     set(".topbar .chip b", "branch");
     set(".rail .badge", "1");
-    set(".ov-title .mono", "~/repo");
+    set(".ov-title h1", "repo");
+    set(".ov-title > .mono", "branch");
+    set(".ov-title .ov-facts", "1,000 files · 10,000 symbols · indexed in 100ms");
   });
 }
 
