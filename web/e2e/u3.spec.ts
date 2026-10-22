@@ -5,6 +5,23 @@
 // segmented control, caps, the two-way raw toggle, and the missing-Model red
 // mark. Assert by name, never by fixture counts.
 import { expect, test, type Page } from "@playwright/test";
+import { FIXTURE } from "../playwright.config";
+
+// Against the disposable fixture clone, never the repo under test: these
+// tests save agents and fences to kula.toml, and a write to the real
+// worktree's kula.toml stages a change every git test then trips over.
+test.use({ baseURL: FIXTURE });
+
+// The fixture writes its own kula.toml: give it the fenced agent these tests
+// select ("polish", scoped to src/**), keeping whatever workflows it has.
+test.beforeAll(async ({ request }) => {
+  const h = { "x-kula-token": "test" };
+  const info = await (await request.get(`${FIXTURE}/api/agents`, { headers: h })).json();
+  const own = ((info.workflows ?? []) as { name: string; builtin?: boolean }[]).filter((w) => !w.builtin && w.name !== "polish");
+  const polish = { name: "polish", about: "Small cleanups", scope: ["src/**"], steps: ["Tidy", "verify"] };
+  const r = await request.post(`${FIXTURE}/api/agents/workflows_save`, { headers: h, data: { workflows: [...own, polish] } });
+  expect(r.ok(), await r.text()).toBeTruthy();
+});
 
 // Serial: every test saves agent config through the same kula.toml – parallel
 // writes clobber each other (the stale-guard catches the UI side, not this).
