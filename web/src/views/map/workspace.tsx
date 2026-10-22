@@ -115,6 +115,50 @@ export function useMarks(data: MapData | null, mode: Mode, info: AgentsInfo | nu
   return useMemo(() => marks, [sig]);
 }
 
+/* ---- U3 · Fences per agent -------------------------------------------- */
+
+/** The selected agent's fence: the paths of its workflow scope. Persisted
+    through agents_action workflows_save – the same files the CLI edits. */
+export function useAgentFence(info: AgentsInfo | null, reload: () => void) {
+  const fencePaths = useCallback((name: string) => {
+    const wf = info?.workflows.find((w) => w.name === name);
+    return wf ? [...(wf.scope ?? []), ...(wf.lock ?? [])] : [];
+  }, [info]);
+  const addPaths = useCallback(async (name: string, add: string[]) => {
+    const wf = info?.workflows.find((w) => w.name === name);
+    if (!wf || !add.length) return;
+    const scope = [...new Set([...(wf.scope ?? []), ...add])];
+    try {
+      await api.agentAction("workflows_save", { workflows: [...(info?.workflows ?? []).filter((w) => !w.builtin).map((w) => w.name === name ? { ...wf, scope } : w)] });
+      reload();
+    } catch { /* the editor shows the server's state */ }
+  }, [info, reload]);
+  const dropPaths = useCallback(async (name: string, drop: string[]) => {
+    const wf = info?.workflows.find((w) => w.name === name);
+    if (!wf || !drop.length) return;
+    const scope = (wf.scope ?? []).filter((p) => !drop.includes(p));
+    try {
+      await api.agentAction("workflows_save", { workflows: [...(info?.workflows ?? []).filter((w) => !w.builtin).map((w) => w.name === name ? { ...wf, scope } : w)] });
+      reload();
+    } catch { /* the editor shows the server's state */ }
+  }, [info, reload]);
+  return { fencePaths, addPaths, dropPaths };
+}
+
+/** Section ids whose files the fence paths cover – the hull and the dim set
+    for the selected agent (contract §8.5). */
+export function fencedSectionsOf(data: MapData | null, paths: string[]): string[] {
+  if (!data || !paths.length) return [];
+  const hits: string[] = [];
+  for (const b of Object.values(data.blocks)) {
+    if (!(b.depth === 0 && b.parent !== null)) continue;
+    for (const f of filesOf(data, b.id)) {
+      if (paths.some((s) => f === s || f.startsWith(s.replace(/\/?\*\*?.*$/, "") + "/") || scopeHits([s], f))) { hits.push(b.id); break; }
+    }
+  }
+  return hits;
+}
+
 /* ---- Templates -------------------------------------------------------- */
 
 export function templatesFrom(info: AgentsInfo | null): Record<Template["kind"], Template[]> {
