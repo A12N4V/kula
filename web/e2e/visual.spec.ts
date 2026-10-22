@@ -47,6 +47,20 @@ async function at(page: Page, hash: string, opts: { light?: boolean; panel?: boo
   // the fetch under load – wait until the view has actually rendered.
   await expect(page.locator(".loading, .view-loading")).toHaveCount(0, { timeout: 30_000 });
   await page.waitForTimeout(400);
+  // The map's landing camera keeps easing after the loaders drop (the fit
+  // settles only once cards hydrate) and the nodes are DOM, not canvas, so a
+  // shot taken mid-flight moves. Wait until the viewport transform holds
+  // still across a beat, as the interaction specs do before a drag.
+  if (hash === "map") {
+    await expect
+      .poll(async () => {
+        const t1 = await page.locator(".react-flow__viewport").getAttribute("style");
+        await page.waitForTimeout(250);
+        return t1 !== null && t1 === (await page.locator(".react-flow__viewport").getAttribute("style"));
+      }, { timeout: 15_000, intervals: [250] })
+      .toBe(true);
+    await page.waitForTimeout(400);
+  }
 }
 
 /** Pixels that change with the repo or the clock, not with the design: the
