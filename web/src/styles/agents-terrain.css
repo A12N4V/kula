@@ -72,7 +72,10 @@
 .at-ports .at-port { position: static; flex: 1 1 0; display: flex; justify-content: center; }
 .at-port .fc-port-label { font-size: 9px; letter-spacing: .04em; }
 .at-port.err .fc-dot { border-color: var(--red); }
-.at-port-add { align-self: flex-end; margin-left: 4px; min-width: 16px; height: 16px; padding: 0; font-size: 11px; line-height: 1; }
+.at-port-add { align-self: center; min-width: 16px; height: 16px; padding: 0; margin-top: 2px; font-size: 11px; line-height: 1; }
+/* flow.css's .fc-stub is an absolute stub off the node edge – the band's +
+   button sits in the port column, inside the card. */
+.at-ports .at-port-add { position: static; transform: none; }
 
 /* Fence hull (contract §8.5) – dashed frame, warm line, label at top-left. */
 .at-hull {
