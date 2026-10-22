@@ -31,6 +31,7 @@ import { AddForm } from "./agents/AddForm";
 import { clearPersisted } from "../flow/positions";
 import { RoleMark } from "./map/icons";
 import { ContextMenu, Executions, FLOW, KIND_COLOR, KindIco, NodePanel, PipelinePanel, StepDetails, droppedItem, isItemDrag, runnable, usePipeline, useRunner, type Item, type MenuItem, type Step } from "./map/pipeline";
+import { AskGate, ChangeBadges, ConflictMarks, PlanOverlay, useSupervision } from "./map/supervision"; // U4 – run supervision
 import { log } from "../dock/bus";
 import { type Scheme } from "./map/flowKit";
 import type { Go } from "../nav";
@@ -112,6 +113,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const pipe = usePipeline("map");
   const runner = useRunner(data, pipe, ws.reload);
+  // U4 – run supervision: plan overlay, conflicts, changes, ask gate.
+  const sup = useSupervision(data, pipe.steps);
   const waiting = pipe.steps.find((x) => x.status === "waiting");
   const selStep = selBlock?.startsWith("step:") ? selBlock.slice(5) : null;
   const [viewOpen, setViewOpen] = useState(false);
@@ -709,10 +712,17 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             <NodePanel info={ws.info} open={panel} onClose={() => { setPanel(false); setInsert(null); }} onPick={pick}
               hint={insert?.after ? `Insert after ${pipe.steps.find((x) => x.id === insert.after)?.name ?? "block"}` : lastSec ? `Add on ${data.blocks[lastSec]?.theme || data.blocks[lastSec]?.name}` : "Add a block"} />
             {menu && <ContextMenu at={menu.at} items={menuItems(menu)} onClose={() => setMenu(null)} />}
-            {ndvStep && <StepDetails data={data} s={ndvStep} pipe={pipe} runner={runner} sections={sections} prev={ndvPrev} onClose={() => setNdv(null)} />}
-            <Transport runner={runner} steps={runnable(pipe.steps)} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} sel={selStep} onPick={(id) => setSelBlock(`step:${id}`)} />
+            {ndvStep && <StepDetails data={data} s={ndvStep} pipe={pipe} runner={runner} sections={sections} prev={ndvPrev} onClose={() => setNdv(null)} sup={sup} />}
+            <Transport runner={runner} steps={runnable(pipe.steps)} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} sel={selStep} onPick={(id) => (sup.planActive ? sup.toggleStrike(id) : setSelBlock(`step:${id}`))} sup={sup} />
             {/* U3 – the fence hull around the selected agent's sections (§8.5). */}
             <FenceHull canvas={canvasWrapRef} fencedIds={fenced} agent={selAgent} />
+            {/* U4 – run supervision: plan overlay (read outline / write tint /
+                strike to exclude), in-place conflict marks and +/− change
+                badges on the sections, ask gate docked above the transport. */}
+            <PlanOverlay sup={sup} canvas={canvasWrapRef} />
+            <ConflictMarks sup={sup} canvas={canvasWrapRef} onOpen={(id) => setNdv(id)} />
+            <ChangeBadges sup={sup} canvas={canvasWrapRef} onOpen={(id) => setNdv(id)} />
+            <AskGate sup={sup} />
           </div>}
 
         {/* The canvas is everything until a click: then Graph's inspector – a
@@ -808,7 +818,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     time and filled by its state; the block in flight is the lit region, the
     way sema shades the window on its recording strip. Click a segment to open
     that block. */
-function Transport({ runner, steps, waiting, last, sel, onPick }: { runner: ReturnType<typeof useRunner>; steps: Step[]; waiting: { id: string; name: string } | null; last: { status: string; ms: number } | null; sel: string | null; onPick: (id: string) => void }) {
+function Transport({ runner, steps, waiting, last, sel, onPick, sup }: { runner: ReturnType<typeof useRunner>; steps: Step[]; waiting: { id: string; name: string } | null; last: { status: string; ms: number } | null; sel: string | null; onPick: (id: string) => void; sup: ReturnType<typeof useSupervision> }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { if (!runner.running) return; const t = window.setInterval(() => setNow(Date.now()), 250); return () => window.clearInterval(t); }, [runner.running]);
   const blocks = steps.length;
@@ -830,6 +840,8 @@ function Transport({ runner, steps, waiting, last, sel, onPick }: { runner: Retu
         {!runner.running
           ? <button className="tp-btn tp-go" onClick={() => void runner.run()} data-testid="ws-run-btn" title="Run pipeline  ⌘↵" disabled={!blocks}><Icon.play /><span>Run</span></button>
           : <button className="tp-btn" onClick={runner.togglePause} data-testid="ws-pause" title={runner.paused ? "Continue  F8" : "Pause before the next block  F8"} aria-pressed={runner.paused}>{runner.paused ? <Icon.play /> : <Icon.pause />}</button>}
+        {/* U4 – the dry run: build the plan overlay before committing to a run. */}
+        <button className={`tp-btn${sup.planActive ? " tp-plan-on" : ""}`} onClick={() => (sup.planActive ? sup.cancelPlan() : sup.dryRun())} data-testid="u4-dry-run" title="Dry-run – plan what this pipeline would touch" disabled={!blocks && !sup.planActive} aria-pressed={sup.planActive}><Icon.target />{sup.planActive ? <span>Planning</span> : null}</button>
         <button className="tp-btn" onClick={() => runner.step()} data-testid="ws-step" title="Step – run the next block, then pause  F10" disabled={!blocks || (runner.running && !runner.paused)}><Icon.stepOver /></button>
         {!runner.running && runner.failedAt && <button className="tp-btn" onClick={runner.rerunFailed} data-testid="ws-rerun" title="Re-run from the failed block"><Icon.rerun /></button>}
         {runner.running && <button className="tp-btn tp-stop" onClick={runner.stop} data-testid="ws-stop" title="Stop  ⇧F5"><Icon.stop /></button>}

@@ -362,3 +362,42 @@ span.fm-lane-stop { cursor: default; }
   .fm-flow-title, .fm-fn, .fm-flow-more, .fm-section-head, .fm-lane-head, .fm-subway-btn, .fm-lane-stop { min-height: 28px; }
 }
 .fm-flow-title { padding-top: 2px; padding-bottom: 2px; }
+
+/* ================================================================ U4 · run supervision (views/map/supervision.tsx) */
+/* Dry-run plan: write sections get the accent tint, read sections an outline,
+   struck sections a strike bar – the plan lives over the sections it names. */
+.u4-plan { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.u4-plan-bar { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); display: flex; gap: 10px; align-items: center;
+  background: var(--panel, #121110); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 6px 10px; pointer-events: auto; }
+.u4-plan-k { color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.u4-plan-txt { font-size: 12px; color: var(--text-2); }
+.u4-mark { position: absolute; border-radius: var(--radius); cursor: pointer; padding: 0; background: transparent; }
+.u4-write { background: color-mix(in srgb, var(--accent) 26%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+.u4-read { border: 1px dashed var(--line-2); }
+.u4-struck::after { content: ""; position: absolute; left: 8%; right: 8%; top: 50%; height: 2px; background: var(--red); opacity: .8; }
+
+/* The ask gate: a compact prompt docked above the transport – not a modal. */
+.u4-ask { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 9; display: flex; gap: 10px; align-items: center;
+  background: var(--panel, #121110); border: 1px solid var(--line-2); border-left: 2px solid var(--accent); border-radius: var(--radius); padding: 8px 12px; pointer-events: auto; }
+.u4-ask-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.u4-ask-txt { font-size: 12.5px; color: var(--text); }
+.u4-ask-txt code { color: var(--accent); }
+.u4-ask kbd { margin-left: 6px; opacity: .7; }
+.btn.danger { border-color: var(--red); color: var(--red); }
+
+/* In-place marks: a red corner flag for conflicts, a +/− badge for changes. */
+.u4-conflict { position: absolute; width: 14px; height: 14px; border: 0; padding: 0; cursor: pointer; z-index: 7;
+  background: var(--red); clip-path: polygon(0 0, 100% 0, 100% 100%); border-radius: 0; }
+.u4-badge { position: absolute; display: inline-flex; gap: 3px; align-items: center; z-index: 7; cursor: pointer;
+  background: var(--panel, #121110); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 1px 6px; font-size: 11px; color: var(--text); }
+.u4-badge .mono { color: var(--accent); }
+
+/* Step detail: decision line, conflicts, the diff with its acknowledgement. */
+.u4-decision { color: var(--text); }
+.u4-decision b { color: var(--accent); }
+.u4-conflict-flag { display: inline-block; width: 8px; height: 8px; background: var(--red); clip-path: polygon(0 0, 100% 0, 100% 100%); }
+.u4-ndv-conflicts, .u4-ndv-changes { margin: 4px 0 8px; }
+.u4-change-add { color: var(--green); }
+.u4-change-del { color: var(--red); }
+.u4-change-add .btn, .u4-change-del .btn { margin-left: 10px; }
+.tp-plan-on { border-color: var(--accent); color: var(--accent); }

@@ -527,8 +527,10 @@ export function Executions({ runner }: { runner: ReturnType<typeof useRunner> })
 
 /* ---- Node details view (NDV): input · parameters · output ------------ */
 
-export function StepDetails({ data, s, pipe, runner, sections, prev, onClose }: {
+export function StepDetails({ data, s, pipe, runner, sections, prev, onClose, sup }: {
   data: MapData; s: Step; pipe: Pipe; runner: ReturnType<typeof useRunner>; sections: string[]; prev: Step | null; onClose: () => void;
+  /** U4 – run supervision: the decision this block made, its diff and cost. */
+  sup?: { decision: Record<string, string>; conflictsOf: (id: string) => { id: string; path: string; reason: string }[]; changesOf: (id: string) => { id: string; path: string; kind: "+" | "−" }[]; acked: Set<string>; acknowledge: (id: string) => void };
 }) {
   const [, tick] = useState(0);
   useEffect(() => onLog(() => tick((x) => x + 1)), []);
@@ -554,6 +556,16 @@ export function StepDetails({ data, s, pipe, runner, sections, prev, onClose }: 
         <div className="ndv-cols">
           <section className="ndv-col ndv-in">
             <h3>Input</h3>
+            {sup && sup.decision[s.id] && (
+              <p className="ndv-k u4-decision" data-testid={`u4-decision-${s.id}`}><b>Decision · </b>{sup.decision[s.id]}</p>
+            )}
+            {sup && sup.conflictsOf(s.id).length > 0 && (
+              <div className="u4-ndv-conflicts" data-testid={`u4-ndv-conflicts-${s.id}`}>
+                {sup.conflictsOf(s.id).map((c) => (
+                  <p key={c.id} className="ndv-k u4-conflict-line"><span className="u4-conflict-flag" aria-hidden="true" /> {c.reason} – <code>{c.path}</code></p>
+                ))}
+              </div>
+            )}
             {s.kind === "agent" || s.kind === "crew" ? (
               files.length ? <><p className="ndv-k">Fence · {files.length} files it may edit</p><ul className="ndv-files mono">{files.slice(0, 80).map((f) => <li key={f}>{f}</li>)}</ul></>
                 : <p className="ws-note">No section – the whole repo, unfenced.</p>
@@ -569,6 +581,16 @@ export function StepDetails({ data, s, pipe, runner, sections, prev, onClose }: 
           </section>
           <section className="ndv-col ndv-out">
             <h3>Output {s.status && s.status !== "idle" && <span className={`ndv-st pl-${s.status}`}>{STATUS_LABEL[s.status]}{s.ms != null && ` · ${fmtMs(s.ms)}`}</span>}</h3>
+            {sup && sup.changesOf(s.id).length > 0 && (
+              <div className="u4-ndv-changes" data-testid={`u4-ndv-changes-${s.id}`}>
+                {sup.changesOf(s.id).map((c) => (
+                  <p key={c.id} className={`ndv-k u4-change-${c.kind === "+" ? "add" : "del"} mono`}>
+                    {c.kind} {c.path}
+                    {!sup.acked.has(c.id) && <button className="btn ghost sm" data-testid={`u4-ack-${c.id}`} onClick={() => sup.acknowledge(c.id)}>Acknowledge</button>}
+                  </p>
+                ))}
+              </div>
+            )}
             {out.length ? <pre className="ndv-pre" data-testid="ndv-out">{out.map((l) => `${new Date(l.t).toLocaleTimeString([], { hour12: false })}  ${l.text}`).join("\n")}</pre>
               : <p className="ws-note">No output yet. <b>Run from here</b> executes this block and everything after it.</p>}
           </section>
