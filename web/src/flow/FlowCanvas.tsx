@@ -7,7 +7,7 @@ import {
   Background, BackgroundVariant, MiniMap, Panel, ReactFlow, ReactFlowProvider,
   applyNodeChanges, useReactFlow, useStore, useUpdateNodeInternals, type Edge, type Node, type NodeChange,
 } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import "@xyflow/react/dist/base.css";
 import { FcCtx } from "./fcContext";
 import { edgeTypes } from "./edges";
 import { layout, layoutWorkerUsed } from "./layout";
