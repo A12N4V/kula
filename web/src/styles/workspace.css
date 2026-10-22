@@ -439,8 +439,11 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
   z-index: 30; width: 320px; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius, 8px); padding: 8px; }
 .u2-add-pop .ag-add-form { border: 0; }
 
-/* Centred Map · Runs · Evals (ux §7.217): flat square tabs, fill selection. */
-.u2-frames { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 22;
+/* Centred Map · Runs · Evals (ux §7.217): flat square tabs, fill selection.
+   Docked in the app header band (fixed, centred): the docked headline row
+   below it owns the full width at narrow widths, so an absolutely centred
+   overlay there collided with the crumb (overlap gate at 1100). */
+.u2-frames { position: fixed; top: 9px; left: 50%; transform: translateX(-50%); z-index: 22;
   display: inline-flex; border: 1px solid var(--line-2); background: var(--panel); border-radius: var(--radius-sm, 6px); overflow: hidden; }
 .u2-frame { background: none; border: 0; color: var(--text-2); font: 500 12px var(--mono); padding: 0 14px; height: var(--ctl-h, 30px); cursor: pointer;
   transition: background .12s, color .12s; }
@@ -450,7 +453,10 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
 .u2-frame:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
 
 /* Bottom-left chrome stack: layers, tidy, then the canvas zoom bar. */
-.u2-hud-bl { position: absolute; left: 10px; bottom: 118px; z-index: 22; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+/* Offset clear of the canvas zoom controls (fit · in · out · minimap), which
+   are the react-flow control column at the canvas bottom-left: the layer and
+   tidy chrome sits beside them, never on top. */
+.u2-hud-bl { position: absolute; left: 122px; bottom: 118px; z-index: 22; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .u2-layers { display: inline-flex; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-sm, 6px); overflow: hidden; }
 .u2-layer { background: none; border: 0; color: var(--text-2); font: 500 11px var(--mono); padding: 0 9px; height: 28px; cursor: pointer;
   transition: background .12s, color .12s; white-space: nowrap; }
