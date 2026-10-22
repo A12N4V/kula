@@ -62,6 +62,10 @@ const volatile = (page: Page) => [
   page.locator(".topbar .crumb-repo"), page.locator(".topbar .chip"), page.locator(".rail .badge"),
 ];
 
+// Screenshot-only CSS: give the checkout-dependent text a fixed footprint so
+// a longer repo or branch name cannot shift the rest of the header.
+const SHOT_CSS = `.topbar .crumb-repo, .topbar .chip { display: inline-block; width: 96px; overflow: hidden; white-space: nowrap; }`;
+
 const VIEWS = [
   ["graph", "graph"],
   ["overview", "overview"],
@@ -81,11 +85,11 @@ test.describe("visual baselines", () => {
           await expect(page).toHaveScreenshot(`${name}-${width}-${theme}.png`, {
             threshold: 0.2, maxDiffPixelRatio: 0.002,
             animations: "disabled",
-            caret: "hide",
+            caret: "hide", style: SHOT_CSS,
             fullPage: false,
             // Changes lists whatever is dirty right now (this run's own test
             // output included) – keep its chrome, mask the file data.
-            mask: [...volatile(page), ...(name === "overview" ? [page.locator(".ov-title, .ov-stats, .ov-facts, .br-table")] : []), ...(name === "changes" ? [page.locator(".main ul, .main ol, .main table, .main pre, .main [class*=diff], .main [class*=file]")] : [])],
+            mask: [...volatile(page), ...(name === "overview" ? [page.locator(".ov-title, .ov-stats, .ov-facts, .br-table, .card.coupling")] : []), ...(name === "changes" ? [page.locator(".main ul, .main ol, .main table, .main pre, .main [class*=diff], .main [class*=file]")] : [])],
           });
         }
       });
@@ -95,7 +99,7 @@ test.describe("visual baselines", () => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
         await at(page, "map", { light: theme === "light" });
         await expect(page).toHaveScreenshot(`map-closed-${width}-${theme}.png`, {
-          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", mask: [...volatile(page), page.locator(".react-flow__renderer")],
+          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", style: SHOT_CSS, mask: [...volatile(page), page.locator(".react-flow__renderer")],
         });
         // Open the inspector via the HUD Structure button (deterministic –
         // no canvas hit-testing).
@@ -103,7 +107,7 @@ test.describe("visual baselines", () => {
         await expect(page.getByTestId("map-inspector")).toBeVisible({ timeout: 5_000 });
         await page.waitForTimeout(400);
         await expect(page).toHaveScreenshot(`map-open-${width}-${theme}.png`, {
-          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", mask: [...volatile(page), page.locator(".react-flow__renderer")],
+          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", style: SHOT_CSS, mask: [...volatile(page), page.locator(".react-flow__renderer")],
         });
       });
 
@@ -114,7 +118,7 @@ test.describe("visual baselines", () => {
         await page.getByTestId("sb-dock").click();
         await expect(page.locator("[data-testid=dock]")).toBeVisible({ timeout: 5_000 });
         await expect(page).toHaveScreenshot(`dock-terminal-${width}-${theme}.png`, {
-          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", mask: volatile(page),
+          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", style: SHOT_CSS, mask: volatile(page),
         });
         // Switch to the second dock tab if there is one.
         const tabs = page.locator(".dock-tabs .dock-tab");
@@ -122,7 +126,7 @@ test.describe("visual baselines", () => {
           await tabs.nth(1).click();
           await page.waitForTimeout(300);
           await expect(page).toHaveScreenshot(`dock-tab2-${width}-${theme}.png`, {
-            threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", mask: volatile(page),
+            threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", style: SHOT_CSS, mask: volatile(page),
           });
         }
       });
