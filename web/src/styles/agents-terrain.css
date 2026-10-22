@@ -126,3 +126,12 @@
    most 35% (contract §8.5) – the canvas root carries the flag, the flow kit
    dims the non-members via .fc-dim and the fence ring marks the members. */
 .map-main.at-fencing .fc-node:not(.fc-dim):not([data-fenced]) { opacity: .35; }
+/* The actor band shares the view's height with the canvas: without an
+   explicit row constraint the split's auto row keeps its min-content height
+   and the canvas (with the docked transport) overflows past the bottom dock,
+   which then covers the transport's buttons. Let the row shrink. */
+.sy-root .sy-split { grid-template-rows: minmax(0, 1fr); }
+.sy-root .ws-drop { min-height: 0; }
+@media (max-width: 720px) {
+  .sy-root .sy-split { grid-template-rows: minmax(0, 1fr) auto; }
+}
