@@ -38,7 +38,8 @@ async function opened(page: Page, base = "") {
   await page.goto("about:blank");
   await page.goto(`${base}/#map`);
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
-  await expect(page.locator('[data-testid="actor-band"]')).toBeVisible();
+  // the fixture builds its map cold on the first GET /api/map (~11 s)
+  await expect(page.locator('[data-testid="actor-band"]')).toBeVisible({ timeout: 30_000 });
 }
 
 const FENCE_DROP = `fence-drop-${Date.now()}`;
