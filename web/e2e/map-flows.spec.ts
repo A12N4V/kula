@@ -27,7 +27,7 @@ test.describe("map value flows", () => {
     });
     expect(api.length).toBeGreaterThan(0);
     // a selection opens the inspector; the flows list rides the inspect tab
-    await page.locator(".fc-card").first().click();
+    await (await cardInView(page)).click();
     await expect(page.locator("[data-testid=map-flows-list]")).toBeAttached();
     const rows = page.locator("[data-testid=map-flows-list] .vf-row-name");
     expect(await rows.count()).toBeGreaterThan(0);
@@ -42,7 +42,7 @@ test.describe("map value flows", () => {
   test("picking a flow selects its first section on the canvas", async ({ page }) => {
     await open(page);
     await expect(page.locator("[data-testid=map-view]")).toBeVisible({ timeout: 30_000 });
-    await page.locator(".fc-card").first().click();
+    await (await cardInView(page)).click();
     await expect(page.locator("[data-testid=map-flows-list]")).toBeAttached();
     await page.locator("[data-testid=map-flow-0]").click();
     // the canvas selection moved to the flow's first section (the inspector
@@ -70,3 +70,19 @@ test.describe("map value flows", () => {
     }
   });
 });
+
+/** A block card that is on screen inside the canvas – the landing view zooms
+ *  in on the busiest section (R0), so the first card in the DOM can be
+ *  off-canvas, and React Flow cannot scroll a card into view. */
+async function cardInView(page: import("@playwright/test").Page) {
+  const id = await page.evaluate(() => {
+    const c = document.querySelector("[data-testid=map-flow] .react-flow")?.getBoundingClientRect();
+    if (!c) return null;
+    const el = [...document.querySelectorAll(".fc-card:not(.fc-card-sec)")].find((e) => {
+      const r = e.getBoundingClientRect();
+      return r.left > c.left + 20 && r.top > c.top + 60 && r.right < c.right - 20 && r.bottom < c.bottom - 90;
+    });
+    return (el?.closest("[data-testid^=fc-node-]") as HTMLElement | null)?.dataset.testid ?? null;
+  });
+  return id ? page.locator(`[data-testid=${id}]`) : page.locator(".fc-card").first();
+}

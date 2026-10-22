@@ -103,6 +103,9 @@ const BlockCard = memo((props: NodeProps) => {
           {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} />}
           {data.ring === "fence" && <span className="fc-card-fence-badge" title="fenced by an agent" />}
         </div>
+      ) : null}
+      {stage === 1 ? (
+        <span className="fc-card-name fc-card-caption" title={data.title}>{data.title}</span>
       ) : (
         <>
           <div className="fc-card-head">

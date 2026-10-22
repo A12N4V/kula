@@ -364,5 +364,6 @@ html[data-rm="1"] .fc-dot { transition: none; }
   display: grid; place-items: center; position: relative;
   font-size: 30px; color: var(--text-2);
 }
+.fc-card.fc-stage-1 .fc-card-caption { flex: none; max-width: 100%; margin-top: 8px; text-align: center; font-size: 13px; line-height: 16px; }
 .fc-card.fc-sel .fc-card-tile { border-color: var(--accent); background: var(--accent-soft); }
 .fc-card-fence-badge { position: absolute; top: -5px; right: -5px; width: 10px; height: 10px; background: var(--accent); border: 2px solid var(--bg); border-radius: 50%; }

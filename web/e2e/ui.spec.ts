@@ -2464,6 +2464,9 @@ test.describe("map", () => {
     const card = page.locator(`[data-testid=${testid}]`);
     const handle = card.locator(".fc-card-resize");
     await expect(handle).toBeAttached();
+    // let the selection re-render settle, or the drag can start on a handle
+    // React is about to replace
+    await page.waitForTimeout(400);
     const before = await card.boundingBox();
     expect(before!.width).toBeLessThan(400);
     // drag the corner handle out past the detail stage (320): the function
@@ -2641,7 +2644,7 @@ test.describe("map", () => {
     await page.locator("[data-testid=map-roles-btn]").click();
     // the flows list is an inspector overlay, not a canvas of its own –
     // open the inspector with a selection first
-    await page.locator(".fc-card").first().click();
+    await (await cardInView(page)).click();
     await expect(page.locator("[data-testid=map-inspector]")).toBeVisible();
     await expect(page.locator("[data-testid=map-flows-list]")).toBeAttached();
   });
@@ -2667,7 +2670,7 @@ test.describe("map", () => {
     // resting edges sit on --text-3, lit edges on --text (opacity stays 1;
     // the ladder is luminance, not transparency). Only edges of the hovered
     // node are lit, so sample one attached to it.
-    const node = page.locator("[data-testid=map-flow] .fc-card").first();
+    const node = await cardInView(page);
     await node.hover();
     const lit = page.locator("[data-testid=map-flow] .fc-edge-lit").first();
     await expect(lit).toBeAttached();
@@ -3110,3 +3113,19 @@ test.describe("agents add from the map rail (U3)", () => {
     expect((await name.boundingBox())?.height).toBeGreaterThanOrEqual(38);
   });
 });
+
+/** A block card that is on screen inside the canvas – the landing view zooms
+ *  in on the busiest section (R0), so the first card in the DOM can be
+ *  off-canvas, and React Flow cannot scroll a card into view. */
+async function cardInView(page: import("@playwright/test").Page) {
+  const id = await page.evaluate(() => {
+    const c = document.querySelector("[data-testid=map-flow] .react-flow")?.getBoundingClientRect();
+    if (!c) return null;
+    const el = [...document.querySelectorAll(".fc-card:not(.fc-card-sec)")].find((e) => {
+      const r = e.getBoundingClientRect();
+      return r.left > c.left + 20 && r.top > c.top + 60 && r.right < c.right - 20 && r.bottom < c.bottom - 90;
+    });
+    return (el?.closest("[data-testid^=fc-node-]") as HTMLElement | null)?.dataset.testid ?? null;
+  });
+  return id ? page.locator(`[data-testid=${id}]`) : page.locator(".fc-card").first();
+}

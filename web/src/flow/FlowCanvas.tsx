@@ -175,8 +175,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
           // Readable by default (R0): when the caller names an initialFocus,
           // land centred on it at a readable zoom instead of fitting every
           // node into 12 %. The focus node must be in the laid-out set.
-          const wasUnfitted = fittedKey.current !== layoutKey;
-          if (wasUnfitted) {
+          if (fittedKey.current !== layoutKey) {
             fittedKey.current = layoutKey;
             const focusId = props.initialFocus;
             window.requestAnimationFrame(() => {
@@ -194,11 +193,11 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             // Nodes outside the current viewport (the late pipeline lane, an
             // undo/redo bring-back) can never be seen or mounted under
             // onlyRenderVisibleElements – the fit above only saw mounted
-            // nodes. A fresh run or the first fit on a layout expands the
-            // viewport: a poll refresh of known ids must never move the
-            // camera, or the user's zoom snaps back to the fit every second.
+            // nodes. Only a run that brings fresh ids expands the viewport:
+            // the first landing stays at the readable zoom (R0), and a poll
+            // refresh of known ids must never move the camera.
             window.requestAnimationFrame(() => {
-              if (!live || (!freshArrivals && !wasUnfitted)) return;
+              if (!live || !freshArrivals) return;
               const el = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
               if (!el) return;
               const t = rf.getViewport();
