@@ -54,7 +54,31 @@ async function at(page: Page, hash: string, opts: { light?: boolean; panel?: boo
     The Overview additionally masks its branch-dependent text – the header
     branch name, the file/symbol facts and the Branches table names and
     ahead/behind counts, all of which differ per module branch. */
-const volatile = (page: Page) => [page.locator(".statusbar"), page.locator("canvas"), page.locator(".graph-canvas")];
+// Whatever depends on the checkout running the test, not on the design: the
+// repo name, branch chip and change badges differ per worktree, so every
+// module's gate failed against baselines shot in another worktree.
+const volatile = (page: Page) => [
+  page.locator(".statusbar"), page.locator("canvas"), page.locator(".graph-canvas"),
+  page.locator(".topbar .crumb-repo"), page.locator(".topbar .chip"), page.locator(".rail .badge"),
+];
+
+// Screenshot-only CSS (kept for the masks' footprint).
+const SHOT_CSS = `.topbar .crumb-repo, .topbar .chip { display: inline-block; width: 96px; overflow: hidden; white-space: nowrap; }`;
+
+/** Replace the text that depends on the checkout running the test – repo
+ *  name, branch, change badges, the Overview title – with fixed placeholders,
+ *  so a baseline shot in one worktree matches every other. */
+async function stabilise(page: Page) {
+  await page.evaluate(() => {
+    const set = (sel: string, text: string) => document.querySelectorAll(sel).forEach((e) => { e.textContent = text; });
+    set(".topbar .crumb-repo", "repo");
+    set(".topbar .chip b", "branch");
+    set(".rail .badge", "1");
+    set(".ov-title h1", "repo");
+    set(".ov-title > .mono", "branch");
+    set(".ov-title .ov-facts", "1,000 files · 10,000 symbols · indexed in 100ms");
+  });
+}
 
 const VIEWS = [
   ["graph", "graph"],
@@ -72,14 +96,15 @@ test.describe("visual baselines", () => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
         for (const [hash, name] of VIEWS) {
           await at(page, hash, { light: theme === "light" });
+          await stabilise(page);
           await expect(page).toHaveScreenshot(`${name}-${width}-${theme}.png`, {
             threshold: 0.2, maxDiffPixelRatio: 0.002,
             animations: "disabled",
-            caret: "hide",
+            caret: "hide", style: SHOT_CSS,
             fullPage: false,
             // Changes lists whatever is dirty right now (this run's own test
             // output included) – keep its chrome, mask the file data.
-            mask: [...volatile(page), ...(name === "overview" ? [page.locator(".ov-title .mono, .ov-facts, .br-table")] : []), ...(name === "changes" ? [page.locator(".main ul, .main ol, .main table, .main pre, .main [class*=diff], .main [class*=file]")] : [])],
+            mask: [...volatile(page), ...(name === "overview" ? [page.locator(".ov-title, .ov-stats, .ov-facts, .br-table, .card.coupling")] : []), ...(name === "changes" ? [page.locator(".main ul, .main ol, .main table, .main pre, .main [class*=diff], .main [class*=file]")] : [])],
           });
         }
       });
@@ -88,16 +113,18 @@ test.describe("visual baselines", () => {
         test.skip(browserName !== "chromium", "desktop-only visual project");
         await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
         await at(page, "map", { light: theme === "light" });
+        await stabilise(page);
         await expect(page).toHaveScreenshot(`map-closed-${width}-${theme}.png`, {
-          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", mask: [...volatile(page), page.locator(".react-flow__renderer")],
+          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", style: SHOT_CSS, mask: [...volatile(page), page.locator(".react-flow__renderer")],
         });
         // Open the inspector via the HUD Structure button (deterministic –
         // no canvas hit-testing).
         await page.getByTestId("map-side-toggle").click();
         await expect(page.getByTestId("map-inspector")).toBeVisible({ timeout: 5_000 });
         await page.waitForTimeout(400);
+        await stabilise(page);
         await expect(page).toHaveScreenshot(`map-open-${width}-${theme}.png`, {
-          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", mask: [...volatile(page), page.locator(".react-flow__renderer")],
+          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", style: SHOT_CSS, mask: [...volatile(page), page.locator(".react-flow__renderer")],
         });
       });
 
@@ -107,16 +134,18 @@ test.describe("visual baselines", () => {
         await at(page, "graph", { light: theme === "light" });
         await page.getByTestId("sb-dock").click();
         await expect(page.locator("[data-testid=dock]")).toBeVisible({ timeout: 5_000 });
+        await stabilise(page);
         await expect(page).toHaveScreenshot(`dock-terminal-${width}-${theme}.png`, {
-          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", mask: volatile(page),
+          threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", style: SHOT_CSS, mask: volatile(page),
         });
         // Switch to the second dock tab if there is one.
         const tabs = page.locator(".dock-tabs .dock-tab");
         if ((await tabs.count()) > 1) {
           await tabs.nth(1).click();
           await page.waitForTimeout(300);
-          await expect(page).toHaveScreenshot(`dock-tab2-${width}-${theme}.png`, {
-            threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", mask: volatile(page),
+          await stabilise(page);
+        await expect(page).toHaveScreenshot(`dock-tab2-${width}-${theme}.png`, {
+            threshold: 0.2, maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", style: SHOT_CSS, mask: volatile(page),
           });
         }
       });
