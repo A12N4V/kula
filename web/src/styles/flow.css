@@ -124,9 +124,9 @@
 
 /* "+" stub on an unused output. */
 .fc-stub {
-  position: absolute; right: -8px; top: 50%; transform: translate(100%, -50%);
-  width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--line-2);
-  background: var(--bg); color: var(--text-3); font-size: 12px; line-height: 14px;
+  position: absolute; right: -14px; top: 50%; transform: translate(100%, -50%);
+  width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line-2);
+  background: var(--bg); color: var(--text-3); font-size: 12px; line-height: 22px;
   text-align: center; cursor: pointer; padding: 0;
 }
 .fc-stub:hover { color: var(--accent); border-color: var(--accent); }

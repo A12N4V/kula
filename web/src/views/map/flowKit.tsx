@@ -450,8 +450,9 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   const denser = edges.length > 400;
   return (
     <div className={`sy-canvas fm-flow${dense ? " map-canvas--dense" : ""}${denser ? " map-canvas--denser" : ""}`} data-testid="map-flow" data-fc-chainfocus={focus?.chain ? "1" : undefined}>
+      {/* U4 (X2 list): the "executes" crumb leaves landing – the workflow
+          name already reads in the header, the label only duplicated it. */}
       <div className="fm-headline" data-testid="map-headline">
-        <span className="fm-headline-k">executes</span>
         <span className="fm-headline-v">{headline || "–"}</span>
       </div>
       <FlowCanvas

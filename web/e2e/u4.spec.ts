@@ -94,8 +94,10 @@ test("conflict marks land on the block in place; change badges show + and acknow
   await page.keyboard.press("1"); // allow once – the write lands, conflict is flagged
   await expect.poll(async () => page.locator('[data-testid^="u4-conflict-"]').count(), { timeout: 20_000 }).toBeGreaterThan(0);
   await expect.poll(async () => page.locator('[data-testid^="u4-badge-"]').count(), { timeout: 20_000 }).toBeGreaterThan(0);
-  // open the step detail from the conflict mark: decision line, diff, ack
-  await page.locator('[data-testid^="u4-conflict-"]').first().click();
+  // open the step detail from the conflict mark: decision line, diff, ack.
+  // The mark rides the camera transform and may sit off-viewport, so the
+  // click is dispatched on the element itself.
+  await page.locator('[data-testid^="u4-conflict-"]').first().evaluate((el) => (el as HTMLElement).click());
   await expect(page.locator('[data-testid="ndv"]')).toBeVisible();
   await expect(page.locator('[data-testid^="u4-decision-"]').first()).toBeVisible();
   await expect(page.locator('[data-testid^="u4-ndv-changes-"] p').first()).toContainText("+");
@@ -114,8 +116,10 @@ test("deny keeps the edit off the run: no conflict, decision says denied", async
   await page.keyboard.press("3");
   await expect(page.locator('[data-testid="ask-gate"]')).toBeHidden();
   await expect(page.locator('[data-testid^="u4-conflict-"]')).toHaveCount(0, { timeout: 15_000 });
-  // the decision line records the denial in the step detail
+  // the decision line records the denial in the step detail: select the
+  // agent's block on the transport timeline, Enter opens the step detail
   await page.locator('[data-testid="ws-seg-u4-a"]').click();
-  await expect(page.locator('[data-testid="ndv"]')).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.locator('[data-testid="ndv"]')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('[data-testid^="u4-decision-"]').first()).toContainText("Denied", { timeout: 10_000 });
 });

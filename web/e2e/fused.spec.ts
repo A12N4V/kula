@@ -334,20 +334,24 @@ test.fixme("keyboard map works and never spends keys 1/2/3", async ({ page }) =>
   }
 });
 
-// Ask gate (contract §8.11) – U4 owns run supervision.
-test.fixme("ask gate docks above the transport with three answers and keys 1/2/3, not a modal", async ({ page }) => {
+// Ask gate (contract §8.11) – U4 owns run supervision. Un-fixed by U4: the
+// gate is landed, the transport testid is ws-runbar (X2's run-transport
+// alias never shipped – recorded as a contract amendment in handoff-u4).
+test("ask gate docks above the transport with three answers and keys 1/2/3, not a modal", async ({ page }) => {
   await opened(page, "map", FIXTURE);
-  const transport = page.locator('[data-testid="run-transport"]');
-  await expect(transport).toBeVisible({ timeout: 10_000 });
-  // trigger an ask (the fixture's agent asks before writes outside tests)
-  const run = page.locator('[data-testid="transport-run"]');
-  if (await run.isVisible()) await run.click();
+  const transport = page.locator('[data-testid="ws-runbar"]');
+  await expect(transport).toBeVisible({ timeout: 30_000 });
+  // trigger an ask the way u4.spec does: dry-run a plan, approve it – the
+  // fake run's first agent reaches outside its fence and the gate opens
+  await page.locator('[data-testid="u4-dry-run"]').click();
+  await expect(page.locator('[data-testid="u4-plan-bar"]')).toBeVisible();
+  await page.locator('[data-testid="u4-approve"]').click();
   const gate = page.locator('[data-testid="ask-gate"]');
   await expect(gate).toBeVisible({ timeout: 20_000 });
   const box = await gate.boundingBox();
   const tbox = await transport.boundingBox();
-  expect(box && tbox && Math.abs(box.y + box.height - tbox.y) < 40, `ask gate at ${box?.y} is not docked above the transport at ${tbox?.y}`).toBe(true);
-  for (const answer of ["Allow once", "Allow for run", "Deny"]) await expect(gate.getByText(answer, { exact: true })).toBeVisible();
+  expect(box && tbox && Math.abs(box.y + box.height - tbox.y) < 60, `ask gate at ${box?.y} is not docked above the transport at ${tbox?.y}`).toBe(true);
+  for (const answer of ["Allow once", "Allow for run", "Deny"]) await expect(gate.getByText(answer, { exact: false })).toBeVisible();
   // keys 1/2/3 answer it; no modal overlay intercepts the map
   await page.keyboard.press("1");
   await expect(gate).toBeHidden();

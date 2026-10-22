@@ -144,7 +144,6 @@ export function useSupervision(data: MapData | null, steps: Step[]) {
   stepsRef.current = steps;
   const sectionOfStep = (stepId: string) => stepsRef.current.find((x) => x.id === stepId)?.section ?? null;
   const answerAsk = useCallback((id: string, ans: "once" | "run" | "deny") => {
-    console.log("U4DBG answer", id, ans, JSON.stringify(asks));
     setAsks((a) => a.filter((x) => x.id !== id));
     const ask = asks.find((x) => x.id === id);
     if (!ask) return;
@@ -157,7 +156,6 @@ export function useSupervision(data: MapData | null, steps: Step[]) {
       // The allowed write lands now: the change badges the block that made it
       // and the out-of-fence edit is flagged in place (a red corner mark).
       const sec = sectionOfStep(ask.stepId);
-      console.warn("U4 allow", ask.stepId, "sec", sec, ask.target);
       emitChange(ask.stepId, ask.target, "+", sec);
       setConflicts((cs) => [...cs, { id: `k${changeSeq.current}`, stepId: ask.stepId, section: sec, path: ask.target, reason: "write outside the fence" }]);
       setDecision((d) => ({ ...d, [ask.stepId]: `Allowed ${ans === "run" ? "for the run" : "once"}: ${ask.action} ${ask.target}.` }));
@@ -245,21 +243,30 @@ export function PlanOverlay({ sup, canvas }: { sup: Supervision; canvas: React.R
 // never a modal – the map stays live behind it.
 export function AskGate({ sup }: { sup: Supervision }) {
   const ask = sup.asks[sup.asks.length - 1];
+  const n = sup.asks.length;
   useEffect(() => {
     if (!ask) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "1") { e.preventDefault(); sup.answerAsk(ask.id, "once"); }
-      else if (e.key === "2") { e.preventDefault(); sup.answerAsk(ask.id, "run"); }
-      else if (e.key === "3") { e.preventDefault(); sup.answerAsk(ask.id, "deny"); }
+      // Capture phase – this must win over App's global view hotkeys (1/2/3
+      // navigate views there), which fire later in the bubble phase. Never
+      // hijack typing: inputs, contentEditable and modified keys are ignored.
+      const t = e.target as HTMLElement | null;
+      if (t && (/INPUT|TEXTAREA|SELECT/.test(t.tagName) || t.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const ans = e.key === "1" ? "once" : e.key === "2" ? "run" : e.key === "3" ? "deny" : null;
+      if (!ans) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      sup.answerAsk(ask.id, ans);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [ask, sup]);
   if (!ask) return null;
   return (
     <div className="u4-ask" data-testid="ask-gate" role="status" aria-label="Ask gate">
       <span className="u4-ask-dot" aria-hidden="true" />
-      <span className="u4-ask-txt"><b>{ask.agent}</b> wants to {ask.action} <code>{ask.target}</code> (outside its fence).</span>
+      <span className="u4-ask-txt"><b>{ask.agent}</b> wants to {ask.action} <code>{ask.target}</code> (outside its fence).{n > 1 && <> <b className="mono">{sup.asks.indexOf(ask) + 1} of {n}</b> waiting</>}</span>
       <button className="btn sm" onClick={() => sup.answerAsk(ask.id, "once")} data-testid="u4-allow-once">Allow once <kbd>1</kbd></button>
       <button className="btn sm" onClick={() => sup.answerAsk(ask.id, "run")} data-testid="u4-allow-run">Allow for run <kbd>2</kbd></button>
       <button className="btn sm danger" onClick={() => sup.answerAsk(ask.id, "deny")} data-testid="u4-deny">Deny <kbd>3</kbd></button>
@@ -293,11 +300,12 @@ export function ChangeBadges({ sup, canvas, onOpen }: { sup: Supervision; canvas
       {[...boxes].map(([sec, b]) => {
         const list = live.filter((c) => c.section === sec);
         const plus = list.some((c) => c.kind === "+");
+        const minus = list.some((c) => c.kind !== "+");
         return (
           <button key={sec} className="u4-badge" data-testid={`u4-badge-${sec}`} title={list.map((c) => `${c.kind} ${c.path}`).join("\n")}
             style={{ left: b.left + b.width - 34, top: b.top - 10 }}
             onClick={() => { list.forEach((c) => sup.acknowledge(c.id)); onOpen(list[0].stepId); }}>
-            <span className="mono">{plus ? "+" : "−"}</span>{list.length > 1 && <b className="mono">{list.length}</b>}
+            <span className="mono">{plus && minus ? "+−" : plus ? "+" : "−"}</span>{list.length > 1 && <b className="mono">{list.length}</b>}
           </button>
         );
       })}
