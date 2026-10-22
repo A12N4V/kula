@@ -54,7 +54,13 @@ async function at(page: Page, hash: string, opts: { light?: boolean; panel?: boo
     The Overview additionally masks its branch-dependent text – the header
     branch name, the file/symbol facts and the Branches table names and
     ahead/behind counts, all of which differ per module branch. */
-const volatile = (page: Page) => [page.locator(".statusbar"), page.locator("canvas"), page.locator(".graph-canvas")];
+// Whatever depends on the checkout running the test, not on the design: the
+// repo name, branch chip and change badges differ per worktree, so every
+// module's gate failed against baselines shot in another worktree.
+const volatile = (page: Page) => [
+  page.locator(".statusbar"), page.locator("canvas"), page.locator(".graph-canvas"),
+  page.locator(".topbar .crumb-repo"), page.locator(".topbar .chip"), page.locator(".rail .badge"),
+];
 
 const VIEWS = [
   ["graph", "graph"],
@@ -79,7 +85,7 @@ test.describe("visual baselines", () => {
             fullPage: false,
             // Changes lists whatever is dirty right now (this run's own test
             // output included) – keep its chrome, mask the file data.
-            mask: [...volatile(page), ...(name === "overview" ? [page.locator(".ov-title .mono, .ov-facts, .br-table")] : []), ...(name === "changes" ? [page.locator(".main ul, .main ol, .main table, .main pre, .main [class*=diff], .main [class*=file]")] : [])],
+            mask: [...volatile(page), ...(name === "overview" ? [page.locator(".ov-title, .ov-stats, .ov-facts, .br-table")] : []), ...(name === "changes" ? [page.locator(".main ul, .main ol, .main table, .main pre, .main [class*=diff], .main [class*=file]")] : [])],
           });
         }
       });
