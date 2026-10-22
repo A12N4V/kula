@@ -54,9 +54,9 @@ async function at(page: Page, hash: string, opts: { light?: boolean; panel?: boo
   if (hash === "map") {
     await expect
       .poll(async () => {
-        const t1 = await page.locator(".react-flow__viewport").getAttribute("transform");
+        const t1 = await page.locator(".react-flow__viewport").getAttribute("style");
         await page.waitForTimeout(250);
-        return t1 !== null && t1 === (await page.locator(".react-flow__viewport").getAttribute("transform"));
+        return t1 !== null && t1 === (await page.locator(".react-flow__viewport").getAttribute("style"));
       }, { timeout: 15_000, intervals: [250] })
       .toBe(true);
     await page.waitForTimeout(400);
