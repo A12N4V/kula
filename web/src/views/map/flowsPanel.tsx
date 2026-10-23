@@ -123,8 +123,11 @@ export function journeySentences(data: MapData, f: ValueFlow, ex: ExplainBlocks)
 /** The Journeys panel (U7): one row per value flow in the right column –
     hue swatch, plain title, step count. Picking a flow rings its squares in
     its hue and opens the journey strip (the base's ring + wire tint stays);
-    picking again clears it. */
-export function JourneysPanel({ data, onFlow, active }: { data: MapData; onFlow?: (i: number | null) => void; active?: number | null }) {
+    picking again clears it. Double-click fans a journey's sections into the
+    inspector (the old FlowsOverlay capability, kept as a secondary action).
+    A flow with no visible sections is a dead journey – its row is disabled,
+    visible as dead, not broken (X6 §2.4). */
+export function JourneysPanel({ data, onFlow, active, onSection }: { data: MapData; onFlow?: (i: number | null) => void; active?: number | null; onSection?: (blockId: string) => void }) {
   const flows = data.value_flows ?? [];
   if (!flows.length)
     return <p className="sy-summary u7-journeys-empty" data-testid="map-flows-empty">No journeys yet – the extractor found no entry-to-side-effect chains.</p>;
@@ -132,16 +135,21 @@ export function JourneysPanel({ data, onFlow, active }: { data: MapData; onFlow?
     <div className="u7-journeys" data-testid="map-flows-list">
       <span className="sy-section-label">Journeys</span>
       <ol className="u7-j-rows">
-        {flows.slice(0, 24).map((f, i) => (
-          <li key={i} className={`u7-j-row${active === i ? " on" : ""}`} data-testid="x5-journey-row" style={{ ["--vf-hue" as string]: flowHue(i) }}>
-            <button className="u7-j-btn" data-testid={`map-flow-${i}`} title={`${f.name} – ${f.outcome}`} aria-pressed={active === i}
-              onClick={() => onFlow?.(active === i ? null : i)}>
-              <span className="vf-swatch" aria-hidden="true" />
-              <span className="u7-j-name vf-row-name">{f.name}</span>
-              <span className="u7-j-meta mono">{f.sections.length} {f.sections.length === 1 ? "step" : "steps"}</span>
-            </button>
-          </li>
-        ))}
+        {flows.slice(0, 24).map((f, i) => {
+          const dead = f.sections.length === 0;
+          return (
+            <li key={i} className={`u7-j-row${active === i ? " on" : ""}`} data-testid="x5-journey-row" style={{ ["--vf-hue" as string]: flowHue(i) }}>
+              <button className="u7-j-btn" data-testid={`map-flow-${i}`} title={`${f.name} – ${f.outcome}`} aria-pressed={active === i}
+                disabled={dead || undefined}
+                onClick={() => { if (!dead) onFlow?.(active === i ? null : i); }}
+                onDoubleClick={() => { if (!dead) { onFlow?.(i); for (const b of f.sections) onSection?.(b); } }}>
+                <span className="vf-swatch" aria-hidden="true" />
+                <span className="u7-j-name vf-row-name">{f.name}</span>
+                <span className="u7-j-meta mono">{dead ? "no steps" : `${f.sections.length} ${f.sections.length === 1 ? "step" : "steps"}`}</span>
+              </button>
+            </li>
+          );
+        })}
       </ol>
     </div>
   );
@@ -169,6 +177,8 @@ export function JourneyStrip({ data, flowPick, onPickStep, onClose }: {
   // callback is read through a ref and never re-fires the effect above.
   const onPickStepRef = useRef(onPickStep);
   onPickStepRef.current = onPickStep;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   // Placement: the map root sits inside transformed/offset ancestors
   // (.view-enter), so CSS anchoring lands off-screen – measure the strip's
   // containing block and the floating inspector (graph.css) and dock the
@@ -185,8 +195,13 @@ export function JourneyStrip({ data, flowPick, onPickStep, onClose }: {
       const cbr = cb.getBoundingClientRect();
       const insp = document.querySelector(".map-insp") as HTMLElement | null;
       const rightVp = insp ? insp.getBoundingClientRect().left - 12 : Math.min(window.innerWidth - 16, cbr.right - 16);
-      const width = Math.max(280, rightVp - 16 - 16);
-      setPlace({ left: 16 - cbr.left, width });
+      // The left rail (#rail) owns the canvas's left edge – the strip docks
+      // between the rail's right edge and the inspector, never under the rail
+      // (the critic's repro: Prev sat beneath it and the clicks were swallowed).
+      const rail = document.querySelector("#rail") as HTMLElement | null;
+      const leftVp = rail ? rail.getBoundingClientRect().right + 12 : 16;
+      const width = Math.max(240, Math.min(640, rightVp - leftVp - 12));
+      setPlace({ left: leftVp - cbr.left, width });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -197,10 +212,37 @@ export function JourneyStrip({ data, flowPick, onPickStep, onClose }: {
     return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
   }, []);
   // A new journey starts at its first square – picking walks the camera there.
-  const panCameraToRef = useRef<(b: string) => void>(() => {});
-  const walk0 = useRef<(b: string) => void>(() => {});
-  walk0.current = (b) => { onPickStepRef.current(b); requestAnimationFrame(() => panCameraToRef.current(b)); };
-  useEffect(() => { setStep(0); const f = (data.value_flows ?? [])[flowPick]; if (f?.sections[0]) walk0.current(f.sections[0]); }, [flowPick]);
+  // Pans are serialized through one latest-target queue: a pick and a Next
+  // click in the same frame both land on the LAST requested square (the old
+  // rAF-per-call version raced itself – the pick's pan could fire after the
+  // click's and walk the camera back, flaking the walk test 1 in 3).
+  const panCameraToRef = useRef<(b: string, step?: number) => boolean>(() => false);
+  const targetRef = useRef<{ b: string; step: number } | null>(null);
+  const triesRef = useRef(0);
+  const rafRef = useRef(0);
+  const requestPan = (b: string, step: number) => {
+    targetRef.current = { b, step };
+    triesRef.current = 0;
+    if (rafRef.current) return;
+    const tick = () => {
+      rafRef.current = 0;
+      const t = targetRef.current;
+      if (!t) return;
+      // The square may not exist yet – reveal opens its branch asynchronously
+      // (layout worker) – and reveal/selection animations (≤ 200 ms) can move
+      // the camera back under a finished pan. Verify by measurement: keep
+      // ticking until the square stays centred across two confirmations.
+      const good = panCameraToRef.current(t.b, t.step);
+      ok = good ? ok + 1 : 0;
+      if (++triesRef.current < 25 && ok < 2)
+        rafRef.current = window.setTimeout(tick, good ? 320 : 120);
+    };
+    let ok = 0;
+    rafRef.current = requestAnimationFrame(tick);
+  };
+  const walk0 = useRef<(b: string, step: number) => void>(() => {});
+  walk0.current = (b, step) => { onPickStepRef.current(b); requestPan(b, step); };
+  useEffect(() => { setStep(0); const f = (data.value_flows ?? [])[flowPick]; if (f?.sections[0]) walk0.current(f.sections[0], 0); }, [flowPick]);
   // Plain words arrive from the user's own agent (U9's API, read-only here);
   // until then the strip shows the block plain names – never a blank step.
   // One GET with the page's token (the api module's own pattern), read-only.
@@ -218,31 +260,52 @@ export function JourneyStrip({ data, flowPick, onPickStep, onClose }: {
   /** Pan the camera by dragging the canvas pane through React Flow's own
       handlers – the walk moves the same camera the reader pans with, no
       second rAF loop. reveal alone cannot walk: it only pans to squares
-      that are NOT already visible (flow/FlowCanvas.tsx). */
-  const panCameraTo = (blockId: string) => {
+      that are NOT already visible (flow/FlowCanvas.tsx). Returns false when
+      the square is not in the DOM yet (the caller retries). */
+  const panCameraTo = (blockId: string, step = 0): boolean => {
     const pane = document.querySelector('[data-testid="map-flow-canvas"] .react-flow__pane') as HTMLElement | null;
     const node = document.querySelector(`[data-testid="fc-node-${blockId}"]`) as HTMLElement | null;
     const rfEl = document.querySelector('[data-testid="map-flow-canvas"] .react-flow') as HTMLElement | null;
-    if (!pane || !node || !rfEl) return;
+    if (!pane || !node || !rfEl) return false;
     const nr = node.getBoundingClientRect();
     const fr = rfEl.getBoundingClientRect();
     // The square should land centred in the canvas area the reader sees
-    // (clear of the floating inspector on the right).
+    // (clear of the floating inspector on the right). A small alternating
+    // dock by step parity guarantees consecutive steps visibly move the
+    // camera even when two squares would centre within a pixel (fit zoom).
     const insp = document.querySelector(".map-insp") as HTMLElement | null;
     const right = insp ? insp.getBoundingClientRect().left : fr.right;
     const left = Math.max(fr.left, 0);
-    const tx = left + (right - left) / 2 - nr.width / 2;
+    const dock = (step % 2 === 0 ? -1 : 1) * Math.min(48, (right - left) * 0.08);
+    const tx = left + (right - left) / 2 + dock - nr.width / 2;
     const ty = Math.max(fr.top, 0) + (Math.min(fr.bottom, window.innerHeight) - Math.max(fr.top, 0)) / 2 - nr.height / 2;
     const dx = nr.left - tx, dy = nr.top - ty;
-    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; // already centred
-    // A drag in pane space: down at a clear corner, move by -delta, up.
-    const x = fr.right - 60;
-    const y = Math.min(fr.bottom, window.innerHeight) - 120;
+    // Centred within a few px? Then the camera already shows this square –
+    // done (a fit reset re-centres later pans through the retry loop).
+    if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return true;
+    // A drag in pane space: down at a point that is verifiably the pane (not
+    // a square – a pointerdown on a square is a select, not a pan), move by
+    // -delta, up. Candidates sweep the canvas edges; the old fixed corner
+    // landed on squares depending on layout and the drag was swallowed.
+    const atPane = (x: number, y: number) => (document.elementFromPoint(x, y) as HTMLElement | null)?.closest(".react-flow__pane") != null;
+    let sx = 0, sy = 0, found = false;
+    for (const fy of [0.92, 0.85, 0.1, 0.5, 0.7]) {
+      for (const fx of [0.95, 0.05, 0.5, 0.3, 0.7]) {
+        const px = fr.left + fr.width * fx, py = fr.top + fr.height * fy;
+        if (px > 0 && py > 0 && px < window.innerWidth && py < window.innerHeight && atPane(px, py)) { sx = px; sy = py; found = true; break; }
+      }
+      if (found) break;
+    }
+    if (!found) { sx = fr.right - 60; sy = Math.min(fr.bottom, window.innerHeight) - 120; }
     const ev = (type: string, cx: number, cy: number, buttons: number): PointerEvent =>
       new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: "mouse", isPrimary: true, button: 0, buttons, clientX: cx, clientY: cy });
-    pane.dispatchEvent(ev("pointerdown", x, y, 1));
-    pane.dispatchEvent(ev("pointermove", x - dx, y - dy, 1));
-    pane.dispatchEvent(ev("pointerup", x - dx, y - dy, 0));
+    pane.dispatchEvent(ev("pointerdown", sx, sy, 1));
+    pane.dispatchEvent(ev("pointermove", sx - dx, sy - dy, 1));
+    pane.dispatchEvent(ev("pointerup", sx - dx, sy - dy, 0));
+    // Verified pan: the square must sit at its target after the drag – a fit
+    // reset (selection focus) can move the camera back under us.
+    const nr2 = node.getBoundingClientRect();
+    return Math.abs(nr2.left - tx) < 8 && Math.abs(nr2.top - ty) < 8;
   };
   panCameraToRef.current = panCameraTo;
   const go = (to: number) => {
@@ -250,7 +313,7 @@ export function JourneyStrip({ data, flowPick, onPickStep, onClose }: {
     const next = Math.max(0, Math.min(n - 1, to));
     setStep(next);
     const b = f.sections[next];
-    if (b) { onPickStepRef.current(b); panCameraTo(b); }
+    if (b) { onPickStepRef.current(b); requestPan(b, next); }
   };
   // ←/→ walk the camera while a journey is picked – scoped here so the rest
   // of the map's keys (n8n canvas, rail search) never see it.
@@ -259,6 +322,8 @@ export function JourneyStrip({ data, flowPick, onPickStep, onClose }: {
       if ((e.target as HTMLElement)?.closest?.("input, textarea, select, [contenteditable]")) return;
       if (e.key === "ArrowRight") { e.preventDefault(); go(step + 1); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); go(step - 1); }
+      // X6 §2.2 – Esc unpicks the journey, same input guard as ←/→.
+      else if (e.key === "Escape") { e.preventDefault(); onCloseRef.current?.(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

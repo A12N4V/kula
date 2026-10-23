@@ -18,7 +18,7 @@ import { BlockCanvas } from "./map/canvas";
 import { Readout, SubwayStrip } from "./map/readout";
 import { MapViewSidebar } from "./map/sidebar";
 import { FlowKitView } from "./map/flowKit";
-import { FlowsPanel, FlowsOverlay, flowHue, JourneysPanel, JourneyStrip } from "./map/flowsPanel";
+import { flowHue, JourneysPanel, JourneyStrip } from "./map/flowsPanel";
 import { Legend } from "./map/legend"; // U7 – the map's key (announced: mount-only glue)
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf, type Focus } from "./map/chainFocus";
@@ -758,6 +758,14 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             <button className="btn sm" onClick={() => openInsp("structure")} data-testid="map-side-toggle"><Icon.sidebar /> Structure</button>
           </div>
         )}
+        {/* U7 – the key is always on the map (X5 §2, critic blocking): with
+            the inspector closed it docks at the right edge so landing #map
+            still shows it – no click to know the key exists. */}
+        {!insp && (
+          <div className="u7-key-dock" data-testid="map-key-dock">
+            <Legend data={data} ringHue={flowPick != null ? flowHue(flowPick) : null} />
+          </div>
+        )}
         {/* With the inspector open the other HUD buttons would hide behind it
             (the inspector covers the top-right), but Roles must stay reachable
             – the lens presets and role filter live in its popover. It docks to
@@ -777,8 +785,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           <Grip id="inspector" edge="left" min={300} max={960} label="Resize inspector" />
           {/* U7 – the key: always available at the top of the right column. */}
           <Legend data={data} ringHue={flowPick != null ? flowHue(flowPick) : null} />
-          <header>
-            <div className="row">
+          <header>            <div className="row">
               <div className="kind">{inspHead.kind}</div>
               <span className="spacer" />
               <button className="btn ghost sm" onClick={closeInsp} aria-label="Close" title="Close  esc"><Icon.close /></button>
@@ -812,7 +819,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           {tab === "inspect" && <>
             {chainCard}
             {/* U7 – Journeys: the flows list in the right column (the strip walks the camera). */}
-            <JourneysPanel data={data} active={flowPick} onFlow={setFlowPick} />
+            <JourneysPanel data={data} active={flowPick} onFlow={setFlowPick}
+              onSection={(id) => { setSelBlock(id); setInspForced(true); }} />
             {<Readout data={data} block={readBlock} onLeaf={selectLeaf} onFamily={(famId) => { loadChains(famId).then((p) => { const c = p.chains[0]; if (c) selectChain(c); }).catch(() => { /* no chains pageable */ }); }} />}
           </>}
           {tab === "structure" && chainCard}

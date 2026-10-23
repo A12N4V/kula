@@ -101,6 +101,10 @@ test.describe("u7 journeys and the legend", () => {
 
   test("the legend is a collapsible key in the right column with the five rows", async ({ page }) => {
     await open(page);
+    // X5 §2 (critic blocking): the key is on the map at landing – visible
+    // before any click, docked at the right edge while the inspector is closed.
+    await expect(page.locator('[data-testid="x5-legend"]')).toBeVisible();
+    await expect(page.locator('[data-testid="x5-legend-panel"]')).toBeVisible();
     await clickCard(page);
     const key = page.locator('[data-testid="x5-legend"]');
     await expect(key).toBeVisible();

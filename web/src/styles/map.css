@@ -446,6 +446,18 @@ span.fm-lane-stop { cursor: default; }
 .u7-chev.r svg { transform: rotate(270deg); }
 .u7-strip-close { margin-left: 2px; border-color: var(--line-2); }
 
+/* U7 – the key docked at the map's right edge while the inspector is closed
+   (X5 §2: the key is always on the map, no click to know it exists). */
+.u7-key-dock { position: absolute; top: 12px; right: 12px; z-index: 8; width: 200px;
+  background: var(--panel, #121110); border: 1px solid var(--line-2); border-radius: var(--radius); pointer-events: auto; }
+.u7-key-dock .u7-legend { border-bottom: 0; }
+/* X6 §3.2: the key is ≤ 200 px tall – one line per row in the dock. */
+.u7-key-dock .u7-lg-row dd { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* U7 – dead journeys: a flow with no visible sections is disabled, not empty. */
+.u7-j-btn:disabled { opacity: .38; cursor: default; }
+.u7-j-btn:disabled:hover { background: none; border-color: transparent; color: var(--text-2); }
+
 /* U7 – the key (plain-map.md §2): collapsible legend in the right column. */
 .u7-legend { border-bottom: 1px solid var(--line); }
 .u7-legend-head { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 28px; padding: 6px 12px;
