@@ -112,11 +112,6 @@
   display: flex;
 }
 .u6-bands i { display: block; height: 100%; }
-/* Desktop: the terrain carries the agents – the left actor band becomes the
-   phone-only list fallback (under 720px the band keeps its row). */
-@media (min-width: 721px) {
-  .sy-root:not(.u2-l-agents-off) .at-band { display: none; }
-}
 
 /* Agent inspector – the four flat tabs, selection is a fill. */
 .at-insp { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; }

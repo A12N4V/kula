@@ -332,11 +332,11 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   // The kit dims on focus.chain's truthiness and focus.on's membership, so a
   // U6 – the agent library for the terrain: one row per non-builtin workflow,
   // its fenced section ids from the fence data (empty = whole codebase).
-  const terrainAgents = useMemo(() => {
-    if (!ws.info) return [];
-    return ws.info.workflows.filter((w) => !w.research && !w.builtin)
-      .map((w) => ({ name: w.name, sections: fencedSectionsOf(data, fence.fencePaths(w.name)) }));
-  }, [ws.info, data, fence]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Keyed by content: `fence` changes identity every render, and a new array
+  // here would re-run the kit's layout on every frame.
+  const terrainKey = JSON.stringify(ws.info ? ws.info.workflows.filter((w) => !w.research && !w.builtin)
+    .map((w) => ({ name: w.name, sections: fencedSectionsOf(data, fence.fencePaths(w.name)) })) : []);
+  const terrainAgents = useMemo(() => JSON.parse(terrainKey) as { name: string; sections: string[] }[], [terrainKey]);
   // fence focus carries a stub chain: the agent's fence is the focused "path".
   const fenceFocus = useMemo((): Focus | null => (selAgent
     ? { chain: { id: "fence" } as unknown as Chain, on: new Set(fenced), sections: new Set(fenced), still: true }

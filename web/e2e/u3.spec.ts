@@ -96,7 +96,7 @@ test("dragging a block onto a fenced-in agent adds its section to the fence", as
   // flow-level hook (recorded in the hand-off for U1).
   const ref = await page.evaluate(() => {
     const el = document.querySelector('[data-testid^="fc-node-sec:"]') as HTMLElement | null
-      ?? document.querySelector('[data-testid^="fc-node-"]');
+      ?? document.querySelector('[data-testid^="fc-node-"]:not([data-testid^="fc-node-agent:"]):not([data-testid="fc-node-codebase"])');
     return el ? el.getAttribute("data-testid")!.replace("fc-node-", "").replace(/^sec:/, "") : "";
   });
   expect(ref, "a block to drag exists on the canvas").toBeTruthy();

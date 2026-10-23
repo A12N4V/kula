@@ -97,7 +97,9 @@ test("an unfenced agent wires into the whole-codebase block (colour-banded)", as
   expect(side, "unfenced agent square is left of the whole-codebase block").toBe(true);
 });
 
-test("desktop hides the actor band when the terrain shows the agents; phone keeps it", async ({ page }) => {
+// Lead: the band stays on desktop for now – U3 selection, add and drop-to-fence
+// still live there until agent squares take those gestures (U7/U9).
+test.skip("desktop hides the actor band when the terrain shows the agents; phone keeps it", async ({ page }) => {
   await opened(page);
   await expect(page.locator('[data-testid="actor-band"]')).toBeHidden();
   await page.setViewportSize({ width: 390, height: 844 });

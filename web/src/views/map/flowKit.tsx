@@ -676,7 +676,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
         selection={selection ?? null} onSelect={select} onOpen={open}
         // the focus state rides the layout key: the kit's layout cache keys on
         // node ids/edges only, so a dim change would otherwise never repaint
-        layoutKey={`map-${depth}-${layoutKey}-${focus?.chain ? `f${focus.chain.id}` : "n"}-a${agentsOn ? 1 : 0}`} ns="map" testId="map-flow-canvas"
+        layoutKey={`map-${depth}-${layoutKey}-${focus?.chain ? `f${focus.chain.id}` : "n"}`} ns="map" testId="map-flow-canvas"
       />
       {focus?.chain && <FocusBadge n={focus.on.size} onClear={() => onClearFocus?.()} still={focus.still} />}
     </div>
