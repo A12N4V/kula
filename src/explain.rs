@@ -101,7 +101,11 @@ fn save(repo: &Repo, doc: &Map<String, Value>, message: &str) -> Result<()> {
 pub fn sync(repo: &Repo, remote: &str, share: bool) -> Result<String> {
     let mut log = String::new();
     if repo.run(&["fetch", remote, &format!("+{REF}:refs/kula/remote-map")]).is_ok() {
-        let theirs: Map<String, Value> = repo.run(&["show", &format!("refs/kula/remote-map:{FILE}")]).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let theirs: Map<String, Value> = repo
+            .run(&["show", &format!("refs/kula/remote-map:{FILE}")])
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
         let mut ours = load(repo);
         let tb = theirs.get("blocks").and_then(|v| v.as_object()).cloned().unwrap_or_default();
         let ob = ours.entry("blocks").or_insert_with(|| json!({})).as_object_mut().unwrap();
@@ -151,10 +155,23 @@ struct Ctx<'a> {
 fn ctx_of(map: &Value) -> Ctx<'_> {
     static EMPTY: std::sync::OnceLock<Map<String, Value>> = std::sync::OnceLock::new();
     let empty = EMPTY.get_or_init(Map::new);
-    let flows = map.get("value_flows").and_then(|v| v.as_array()).map(|a| a.iter().map(|f| (
-        f.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        f.get("sections").and_then(|v| v.as_array()).map(|s| s.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
-    )).collect()).unwrap_or_default();
+    let flows = map
+        .get("value_flows")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|f| {
+                    (
+                        f.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        f.get("sections")
+                            .and_then(|v| v.as_array())
+                            .map(|s| s.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                            .unwrap_or_default(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Ctx {
         blocks: map.get("blocks").and_then(|v| v.as_object()).unwrap_or(empty),
         leaves: map.get("leaves").and_then(|v| v.as_object()).unwrap_or(empty),
@@ -213,7 +230,8 @@ fn fallback(c: &Ctx, id: &str) -> Value {
     let plain = if !s("theme").is_empty() { humanise(s("theme")) } else { humanise(s("name")) };
     let (names, _) = facts(c, id);
     let mut seen = std::collections::BTreeSet::new();
-    let doing: Vec<String> = names.iter().map(|n| humanise(n).to_lowercase()).filter(|n| n.len() > 2 && seen.insert(n.clone())).take(3).collect();
+    let doing: Vec<String> =
+        names.iter().map(|n| humanise(n).to_lowercase()).filter(|n| n.len() > 2 && seen.insert(n.clone())).take(3).collect();
     let mut sentence = role_sentence(s("role")).to_string();
     if !doing.is_empty() {
         sentence += &format!(" – for example: {}", doing.join(", "));
@@ -262,23 +280,33 @@ pub fn todo(repo: &Repo, all: bool, limit: usize) -> Result<Value> {
     let map = load_map(repo)?;
     let c = ctx_of(&map);
     let (_, stale) = resolve(repo, &map);
-    let ids: Vec<String> = if all { let mut k: Vec<String> = c.blocks.keys().cloned().collect(); k.sort(); k } else { stale };
+    let ids: Vec<String> = if all {
+        let mut k: Vec<String> = c.blocks.keys().cloned().collect();
+        k.sort();
+        k
+    } else {
+        stale
+    };
     let total = ids.len();
-    let items: Vec<Value> = ids.into_iter().take(limit).map(|id| {
-        let b = &c.blocks[&id];
-        let (names, files) = facts(&c, &id);
-        json!({
-            "id": id,
-            "hash": block_hash(&c, &id),
-            "code_name": b.get("name"),
-            "role": b.get("role"),
-            "theme": b.get("theme"),
-            "parent": b.get("parent"),
-            "files": files.into_iter().take(8).collect::<Vec<_>>(),
-            "functions": names.into_iter().take(24).collect::<Vec<_>>(),
-            "journeys": journeys(&c, &id),
+    let items: Vec<Value> = ids
+        .into_iter()
+        .take(limit)
+        .map(|id| {
+            let b = &c.blocks[&id];
+            let (names, files) = facts(&c, &id);
+            json!({
+                "id": id,
+                "hash": block_hash(&c, &id),
+                "code_name": b.get("name"),
+                "role": b.get("role"),
+                "theme": b.get("theme"),
+                "parent": b.get("parent"),
+                "files": files.into_iter().take(8).collect::<Vec<_>>(),
+                "functions": names.into_iter().take(24).collect::<Vec<_>>(),
+                "journeys": journeys(&c, &id),
+            })
         })
-    }).collect();
+        .collect();
     Ok(json!({
         "remaining": total,
         "batch": items,
@@ -311,7 +339,10 @@ pub fn apply(repo: &Repo, model: &str, answers: &Value) -> Result<usize> {
             }
             let plain: String = plain.split_whitespace().take(4).collect::<Vec<_>>().join(" ");
             // the words describe the code as it is now – re-hash, never trust a stale hash
-            blocks.insert(id.clone(), json!({ "hash": block_hash(&c, id), "plain": plain, "sentence": sentence.replace('—', "–"), "model": model, "at": at }));
+            blocks.insert(
+                id.clone(),
+                json!({ "hash": block_hash(&c, id), "plain": plain, "sentence": sentence.replace('—', "–"), "model": model, "at": at }),
+            );
             n += 1;
         }
     }
@@ -332,7 +363,9 @@ pub fn status(repo: &Repo) -> Result<Value> {
             *by_model.entry(m.to_string()).or_default() += 1;
         }
     }
-    Ok(json!({ "blocks": all.len(), "named": all.len() - stale.len(), "stale": stale.len(), "by_model": by_model, "ref": REF, "skill": format!(".agents/skills/{SKILL}") }))
+    Ok(
+        json!({ "blocks": all.len(), "named": all.len() - stale.len(), "stale": stale.len(), "by_model": by_model, "ref": REF, "skill": format!(".agents/skills/{SKILL}") }),
+    )
 }
 
 /// The skill the user's own agent runs. Written into `.agents/skills/` on
@@ -387,9 +420,14 @@ pub fn ensure_skill(repo: &Repo) -> Result<bool> {
 pub fn agent_command(repo: &Repo, agent: Option<&str>, all: bool) -> Option<Vec<String>> {
     let cfg = crate::config::Config::load(&repo.root).ok()?;
     let id = agent.map(String::from).filter(|a| !a.is_empty()).unwrap_or(cfg.agents.default.clone());
-    let task = format!("Use the {SKILL} skill to {} kula's code map in plain words, until `kula map explain todo` reports 0 remaining.", if all { "re-map every block of" } else { "name the unnamed blocks of" });
+    let task = format!(
+        "Use the {SKILL} skill to {} kula's code map in plain words, until `kula map explain todo` reports 0 remaining.",
+        if all { "re-map every block of" } else { "name the unnamed blocks of" }
+    );
     match id.as_str() {
-        "claude" => Some(vec!["claude".into(), "-p".into(), task, "--allowedTools".into(), "Bash(kula map explain:*) Read Glob Grep Write".into()]),
+        "claude" => {
+            Some(vec!["claude".into(), "-p".into(), task, "--allowedTools".into(), "Bash(kula map explain:*) Read Glob Grep Write".into()])
+        }
         "codex" => Some(vec!["codex".into(), "exec".into(), task]),
         "gemini" => Some(vec!["gemini".into(), "-p".into(), task]),
         _ => None,
@@ -447,8 +485,12 @@ pub struct SearchQuery {
 }
 
 fn words(s: &str) -> Vec<String> {
-    s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| w.len() > 2).map(String::from)
-        .chain(humanise(s).to_lowercase().split_whitespace().map(String::from)).collect()
+    s.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() > 2)
+        .map(String::from)
+        .chain(humanise(s).to_lowercase().split_whitespace().map(String::from))
+        .collect()
 }
 
 /// GET /api/search/semantic?q=&limit= – blocks ranked for a plain question:

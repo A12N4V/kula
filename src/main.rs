@@ -10,6 +10,7 @@ mod config;
 mod embed;
 #[cfg(feature = "embed")]
 mod embed_ort;
+mod explain;
 mod file_write;
 mod git;
 mod graph;
@@ -20,7 +21,6 @@ mod kg;
 mod lang_cmd;
 mod map;
 mod map_api;
-mod explain;
 mod map_cmd;
 mod map_run;
 mod mcp;

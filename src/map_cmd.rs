@@ -142,12 +142,23 @@ fn explain_cmd(repo: &git::Repo, cmd: crate::ExplainCmd) -> anyhow::Result<()> {
     match cmd {
         crate::ExplainCmd::Todo { all, limit } => {
             if explain::ensure_skill(repo)? {
-                eprintln!("wrote the {} skill to {}/{} – `kula skill sync` shares it with every agent", explain::SKILL, crate::skills::SOURCE, explain::SKILL);
+                eprintln!(
+                    "wrote the {} skill to {}/{} – `kula skill sync` shares it with every agent",
+                    explain::SKILL,
+                    crate::skills::SOURCE,
+                    explain::SKILL
+                );
             }
             print_json(&explain::todo(repo, all, limit)?)
         }
         crate::ExplainCmd::Apply { model, file } => {
-            let text = if file == "-" { let mut s = String::new(); std::io::Read::read_to_string(&mut std::io::stdin(), &mut s)?; s } else { std::fs::read_to_string(&file)? };
+            let text = if file == "-" {
+                let mut s = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut s)?;
+                s
+            } else {
+                std::fs::read_to_string(&file)?
+            };
             let n = explain::apply(repo, &model, &serde_json::from_str(&text)?)?;
             println!("stored {n} names by {model} on {} – `kula share` sends them to everyone", explain::REF);
             Ok(())
@@ -160,7 +171,9 @@ fn explain_cmd(repo: &git::Repo, cmd: crate::ExplainCmd) -> anyhow::Result<()> {
             };
             eprintln!("running: {}", cmd.join(" "));
             let st = std::process::Command::new(&cmd[0]).args(&cmd[1..]).current_dir(&repo.root).status()?;
-            if !st.success() { anyhow::bail!("the agent exited with {st}"); }
+            if !st.success() {
+                anyhow::bail!("the agent exited with {st}");
+            }
             print_json(&explain::status(repo)?)
         }
     }
