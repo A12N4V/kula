@@ -446,9 +446,9 @@ span.fm-lane-stop { cursor: default; }
 .u7-chev.r svg { transform: rotate(270deg); }
 .u7-strip-close { margin-left: 2px; border-color: var(--line-2); }
 
-/* U7 – the key docked at the map's right edge while the inspector is closed
+/* U7 – the key docked bottom-left of the map (the right edge is the nav column)
    (X5 §2: the key is always on the map, no click to know it exists). */
-.u7-key-dock { position: absolute; top: 12px; right: 12px; z-index: 8; width: 200px;
+.u7-key-dock { position: absolute; left: 12px; bottom: 52px; z-index: 8; width: 200px;
   background: var(--panel, #121110); border: 1px solid var(--line-2); border-radius: var(--radius); pointer-events: auto; }
 .u7-key-dock .u7-legend { border-bottom: 0; }
 /* X6 §3.2: the key is ≤ 200 px tall – one line per row in the dock. */
@@ -489,3 +489,6 @@ span.fm-lane-stop { cursor: default; }
   .u7-legend-head { min-height: 40px; }
   .u7-lg-row { min-height: 32px; }
 }
+/* Phone: no room for a floating key beside the layer column – the key lives
+   in the panel's legend instead. */
+@media (max-width: 720px) { .u7-key-dock { display: none; } }
