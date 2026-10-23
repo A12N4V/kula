@@ -97,3 +97,17 @@
   .sy-root:has(.at-band) .u7-key-dock { left: 264px; }
   .sy-root:has(.at-band) .u9-dock { left: 476px; }
 }
+/* Lead: the bottom-left belongs to the key and U4's plan/approve bar – the
+   plain-words panel is one compact row at the top-left, under the headline. */
+@media (min-width: 721px) {
+  .u9-dock { left: 12px; top: 44px; bottom: auto; width: auto; max-width: min(560px, 50%); }
+  .u9-dock .u9-panel { flex-direction: row; align-items: center; flex-wrap: wrap; padding: 4px 8px; gap: 6px; }
+  .sy-root:has(.at-band) .u9-dock { left: 264px; }
+}
+/* Desktop, inspector open: the panel steps aside until it closes (in the
+   inspector it crowded the tabs and header). Phone keeps the inspector copy. */
+.u9-insp-only { order: 99; }
+@media (min-width: 721px) {
+  .u9-insp-only { display: none; }
+  .sy-root:has([data-testid="map-inspector"]) .u9-dock { display: none; }
+}

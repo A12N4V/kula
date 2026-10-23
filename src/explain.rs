@@ -451,6 +451,12 @@ fn status_from(all: &Map<String, Value>, stale: usize) -> Value {
     json!({ "named": all.len() - stale, "total": all.len() })
 }
 
+/// True on test/probe servers: `KULA_NO_AGENT` set, or the test tokens the
+/// e2e fixture and the team probe servers use.
+fn agent_runs_disabled() -> bool {
+    std::env::var_os("KULA_NO_AGENT").is_some() || matches!(std::env::var("KULA_TOKEN").as_deref(), Ok("test") | Ok("probe"))
+}
+
 #[derive(Deserialize, Default)]
 pub struct RunBody {
     pub agent: Option<String>,
@@ -464,6 +470,11 @@ pub(crate) async fn explain_run(State(s): State<AppState>, body: Option<axum::Js
     let b = body.map(|j| j.0).unwrap_or_default();
     blocking(move || {
         ensure_skill(&s.repo)?;
+        // Test and probe servers never start an agent: a click in a test would
+        // otherwise run the user's real agent (and bill it) on a fixture.
+        if agent_runs_disabled() {
+            return Ok(json!({ "started": false, "reason": "agent runs are off on this server (test mode)", "command": "kula map explain todo" }));
+        }
         let Some(cmd) = agent_command(&s.repo, b.agent.as_deref(), b.all) else {
             return Ok(json!({ "started": false, "reason": "no default agent – connect one in Agents, or run the kula-map skill from your agent", "command": "kula map explain todo" }));
         };
