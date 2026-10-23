@@ -17,3 +17,4 @@ promo/film/public/
 promo/.venv/
 tsconfig.tsbuildinfo
 .DS_Store
+test-results/
