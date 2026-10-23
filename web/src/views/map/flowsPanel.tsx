@@ -5,10 +5,17 @@
 // views/map/icons.tsx (KindIcon / RoleMark). Selection opens the inspector's
 // deep link for a section. The old `flows` key (chain-family edges) is not
 // touched – this reads only the additive `value_flows` from /api/map.
+//
+// U7 – journeys: the value-flow list is the right column's Journeys panel
+// (one row per flow: hue swatch, plain title, step count); picking one shows
+// its numbered sentence steps over the map (JourneyStrip) and walks the
+// camera square to square. Contract: docs/design/plain-map.md §3 – ids
+// x5-journey-row / x5-journey-strip / x5-journey-step-<n> / -next / -prev.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FlowCanvas, type FlowEdge, type FlowNode } from "../../flow";
 import { Harmonograph } from "../../harmonograph";
+import { Icon } from "../../ui";
 import { KindIcon, RoleMark, ROLE_COLOR } from "./icons";
 import type { MapData, Role, ValueFlow } from "./types";
 
@@ -99,11 +106,193 @@ export function FlowsPanel({ data, onSection }: Props) {
   );
 }
 
+/** Plain words for a step: the explain payload's journey sentence for this
+    flow when the user's agent has written one, else the block's plain name,
+    else its theme, else its code name (plain-map.md §3.3 – never show a
+    technical name while plain words exist). */
+type ExplainBlocks = Record<string, { plain?: string; journeys?: string[] } | undefined>;
+export function journeySentences(data: MapData, f: ValueFlow, ex: ExplainBlocks): string[] {
+  return f.sections.map((b, i) => {
+    const j = ex[b]?.journeys?.[i];
+    if (j) return j;
+    const blk = data.blocks[b];
+    return blk?.theme || blk?.name || b;
+  });
+}
+
+/** The Journeys panel (U7): one row per value flow in the right column –
+    hue swatch, plain title, step count. Picking a flow rings its squares in
+    its hue and opens the journey strip (the base's ring + wire tint stays);
+    picking again clears it. */
+export function JourneysPanel({ data, onFlow, active }: { data: MapData; onFlow?: (i: number | null) => void; active?: number | null }) {
+  const flows = data.value_flows ?? [];
+  if (!flows.length)
+    return <p className="sy-summary u7-journeys-empty" data-testid="map-flows-empty">No journeys yet – the extractor found no entry-to-side-effect chains.</p>;
+  return (
+    <div className="u7-journeys" data-testid="map-flows-list">
+      <span className="sy-section-label">Journeys</span>
+      <ol className="u7-j-rows">
+        {flows.slice(0, 24).map((f, i) => (
+          <li key={i} className={`u7-j-row${active === i ? " on" : ""}`} data-testid="x5-journey-row" style={{ ["--vf-hue" as string]: flowHue(i) }}>
+            <button className="u7-j-btn" data-testid={`map-flow-${i}`} title={`${f.name} – ${f.outcome}`} aria-pressed={active === i}
+              onClick={() => onFlow?.(active === i ? null : i)}>
+              <span className="vf-swatch" aria-hidden="true" />
+              <span className="u7-j-name vf-row-name">{f.name}</span>
+              <span className="u7-j-meta mono">{f.sections.length} {f.sections.length === 1 ? "step" : "steps"}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+/** The numbered sentence steps over the map (plain-map.md §3): a strip docked
+    to the bottom of the canvas while a journey is picked. Next/Prev (and
+    ←/→, scoped to a picked journey) walk the camera square to square through
+    onPickStep – the kit's reveal pan does the moving, never a second loop.
+    Sentences come from /api/map/explain when the agent has written them,
+    else the block's plain words. */
+export function JourneyStrip({ data, flowPick, onPickStep, onClose }: {
+  data: MapData;
+  flowPick: number;
+  /** Pan the camera to a step's square (the kit's reveal). */
+  onPickStep: (blockId: string) => void;
+  /** Unpick the journey. */
+  onClose?: () => void;
+}) {
+  const flows = data.value_flows ?? [];
+  const f = flows[flowPick];
+  const [step, setStep] = useState(0);
+  const [ex, setEx] = useState<ExplainBlocks>({});
+  // The strip owns the walk; the camera rides the parent's reveal, so the
+  // callback is read through a ref and never re-fires the effect above.
+  const onPickStepRef = useRef(onPickStep);
+  onPickStepRef.current = onPickStep;
+  // Placement: the map root sits inside transformed/offset ancestors
+  // (.view-enter), so CSS anchoring lands off-screen – measure the strip's
+  // containing block and the floating inspector (graph.css) and dock the
+  // strip between the viewport's left edge and the inspector. Desktop only;
+  // the phone bottom sheet stays pure CSS.
+  const stripRef = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<{ left: number; width: number } | null>(null);
+  useEffect(() => {
+    if (window.innerWidth <= 720) { setPlace(null); return; }
+    const measure = () => {
+      const el = stripRef.current;
+      const cb = (el?.offsetParent ?? null) as HTMLElement | null;
+      if (!el || !cb) return;
+      const cbr = cb.getBoundingClientRect();
+      const insp = document.querySelector(".map-insp") as HTMLElement | null;
+      const rightVp = insp ? insp.getBoundingClientRect().left - 12 : Math.min(window.innerWidth - 16, cbr.right - 16);
+      const width = Math.max(280, rightVp - 16 - 16);
+      setPlace({ left: 16 - cbr.left, width });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(document.body);
+    const inspEl = document.querySelector(".map-insp");
+    if (inspEl) ro.observe(inspEl);
+    window.addEventListener("resize", measure);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+  }, []);
+  // A new journey starts at its first square – picking walks the camera there.
+  const panCameraToRef = useRef<(b: string) => void>(() => {});
+  const walk0 = useRef<(b: string) => void>(() => {});
+  walk0.current = (b) => { onPickStepRef.current(b); requestAnimationFrame(() => panCameraToRef.current(b)); };
+  useEffect(() => { setStep(0); const f = (data.value_flows ?? [])[flowPick]; if (f?.sections[0]) walk0.current(f.sections[0]); }, [flowPick]);
+  // Plain words arrive from the user's own agent (U9's API, read-only here);
+  // until then the strip shows the block plain names – never a blank step.
+  // One GET with the page's token (the api module's own pattern), read-only.
+  useEffect(() => {
+    let dead = false;
+    const token = document.querySelector<HTMLMetaElement>('meta[name="kula-token"]')?.content ?? "";
+    fetch("/api/map/explain", { headers: { "x-kula-token": token } })
+      .then((r) => r.json())
+      .then((r) => { if (!dead && r?.blocks) setEx(r.blocks); })
+      .catch(() => { /* plain names stand in */ });
+    return () => { dead = true; };
+  }, []);
+  const sentences = useMemo(() => (f ? journeySentences(data, f, ex) : []), [data, f, ex]);
+  const n = sentences.length;
+  /** Pan the camera by dragging the canvas pane through React Flow's own
+      handlers – the walk moves the same camera the reader pans with, no
+      second rAF loop. reveal alone cannot walk: it only pans to squares
+      that are NOT already visible (flow/FlowCanvas.tsx). */
+  const panCameraTo = (blockId: string) => {
+    const pane = document.querySelector('[data-testid="map-flow-canvas"] .react-flow__pane') as HTMLElement | null;
+    const node = document.querySelector(`[data-testid="fc-node-${blockId}"]`) as HTMLElement | null;
+    const rfEl = document.querySelector('[data-testid="map-flow-canvas"] .react-flow') as HTMLElement | null;
+    if (!pane || !node || !rfEl) return;
+    const nr = node.getBoundingClientRect();
+    const fr = rfEl.getBoundingClientRect();
+    // The square should land centred in the canvas area the reader sees
+    // (clear of the floating inspector on the right).
+    const insp = document.querySelector(".map-insp") as HTMLElement | null;
+    const right = insp ? insp.getBoundingClientRect().left : fr.right;
+    const left = Math.max(fr.left, 0);
+    const tx = left + (right - left) / 2 - nr.width / 2;
+    const ty = Math.max(fr.top, 0) + (Math.min(fr.bottom, window.innerHeight) - Math.max(fr.top, 0)) / 2 - nr.height / 2;
+    const dx = nr.left - tx, dy = nr.top - ty;
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; // already centred
+    // A drag in pane space: down at a clear corner, move by -delta, up.
+    const x = fr.right - 60;
+    const y = Math.min(fr.bottom, window.innerHeight) - 120;
+    const ev = (type: string, cx: number, cy: number, buttons: number): PointerEvent =>
+      new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: "mouse", isPrimary: true, button: 0, buttons, clientX: cx, clientY: cy });
+    pane.dispatchEvent(ev("pointerdown", x, y, 1));
+    pane.dispatchEvent(ev("pointermove", x - dx, y - dy, 1));
+    pane.dispatchEvent(ev("pointerup", x - dx, y - dy, 0));
+  };
+  panCameraToRef.current = panCameraTo;
+  const go = (to: number) => {
+    if (!f || !n) return;
+    const next = Math.max(0, Math.min(n - 1, to));
+    setStep(next);
+    const b = f.sections[next];
+    if (b) { onPickStepRef.current(b); panCameraTo(b); }
+  };
+  // ←/→ walk the camera while a journey is picked – scoped here so the rest
+  // of the map's keys (n8n canvas, rail search) never see it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest?.("input, textarea, select, [contenteditable]")) return;
+      if (e.key === "ArrowRight") { e.preventDefault(); go(step + 1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); go(step - 1); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, n, f]);
+  if (!f || !n) return null;
+  return (
+    <div ref={stripRef} className="u7-strip" style={{ ["--vf-hue" as string]: flowHue(flowPick), ...(place ? { left: place.left, width: place.width, maxWidth: "none", transform: "none" } : {}) }} data-testid="x5-journey-strip" role="region" aria-label="Journey steps">
+      <button className="u7-step-btn" data-testid="x5-journey-prev" title="Previous step  ←" disabled={step === 0} aria-label="Previous step" onClick={() => go(step - 1)}><span className="u7-chev l" aria-hidden="true"><Icon.chevron /></span></button>
+      <ol className="u7-steps">
+        {sentences.map((s, i) => (
+          <li key={i}>
+            <button className={`u7-step${i === step ? " cur" : ""}${i < step ? " done" : ""}`}
+              data-testid={`x5-journey-step-${i + 1}`} aria-current={i === step ? "step" : undefined}
+              onClick={() => go(i)}>
+              <span className="u7-step-n mono">{i + 1}</span>
+              <span className="u7-step-txt">{s}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+      <button className="u7-step-btn" data-testid="x5-journey-next" title="Next step  →" disabled={step === n - 1} aria-label="Next step" onClick={() => go(step + 1)}><span className="u7-chev r" aria-hidden="true"><Icon.chevron /></span></button>
+      {onClose && <button className="u7-step-btn u7-strip-close" data-testid="u7-journey-close" title="Close journey" aria-label="Close journey" onClick={onClose}><Icon.close /></button>}
+    </div>
+  );
+}
+
 
 /** The compact flows list (R0): flows are overlays on the one canvas, not
     tabs. Picking a flow selects its entry block on the canvas and the flow's
     sections into the inspector's flow path (the canvas highlights what it
-    crosses). Pure list, no canvas of its own. */
+    crosses). Pure list, no canvas of its own.
+    Kept for the flows lens (FlowsPanel kit) – the right column reads
+    JourneysPanel now. */
 export function FlowsOverlay({ data, onSection, onFlow, active }: { data: MapData; onSection?: (blockId: string) => void; onFlow?: (i: number | null) => void; active?: number | null }) {
   const flows = data.value_flows ?? [];
   if (!flows.length)

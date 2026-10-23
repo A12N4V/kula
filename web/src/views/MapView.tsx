@@ -18,7 +18,8 @@ import { BlockCanvas } from "./map/canvas";
 import { Readout, SubwayStrip } from "./map/readout";
 import { MapViewSidebar } from "./map/sidebar";
 import { FlowKitView } from "./map/flowKit";
-import { FlowsPanel, FlowsOverlay, flowHue } from "./map/flowsPanel";
+import { FlowsPanel, FlowsOverlay, flowHue, JourneysPanel, JourneyStrip } from "./map/flowsPanel";
+import { Legend } from "./map/legend"; // U7 – the map's key (announced: mount-only glue)
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf, type Focus } from "./map/chainFocus";
 import { Library, ReviewPanel, RunPanel, fencedSectionsOf, filesOf, sectionAtPoint, sectionOf, stashNewItem, useAgentFence, useLive, useMarks, type Marks } from "./map/workspace";
@@ -734,6 +735,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             <Transport runner={runner} steps={runnable(pipe.steps)} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} sel={selStep} onPick={(id) => (sup.planActive ? sup.toggleStrike(id) : setSelBlock(`step:${id}`))} onOpen={(id) => { setSelBlock(`step:${id}`); setNdv(id); }} sup={sup} />
             {/* U3 – the fence hull around the selected agent's sections (§8.5). */}
             <FenceHull canvas={canvasWrapRef} fencedIds={fenced} agent={selAgent} />
+            {/* U7 – journey steps over the map; onPickStep pans the camera via the kit's reveal. */}
+            {flowPick != null && <JourneyStrip data={data} flowPick={flowPick} onPickStep={(id) => { setSelBlock(id); setReveal(id); }} onClose={() => setFlowPick(null)} />}
             {/* U4 – run supervision: plan overlay (read outline / write tint /
                 strike to exclude), in-place conflict marks and +/− change
                 badges on the sections, ask gate docked above the transport. */}
@@ -772,6 +775,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
         <aside className="inspector map-insp" id="map-sidebar" aria-label="Map inspector" data-testid="map-inspector"
           style={panel ? { zIndex: 24 } : undefined}>
           <Grip id="inspector" edge="left" min={300} max={960} label="Resize inspector" />
+          {/* U7 – the key: always available at the top of the right column. */}
+          <Legend data={data} ringHue={flowPick != null ? flowHue(flowPick) : null} />
           <header>
             <div className="row">
               <div className="kind">{inspHead.kind}</div>
@@ -806,9 +811,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           {tab === "library" && <Library info={ws.info} go={go} onPick={pick} />}
           {tab === "inspect" && <>
             {chainCard}
-            {/* Flows as overlays (R0): a compact list on the inspector –
-                picking a flow selects its sections on the one canvas. */}
-            <FlowsOverlay data={data} active={flowPick} onFlow={setFlowPick} onSection={(id) => { setSelBlock(id); setInspForced(true); }} />
+            {/* U7 – Journeys: the flows list in the right column (the strip walks the camera). */}
+            <JourneysPanel data={data} active={flowPick} onFlow={setFlowPick} />
             {<Readout data={data} block={readBlock} onLeaf={selectLeaf} onFamily={(famId) => { loadChains(famId).then((p) => { const c = p.chains[0]; if (c) selectChain(c); }).catch(() => { /* no chains pageable */ }); }} />}
           </>}
           {tab === "structure" && chainCard}
