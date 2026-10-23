@@ -57,18 +57,19 @@ test("agents layer off → no agent marks anywhere, on → the agent squares app
   await expect(page.locator('[data-testid="fc-node-agent:polish"]')).toBeVisible();
 });
 
-test("a fenced agent's square sits beside its first fenced square (≤ 1 grid cell)", async ({ page }) => {
+test("a fenced agent's square sits right above its first fenced square (≤ 1 grid cell)", async ({ page }) => {
   await opened(page);
   const gap = await page.evaluate(() => {
     const box = (el: Element) => el.getBoundingClientRect();
     const a = box(document.querySelector('[data-testid="fc-node-agent:polish"]')!);
-    // the first fenced square: the nearest square to the agent's right on its row
+    // lead: agents sit in a lane above the map, over their first fenced
+    // square – the nearest square below the agent that shares its x-range
     let best: { gap: number } | null = null;
     for (const s of document.querySelectorAll('[data-testid="map-flow"] .fc-solid')) {
       const b = box(s);
-      const dy = Math.abs(b.y + b.height / 2 - (a.y + a.height / 2));
-      const gap = b.x - (a.x + a.width); // agent left of the square, square after it
-      if (gap < -4 || dy > b.height) continue;
+      const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      const gap = b.top - a.bottom; // agent above the square
+      if (gap < -4 || overlapX <= 0) continue;
       if (!best || gap < best.gap) best = { gap };
     }
     return best?.gap ?? null;
