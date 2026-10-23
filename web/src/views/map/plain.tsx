@@ -6,6 +6,7 @@
 // neighbours stay safe.
 import { useEffect, useState } from "react";
 import { get, post } from "../../api";
+import { Icon } from "../../ui";
 
 // ––– the explain store –––
 
@@ -108,8 +109,10 @@ export async function runExplain(opts: { all?: boolean; agent?: string } = {}): 
 
 // ––– components –––
 
-/** The right column's reading-layer panel: run control, progress readout,
-    the code-names toggle and the re-map-with-another-model option. */
+/** The reading layer's map dock: a chip in the canvas's top-right corner,
+    below the Explorer toggle (U11: never over squares). The chip carries the
+    named-count badge; expanding it reveals the run control, the progress
+    readout and the code-names toggle. */
 export function PlainPanel({ agents, onPick }: { agents?: string[]; onPick?: (id: string) => void }) {
   const data = useExplain();
   const show = useShowCode();
@@ -117,6 +120,7 @@ export function PlainPanel({ agents, onPick }: { agents?: string[]; onPick?: (id
   const [reason, setReason] = useState<string | null>(null);
   const [remap, setRemap] = useState(false);
   const [agent, setAgent] = useState<string>(agents?.[0] ?? "");
+  const [open, setOpen] = useState(false);
   // Progress = status.named / total, polled while a run is under way (the
   // progress.tsx cadence, slower while idle). The readout stays visible once
   // the payload is in, so the reader can see how far the words have come.
@@ -141,8 +145,18 @@ export function PlainPanel({ agents, onPick }: { agents?: string[]; onPick?: (id
     void refreshExplain();
   };
 
+  const chip = data && running ? "mapping" : data ? `${data.status.named}/${data.status.total}` : "words";
   return (
-    <div className="u9-panel" data-testid="u9-plain-panel">
+    <div className={`u9-panel${open ? " u9-open" : ""}`} data-testid="u9-plain-panel">
+      <button type="button" className={`u9-chip${running ? " on" : ""}`} data-testid="u9-plain-chip"
+        aria-expanded={open} aria-controls="u9-plain-body"
+        title={open ? "Hide the plain-words panel" : "Map in plain words – name blocks, read captions"}
+        onClick={() => setOpen((o) => !o)}>
+        <Icon.doc /> <span>Plain words</span>
+        <b className="u9-chip-n mono">{chip}</b>
+      </button>
+      {open && (
+        <div className="u9-body" id="u9-plain-body">
       <div className="u9-row">
         <button className="btn sm" data-testid="x5-plain-run" onClick={() => void start({})}
           disabled={running} title="Name every block in plain words with your agent">
@@ -179,6 +193,8 @@ export function PlainPanel({ agents, onPick }: { agents?: string[]; onPick?: (id
         onClick={() => setShowCode(!show)}>
         Show code names
       </button>
+        </div>
+      )}
     </div>
   );
 }
