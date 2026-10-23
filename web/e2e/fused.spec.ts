@@ -46,10 +46,10 @@ async function seedPolish(request: import("@playwright/test").APIRequestContext)
 // Sampling is u1.spec's proven path: enable the Flows layer so a resting
 // edge rung exists, then compare computed colours.
 test("luminance ladder holds: label > node border > resting edge, dark and light", async ({ page }) => {
+  test.skip(true, "retired with the U5 nested-squares map (no card body/border/resize) – see BRIEF-fuse2 S-tests for the square-era replacement");
   await opened(page, "map");
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible({ timeout: 15_000 });
-  // the Flows layer must be on for a resting edge to exist
-  await page.locator('[data-testid="u2-layer-flows"]').click();
+  // the Flows layer is on by default, so a resting edge exists
   const edge = page.locator("[data-testid=map-flow] .fc-edge").first();
   await expect(edge).toBeVisible();
   // the fit zoom is far (captions only) – walk in until a mid/near card
@@ -124,6 +124,7 @@ test.fixme("ports are visible, sized 12-16px, and typed on agents and gates", as
 // a corner resize forces stage 3 (the function list), and the forced level
 // survives zooming out. The resize machinery is u1.spec's proven path.
 test("default zoom shows name, role and counts; resizing a block shows its function list", async ({ page }, info) => {
+  test.skip(true, "retired with the U5 nested-squares map (no card body/border/resize) – see BRIEF-fuse2 S-tests for the square-era replacement");
   test.skip(info.project.name !== "desktop", "resize needs a pointer");
   await opened(page, "map");
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible({ timeout: 15_000 });
@@ -229,6 +230,7 @@ test.fixme("crossings stay at or below 5% and no edge passes through a node", as
 test("selecting an agent draws its fence hull and dims non-fenced blocks to 35%", async ({ page, request }) => {
   await seedPolish(request);
   await opened(page, "map", FIXTURE);
+  await page.locator('[data-testid="u2-frame-agents"]').click();
   await expect(page.locator('[data-testid="actor-band"]')).toBeVisible({ timeout: 30_000 });
   const agent = page.locator('[data-testid="at-agent-polish"]');
   await expect(agent).toBeVisible({ timeout: 30_000 });
@@ -247,6 +249,7 @@ test("selecting an agent draws its fence hull and dims non-fenced blocks to 35%"
 test("rail + and output-port + open the inspector add form; no global add-block button", async ({ page, request }) => {
   await seedPolish(request);
   await opened(page, "map", FIXTURE);
+  await page.locator('[data-testid="u2-frame-agents"]').click();
   await expect(page.locator('[data-testid="actor-band"]')).toBeVisible({ timeout: 30_000 });
   const form = page.locator('[data-testid="ag-add-form"]');
   // rail + opens the add form (u2-add-pop for the rail, map-inspector for the band)
@@ -272,7 +275,7 @@ test("one layer toggle with the six layers and defaults, plus the Map Runs Evals
   for (const id of ["blocks", "flows", "chains", "fences", "agents", "runs"])
     await expect(toggle.locator(`[data-testid="u2-layer-${id}"]`)).toBeVisible();
   const on = (await toggle.locator("[aria-pressed=true]").allTextContents()).sort();
-  expect(on, "defaults are Blocks + Agents + Runs (contract §5)").toEqual(["Agents", "Blocks", "Runs"]);
+  expect(on, "defaults are Blocks + Flows + Runs (contract §5; Agents is a toggle since U5)").toEqual(["Blocks", "Flows", "Runs"]);
   const seg = page.locator('[data-testid="u2-frames"]');
   await expect(seg).toBeVisible();
   for (const mode of ["Map", "Runs", "Evals"]) await expect(seg.getByText(mode, { exact: true })).toBeVisible();
@@ -407,6 +410,7 @@ test.fixme("landing is centred on the busiest section with margin; zoom bar and 
 // Resize neighbour rule (interactions §6.3) – the clamp landed in the kit:
 // a corner resize stops at the next card below and never overlaps it.
 test("resizing a card stops at the neighbour below and never overlaps it", async ({ page }, info) => {
+  test.skip(true, "retired with the U5 nested-squares map (no card body/border/resize) – see BRIEF-fuse2 S-tests for the square-era replacement");
   test.skip(info.project.name !== "desktop", "resize needs a pointer");
   await opened(page, "map");
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible({ timeout: 15_000 });
@@ -443,11 +447,12 @@ test("resizing a card stops at the neighbour below and never overlaps it", async
   expect(after, `resized card bottom ${after} overlaps the neighbour at ${found!.nbTop}`).toBeLessThanOrEqual(found!.nbTop + 1);
 });
 
-// Function-list dedupe (interactions §6.4) – NOT landed: BlockNode.tsx:130
+// Function-list dedupe (interactions §6.4) – landed in U5 (BlockNode ×N rows).
 // renders data.functions raw. X2 proved the test catches it on the live
 // tree: 'function name "mbegin" appears twice'. Fix = collapse repeated
 // names into one row with a ×N chip; then un-fixme this test.
-test.fixme("near-zoom function list dedupes repeated names with a xN count", async ({ page }, info) => {
+test("near-zoom function list dedupes repeated names with a xN count", async ({ page }, info) => {
+  test.skip(true, "retired with the U5 nested-squares map (no card body/border/resize) – see BRIEF-fuse2 S-tests for the square-era replacement");
   test.skip(info.project.name !== "desktop", "resize needs a pointer");
   await opened(page, "map");
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible({ timeout: 15_000 });
@@ -540,7 +545,7 @@ test("ask gate docks above the transport with three answers and keys 1/2/3, not 
   await expect(transport).toBeVisible({ timeout: 30_000 });
   // a pipeline to dry-run (as u4.spec seeds it): trigger → agent → gate
   await page.evaluate(() => {
-    const ids = [...document.querySelectorAll('[data-testid^="fc-node-sec:"]')].map((e) => (e.getAttribute("data-testid") ?? "").slice("fc-node-".length));
+    const ids = [...document.querySelectorAll('.fc-solid[data-testid^="fc-node-"]')].map((e) => (e.getAttribute("data-testid") ?? "").slice("fc-node-".length));
     const [sec1, sec2] = [...new Set(ids)];
     localStorage.setItem("kula.pipeline.map", JSON.stringify([
       { id: "u4-t", kind: "trigger", ref: "manual", name: "Start", section: sec1 },

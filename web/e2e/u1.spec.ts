@@ -20,11 +20,10 @@ const lum = (color: string): number => {
 };
 
 test("the edge brightness ladder holds: text > node border > resting edge", async ({ page }) => {
+  test.skip(true, "retired with the U5 nested-squares map (no card body/border/resize) – see BRIEF-fuse2 S-tests for the square-era replacement");
   await open(page);
   await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
-  // U2 layer contract: Flows is off until picked from a list (fused-canvas
-  // §5) – pick it so the ladder's resting-edge rung exists to sample.
-  await page.locator("[data-testid=u2-layer-flows]").click();
+  // Flows is on by default (fused-canvas §5), so a resting edge exists.
   const edge = page.locator("[data-testid=map-flow] .fc-edge").first();
   await expect(edge).toBeVisible();
   // The fit zoom is far (captions only) – walk in until a mid/near card
@@ -113,6 +112,7 @@ test("port count per kind: gates fork pass/fail, agents carry the four capabilit
 });
 
 test("semantic zoom: resize forces a level and the function list appears", async ({ page }, info) => {
+  test.skip(true, "retired with the U5 nested-squares map (no card body/border/resize) – see BRIEF-fuse2 S-tests for the square-era replacement");
   test.skip(info.project.name !== "desktop", "resize needs a pointer and a wide canvas");
   await open(page);
   await expect(page.locator("[data-testid=map-flow]")).toBeVisible();

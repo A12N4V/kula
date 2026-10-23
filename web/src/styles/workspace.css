@@ -440,10 +440,10 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
 .u2-add-pop .ag-add-form { border: 0; }
 
 /* Centred Map · Runs · Evals (ux §7.217): flat square tabs, fill selection.
-   Floating centred HUD under the docked headline row: the headline owns the
-   full width of the top band (overlap gate at 1100), so the switch hangs
-   just below it, over the canvas top edge like the n8n floating chrome. */
-.u2-frames { position: fixed; top: 44px; left: 50%; transform: translateX(-50%); z-index: 22;
+   It sits in the actor band's header strip (free in the middle), so it never
+   covers actor cards or canvas; with no band (Agents layer off, no agents)
+   it hangs just below the docked headline as before. */
+.u2-frames { position: fixed; top: 3px; left: 50%; transform: translateX(-50%); z-index: 22;
   display: inline-flex; border: 1px solid var(--line-2); background: var(--panel); border-radius: var(--radius-sm, 6px); overflow: hidden; }
 .u2-frame { background: none; border: 0; color: var(--text-2); font: 500 12px var(--mono); padding: 0 14px; height: var(--ctl-h, 30px); cursor: pointer;
   transition: background .12s, color .12s; }
@@ -456,7 +456,9 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
 /* Offset clear of the canvas zoom controls (fit · in · out · minimap), which
    are the react-flow control column at the canvas bottom-left: the layer and
    tidy chrome sits beside them, never on top. */
-.u2-hud-bl { position: absolute; left: 122px; bottom: 118px; z-index: 22; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+/* one row on the canvas edge, level with the zoom bar's foot – never a
+   two-row stack floating over cards mid-canvas (X2 finding, U5). */
+.u2-hud-bl { position: absolute; left: 64px; bottom: 91px; z-index: 22; display: flex; flex-direction: row; gap: 6px; align-items: center; }
 .u2-layers { display: inline-flex; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-sm, 6px); overflow: hidden; }
 .u2-layer { background: none; border: 0; color: var(--text-2); font: 500 11px var(--mono); padding: 0 9px; height: 28px; cursor: pointer;
   transition: background .12s, color .12s; white-space: nowrap; }
@@ -493,15 +495,69 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
 .u2-l-fences-off .fc-ring-fence .fc-tile-box, .u2-l-fences-off .fc-ring-fence .fc-wide-in { outline: none; }
 .u2-l-runs-off .fc-lastrun-ok, .u2-l-runs-off .fc-lastrun-err { display: none; }
 .u2-l-agents-off .at-band { display: none; }
+.u2-l-agents-off .u2-frames, .sy-root:not(:has(.at-band)) .u2-frames { top: 44px; }
 
 @media (max-width: 720px) {
-  .u2-rail { flex-direction: row; top: auto; bottom: 96px; right: 8px; transform: none; }
+  .u2-rail { flex-direction: row; top: auto; bottom: 140px; right: 8px; transform: none; }
   .u2-rail-search input { width: 140px; }
   .u2-frames { top: 8px; }
   .u2-frame { padding: 0 10px; }
-  .u2-layers { max-width: calc(100vw - 24px); overflow-x: auto; scrollbar-width: none; }
-  .u2-hud-bl { bottom: 130px; left: 8px; }
+  .u2-layers { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  /* phone = viewer and supervisor (refs §10): no Tidy; the layer row sits
+     right of the zoom bar's foot and scrolls, the rail rides one row up. */
+  .u2-hud-bl { left: 72px; bottom: 91px; max-width: calc(100vw - 84px); }
+  .u2-hud-bl .u2-tidy { display: none; }
   body:has([data-testid=map-inspector]) .u2-rail { right: 8px; }
   .u2-add-pop { right: 8px; left: 8px; width: auto; top: auto; bottom: 96px; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) { .u2-frame, .u2-layer, .u2-rail-btn, .u2-tidy-btn { transition: none; } }
+
+/* U5 – one navigation column on the right, a summary in the run bar.
+   Top → bottom on the right edge: view buttons, rail, layers + tidy, zoom.
+   Nothing rides the left of the canvas; agents appear there only when the
+   Agents layer is on (the band becomes a left column of actor squares). */
+.map-hud { flex-direction: column; align-items: stretch; gap: 4px; }
+.map-hud .btn { justify-content: flex-start; height: 30px; }
+.u2-rail { top: auto; bottom: 392px; transform: none; }
+.u2-hud-bl { left: auto; right: 12px; bottom: 140px; flex-direction: column; align-items: flex-end; }
+.u2-hud-bl .u2-layers { flex-direction: column; }
+.u2-hud-bl .u2-layers .u2-layer + .u2-layer { border-left: 0; border-top: 1px solid var(--line-2); }
+.ws-drop .react-flow__panel.fc-controls { left: auto; right: 12px; bottom: 12px; flex-direction: row; align-items: center; }
+.ws-drop .fc-controls .fc-zoom { padding: 0 6px; }
+/* The summary switch docks in the run bar's middle. */
+.u2-frames { top: auto; bottom: 3px; z-index: 40; left: auto; right: 8px; transform: none; }
+/* the summary replaces the run bar's right-hand context line */
+.tp .tp-ctx { visibility: hidden; }
+.sy-root:not(:has(.at-band)) .u2-frames, .u2-l-agents-off .u2-frames { top: auto; }
+.u2-frame { height: 30px; display: inline-flex; align-items: center; gap: 6px; }
+.u2-frame-n { font: 600 10px var(--mono); padding: 0 5px; background: var(--bg-3); color: var(--text-2); }
+.u2-frame.on .u2-frame-n { background: color-mix(in srgb, var(--bg) 25%, transparent); color: inherit; }
+/* Agents layer on: the actor band is a column at the canvas's left edge. */
+.at-band { position: absolute; left: 0; top: 37px; bottom: 37px; width: 252px; z-index: 21; border-bottom: 0; border-right: 1px solid var(--line); overflow-y: auto; }
+.at-band .at-band-row { flex-direction: column; max-height: none; height: auto; overflow: visible; }
+.at-band .at-team, .at-band .at-card { width: auto; }
+.at-band .at-team-members { flex-wrap: wrap; height: auto; }
+@media (max-width: 720px) {
+  /* phone: the right column folds into rows – view buttons top-right, the
+     rail and the layer row above the run bar; pinch replaces the zoom row. */
+  .map-hud { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 16px); }
+  .u2-rail { bottom: 92px; right: 8px; flex-direction: row; }
+  .u2-hud-bl { left: 8px; right: auto; bottom: 48px; flex-direction: row; max-width: calc(100vw - 16px); }
+  .u2-hud-bl .u2-layers { flex-direction: row; }
+  .u2-hud-bl .u2-layers .u2-layer + .u2-layer { border-top: 0; border-left: 1px solid var(--line-2); }
+  .ws-drop .react-flow__panel.fc-controls { display: none; }
+  .u2-frames { bottom: 44px; left: auto; right: 8px; transform: none; }
+  .u2-hud-bl { bottom: 92px; }
+  .u2-rail { bottom: 136px; }
+  .at-band { width: 70vw; }
+}
+/* With the inspector open the whole right column docks beside it. */
+body:has([data-testid=map-inspector]) .u2-hud-bl { right: calc(var(--size-inspector, 400px) + 24px); }
+body:has([data-testid=map-inspector]) .ws-drop .react-flow__panel.fc-controls { right: calc(var(--size-inspector, 400px) + 24px); }
+@media (max-width: 720px) {
+  .u2-frames { top: 44px; bottom: auto; right: 8px; left: auto; transform: none; }
+  body:has([data-testid=map-inspector]) .u2-frames,
+  body:has([data-testid=map-inspector]) .u2-hud-bl,
+  body:has([data-testid=map-inspector]) .u2-rail { display: none; }
+  body:has([data-testid=map-inspector]) .u2-hud-bl { right: auto; }
+}

@@ -20,7 +20,7 @@ export const LAYERS: { id: LayerId; label: string; hint: string }[] = [
 ];
 export type Layers = Record<LayerId, boolean>;
 /** Contract §5 defaults: Blocks + Agents + Runs on; the rest off until picked. */
-export const DEFAULT_LAYERS: Layers = { blocks: true, flows: false, chains: false, fences: false, agents: true, runs: true };
+export const DEFAULT_LAYERS: Layers = { blocks: true, flows: true, chains: false, fences: false, agents: false, runs: true };
 
 /** One compact toggle, no sub-tabs (contract §5): six square chips in a row.
     Turning a layer off hides its marks and never navigates. */
@@ -41,15 +41,27 @@ export function LayerBar({ layers, onToggle }: { layers: Layers; onToggle: (id: 
     Runs brings the pipeline and transport forward, Evals shows the (empty)
     eval board. They are not new views, so the canvas never unmounts. */
 export type Frame = "map" | "runs" | "evals";
-export function FrameSwitch({ frame, onFrame }: { frame: Frame; onFrame: (f: Frame) => void }) {
+/** The bottom summary (U5): Map · Runs · Evals · Agents in the run bar,
+    each with its live count, so the top of the map carries no chrome. */
+export function FrameSwitch({ frame, onFrame, counts, agentsOn, onAgents }: {
+  frame: Frame; onFrame: (f: Frame) => void;
+  counts?: { runs?: string; evals?: string; agents?: string };
+  agentsOn?: boolean; onAgents?: () => void;
+}) {
   return (
-    <div className="u2-frames" role="tablist" aria-label="Map · Runs · Evals" data-testid="u2-frames">
+    <div className="u2-frames" role="tablist" aria-label="Map · Runs · Evals · Agents" data-testid="u2-frames">
       {(["map", "runs", "evals"] as const).map((f) => (
         <button key={f} role="tab" aria-selected={frame === f} className={`u2-frame${frame === f ? " on" : ""}`}
           data-testid={`u2-frame-${f}`} onClick={() => onFrame(f)}>
           {f === "map" ? "Map" : f === "runs" ? "Runs" : "Evals"}
+          {f !== "map" && counts?.[f] ? <b className="u2-frame-n">{counts[f]}</b> : null}
         </button>
       ))}
+      {onAgents && (
+        <button className={`u2-frame${agentsOn ? " on" : ""}`} data-testid="u2-frame-agents" aria-pressed={!!agentsOn} onClick={onAgents}>
+          Agents{counts?.agents ? <b className="u2-frame-n">{counts.agents}</b> : null}
+        </button>
+      )}
     </div>
   );
 }

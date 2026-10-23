@@ -2048,17 +2048,25 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid^=pl-row-]").first()).toBeVisible();
   };
   const blocksView = async (page: Page) => {
-    // the section frame drills into its block tree (a double-click opens);
-    // fall back to the first block card
-    const sec = page.locator("[data-testid^='fc-node-sec:']").first();
-    await sec.or(page.locator(".fc-card").first()).first().waitFor({ state: "visible", timeout: 30_000 });
-    // let the initial fit and the virtualized remount settle: a dblclick
-    // dispatched mid-remount is lost
+    // U5: a square's hover toolbar "Open" drills into its block tree (a
+    // click unfolds it in place, a double-click opens details)
+    await page.locator(".fc-solid").first().waitFor({ state: "attached", timeout: 30_000 });
     await page.waitForTimeout(800);
-    const target = (await sec.count()) ? sec : page.locator(".fc-card").first();
-    // a plain dblclick is intercepted by the edge interaction paths over the
-    // frames – dispatch the event instead
-    await target.dispatchEvent("dblclick");
+    // a square on top at its centre, clear of the inspector and the right column
+    const pt = await page.evaluate(() => {
+      for (const e of document.querySelectorAll(".fc-solid .fc-solid-sq")) {
+        const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const top = document.elementFromPoint(x, y);
+        if ((e.parentElement as HTMLElement | null)?.dataset.fcHas && r.left > 80 && r.top > 120 && r.right < innerWidth - 520 && r.bottom < innerHeight - 120 && top && e.contains(top))
+          return { x, y, id: (e.closest("[data-testid^=fc-node-]") as HTMLElement).dataset.testid!.replace("fc-node-", "") };
+      }
+      return null;
+    });
+    expect(pt, "a square clear of the panels").toBeTruthy();
+    const id = pt!.id;
+    await page.mouse.move(pt!.x, pt!.y, { steps: 3 });
+    // clicking through the mouse would leave the square and hide its toolbar
+    await page.locator(`[data-testid="fn-open-${id}"]`).evaluate((el) => (el as HTMLElement).click());
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible({ timeout: 15_000 });
   };
   // The inspector is closed until a click; Structure opens it on the block tree.
@@ -2366,9 +2374,10 @@ test.describe("map", () => {
     const name = page.locator(`[data-testid=${visibleTid}] .fc-card-name`);
     await expect(name).toHaveCSS("text-overflow", "ellipsis");
     await expect(name).toHaveAttribute("title", /.+/);
-    // opening a card drills into the nested boxes; Esc returns to the flow
+    // U5: a double-click opens the square's details (the nested squares
+    // open in place – there is no separate drill view any more)
     await page.locator(`[data-testid=${visibleTid}]`).dblclick();
-    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+    await expect(page.locator("[data-testid=map-inspector]")).toBeVisible();
     await page.locator("body").press("Escape");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
@@ -2407,11 +2416,7 @@ test.describe("map", () => {
   test("the flow canvas paints sections as group frames; selecting a block fills the details", async ({ page }) => {
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
-    const frames = page.locator("[data-testid^='fc-node-sec:']");
-    await expect(frames.first()).toBeVisible();
-    expect(await frames.count()).toBeGreaterThan(0);
-    // every frame is titled and carries block cards
-    await expect(page.locator(".fc-group-label").first()).toBeVisible();
+    // nested-squares map: sections are solid squares (frames only when opened)
     await expect(page.locator(".fc-card").first()).toBeVisible();
     // the LAST card in DOM: sibling group frames render above earlier
     // groups' children (each frame is its own stacking context)
@@ -2452,6 +2457,7 @@ test.describe("map", () => {
   });
 
   test("a block card resizes from its corner and more room shows more detail", async ({ page }, info) => {
+  test.skip(true, "retired with the U5 nested-squares map (no card body/border/resize) – see BRIEF-fuse2 S-tests for the square-era replacement");
     test.skip(info.project.name !== "desktop", "resize needs a pointer and a wide canvas");
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
@@ -2638,20 +2644,34 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=ws-rerun]")).toBeVisible();
   });
 
-  test("R0: sections render as frames whose members are the block cards", async ({ page }) => {
+  test("U5 nested squares: a click disassembles a section, one branch open at a time", async ({ page }) => {
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible({ timeout: 30_000 });
-    const frames = page.locator("[data-testid^='fc-node-sec:']");
-    await expect(frames.first()).toBeVisible();
-    expect(await frames.count()).toBeGreaterThan(0);
-    // every frame is labelled and carries block cards inside
-    await expect(page.locator(".fc-group-label").first()).toBeVisible();
-    await expect(page.locator(".fc-card").first()).toBeVisible();
-    // a section card (depth-1 column) lists its member blocks
-    const secCard = page.locator(".fc-card-sec").first();
-    if (await secCard.count()) {
-      await expect(secCard.locator(".fc-card-members .fc-card-member").first()).toBeVisible();
-    }
+    // closed: every section is one solid square, no frames
+    await expect(page.locator(".fc-solid").first()).toBeVisible();
+    await expect(page.locator("[data-testid^='fc-node-open:']")).toHaveCount(0);
+    await page.locator("[data-testid=fc-fit]").click();
+    await page.waitForTimeout(500);
+    const openable = page.locator(".fc-solid:has(.fc-solid-open)");
+    const ids = await openable.evaluateAll((els) => els.filter((e) => {
+      const r = e.querySelector(".fc-solid-sq")!.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + 20);
+      return r.left > 80 && r.right < innerWidth - 200 && r.top > 120 && r.bottom < innerHeight - 120 && !!top && e.contains(top);
+    }).map((e) => e.getAttribute("data-testid")!.slice("fc-node-".length)));
+    expect(ids.length).toBeGreaterThan(1);
+    const [a, b] = ids;
+    const tap = async (sel: string) => { const bb = await page.locator(sel).boundingBox(); await page.mouse.click(bb!.x + bb!.width / 2, bb!.y + Math.min(20, bb!.height / 2)); await page.waitForTimeout(400); };
+    await tap(`[data-testid="fc-node-${a}"] .fc-solid-sq`);
+    await expect(page.locator(`[data-testid="fc-node-open:${a}"]`)).toBeVisible();
+    // opening another branch folds the first back into its square
+    await page.locator("[data-testid=fc-fit]").click();
+    await page.waitForTimeout(500);
+    await tap(`[data-testid="fc-node-${b}"] .fc-solid-sq`);
+    await expect(page.locator(`[data-testid="fc-node-open:${b}"]`)).toBeVisible();
+    await expect(page.locator(`[data-testid="fc-node-open:${a}"]`)).toHaveCount(0);
+    // the frame header folds it
+    await tap(`[data-testid="fc-node-open:${b}"] .fc-group-label`);
+    await expect(page.locator("[data-testid^='fc-node-open:']")).toHaveCount(0);
   });
 
   test("R0: the lens switcher is gone and the roles filter moved to the inspector", async ({ page }) => {
@@ -2857,8 +2877,9 @@ test.describe("map", () => {
     // ArrowRight again, then Enter opens the selection (a block drills in)
     await page.keyboard.press("ArrowRight");
     await expect.poll(selOf).not.toBe(start);
+    // U5: Enter unfolds the selected square in place (the keyboard click)
     await page.keyboard.press("Enter");
-    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+    await expect(page.locator("[data-testid^='fc-node-open:']")).toHaveCount(1);
     await page.keyboard.press("Escape");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
@@ -2885,8 +2906,13 @@ test.describe("map", () => {
     await page.waitForTimeout(300);
     // a section card may sit outside the virtualized window at the landing
     // zoom – bring it into view before the hover
-    const wide = (await page.locator(".fc-card-sec").count()) ? page.locator(".fc-card-sec").last() : page.locator(".fc-card").last();
-    await wide.scrollIntoViewIfNeeded();
+    // nested-squares map: drag a square that sits well inside the viewport
+    const squares = page.locator(".fc-solid .fc-solid-sq");
+    let wide = squares.first();
+    for (let i = 0; i < await squares.count(); i++) {
+      const bb = await squares.nth(i).boundingBox();
+      if (bb && bb.x > 300 && bb.y > 300 && bb.x < 1100 && bb.y < 650) { wide = squares.nth(i); break; }
+    }
     await wide.hover({ timeout: 10_000 });
     const before = await wide.boundingBox();
     await page.mouse.down();
@@ -3152,6 +3178,8 @@ test.describe("agents add from the map rail (U3)", () => {
  *  in on the busiest section (R0), so the first card in the DOM can be
  *  off-canvas, and React Flow cannot scroll a card into view. */
 async function cardInView(page: import("@playwright/test").Page) {
+  // nested-squares map: wait for the squares, and keep clear of the right column
+  await page.locator(".fc-solid").first().waitFor({ state: "attached", timeout: 30_000 });
   const id = await page.evaluate(() => {
     const c = document.querySelector("[data-testid=map-flow] .react-flow")?.getBoundingClientRect();
     if (!c) return null;
@@ -3160,7 +3188,7 @@ async function cardInView(page: import("@playwright/test").Page) {
     const el = [...document.querySelectorAll(".fc-card:not(.fc-card-sec)")].find((e) => {
       const r = e.getBoundingClientRect();
       const x = r.left + r.width / 2, y = r.top + r.height / 2; // where hover() and click() aim
-      if (x < c.left + 20 || x > c.right - 20 || y < c.top + 20 || y > c.bottom - 90) return false;
+      if (x < c.left + 20 || x > c.right - 170 || y < c.top + 20 || y > c.bottom - 90) return false;
       const hit = document.elementFromPoint(x, y);
       return !!hit && e.contains(hit);
     });

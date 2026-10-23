@@ -7,8 +7,11 @@
 // not cross through the kit's `dim` flag. The capabilities lens renders one
 // swimlane group per entry family from the same pure lens as before.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../../api";
 import { FlowCanvas, type FlowEdge, type FlowGroup, type FlowNode } from "../../flow";
+import { dirColor, groupDirs } from "../../colors";
+import { settings as appSettings } from "../../settings";
 import { KindIcon, RoleMark, ROLE_COLOR, sectionLogo } from "./icons";
 import type { Block, MapData, Role } from "./types";
 import { capabilities } from "./lenses";
@@ -34,6 +37,8 @@ type Props = {
   data: MapData & { flows?: Flow[] };
   roles: Set<Role>;
   focus?: Focus | null;
+  /** A picked value flow: its sections ring in its hue, its wires carry it, the rest dims. */
+  flowTint?: { color: string; sections: Set<string> } | null;
   selection?: string | null;
   onSelect?: (id: string | null) => void;
   onDrill: (id: string) => void;
@@ -66,6 +71,7 @@ type Props = {
 };
 
 const title = (b: Block) => b.theme || b.name;
+const kindGlyphOf = (k: string) => ({ function: "ƒ", fn: "ƒ", method: "m", class: "C", struct: "S", interface: "I", trait: "T", type: "T", enum: "E", const: "K" } as Record<string, string>)[k] ?? "·";
 const secId = (b: Block) => `sec:${b.id}`;
 const fnId = (n: number) => `fn:${n}`;
 const moreId = (b: Block) => `more:${b.id}`;
@@ -183,9 +189,23 @@ function fnIcon(kind: string) {
     degree, the flows and chains it belongs to); sections render as frames
     holding their cards. Selection is single-writer (the kit); a focused
     chain dims everything it does not cross through the kit's `dim` flag. */
-export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal }: Props) {
+export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   const lit = (id: string) => !focus?.chain || focus.on.has(id);
+  const [openPath, setOpenPath] = useState<string[]>([]);
+  // Directory ranks come from the Graph view's own node set, so a directory
+  // has the same hue on both canvases (src/ blue, web/src/ orange, …).
+  // Cached per session so the first paint already has the Graph's hues.
+  const [graphPaths, setGraphPaths] = useState<string[] | null>(() => { try { return JSON.parse(sessionStorage.getItem("kula.map.graphPaths") || "null"); } catch { return null; } });
+  useEffect(() => {
+    let live = true;
+    api.graph("symbol").then((g) => {
+      const paths = g.nodes.filter((n) => n.kind !== "package").map((n) => n.path);
+      try { sessionStorage.setItem("kula.map.graphPaths", JSON.stringify(paths)); } catch { /* private window */ }
+      if (live) setGraphPaths(paths);
+    }).catch(() => {});
+    return () => { live = false; };
+  }, []);
   const shown = (b: Block) => roles.has(b.role);
 
   // Membership + degree, computed once per payload: the cards read them from
@@ -221,6 +241,25 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     const groups: FlowGroup[] = [];
     const reps = new Map<string, string>();
 
+  const st = appSettings.get();
+  const dg = groupDirs(graphPaths ?? Object.values(data.leaves).map((l) => l.path), st.dirDepth);
+  const EXT: Record<string, string> = { rs: "RS", ts: "TS", tsx: "TX", js: "JS", jsx: "JX", mjs: "JS", py: "PY", go: "GO", css: "CS", md: "MD" };
+  const dirMemo = new Map<string, { dir: string; color: string; lang: string }>();
+  const dirOfBlock = (id: string) => {
+    let v = dirMemo.get(id);
+    if (v) return v;
+    const tally = new Map<string, number>(), langs = new Map<string, number>();
+    for (const sid of symbolsUnder(data.blocks, id)) {
+      const l = data.leaves[sid]; if (!l) continue;
+      const d = dg.of(l.path); tally.set(d, (tally.get(d) ?? 0) + 1);
+      const x = EXT[l.path.split(".").pop() ?? ""] ?? "··"; langs.set(x, (langs.get(x) ?? 0) + 1);
+    }
+    const top = (m: Map<string, number>) => [...m].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const dir = top(tally) ?? ".";
+    v = { dir, color: dirColor(dir, dg, st), lang: top(langs) ?? "··" };
+    dirMemo.set(id, v);
+    return v;
+  };
   const colorOf = (b: Block, sec: string) =>
     scheme === "section" ? `hsl(${hue(sec)} 60% 58%)`
     : scheme === "mono" ? "var(--text-3)"
@@ -246,6 +285,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
       color: colorOf(b, sec), entry: b.role === "entry", dim: !lit(b.id),
       toolbar: nodeTools,
       card: {
+        hue: dirOfBlock(b.id).color, glyph: dirOfBlock(b.id).lang, dir: dg.label(dirOfBlock(b.id).dir),
         role: b.role, roleColor: colorOf(b, sec),
         logo: sectionLogo(`${b.theme ?? ""} ${b.name} ${b.summary ?? ""}`, b.role),
         files: b.files, symbols: fnIds.length,
@@ -269,42 +309,92 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   // The view owns the layout (the kit's preset mode): one column per
   // pipeline layer, left to right, shared utilities last. Every section is
   // a frame (depth 2) holding its block cards, or a single card at depth 1.
-  const CELL_W = 336, CELL_H = 320, GAP_Y = 48, GAP_X = 160, HEAD = 48; // cells clear the 320×304 full card in both axes
+  // Region hues = the Graph view's directory palette (colors.ts): a block
+  // takes the colour of the directory most of its symbols live in, so src/
+  // is the same blue here as on the Graph. Frames are tinted with it, wires
+  // carry it, and far zoom draws the block as a node of that colour.
+  const regionHue = (id: string) => dirOfBlock(id).color;
+  // Nested squares (U5, the Graph view's hub language): every block is one
+  // solid square in its directory hue, sized by symbol count. Clicking a
+  // square disassembles it in place into a tinted frame holding its children
+  // (sub-blocks, then functions at the leaves). One branch is open at a time:
+  // `openPath` is the chain section → … → block, so opening anything off the
+  // path snaps the rest shut and the canvas stays compact.
+  const GAP_X = 120, GAP_Y = 32, PAD = 16, HEAD = 46, FN = 72;
+  const sq = (b: Block) => { const n = symbolsUnder(data.blocks, b.id).length; return Math.round((96 + 56 * Math.min(1, Math.sqrt(n / 150))) / 8) * 8; };
+  const kidsOf = (id: string) => (data.blocks[id]?.children ?? []).map((c) => data.blocks[c]).filter((k): k is Block => !!k && shown(k));
+  const isOpen = (id: string) => openPath.includes(id);
+  type Box = { w: number; h: number; place: (x: number, y: number) => void };
+  const measure = (b: Block, sec: string, level: number): Box => {
+    const kids = kidsOf(b.id);
+    const fns = kids.length ? [] : b.symbols.filter((n) => data.leaves[n]).slice(0, 24);
+    if (!isOpen(b.id) || (!kids.length && !fns.length)) {
+      const S = sq(b);
+      return { w: S, h: S + 22, place: (x, y) => {
+        const c = blockCard(b, sec);
+        const inside: string[] = []; const walk = (id: string) => { for (const k of data.blocks[id]?.children ?? []) { inside.push(k); walk(k); } }; walk(b.id);
+        if (c.card) c.card.has = inside.join(" ");
+        if (flowTint && c.card) { if (flowTint.sections.has(sec)) c.card.flowHue = flowTint.color; else c.dim = true; }
+        nodes.push({ ...c, solid: true, openable: kids.length > 0 || fns.length > 0, size: { w: S, h: S + 22 }, pos: { x, y }, ...markOf(sec, b.id === sec) });
+        reps.set(b.id, b.id);
+      } };
+    }
+    // Open: a frame of children; an open child takes a full row of its own.
+    const parts: Box[] = kids.length ? kids.map((k) => measure(k, sec, level + 1))
+      : fns.map((n) => ({ w: FN, h: FN + 18, place: (x: number, y: number) => {
+          const l = data.leaves[n];
+          nodes.push({ id: fnId(n), kind: "block", title: l.name, solid: true, leaf: true, color: regionHue(sec),
+            card: { hue: regionHue(sec), glyph: kindGlyphOf(l.kind) }, size: { w: FN, h: FN + 18 }, pos: { x, y } } as FlowNode);
+        } }));
+    const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(parts.length))));
+    const rows: Box[][] = [];
+    let row: Box[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      const openKid = kids[i] && isOpen(kids[i].id) && parts[i].w > sq(kids[i]);
+      if (openKid) { if (row.length) rows.push(row); rows.push([parts[i]]); row = []; continue; }
+      row.push(parts[i]);
+      if (row.length === cols) { rows.push(row); row = []; }
+    }
+    if (row.length) rows.push(row);
+    const rw = (r: Box[]) => r.reduce((a, p) => a + p.w, 0) + GAP_Y * (r.length - 1);
+    const rh = (r: Box[]) => Math.max(...r.map((p) => p.h));
+    const w = Math.max(240, ...rows.map(rw)) + PAD * 2;
+    const h = HEAD + rows.reduce((a, r) => a + rh(r), 0) + GAP_Y * (rows.length - 1) + PAD * 2;
+    return { w, h, place: (x, y) => {
+      nodes.push({ id: `open:${b.id}`, kind: "group", title: `${title(b)}`, subtitle: kids.length ? `${kids.length} blocks · click to fold` : `${b.symbols.length} symbols · click to fold`,
+        color: regionHue(sec), size: { w, h }, pos: { x, y }, z: -100 + level } as FlowNode);
+      let cy = y + HEAD + PAD;
+      for (const r of rows) {
+        let cx = x + PAD;
+        for (const p of r) { p.place(cx, cy); cx += p.w + GAP_Y; }
+        cy += rh(r) + GAP_Y;
+      }
+      const first = kids[0]?.id ?? (fns[0] != null ? fnId(fns[0]) : undefined);
+      if (first) reps.set(b.id, reps.get(first) ?? first);
+    } };
+  };
   const columns: string[][] = [...layers.map((l) => l.filter((id) => sections[id] && shown(sections[id])))];
   const bandShown = band.filter((id) => sections[id] && shown(sections[id]));
   if (bandShown.length) columns.push(bandShown);
   const colOf = new Map<string, number>();
+  // Wrap a busy layer into sub-columns so the closed map lands near 16:10.
+  const closedH = Math.max(...Object.values(sections).map((b) => sq(b) + 22), 120) + GAP_Y;
+  const nSecs = columns.flat().length;
+  const perCol = Math.max(3, Math.ceil(Math.sqrt(nSecs / 1.6)));
   let x = 0;
   columns.forEach((col, ci) => {
     if (!col.length) return;
-    let y = 0, colW = 288;
+    let y = 0, colW = 0, inCol = 0;
     for (const id of col) {
-      const s = sections[id];
       colOf.set(id, ci);
-      const kids = s.children.map((c) => data.blocks[c]).filter((k): k is Block => !!k && shown(k));
-      const open = depth >= 2 && kids.length > 0;
-      if (!open) {
-        // The section card: same information-rich card, its blocks listed inside.
-        // Only sections that actually hold shown blocks carry a member list –
-        // an empty list renders a dead .fc-card-members div.
-        nodes.push({ ...blockCard(s), pos: { x: x + 40, y }, ...markOf(id, true), card: { ...blockCard(s).card, members: kids.length ? kids.map((k) => ({ id: k.id, title: title(k), color: colorOf(k, id) })) : undefined } });
-        reps.set(id, s.id);
-        y += (blockCard(s).card?.members?.length ? 304 : 192) + GAP_Y;
-        continue;
-      }
-      const cols = Math.min(3, Math.ceil(Math.sqrt(kids.length)));
-      kids.forEach((k, i) => {
-        const r = Math.floor(i / cols), c = i % cols;
-        nodes.push({ ...blockCard(k, id), pos: { x: x + c * CELL_W, y: y + HEAD + r * CELL_H }, ...markOf(id, i === 0) });
-      });
-      groups.push({ id: secId(s), label: `${title(s)} · ${kids.length} blocks`, members: kids.map((k) => k.id) });
-      reps.set(id, kids[0].id);
-      const rows = Math.ceil(kids.length / cols);
-      y += HEAD + rows * CELL_H + GAP_Y;
-      colW = Math.max(colW, cols * CELL_W);
+      const box = measure(sections[id], id, 0);
+      if (inCol >= perCol && !isOpen(id)) { x += colW + GAP_X; y = 0; colW = 0; inCol = 0; }
+      box.place(x, y);
+      y += box.h + GAP_Y; colW = Math.max(colW, box.w); inCol++;
     }
     x += colW + GAP_X;
   });
+  void closedH;
 
   // The pipeline lane: blocks left to right above the map as n8n's square
   // nodes, wired in order, each with a dashed wire down to the section it acts
@@ -414,15 +504,17 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     if (seenEdge.has(key)) continue;
     seenEdge.add(key);
     outCount.set(f.from, (outCount.get(f.from) ?? 0) + 1);
-    edges.push({ id: key, source: a, target: b, weight: edgeWeight(f.weight, maxW) });
+    const inFlow = !!flowTint && flowTint.sections.has(f.from) && flowTint.sections.has(f.to);
+    edges.push({ id: key, source: a, target: b, weight: inFlow ? 4 : edgeWeight(f.weight, maxW), color: inFlow ? flowTint!.color : regionHue(f.from), flow: undefined, label: undefined, ...(inFlow ? { lit: true } : {}) } as FlowEdge);
   }
+
     // The card payload rides flat on the node data (the kit's BlockCard contract:
 // BlockCardDataWithSize = the FlowNode with the card's fields spread over it),
 // so the renderers read files/symbols/functions without reaching into .card.
     const flat = nodes.map((n) => (n.card ? { ...n, ...n.card } : n));
     return { nodes: flat, edges, groups, reps };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, roles, focus, depth, marks, steps, scheme, meta, onNodeTool, pinned]);
+  }, [data, roles, focus, depth, marks, steps, scheme, meta, onNodeTool, pinned, openPath, graphPaths, flowTint]);
 
   // The landing zoom (R0, readable by default): the busiest section, at a
   // scale where the card labels are legible – fit stays one key away.
@@ -435,15 +527,63 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   // sidebar reads blocks. Selections that open panels must not run inside
   // React Flow's click dispatch – a synchronous parent update there
   // re-enters the store (React error 185). Defer them a tick.
+  // A search hit (reveal) or an outside selection folded inside a closed
+  // square opens the branch that holds it, so the camera has a node to go to.
+  useEffect(() => {
+    const target = reveal ?? selection;
+    const bid = target?.startsWith("step:") ? null : target?.replace(/^sec:|^open:/, "");
+    const b = bid ? data.blocks[bid] : undefined;
+    if (!b || sections[b.id] || !b.parent) return;
+    const chain: string[] = [];
+    for (let p: Block | undefined = data.blocks[b.parent]; p; p = p.parent ? data.blocks[p.parent] : undefined) { chain.unshift(p.id); if (sections[p.id]) break; }
+    if (chain.join() !== openPath.slice(0, chain.length).join()) setOpenPath(chain);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal, selection, data]);
+  // Only a pointer click opens/folds – keyboard traversal (arrows walk the
+  // edges) moves the selection without rearranging the map under it.
+  useEffect(() => {
+    const down = (e: PointerEvent) => { const w = window as unknown as { __fcPtr?: number; __fcAt?: [number, number] }; w.__fcPtr = performance.now(); w.__fcAt = [e.clientX, e.clientY]; };
+    const upAt = (e: PointerEvent) => { (window as unknown as { __fcUp?: [number, number, number] }).__fcUp = [e.clientX, e.clientY, performance.now()]; };
+    window.addEventListener("pointerdown", down, true);
+    window.addEventListener("pointerup", upAt, true);
+    return () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointerup", upAt, true); };
+  }, []);
+  const byPointer = () => performance.now() - ((window as unknown as { __fcPtr?: number }).__fcPtr ?? -1e9) < 800;
+  // Open on a real click only: wait for the pointer to come up within 5px of
+  // where it went down – a drag selects the square without unfolding it.
+  // A double-click means "details", so a single click waits one beat
+  // before unfolding – the second click of a double-click cancels it.
+  const pendingOpen = (window as unknown as { __fcOpenT?: number });
+  const onClickRelease = (fn0: () => void) => {
+    const fn = () => { window.clearTimeout(pendingOpen.__fcOpenT); pendingOpen.__fcOpenT = window.setTimeout(fn0, 220); };
+    const w = window as unknown as { __fcAt?: [number, number]; __fcUp?: [number, number, number]; __fcPtr?: number };
+    const at = w.__fcAt;
+    // already released (React Flow selects on click): judge it now
+    if (w.__fcUp && w.__fcPtr != null && w.__fcUp[2] >= w.__fcPtr) { if (!at || Math.hypot(w.__fcUp[0] - at[0], w.__fcUp[1] - at[1]) < 5) fn(); return; }
+    const up = (e: PointerEvent) => { window.removeEventListener("pointerup", up, true); if (!at || Math.hypot(e.clientX - at[0], e.clientY - at[1]) < 5) fn(); };
+    window.addEventListener("pointerup", up, true);
+  };
+  // Click = disassemble (or fold): the open branch is the chain from the
+  // clicked block up to its section, so every other branch snaps shut.
+  const chainOf = (id: string) => { const out: string[] = []; for (let b: Block | undefined = data.blocks[id]; b; b = b.parent ? data.blocks[b.parent] : undefined) { out.unshift(b.id); if (sections[b.id]) break; } return out; };
   const select = (id: string | null) => {
     if (!id || id === "lane") { onSelect?.(null); return; }
+    if (id.startsWith("open:") && byPointer()) { const bid = id.slice(5); onClickRelease(() => setOpenPath(chainOf(bid).slice(0, -1))); onSelect?.(bid); return; }
+    if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
+    if (byPointer() && data.blocks[id] && (kidsOfAny(id) || data.blocks[id].symbols.length)) onClickRelease(() => setOpenPath(chainOf(id)));
     onSelect?.(id.startsWith("sec:") ? id.slice(4) : id);
   };
+  function kidsOfAny(id: string) { return (data.blocks[id]?.children ?? []).length > 0; }
   const open = (id: string) => {
     if (id.startsWith("step:")) { onStepTool?.(id.slice(5), "open"); return; }
     if (id === "lane") return;
-    if (id.startsWith("sec:")) { const sid = id.slice(4); setTimeout(() => onDrill(sid), 0); return; }
-    onDrill(id);
+    window.clearTimeout(pendingOpen.__fcOpenT);
+    // Double-click = details: the inspector for a block, the code for a function.
+    if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
+    const bid = id.startsWith("open:") ? id.slice(5) : id.startsWith("sec:") ? id.slice(4) : id;
+    // Enter on the keyboard is the click: it unfolds (or folds) the square.
+    if (!byPointer() && data.blocks[bid]) { setOpenPath(id.startsWith("open:") ? chainOf(bid).slice(0, -1) : chainOf(bid)); return; }
+    setTimeout(() => onDrill(bid), 0);
   };
 
   const dense = edges.length > 120;

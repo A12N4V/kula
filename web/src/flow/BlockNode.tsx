@@ -75,6 +75,28 @@ const BlockCard = memo((props: NodeProps) => {
   const w = data.size?.w ?? BLOCK_SIZES[1].w;
   const h = data.size?.h ?? BLOCK_SIZES[1].h;
   const role = (data.role ?? "core") as Parameters<typeof RoleMark>[0]["role"];
+  if (data.solid) {
+    // Nested-squares map: a solid square in the directory hue carrying the
+    // language/kind glyph (the Graph view's hub tile); the name rides under
+    // it. Openable squares show their child count in the corner.
+    const S = w;
+    return (
+      <div data-fc-has={data.has} className={`fc-node fc-card fc-solid${data.leaf ? " fc-solid-leaf" : ""}${selected ? " fc-sel" : ""}${data.dim ? " fc-dim" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}`}
+        style={{ width: w, height: h, ["--fc-hue" as string]: data.hue ?? data.color ?? "var(--text-3)" }}
+        data-testid={`fc-node-${id}`} data-fc-stage="1" title={`${data.title}${data.dir ? ` – ${data.dir}` : ""}${data.openable ? " · click to open" : ""}`}>
+        <TBar id={id ?? data.id} data={data} />
+        <div className={`fc-solid-sq${data.flowHue ? " fc-solid-flow" : ""}`} style={{ width: S, height: S, ...(data.flowHue ? { ["--vf-hue" as string]: data.flowHue } : {}) }}>
+          <span className="fc-solid-glyph" aria-hidden="true">{data.glyph ?? "·"}</span>
+          {!data.leaf && data.symbols ? <span className="fc-solid-n mono">{data.symbols}</span> : null}
+          {data.openable && <span className="fc-solid-open" aria-hidden="true">+</span>}
+          {data.badge}
+        </div>
+        <span className="fc-card-name fc-card-caption fc-solid-name" title={data.title}>{data.title}</span>
+        <Handle type="target" position={Position.Left} id="l" className="fc-dot" isConnectable={false} style={{ top: S / 2 }} />
+        <Handle type="source" position={Position.Right} id="r" className="fc-dot" isConnectable={false} style={{ top: S / 2 }} />
+      </div>
+    );
+  }
   // Semantic zoom (docs/design/fused-canvas.md §zoom): far = the caption under
   // the tile, mid = role, files, symbols, in/out, flow badges, fence badge and
   // the last-run dot, near = the function list. A resize forces a level – the
@@ -89,16 +111,21 @@ const BlockCard = memo((props: NodeProps) => {
   return (
     <div
       className={`fc-node fc-card${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}${data.members ? " fc-card-sec" : ""} fc-stage-${stage}`}
-      style={{ width: w, height: h, ["--fc-role" as string]: data.roleColor ?? ROLE_COLOR[role] }}
+      style={{ width: w, height: h, ["--fc-role" as string]: data.roleColor ?? ROLE_COLOR[role], ...(data.hue ? { ["--fc-hue" as string]: data.hue } : {}) }}
       data-testid={`fc-node-${id}`}
       data-fc-stage={stage}
       title={`${data.title}${data.subtitle ? ` – ${data.subtitle}` : ""}`}
     >
       <TBar id={id ?? data.id} data={data} />
       {stage === 1 ? (
-        // Far zoom: the tile itself, the name as a caption under it (n8n §2).
-        <div className="fc-card-tile" data-testid={`fc-card-tile-${id}`}>
-          <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>
+        // Far zoom: the Graph view's node – a circle in the directory hue,
+        // sized by symbol count, with the language square riding its rim;
+        // the name is a caption under it.
+        <div className={`fc-card-tile${data.hue ? " fc-card-orb" : ""}`} data-testid={`fc-card-tile-${id}`}
+          style={data.hue ? { ["--fc-orb" as string]: `${Math.round(44 + 52 * Math.min(1, Math.sqrt((data.symbols ?? 0) / 80)))}%` } : undefined}>
+          {data.hue
+            ? <span className="fc-card-sq fc-card-sq-rim" aria-hidden="true">{data.glyph}</span>
+            : <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>}
           {data.status && <span className={`fc-status fc-st-${data.status === "success" ? "ok" : data.status === "error" ? "err" : "run"}`} title={data.status} />}
           {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} />}
           {data.ring === "fence" && <span className="fc-card-fence-badge" title="fenced by an agent" />}
@@ -110,7 +137,9 @@ const BlockCard = memo((props: NodeProps) => {
         <>
           <div className="fc-card-head">
             <span className="fc-card-role"><RoleMark role={role} /></span>
-            <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>
+            {data.hue
+              ? <span className="fc-card-sq" aria-hidden="true" title={data.dir}>{data.glyph}</span>
+              : <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>}
             <span className="fc-card-name" title={data.title}>{data.title}</span>
             {data.status && <span className={`fc-status fc-st-${data.status === "success" ? "ok" : data.status === "error" ? "err" : "run"}`} title={data.status} />}
             {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} title={data.lastRun === "ok" ? "last run – passed" : "last run – failed"} />}
@@ -126,14 +155,27 @@ const BlockCard = memo((props: NodeProps) => {
           {data.chains?.length ? <span title={`chains: ${data.chains.join(", ")}`}>{data.chains.length} chains</span> : null}
         </div>
       ) : null}
-      {stage >= 3 && data.functions?.length ? (
-        <ul className="fc-card-fns">
-          {data.functions.slice(0, 12).map((f, i) => (
-            <li key={i} title={`${f.name}${f.kind ? ` · ${f.kind}` : ""}`}><span className="fm-kind">{kindGlyph[f.kind] ?? "ƒ"}</span>{f.name}</li>
-          ))}
-          {data.functions.length > 12 && <li className="fc-card-more">+ {data.functions.length - 12} more</li>}
-        </ul>
-      ) : null}
+      {/* Mid shows the first few functions too: the card keeps its full box
+          at mid zoom, and three lines over an empty body read as a broken
+          card (U5, B4 text density). Near lists up to 12. */}
+      {stage >= 2 && data.functions?.length ? (() => {
+        const cap = stage >= 3 ? 12 : 5;
+        // Same-named functions (overloads, per-impl methods) collapse into
+        // one row with a ×N count – five "begin" rows read as a glitch.
+        const rows: { name: string; kind?: string; n: number }[] = [];
+        for (const f of data.functions) {
+          const hit = rows.find((r) => r.name === f.name);
+          if (hit) hit.n++; else rows.push({ name: f.name, kind: f.kind, n: 1 });
+        }
+        return (
+          <ul className="fc-card-fns">
+            {rows.slice(0, cap).map((f, i) => (
+              <li key={i} title={`${f.name}${f.kind ? ` · ${f.kind}` : ""}${f.n > 1 ? ` · ${f.n} definitions` : ""}`}><span className="fm-kind">{kindGlyph[f.kind ?? ""] ?? "ƒ"}</span>{f.name}{f.n > 1 && <span className="fc-card-x">×{f.n}</span>}</li>
+            ))}
+            {rows.length > cap && <li className="fc-card-more">+ {rows.length - cap} more</li>}
+          </ul>
+        );
+      })() : null}
       {data.members ? (
         <div className="fc-card-members">
           {data.members.slice(0, 24).map((m) => (

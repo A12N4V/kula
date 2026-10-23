@@ -90,6 +90,7 @@
 .fc-card-fns { margin: 2px 0 0; padding: 0 0 0 2px; list-style: none; overflow-y: auto; min-height: 0;
   border-top: 1px solid var(--line); padding-top: 4px; display: flex; flex-direction: column; gap: 2px; }
 .fc-card-fns li { font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-card-fns .fc-card-x { color: var(--text-3); margin-left: 6px; font-size: 10px; }
 .fc-card-fns .fm-kind { color: var(--text-3); margin-right: 4px; }
 .fc-card-more { color: var(--text-3); font-size: 10.5px; }
 .fc-card-members { display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; min-height: 0; }
@@ -367,3 +368,52 @@ html[data-rm="1"] .fc-dot { transition: none; }
 .fc-card.fc-stage-1 .fc-card-caption { flex: none; max-width: 100%; margin-top: 8px; text-align: center; font-size: 13px; line-height: 16px; }
 .fc-card.fc-sel .fc-card-tile { border-color: var(--accent); background: var(--accent-soft); }
 .fc-card-fence-badge { position: absolute; top: -5px; right: -5px; width: 10px; height: 10px; background: var(--accent); border: 2px solid var(--bg); border-radius: 50%; }
+
+/* Region hues (U5, Excalidraw-style): a section frame carries a soft tint of
+   its hue and a coloured title; wires carry the source region's hue at rest,
+   full strength on hover or when their card is hovered. */
+.fc-group.fc-group-hue { background: color-mix(in srgb, var(--fc-hue) 11%, transparent); border-color: color-mix(in srgb, var(--fc-hue) 70%, var(--line)); }
+.fc-group.fc-group-hue .fc-group-label { color: color-mix(in srgb, var(--fc-hue) 80%, var(--text)); }
+.react-flow__edge-path.fc-edge-hue { stroke-opacity: .3; }
+.react-flow__edge-path.fc-edge-hue.fc-edge-long { stroke-opacity: .28; }
+.react-flow__edge-path.fc-edge-hue.fc-edge-faint { stroke-opacity: .15; }
+.react-flow__edge-path.fc-edge-hue.fc-edge-lit, .react-flow__edge-path.fc-edge-hue.fc-edge-hot, .react-flow__edge-path.fc-edge-hue.fc-edge-sel { stroke-opacity: 1; }
+
+/* Directory hue on block cards (U5 – the Graph view's language, not n8n's):
+   a solid square carrying the language glyph, as the Graph draws hubs, and a
+   border tinted with the directory colour. */
+.fc-card[style*="--fc-hue"] { border-color: color-mix(in srgb, var(--fc-hue) 80%, var(--line-2)); background: color-mix(in srgb, var(--fc-hue) 6%, var(--panel)); }
+.fc-card[style*="--fc-hue"] .fc-card-head { background: color-mix(in srgb, var(--fc-hue) 22%, transparent); margin: -8px -12px 4px; padding: 7px 12px; }
+.fc-card-sq { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 3px; border-radius: var(--radius-sm, 2px);
+  background: var(--fc-hue); color: #0b0b0b; font: 700 9.5px var(--mono); letter-spacing: 0; flex: none; }
+/* Far zoom: a filled circle, area ~ symbols, the square on its rim. */
+.fc-card-tile.fc-card-orb { background: none; border: 0; display: grid; place-items: center; position: relative; }
+.fc-card-tile.fc-card-orb::before { content: ""; width: var(--fc-orb, 70%); aspect-ratio: 1; border-radius: 50%;
+  background: var(--fc-hue); grid-area: 1 / 1; }
+.fc-card-tile.fc-card-orb .fc-card-sq-rim { grid-area: 1 / 1; align-self: end; justify-self: end; outline: 2px solid var(--bg); }
+.fc-card.fc-stage-1[style*="--fc-hue"] { border-color: transparent; background: none; }
+.fc-card.fc-sel .fc-card-orb::before { outline: 2px solid var(--accent); outline-offset: 3px; }
+.fc-card.fc-sel .fc-card-tile.fc-card-orb { background: none; }
+
+/* Nested squares (U5): solid hue tiles, Graph-hub style. Fully coloured
+   until opened; the open frame (.fc-group-hue) holds the children. */
+.fc-solid { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: 0; cursor: pointer; }
+.fc-solid-sq { position: relative; display: grid; place-items: center; background: var(--fc-hue); border-radius: var(--radius-sm, 4px); color: #0b0b0b; }
+.fc-solid-glyph { font: 700 28px var(--mono); letter-spacing: 0; }
+.fc-solid-leaf .fc-solid-glyph { font-size: 22px; }
+.fc-solid-n { position: absolute; left: 6px; bottom: 4px; font-size: 10px; opacity: .75; }
+.fc-solid-open { position: absolute; right: 6px; top: 3px; font: 700 14px var(--mono); opacity: .7; }
+.fc-solid:hover .fc-solid-sq { outline: 2px solid color-mix(in srgb, var(--fc-hue) 60%, var(--text)); outline-offset: 2px; }
+.fc-solid.fc-sel .fc-solid-sq { outline: 2px solid var(--accent); outline-offset: 3px; }
+.fc-solid-name { max-width: 100%; font-size: 11px; line-height: 14px; text-align: center; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-solid .fc-dot { opacity: 0; }
+.fc-group-hue .fc-group-head { cursor: pointer; }
+.fc-group-hue .fc-group-head { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+.fc-group-hue .fc-group-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.fc-group-hue .fc-group-count { font-size: 10px; }
+.fc-card.fc-solid { padding: 0; border: 0; background: none; overflow: visible; border-radius: 0; }
+.fc-card.fc-solid::before { display: none; }
+.fc-card.fc-solid { text-overflow: ellipsis; }
+.fc-solid-sq.fc-solid-flow { outline: 4px solid var(--vf-hue); outline-offset: 3px; }
+.fc-solid.fc-dim { opacity: .3; }
+.react-flow__edge-path.fc-edge-flow { stroke-opacity: 1; }

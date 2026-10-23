@@ -13,6 +13,7 @@ import { edgeTypes } from "./edges";
 import { layout, layoutWorkerUsed } from "./layout";
 import { applyPersisted, applySizes, clearPersisted, persist, persistSizes } from "./positions";
 import { CHIP, nodeSize, snap, type FlowEdge, type FlowGroup, type FlowNode } from "./types";
+import { routeEdges } from "./route";
 import { nodeTypes } from "./nodes";
 import { Icon } from "../ui";
 
@@ -21,6 +22,8 @@ const EMPTY_GROUPS: FlowGroup[] = [];
 export type FlowCanvasProps = {
   /** Lowest zoom; big preset maps pass less so fit can show everything. */
   minZoom?: number;
+  /** Route main wires orthogonally through the column gutters (flow/route.ts). */
+  route?: boolean;
   nodes: FlowNode[];
   edges: FlowEdge[];
   groups?: FlowGroup[];
@@ -76,6 +79,7 @@ const toRf = (n: FlowNode, sel: string | null, collapsed: Set<string>, chipIds: 
     extent: n.parent ? "parent" : undefined,
     hidden: collapsed.has(n.parent ?? ""),
     selected: sel === n.id,
+    zIndex: n.z,
     // Per-node `draggable: true` would override the global nodesDraggable,
     // so chips set false and everything else stays undefined (global wins,
     // which is what the lock control flips).
@@ -133,6 +137,20 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       (window as unknown as { __fcLayout?: { ms: number; nodes: number; worker: boolean; mainEdges: [string, string][] } }).__fcLayout = { ms: res.ms, nodes: res.nodes.filter((n) => n.kind !== "group").length, worker: !!layoutWorkerUsed(), mainEdges: edges.filter((e) => e.main !== false).map((e) => [e.source, e.target]) };
       if (!live) return;
       const withDrags = applyPersisted(ns, layoutKey, res.nodes);
+      // Gutter routing (flow/route.ts) on the final positions – after layout,
+      // stored sizes and persisted drags – in absolute canvas coordinates.
+      let wires = edges;
+      if (props.route) {
+        const byId = new Map(withDrags.map((n) => [n.id, n]));
+        const absOf = (n: FlowNode): { x: number; y: number } => {
+          const p = n.parent ? byId.get(n.parent) : undefined;
+          const o = p ? absOf(p) : { x: 0, y: 0 };
+          return { x: o.x + (n.pos?.x ?? 0), y: o.y + (n.pos?.y ?? 0) };
+        };
+        wires = routeEdges(withDrags.map((n) => ({ ...n, pos: absOf(n) })), edges.filter((e) => !e.source.startsWith("step:")));
+        const lane = edges.filter((e) => e.source.startsWith("step:"));
+        wires = wires.concat(lane);
+      }
       // Progressive hydration: paint the first chunk now (the ready marker and
       // the first viewport come up immediately), the rest lands next frame so
       // a 2 600-node canvas still paints under the perf bar.
@@ -164,7 +182,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
         if (!edgesSet && done >= Math.min(FIRST + CHUNK, sorted.length)) {
           // Edges hydrate with the second chunk – the first paint renders nodes only.
           edgesSet = true;
-          setRfEdges(edges.map((e) => ({
+          setRfEdges(wires.map((e) => ({
             id: e.id, source: e.source, target: e.target, type: "flow-edge",
             data: { ...e }, zIndex: 0, // edges under nodes (n8n §5): the 40 px hit path must never eat a card's hover or drag
           })));
@@ -182,8 +200,28 @@ function FlowCanvasInner(props: FlowCanvasProps) {
               const n = focusId ? rf.getNode(focusId) : null;
               if (n) {
                 const d = n.data as FlowNode;
-                const cx = n.position.x + ((d.size?.w ?? 200) / 2), cy = n.position.y + ((d.size?.h ?? 120) / 2);
-                rf.setCenter(cx, cy, { zoom: props.initialZoom ?? 0.85, duration: reduced.current ? 0 : 200 });
+                const z = props.initialZoom ?? 0.85;
+                // Section members are positioned relative to their frame:
+                // walk the parent chain for the canvas position.
+                const abs = { ...n.position };
+                for (let p = n.parentId ? rf.getNode(n.parentId) : undefined; p; p = p.parentId ? rf.getNode(p.parentId) : undefined) { abs.x += p.position.x; abs.y += p.position.y; }
+                let cx = abs.x + ((d.size?.w ?? 200) / 2), cy = abs.y + ((d.size?.h ?? 120) / 2);
+                // Never land with empty canvas above or left of the map: when
+                // the focus sits near the map's top-left, clamp the camera so
+                // the view starts at the map's edge (U5 – the landing showed
+                // ~300px of nothing over the first row).
+                const box = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
+                const tops = rf.getNodes().filter((m) => !m.parentId);
+                if (box && tops.length) {
+                  const minX = Math.min(...tops.map((m) => m.position.x)), minY = Math.min(...tops.map((m) => m.position.y));
+                  cx = Math.max(cx, minX - 40 + box.width / (2 * z));
+                  // Clear whatever chrome floats over the canvas top (the map HUD row
+                  // drops onto the canvas on phone).
+                  const hudBottom = Math.max(box.top, ...[...document.querySelectorAll(".map-hud")].map((h) => h.getBoundingClientRect().bottom));
+                  const pad = Math.max(34, hudBottom - box.top + 16) / z;
+                  cy = Math.max(cy, minY - pad + box.height / (2 * z));
+                }
+                rf.setCenter(cx, cy, { zoom: z, duration: reduced.current ? 0 : 200 });
               } else {
                 rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 });
               }

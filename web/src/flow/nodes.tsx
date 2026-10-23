@@ -137,7 +137,7 @@ const GroupNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
   const w = data.size?.w ?? 256;
   const h = data.size?.h ?? 128;
   return (
-    <div className={`fc-node fc-group${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}`} style={{ width: w, height: h }} data-testid={`fc-node-${data.id}`}>
+    <div className={`fc-node fc-group${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${data.color ? " fc-group-hue" : ""}`} style={{ width: w, height: h, ["--fc-hue" as string]: data.color }} data-testid={`fc-node-${data.id}`}>
       <TBar id={data.id} data={data} />
       <div className="fc-group-head">
         <span className="fc-group-label">{data.title}</span>

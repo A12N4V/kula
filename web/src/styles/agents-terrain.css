@@ -14,7 +14,9 @@
 }
 .at-band-row {
   display: flex; gap: 10px;
-  height: 144px;
+  /* content height, capped: teams read as one line of members, so a fixed
+     144px row left two thirds of the band empty above the map (U5). */
+  max-height: 144px;
   padding: 6px 12px 10px;
   overflow-x: auto; overflow-y: hidden;
   align-items: stretch;

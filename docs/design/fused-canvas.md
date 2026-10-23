@@ -98,7 +98,8 @@ solid `--text-3` at 55% alpha; selected = full-strength border + fill shift
 
 Layers (one compact toggle, no sub-tabs – acceptance 1):
 **Blocks · Flows · Chains · Fences · Agents · Runs.**
-Defaults: Blocks + Agents + Runs on; Flows and Chains off until picked from a
+Defaults: Blocks + Flows + Agents + Runs on (U5: wires are gutter-routed and
+coloured by directory, so they no longer clutter); Chains off until picked from a
 list; Fences on when an agent is selected. Turning a layer off hides its
 marks and never navigates.
 
