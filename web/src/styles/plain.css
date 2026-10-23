@@ -90,3 +90,4 @@
 .u9-result:hover { background: var(--bg-2, #1a1a1a); }
 .u9-result-score { color: var(--text-3, #777); }
 .u9-results-empty { font-size: 11px; color: var(--text-3, #777); padding: 4px 8px; }
+@media (min-width: 721px) { .u9-insp-only { display: none; } }

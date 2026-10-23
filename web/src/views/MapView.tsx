@@ -771,11 +771,9 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             dock on the map when the inspector is closed, so they are
             reachable with no click (the critic's T2/T4 finding). With the
             inspector open the same panel rides its top, as before. */}
-        {!insp && (
-          <div className="u9-dock" data-testid="map-plain-dock">
-            <PlainPanel agents={ws.info?.workflows.filter((w) => !w.builtin).map((w) => w.name)} />
-          </div>
-        )}
+        <div className="u9-dock" data-testid="map-plain-dock">
+          <PlainPanel agents={ws.info?.workflows.filter((w) => !w.builtin).map((w) => w.name)} />
+        </div>
         {/* With the inspector open the other HUD buttons would hide behind it
             (the inspector covers the top-right), but Roles must stay reachable
             – the lens presets and role filter live in its popover. It docks to
@@ -795,8 +793,9 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           <Grip id="inspector" edge="left" min={300} max={960} label="Resize inspector" />
           {/* U7 – the key: always available at the top of the right column. */}
           <Legend data={data} ringHue={flowPick != null ? flowHue(flowPick) : null} />
-          {/* U9 – the reading layer: run control, progress, code-names toggle. */}
-          <PlainPanel agents={ws.info?.workflows.filter((w) => !w.builtin).map((w) => w.name)} />
+          {/* U9 – the reading layer: run control, progress, code-names toggle.
+              Phone only here – desktop keeps it docked on the canvas. */}
+          <div className="u9-insp-only"><PlainPanel agents={ws.info?.workflows.filter((w) => !w.builtin).map((w) => w.name)} /></div>
           <header>            <div className="row">
               <div className="kind">{inspHead.kind}</div>
               <span className="spacer" />
