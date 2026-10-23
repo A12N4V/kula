@@ -24,34 +24,35 @@ const kindGlyph: Record<string, string> = { fn: GLYPH.function, class: GLYPH.cla
     the one-sentence summary on hover, and the question box's lit squares.
     Words come from the shared explain store; until named, the block's theme
     fallback (already in `title`) stands – the map never blanks. */
-function PlainCaption({ data, title }: { data: BlockCardDataWithSize; title: string }) {
+function PlainCaption({ data, title, hover }: { data: BlockCardDataWithSize; title: string; hover: boolean }) {
   const ex = useExplain();
   const show = useShowCode();
   const { zoomLevel = "mid" } = useFc();
-  const [hover, setHover] = useState(false);
   const { hits, top } = useQuestionHits();
   const id = data.id;
   const block = id ? ex?.blocks[id] : undefined;
   const code = show || zoomLevel === "near";
-  const words = code ? title : (block?.plain || title);
+  // While the explain payload is in flight the caption shows a quiet
+  // placeholder, never the technical title – the default reading layer must
+  // not flash code names on first paint (X5 §1.1; the critic's T1 finding).
+  const words = code ? title : (block?.plain || (ex ? title.replace(/^.*? · /, "") : "…"));
   const lit = hits.includes(id ?? "");
   const isTop = top != null && top === id;
   return (
     <>
       <span
         className={`fc-card-name fc-card-caption fc-solid-name${lit ? " u9-lit" : ""}${isTop ? " u9-top" : ""}`}
-        data-testid="x5-plain-caption" data-block={id} title={code ? title : (block?.plain || title)}
-        onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+        data-testid="x5-plain-caption" data-block={id}
       >{words}</span>
       {hover && block?.sentence && (
         // X5 §1.3 – the summary is anchored to the square (not the pointer),
-        // floats above the node face like n8n's hover toolbar.
+        // floats above the node face like n8n's hover toolbar. The hover
+        // itself lives on the square's face (BlockNode), not this span.
         <div className="u9-sentence" data-testid="x5-plain-sentence" role="tooltip">{block.sentence}</div>
       )}
     </>
   );
 }
-
 /** The resize handle: bottom-right, 12 px hit (40 px at touch). Drag end
     commits the size through onResize so the kit persists it once, not per
     frame – the re-measure (React Flow's ResizeObserver) then reflows the
@@ -117,6 +118,9 @@ const BlockCard = memo((props: NodeProps) => {
   const qLit = useQuestionHits();
   const qTop = qLit.top != null && qLit.top === (data.id ?? id);
   const qHit = qLit.hits.includes(data.id ?? id ?? "");
+  // U9 – hover is the square's face, not the caption span: pointing anywhere
+  // on the square shows the one-sentence summary (X5 §1.3; the critic's T3).
+  const [hover, setHover] = useState(false);
   if (data.solid) {
     // Nested-squares map: a solid square in the directory hue carrying the
     // language/kind glyph (the Graph view's hub tile); the name rides under
@@ -126,7 +130,8 @@ const BlockCard = memo((props: NodeProps) => {
     return (
       <div data-fc-has={data.has} className={`fc-node fc-card fc-solid${data.leaf ? " fc-solid-leaf" : ""}${selected ? " fc-sel" : ""}${data.dim ? " fc-dim" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}${zoomLevel === "far" ? " fc-solid-far" : ""}${qHit ? " u9-q-hit" : ""}${qTop ? " u9-q-top" : ""}`}
         style={{ width: w, height: h, ["--fc-hue" as string]: data.hue ?? data.color ?? "var(--text-3)" }}
-        data-testid={`fc-node-${id}`} data-fc-stage="1" data-block={id} title={`${data.title}${data.dir ? ` – ${data.dir}` : ""}${data.openable ? " · click to open" : ""}`}>
+        data-testid={`fc-node-${id}`} data-fc-stage="1" data-block={id} title={`${data.title}${data.dir ? ` – ${data.dir}` : ""}${data.openable ? " · click to open" : ""}`}
+        onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
         <TBar id={id ?? data.id} data={data} />
         <div className={`fc-solid-sq${data.flowHue ? " fc-solid-flow" : ""}`} style={{ width: S, height: S, ...(data.flowHue ? { ["--vf-hue" as string]: data.flowHue } : {}) }} data-testid={qTop ? "x5-question-top" : qHit ? "x5-question-hit" : undefined}>
           <span className="fc-solid-glyph" aria-hidden="true">{data.glyph ?? "·"}</span>
@@ -134,7 +139,7 @@ const BlockCard = memo((props: NodeProps) => {
           {data.openable && <span className="fc-solid-open" aria-hidden="true">+</span>}
           {data.badge}
         </div>
-        <PlainCaption data={data} title={data.title} />
+        <PlainCaption data={data} title={data.title} hover={hover} />
         <Handle type="target" position={Position.Left} id="l" className="fc-dot" isConnectable={false} style={{ top: S / 2 }} />
         <Handle type="source" position={Position.Right} id="r" className="fc-dot" isConnectable={false} style={{ top: S / 2 }} />
       </div>

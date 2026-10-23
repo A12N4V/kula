@@ -170,11 +170,13 @@ export function PlainPanel({ agents, onPick }: { agents?: string[]; onPick?: (id
         </div>
       )}
       {reason && <div className="u9-reason" data-testid="x5-plain-reason" role="alert">{reason}</div>}
-      <label className="u9-toggle-row">
-        <input type="checkbox" checked={show} aria-pressed={show ? "true" : "false"} data-testid="x5-plain-toggle"
-          onChange={(e) => setShowCode(e.target.checked)} />
+      {/* A button with aria-pressed, not a checkbox (a checkbox's role ignores
+          aria-pressed – the contract's state signal must stay readable). */}
+      <button type="button" className={`u9-toggle-row${show ? " on" : ""}`} data-testid="x5-plain-toggle"
+        aria-pressed={show ? "true" : "false"}
+        onClick={() => setShowCode(!show)}>
         Show code names
-      </label>
+      </button>
     </div>
   );
 }
@@ -182,8 +184,8 @@ export function PlainPanel({ agents, onPick }: { agents?: string[]; onPick?: (id
 /** The rail search's "Ask in plain words" mode: the query goes to semantic
     search, the top squares light up, the results list under the box pairs
     each hit's plain name with its score, and picking one pans to its square. */
-export function RailSearch({ value, onChange, onSubmit, onPick }: {
-  value: string; onChange: (v: string) => void; onSubmit: () => void; onPick: (blockId: string) => void;
+export function RailSearch({ open, value, onChange, onSubmit, onPick }: {
+  open: boolean; value: string; onChange: (v: string) => void; onSubmit: () => void; onPick: (blockId: string) => void;
 }) {
   const [mode, setMode] = useState(false);
   const [results, setResults] = useState<QuestionHit[] | null>(null);
@@ -194,12 +196,41 @@ export function RailSearch({ value, onChange, onSubmit, onPick }: {
       const r = await get<{ hits: QuestionHit[]; mode: string }>(`/api/search/semantic?q=${encodeURIComponent(s)}&limit=5`);
       const hits = r.hits ?? [];
       setResults(hits);
-      // The squares light by block id (the captions' keys), brightest for the
-      // top hit; ties stay in the API's list order (X5 §4).
-      setQuestionHits(hits.map((h) => h.id), hits[0]?.id ?? null);
+      // Hits are block ids, but a hit folded inside a closed square has no
+      // square to light – it lights its top-level ancestor instead (the
+      // answer's neighbourhood). The top answer's square is ringed and the
+      // camera reveals it via onPick, so the answer is on screen (X5 §4).
+      let byId = new Map<string, { id: string; parent?: string | null }>();
+      try {
+        const raw = await get<{ blocks: Record<string, { id: string; parent?: string | null }> | { id: string; parent?: string | null }[] }>("/api/map");
+        const list = Array.isArray(raw.blocks) ? raw.blocks : Object.values(raw.blocks);
+        byId = new Map(list.map((b) => [b.id, b]));
+      } catch { /* keep the raw ids */ }
+      const topOf = (id: string): string => {
+        let b = byId.get(id);
+        while (b?.parent != null && b.parent !== "__root") b = byId.get(b.parent);
+        return b?.id ?? id;
+      };
+      const lits = [...new Set(hits.map((h) => topOf(h.id)))];
+      const top = hits[0] ? topOf(hits[0].id) : null;
+      setQuestionHits(lits, top);
+      if (top) onPick(top);
     } catch { /* offline – the box stays open */ }
   };
   const close = () => { setResults(null); clearQuestionHits(); };
+  // With the box closed and the question mode off, the rail carries only the
+  // "Ask in plain words" pill – the mode must be reachable with no click to
+  // open anything (X5 §4; the critic's T8 finding). Turning it on opens the
+  // question box in place; the rail's search icon still toggles `open`.
+  if (!open && !mode) {
+    return (
+      <button type="button" className="u9-q-peek" data-testid="x5-question-mode"
+        title="Ask in plain words – search by meaning"
+        onClick={() => setMode(true)}>
+        Ask in plain words
+      </button>
+    );
+  }
   return (
     <>
       <form className="u2-rail-search" data-testid="u2-rail-search-form"

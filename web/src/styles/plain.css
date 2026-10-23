@@ -30,13 +30,41 @@
 .fc-solid-name.u9-lit { color: var(--accent, #f80); }
 .fc-solid-name.u9-top { color: var(--accent, #f80); font-weight: 600; }
 
+/* The rail's search slot shares the HUD's z-index (22) but sits earlier in
+   the DOM, so at narrow desktop widths the HUD's vertical stack covers the
+   slot's top – the slot drops below the rail's buttons (flex order). */
+.u2-rail > .u9-q-peek, .u2-rail > .u2-rail-search { order: 10; }
+
 /* The right column's panel: run control, progress, reason, code-names toggle. */
 .u9-panel { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line-1, #222); }
 .u9-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .u9-agent { font-size: 11px; padding: 2px 4px; }
 .u9-progress { font-size: 11px; color: var(--text-2, #999); }
 .u9-reason { font-size: 11.5px; color: var(--accent, #f80); }
-.u9-toggle-row { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+/* The toggle is a button with aria-pressed (a checkbox's role ignores it). */
+.u9-toggle-row {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;
+  font: inherit; padding: 3px 6px; background: transparent; color: var(--text-2, #999);
+  border: 1px solid var(--line-2, #333); align-self: flex-start; text-align: left;
+}
+.u9-toggle-row[aria-pressed="true"] { border-color: var(--accent, #f80); color: var(--accent, #f80); }
+
+/* The panel docked on the map when the inspector is closed – always
+   reachable, no click (X5 §1; the critic's T2/T4 finding). The key dock owns
+   the bottom-left, so the reading layer rides the bottom-right. */
+.u9-dock { position: absolute; right: 60px; bottom: 52px; z-index: 8; width: 250px;
+  background: var(--panel, #121110); border: 1px solid var(--line-2); border-radius: var(--radius); pointer-events: auto; }
+.u9-dock .u9-panel { border-bottom: 0; }
+@media (max-width: 720px) { .u9-dock { right: 8px; bottom: 140px; width: 200px; } }
+
+/* The question box's closed-state pill on the rail: the mode is reachable
+   with no click (X5 §4; the critic's T8 finding). */
+.u9-q-peek {
+  font: inherit; font-size: 10.5px; letter-spacing: 0.02em;
+  padding: 4px 8px; border: 1px solid var(--line-2, #333); border-radius: var(--radius-sm, 6px);
+  background: var(--panel, #121110); color: var(--text-2, #999); cursor: pointer; white-space: nowrap;
+}
+.u9-q-peek:hover { border-color: var(--accent, #f80); color: var(--accent, #f80); }
 
 /* The rail question mode: mode pill, results list under the box. */
 .u9-q-mode {
