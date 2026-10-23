@@ -78,9 +78,16 @@ test.describe("u7 journeys and the legend", () => {
     const vp = page.locator("[data-testid=map-flow-canvas] .react-flow__viewport");
     const before = await vp.getAttribute("style");
     await page.locator('[data-testid="x5-journey-next"]').click();
-    // the camera (canvas transform) moved under the strip – pan lands on the
-    // next frame, so poll for it
-    await expect.poll(() => vp.getAttribute("style"), { timeout: 5000 }).not.toBe(before);
+    // the walk lands the camera on the step's square: it is selected and on
+    // screen (the camera only moves when the square was off-screen, so the
+    // transform alone is not the signal – lead, wave 3)
+    void before;
+    await expect.poll(() => page.evaluate(() => {
+      const el = document.querySelector(".react-flow__node.selected");
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
+    }), { timeout: 5000 }).toBe(true);
     await expect(page.locator('[data-testid="x5-journey-step-2"]')).toHaveAttribute("aria-current", "step");
     await page.locator('[data-testid="x5-journey-prev"]').click();
     await expect(page.locator('[data-testid="x5-journey-step-1"]')).toHaveAttribute("aria-current", "step");
