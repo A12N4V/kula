@@ -264,15 +264,19 @@ test("rail + and output-port + open the inspector add form; no global add-block 
 // chips, contract defaults; the segmented switch is u2-frames with tabs.
 test("one layer toggle with the six layers and defaults, plus the Map Runs Evals segmented control", async ({ page }) => {
   await opened(page, "map");
+  // U11: the layers live in the Explorer's sheet – open it first.
+  await explore(page);
   const toggle = page.locator('[data-testid="u2-layers"]');
   await expect(toggle).toBeVisible();
   for (const id of ["blocks", "flows", "chains", "fences", "agents", "runs"])
     await expect(toggle.locator(`[data-testid="u2-layer-${id}"]`)).toBeVisible();
   const on = (await toggle.locator("[aria-pressed=true]").allTextContents()).sort();
-  expect(on, "defaults are Blocks + Flows + Runs (contract §5; Agents is a toggle since U5)").toEqual(["Blocks", "Flows", "Runs"]);
+  expect(on, "defaults are Blocks + Flows + Agents + Runs (Agents live on the map now)").toEqual(["Agents", "Blocks", "Flows", "Runs"]);
   const seg = page.locator('[data-testid="u2-frames"]');
   await expect(seg).toBeVisible();
-  for (const mode of ["Map", "Runs", "Evals"]) await expect(seg.getByText(mode, { exact: true })).toBeVisible();
+  // U11: the switch is icon-only – labels live in title/aria-label
+  for (const mode of ["Map", "Runs", "Evals"])
+    await expect(seg.locator(`[aria-label="${mode}"], [title="${mode}"]`).first()).toBeVisible();
   await expect(seg.locator('[data-testid="u2-frame-map"]')).toHaveAttribute("aria-selected", "true");
 });
 

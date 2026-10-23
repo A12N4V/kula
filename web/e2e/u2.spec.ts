@@ -17,15 +17,18 @@ async function open(page: Page, hash = "map") {
 
 test("the layer toggle exists with the six layers and the contract defaults", async ({ page }) => {
   await open(page);
+  // U11: the layers live in the Explorer's sheet – open it first.
+  await explore(page);
   const layers = page.locator("[data-testid=u2-layers]");
   await expect(layers).toBeVisible();
   for (const id of ["blocks", "flows", "chains", "fences", "agents", "runs"])
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toBeVisible();
   // Defaults: Blocks + Flows + Agents + Runs on, the rest off (contract §5;
-  // Flows on since U5 routes wires through the gutters).
-  for (const id of ["blocks", "flows", "runs"])
+  // Flows on since U5 routes wires through the gutters; Agents on since the
+  // actor band dissolved – agents live on the map, U11 wave 1).
+  for (const id of ["blocks", "flows", "runs", "agents"])
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toHaveAttribute("aria-pressed", "true");
-  for (const id of ["chains", "fences", "agents"])
+  for (const id of ["chains", "fences"])
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toHaveAttribute("aria-pressed", "false");
 });
 
@@ -37,6 +40,8 @@ test("turning a layer off hides its marks and back on restores them", async ({ p
   const edges = page.locator("[data-testid=map-flow] .react-flow__edge");
   const id = await edges.evaluateAll((els) => {
     for (const el of els) {
+      // agent wires belong to the Agents layer and never hide with Flows
+      if (el.getAttribute("data-id")?.startsWith("agent:")) continue;
       const b = el.getBoundingClientRect();
       if (b.width > 0 && b.height > 0) return el.getAttribute("data-id");
     }

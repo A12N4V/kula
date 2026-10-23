@@ -523,6 +523,11 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
    percentage max-height resolves against the canvas – the sheet can never
    grow past it (U11). */
 body:has([data-testid=map-inspector]) .ex-wrap { right: calc(var(--size-inspector, 400px) + 24px); }
+/* With the inspector open the toggle steps left of it – at narrower
+   desktop widths it would ride the map headline, so it goes icon-only. */
+@media (max-width: 1280px) {
+  body:has([data-testid=map-inspector]) .ex-btn span { display: none; }
+}
 .ex-btn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 8px;
   background: var(--panel); color: var(--text-2); font: 500 12px var(--mono); cursor: pointer; transition: border-color .12s, color .12s; }
 .ex-btn svg { width: 14px; height: 14px; }

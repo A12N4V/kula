@@ -54,13 +54,13 @@
 .u9-toggle-row[aria-pressed="true"] { border-color: var(--accent, #f80); color: var(--accent, #f80); }
 
 /* U11 placement – the reading layer and the key never cover squares: both
-   collapse to chips in the canvas's top strip, left of the Explorer toggle
-   (the layout keeps that band square-free; squares start ~72 px down in
-   every measured run). Expanding a chip is user-initiated – its panel then
-   rides the canvas like any other chrome. While the Explorer's sheet is
-   open the chips step left of it, staying reachable. */
-.u9-dock { position: absolute; left: auto; right: 208px; top: 12px; bottom: auto; width: auto; max-width: min(560px, 50%); z-index: 27; }
-.u7-key-dock { left: auto; right: 132px; top: 12px; bottom: auto; width: auto; z-index: 27; }
+   collapse to chips fixed in the chrome strip beside the Explorer toggle
+   (y 60–90, left of it). Squares on the default camera start at y≈107
+   there, and the canvas column at x≈1176 stays clear. Expanding a chip is
+   user-initiated – its panel then rides the canvas like any other chrome.
+   While the Explorer's sheet is open the chips step left of it. */
+.u9-dock { position: fixed; left: auto; right: 180px; top: 60px; bottom: auto; width: auto; max-width: min(560px, 50%); z-index: 27; }
+.u7-key-dock { position: fixed; left: auto; right: 116px; top: 60px; bottom: auto; width: auto; z-index: 27; }
 /* Collapsed, each dock is chip-sized – the top-right corner square (b106-class)
    stays clear. Expanding is user-initiated; the panel may then ride the
    canvas like any other chrome. */
@@ -80,12 +80,19 @@ body:has([data-testid=map-explorer-btn].on) .u7-key-dock { right: 388px; }
 .u9-chip.on { border-color: var(--accent); color: var(--accent); }
 .u9-chip-n { font-size: 10px; color: var(--text-3); font-weight: 600; }
 .u9-chip.on .u9-chip-n { color: inherit; }
-.u9-dock .u9-panel { flex-direction: column; align-items: stretch; padding: 6px 8px; gap: 6px;
+.u9-dock .u9-panel { flex-direction: column; align-items: stretch; padding: 0; gap: 6px;
   background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; }
+.u9-dock .u9-panel.u9-open { padding: 6px 8px; }
 .u9-body { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
 .u9-dock .u9-panel { border-bottom: 1px solid var(--line-2); }
 /* the key chip: same height and line as the plain-words chip */
-.u7-key-dock .u7-legend-head { height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--panel); }
+/* the key chip: same height and line as the plain-words chip; the open
+   panel must not stretch the head across the plain chip (width:100% head
+   in a shrink-to-fit dock grows with the panel – keep the head content- 
+   sized and give the panel its own 200 px) */
+.u7-key-dock .u7-legend { display: flex; flex-direction: column; align-items: flex-end; }
+.u7-key-dock .u7-legend-panel { align-self: stretch; width: 200px; box-sizing: border-box; }
+.u7-key-dock .u7-legend-head { width: auto; height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--panel); }
 /* Phone: the right column and layers fill the edge – both live in the
    inspector there, and the rail search icon carries the question. */
 @media (max-width: 720px) { .u9-dock, .u2-rail > .u9-q-peek { display: none; } }
