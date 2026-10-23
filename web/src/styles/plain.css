@@ -56,10 +56,12 @@
 /* The panel docked on the map when the inspector is closed – always
    reachable, no click (X5 §1; the critic's T2/T4 finding). The key dock owns
    the bottom-left, so the reading layer rides the bottom-right. */
-.u9-dock { position: absolute; right: 60px; bottom: 52px; z-index: 8; width: 250px;
+.u9-dock { position: absolute; left: 224px; bottom: 52px; z-index: 8; width: 250px;
   background: var(--panel, #121110); border: 1px solid var(--line-2); border-radius: var(--radius); pointer-events: auto; }
 .u9-dock .u9-panel { border-bottom: 0; }
-@media (max-width: 720px) { .u9-dock { right: 8px; bottom: 140px; width: 200px; } }
+/* Phone: the right column and layers fill the edge – the panel lives in the
+   inspector there, and the rail search icon carries the question. */
+@media (max-width: 720px) { .u9-dock, .u2-rail > .u9-q-peek { display: none; } }
 
 /* The question box's closed-state pill on the rail: the mode is reachable
    with no click (X5 §4; the critic's T8 finding). */

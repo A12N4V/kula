@@ -166,7 +166,7 @@ export function PlainPanel({ agents, onPick }: { agents?: string[]; onPick?: (id
       </div>
       {data && (
         <div className="u9-progress mono" data-testid="x5-plain-progress" role="status" aria-live="polite">
-          {data.status.named} / {data.status.total} named{data.stale ? " – mapping…" : ""}
+          {data.status.named} / {data.status.total} named{running ? " – mapping…" : data.stale ? " – some out of date" : ""}
         </div>
       )}
       {reason && <div className="u9-reason" data-testid="x5-plain-reason" role="alert">{reason}</div>}

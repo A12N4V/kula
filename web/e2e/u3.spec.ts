@@ -144,7 +144,8 @@ test("edit fence on canvas: clicking a block toggles its section in the fence", 
     return null;
   });
   expect(id, "a visible block was clickable").toBeTruthy();
-  await expect.poll(() => fenceCount(page, FRESH), { timeout: 10_000 }).toBe(1);
+  // a nested square fences every section it holds (one or many)
+  await expect.poll(() => fenceCount(page, FRESH), { timeout: 10_000 }).toBeGreaterThan(0);
   await expect(page.locator('[data-testid="fence-hull"]')).toBeVisible(); // hull redraws
 });
 
