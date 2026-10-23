@@ -457,7 +457,7 @@ span.fm-lane-stop { cursor: default; }
 .u7-lg-row dd { margin: 0; }
 .u7-lg-sample { flex: none; display: inline-flex; align-items: center; gap: 3px; width: 64px; }
 .u7-lg-swatch { width: 10px; height: 10px; flex: none; border-radius: var(--radius-sm, 2px); }
-.u7-lg-sq { display: inline-block; background: var(--text-3); border-radius: 1px; flex: none; }
+.u7-lg-sq { display: inline-block; background: var(--text-3); border-radius: var(--radius-sm, 2px); flex: none; }
 .u7-sq-1 { width: 5px; height: 5px; }
 .u7-sq-2 { width: 8px; height: 8px; }
 .u7-sq-3 { width: 12px; height: 12px; }
