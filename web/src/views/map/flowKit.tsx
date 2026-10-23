@@ -65,6 +65,12 @@ type Props = {
   onNodeTool?: (id: string, action: "open" | "pin" | "run") => void;
   /** Blocks whose pin is on – the toolbar shows the state. */
   pinned?: string | null;
+  /** U6 – the agent library, one row per non-builtin workflow: `sections`
+      are the section ids its fence covers (empty = access to the whole
+      codebase). Rendered on the terrain only when `agentsOn`. */
+  agents?: { name: string; sections: string[] }[];
+  /** The Agents layer toggle: off → no agent marks anywhere. */
+  agentsOn?: boolean;
   /** U2: a block id to pan the camera to (search). Camera-only – the layout
       key does not change, so no re-layout can follow (PLAN P4.6). */
   reveal?: string | null;
@@ -189,7 +195,7 @@ function fnIcon(kind: string) {
     degree, the flows and chains it belongs to); sections render as frames
     holding their cards. Selection is single-writer (the kit); a focused
     chain dims everything it does not cross through the kit's `dim` flag. */
-export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal }: Props) {
+export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal, agents = [], agentsOn = false }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   const lit = (id: string) => !focus?.chain || focus.on.has(id);
   const [openPath, setOpenPath] = useState<string[]>([]);
@@ -396,6 +402,71 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   });
   void closedH;
 
+  // U6 – agents on the terrain. With the Agents layer on: a fenced agent is
+  // an agent square (harmonograph mark, its name, a dashed hue border)
+  // placed beside the squares it is fenced to – same row as its first
+  // visible fenced square, one grid step left – with dashed wires into each
+  // visible fenced square. An agent with access to the whole codebase sits
+  // left of one single "whole codebase" block: a solid square banded by the
+  // map's directory shares, wired into by every unfenced agent. Agents off
+  // → no agent marks anywhere (nothing below runs).
+  if (agentsOn && agents.length) {
+    const AGENT_W = 176, GRID = 40;
+    const agentHue = (n: string) => `hsl(${hue(n)} 60% 58%)`;
+    const posOf = new Map(nodes.filter((n) => n.pos).map((n) => [n.id, n.pos!]));
+    const unfenced = agents.filter((a) => !a.sections.length);
+    if (unfenced.length) {
+      // Directory shares across the whole map, as the square's colour bands
+      // (one band per directory, widest = the most code).
+      const share = new Map<string, { n: number; color: string }>();
+      let total = 0;
+      for (const sid of Object.keys(sections)) {
+        const n = symbolsUnder(data.blocks, sid).length;
+        if (!n) continue;
+        const d = dirOfBlock(sid);
+        const cur = share.get(d.dir) ?? { n: 0, color: d.color };
+        cur.n += n;
+        share.set(d.dir, cur);
+        total += n;
+      }
+      const bands = [...share.values()].sort((a, b) => b.n - a.n).slice(0, 4)
+        .map((s) => ({ color: s.color, pct: total ? Math.max(4, Math.round((s.n / total) * 100)) : 0 }));
+      const CB = { x: -240, y: 0 };
+      nodes.push({
+        id: "codebase", kind: "block", solid: true, title: "Whole codebase",
+        subtitle: "deployed on everything",
+        card: { hue: bands[0]?.color ?? "var(--text-3)", glyph: "ALL", dir: "everything" },
+        size: { w: 160, h: 182 }, pos: CB,
+        badge: <span className="u6-bands" data-testid="x5-agent-band" aria-hidden="true">
+          {bands.map((b, i) => <i key={i} style={{ background: b.color, width: `${b.pct}%` }} />)}
+        </span>,
+      } as FlowNode);
+      unfenced.forEach((a, i) => {
+        nodes.push({
+          id: `agent:${a.name}`, kind: "agent", title: a.name, subtitle: "whole codebase",
+          color: agentHue(a.name), size: { w: AGENT_W, h: 96 },
+          pos: { x: CB.x - AGENT_W - GRID, y: CB.y + i * 120 },
+        } as FlowNode);
+        edges.push({ id: `agent:${a.name}>codebase`, source: `agent:${a.name}`, target: "codebase", main: false, color: agentHue(a.name) } as FlowEdge);
+      });
+    }
+    const idsNow = new Set(nodes.map((n) => n.id));
+    for (const a of agents) {
+      if (!a.sections.length) continue;
+      const targets = a.sections.map((s) => reps.get(s)).filter((r): r is string => !!r && idsNow.has(r));
+      if (!targets.length) continue;
+      const first = posOf.get(targets[0]);
+      if (!first) continue;
+      nodes.push({
+        id: `agent:${a.name}`, kind: "agent", title: a.name,
+        subtitle: `${a.sections.length} fenced`,
+        color: agentHue(a.name), size: { w: AGENT_W, h: 96 },
+        pos: { x: first.x - AGENT_W - GRID, y: first.y },
+      } as FlowNode);
+      for (const t of targets) edges.push({ id: `agent:${a.name}>${t}`, source: `agent:${a.name}`, target: t, main: false, color: agentHue(a.name) } as FlowEdge);
+    }
+  }
+
   // The pipeline lane: blocks left to right above the map as n8n's square
   // nodes, wired in order, each with a dashed wire down to the section it acts
   // on. A retry loops back to the last agent. Wires carry the run: marching
@@ -514,7 +585,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
     const flat = nodes.map((n) => (n.card ? { ...n, ...n.card } : n));
     return { nodes: flat, edges, groups, reps };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, roles, focus, depth, marks, steps, scheme, meta, onNodeTool, pinned, openPath, graphPaths, flowTint]);
+  }, [data, roles, focus, depth, marks, steps, scheme, meta, onNodeTool, pinned, openPath, graphPaths, flowTint, agents, agentsOn]);
 
   // The landing zoom (R0, readable by default): the busiest section, at a
   // scale where the card labels are legible – fit stays one key away.
@@ -605,7 +676,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
         selection={selection ?? null} onSelect={select} onOpen={open}
         // the focus state rides the layout key: the kit's layout cache keys on
         // node ids/edges only, so a dim change would otherwise never repaint
-        layoutKey={`map-${depth}-${layoutKey}-${focus?.chain ? `f${focus.chain.id}` : "n"}`} ns="map" testId="map-flow-canvas"
+        layoutKey={`map-${depth}-${layoutKey}-${focus?.chain ? `f${focus.chain.id}` : "n"}-a${agentsOn ? 1 : 0}`} ns="map" testId="map-flow-canvas"
       />
       {focus?.chain && <FocusBadge n={focus.on.size} onClear={() => onClearFocus?.()} still={focus.still} />}
     </div>
