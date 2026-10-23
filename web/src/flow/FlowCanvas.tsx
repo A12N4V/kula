@@ -79,6 +79,7 @@ const toRf = (n: FlowNode, sel: string | null, collapsed: Set<string>, chipIds: 
     extent: n.parent ? "parent" : undefined,
     hidden: collapsed.has(n.parent ?? ""),
     selected: sel === n.id,
+    zIndex: n.z,
     // Per-node `draggable: true` would override the global nodesDraggable,
     // so chips set false and everything else stays undefined (global wins,
     // which is what the lock control flips).

@@ -7,6 +7,14 @@ export type FlowStatus = "running" | "success" | "error" | "pinned" | "disabled"
 
 /** A node for the canvas. Sizes come from the kind unless the caller overrides. */
 export type FlowNode = {
+  /** Solid square (nested-squares map): filled in its hue, no card body. */
+  solid?: boolean;
+  /** The square disassembles into children on click. */
+  openable?: boolean;
+  /** A function square at the bottom of a branch. */
+  leaf?: boolean;
+  /** Stacking order (frames sit under their squares, inner over outer). */
+  z?: number;
   id: string;
   kind: FlowNodeKind;
   title: string;

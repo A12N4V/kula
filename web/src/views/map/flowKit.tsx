@@ -7,7 +7,8 @@
 // not cross through the kit's `dim` flag. The capabilities lens renders one
 // swimlane group per entry family from the same pure lens as before.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../../api";
 import { FlowCanvas, type FlowEdge, type FlowGroup, type FlowNode } from "../../flow";
 import { dirColor, groupDirs } from "../../colors";
 import { settings as appSettings } from "../../settings";
@@ -68,6 +69,7 @@ type Props = {
 };
 
 const title = (b: Block) => b.theme || b.name;
+const kindGlyphOf = (k: string) => ({ function: "ƒ", fn: "ƒ", method: "m", class: "C", struct: "S", interface: "I", trait: "T", type: "T", enum: "E", const: "K" } as Record<string, string>)[k] ?? "·";
 const secId = (b: Block) => `sec:${b.id}`;
 const fnId = (n: number) => `fn:${n}`;
 const moreId = (b: Block) => `more:${b.id}`;
@@ -188,6 +190,11 @@ function fnIcon(kind: string) {
 export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   const lit = (id: string) => !focus?.chain || focus.on.has(id);
+  const [openPath, setOpenPath] = useState<string[]>([]);
+  // Directory ranks come from the Graph view's own node set, so a directory
+  // has the same hue on both canvases (src/ blue, web/src/ orange, …).
+  const [graphPaths, setGraphPaths] = useState<string[] | null>(null);
+  useEffect(() => { let live = true; api.graph("symbol").then((g) => { if (live) setGraphPaths(g.nodes.filter((n) => n.kind !== "package").map((n) => n.path)); }).catch(() => {}); return () => { live = false; }; }, []);
   const shown = (b: Block) => roles.has(b.role);
 
   // Membership + degree, computed once per payload: the cards read them from
@@ -224,7 +231,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     const reps = new Map<string, string>();
 
   const st = appSettings.get();
-  const dg = groupDirs(Object.values(data.leaves).map((l) => l.path), st.dirDepth);
+  const dg = groupDirs(graphPaths ?? Object.values(data.leaves).map((l) => l.path), st.dirDepth);
   const EXT: Record<string, string> = { rs: "RS", ts: "TS", tsx: "TX", js: "JS", jsx: "JX", mjs: "JS", py: "PY", go: "GO", css: "CS", md: "MD" };
   const dirMemo = new Map<string, { dir: string; color: string; lang: string }>();
   const dirOfBlock = (id: string) => {
@@ -296,57 +303,84 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   // is the same blue here as on the Graph. Frames are tinted with it, wires
   // carry it, and far zoom draws the block as a node of that colour.
   const regionHue = (id: string) => dirOfBlock(id).color;
-  const CELL_W = 336, CELL_H = 320, GAP_Y = 48, GAP_X = 160, HEAD = 48; // cells clear the 320×304 full card in both axes
+  // Nested squares (U5, the Graph view's hub language): every block is one
+  // solid square in its directory hue, sized by symbol count. Clicking a
+  // square disassembles it in place into a tinted frame holding its children
+  // (sub-blocks, then functions at the leaves). One branch is open at a time:
+  // `openPath` is the chain section → … → block, so opening anything off the
+  // path snaps the rest shut and the canvas stays compact.
+  const GAP_X = 120, GAP_Y = 32, PAD = 16, HEAD = 46, FN = 72;
+  const sq = (b: Block) => { const n = symbolsUnder(data.blocks, b.id).length; return Math.round((96 + 56 * Math.min(1, Math.sqrt(n / 150))) / 8) * 8; };
+  const kidsOf = (id: string) => (data.blocks[id]?.children ?? []).map((c) => data.blocks[c]).filter((k): k is Block => !!k && shown(k));
+  const isOpen = (id: string) => openPath.includes(id);
+  type Box = { w: number; h: number; place: (x: number, y: number) => void };
+  const measure = (b: Block, sec: string, level: number): Box => {
+    const kids = kidsOf(b.id);
+    const fns = kids.length ? [] : b.symbols.filter((n) => data.leaves[n]).slice(0, 24);
+    if (!isOpen(b.id) || (!kids.length && !fns.length)) {
+      const S = sq(b);
+      return { w: S, h: S + 22, place: (x, y) => {
+        const c = blockCard(b, sec);
+        nodes.push({ ...c, solid: true, openable: kids.length > 0 || fns.length > 0, size: { w: S, h: S + 22 }, pos: { x, y }, ...markOf(sec, b.id === sec) });
+        reps.set(b.id, b.id);
+      } };
+    }
+    // Open: a frame of children; an open child takes a full row of its own.
+    const parts: Box[] = kids.length ? kids.map((k) => measure(k, sec, level + 1))
+      : fns.map((n) => ({ w: FN, h: FN + 18, place: (x: number, y: number) => {
+          const l = data.leaves[n];
+          nodes.push({ id: fnId(n), kind: "block", title: l.name, solid: true, leaf: true, color: regionHue(sec),
+            card: { hue: regionHue(sec), glyph: kindGlyphOf(l.kind) }, size: { w: FN, h: FN + 18 }, pos: { x, y } } as FlowNode);
+        } }));
+    const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(parts.length))));
+    const rows: Box[][] = [];
+    let row: Box[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      const openKid = kids[i] && isOpen(kids[i].id) && parts[i].w > sq(kids[i]);
+      if (openKid) { if (row.length) rows.push(row); rows.push([parts[i]]); row = []; continue; }
+      row.push(parts[i]);
+      if (row.length === cols) { rows.push(row); row = []; }
+    }
+    if (row.length) rows.push(row);
+    const rw = (r: Box[]) => r.reduce((a, p) => a + p.w, 0) + GAP_Y * (r.length - 1);
+    const rh = (r: Box[]) => Math.max(...r.map((p) => p.h));
+    const w = Math.max(240, ...rows.map(rw)) + PAD * 2;
+    const h = HEAD + rows.reduce((a, r) => a + rh(r), 0) + GAP_Y * (rows.length - 1) + PAD * 2;
+    return { w, h, place: (x, y) => {
+      nodes.push({ id: `open:${b.id}`, kind: "group", title: `${title(b)}`, subtitle: kids.length ? `${kids.length} blocks · click to fold` : `${b.symbols.length} symbols · click to fold`,
+        color: regionHue(sec), size: { w, h }, pos: { x, y }, z: -100 + level } as FlowNode);
+      let cy = y + HEAD + PAD;
+      for (const r of rows) {
+        let cx = x + PAD;
+        for (const p of r) { p.place(cx, cy); cx += p.w + GAP_Y; }
+        cy += rh(r) + GAP_Y;
+      }
+      const first = kids[0]?.id ?? (fns[0] != null ? fnId(fns[0]) : undefined);
+      if (first) reps.set(b.id, reps.get(first) ?? first);
+    } };
+  };
   const columns: string[][] = [...layers.map((l) => l.filter((id) => sections[id] && shown(sections[id])))];
   const bandShown = band.filter((id) => sections[id] && shown(sections[id]));
   if (bandShown.length) columns.push(bandShown);
   const colOf = new Map<string, number>();
-  // A busy layer used to stack every section into one column thousands of
-  // pixels tall, so the map read as a thin strip and Fit bottomed out at the
-  // min zoom. Wrap a layer into sub-columns past a target height picked so
-  // the whole map lands near the canvas's 16:10 shape (B4 text density).
-  const kidsOf = (id: string) => sections[id].children.map((c) => data.blocks[c]).filter((k): k is Block => !!k && shown(k));
-  const extent = (id: string) => {
-    const kids = kidsOf(id);
-    if (!(depth >= 2 && kids.length > 0)) return { w: 288, h: (kids.length ? 304 : 192) + GAP_Y };
-    const cols = Math.min(3, Math.ceil(Math.sqrt(kids.length)));
-    return { w: cols * CELL_W, h: HEAD + Math.ceil(kids.length / cols) * CELL_H + GAP_Y };
-  };
-  const area = columns.flat().reduce((a, id) => { const e = extent(id); return a + (e.w + GAP_X) * e.h; }, 0);
-  const tallest = Math.max(0, ...columns.flat().map((id) => extent(id).h));
-  const WRAP_H = Math.max(tallest, Math.sqrt(area / 1.6));
+  // Wrap a busy layer into sub-columns so the closed map lands near 16:10.
+  const closedH = Math.max(...Object.values(sections).map((b) => sq(b) + 22), 120) + GAP_Y;
+  const nSecs = columns.flat().length;
+  const perCol = Math.max(3, Math.ceil(Math.sqrt(nSecs / 1.6)));
   let x = 0;
   columns.forEach((col, ci) => {
     if (!col.length) return;
-    let y = 0, colW = 288;
+    let y = 0, colW = 0, inCol = 0;
     for (const id of col) {
-      const s = sections[id];
       colOf.set(id, ci);
-      if (y > 0 && y + extent(id).h > WRAP_H) { x += colW + GAP_Y * 2; y = 0; colW = 288; }
-      const kids = kidsOf(id);
-      const open = depth >= 2 && kids.length > 0;
-      if (!open) {
-        // The section card: same information-rich card, its blocks listed inside.
-        // Only sections that actually hold shown blocks carry a member list –
-        // an empty list renders a dead .fc-card-members div.
-        nodes.push({ ...blockCard(s), pos: { x: x + 40, y }, ...markOf(id, true), card: { ...blockCard(s).card, members: kids.length ? kids.map((k) => ({ id: k.id, title: title(k), color: colorOf(k, id) })) : undefined } });
-        reps.set(id, s.id);
-        y += (blockCard(s).card?.members?.length ? 304 : 192) + GAP_Y;
-        continue;
-      }
-      const cols = Math.min(3, Math.ceil(Math.sqrt(kids.length)));
-      kids.forEach((k, i) => {
-        const r = Math.floor(i / cols), c = i % cols;
-        nodes.push({ ...blockCard(k, id), pos: { x: x + c * CELL_W, y: y + HEAD + r * CELL_H }, ...markOf(id, i === 0) });
-      });
-      groups.push({ id: secId(s), label: `${title(s)} · ${kids.length} blocks`, members: kids.map((k) => k.id), color: regionHue(id) });
-      reps.set(id, kids[0].id);
-      const rows = Math.ceil(kids.length / cols);
-      y += HEAD + rows * CELL_H + GAP_Y;
-      colW = Math.max(colW, cols * CELL_W);
+      const box = measure(sections[id], id, 0);
+      if (inCol >= perCol && !isOpen(id)) { x += colW + GAP_X; y = 0; colW = 0; inCol = 0; }
+      box.place(x, y);
+      y += box.h + GAP_Y; colW = Math.max(colW, box.w); inCol++;
     }
     x += colW + GAP_X;
   });
+  void closedH;
 
   // The pipeline lane: blocks left to right above the map as n8n's square
   // nodes, wired in order, each with a dashed wire down to the section it acts
@@ -465,7 +499,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     const flat = nodes.map((n) => (n.card ? { ...n, ...n.card } : n));
     return { nodes: flat, edges, groups, reps };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, roles, focus, depth, marks, steps, scheme, meta, onNodeTool, pinned]);
+  }, [data, roles, focus, depth, marks, steps, scheme, meta, onNodeTool, pinned, openPath, graphPaths]);
 
   // The landing zoom (R0, readable by default): the busiest section, at a
   // scale where the card labels are legible – fit stays one key away.
@@ -478,15 +512,24 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   // sidebar reads blocks. Selections that open panels must not run inside
   // React Flow's click dispatch – a synchronous parent update there
   // re-enters the store (React error 185). Defer them a tick.
+  // Click = disassemble (or fold): the open branch is the chain from the
+  // clicked block up to its section, so every other branch snaps shut.
+  const chainOf = (id: string) => { const out: string[] = []; for (let b: Block | undefined = data.blocks[id]; b; b = b.parent ? data.blocks[b.parent] : undefined) { out.unshift(b.id); if (sections[b.id]) break; } return out; };
   const select = (id: string | null) => {
     if (!id || id === "lane") { onSelect?.(null); return; }
+    if (id.startsWith("open:")) { const bid = id.slice(5); setTimeout(() => setOpenPath(chainOf(bid).slice(0, -1)), 0); onSelect?.(bid); return; }
+    if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
+    if (data.blocks[id] && (kidsOfAny(id) || data.blocks[id].symbols.length)) { setTimeout(() => setOpenPath(chainOf(id)), 0); return; }
     onSelect?.(id.startsWith("sec:") ? id.slice(4) : id);
   };
+  function kidsOfAny(id: string) { return (data.blocks[id]?.children ?? []).length > 0; }
   const open = (id: string) => {
     if (id.startsWith("step:")) { onStepTool?.(id.slice(5), "open"); return; }
     if (id === "lane") return;
-    if (id.startsWith("sec:")) { const sid = id.slice(4); setTimeout(() => onDrill(sid), 0); return; }
-    onDrill(id);
+    // Double-click = details: the inspector for a block, the code for a function.
+    if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
+    const bid = id.startsWith("open:") ? id.slice(5) : id.startsWith("sec:") ? id.slice(4) : id;
+    setTimeout(() => onSelect?.(bid), 0);
   };
 
   const dense = edges.length > 120;
@@ -502,7 +545,6 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
         {...canvas}
         reveal={reveal ?? (selection?.startsWith("step:") ? selection : null)}
         minZoom={0.1}
-        route
         initialFocus={busiest}
         initialZoom={0.85}
         nodes={nodes} edges={edges} groups={groups}

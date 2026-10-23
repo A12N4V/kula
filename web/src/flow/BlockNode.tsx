@@ -75,6 +75,28 @@ const BlockCard = memo((props: NodeProps) => {
   const w = data.size?.w ?? BLOCK_SIZES[1].w;
   const h = data.size?.h ?? BLOCK_SIZES[1].h;
   const role = (data.role ?? "core") as Parameters<typeof RoleMark>[0]["role"];
+  if (data.solid) {
+    // Nested-squares map: a solid square in the directory hue carrying the
+    // language/kind glyph (the Graph view's hub tile); the name rides under
+    // it. Openable squares show their child count in the corner.
+    const S = w;
+    return (
+      <div className={`fc-node fc-solid${data.leaf ? " fc-solid-leaf" : ""}${selected ? " fc-sel" : ""}${data.dim ? " fc-dim" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}`}
+        style={{ width: w, height: h, ["--fc-hue" as string]: data.hue ?? data.color ?? "var(--text-3)" }}
+        data-testid={`fc-node-${id}`} data-fc-stage="1" title={`${data.title}${data.dir ? ` – ${data.dir}` : ""}${data.openable ? " · click to open" : ""}`}>
+        <TBar id={id ?? data.id} data={data} />
+        <div className="fc-solid-sq" style={{ width: S, height: S }}>
+          <span className="fc-solid-glyph" aria-hidden="true">{data.glyph ?? "·"}</span>
+          {!data.leaf && data.symbols ? <span className="fc-solid-n mono">{data.symbols}</span> : null}
+          {data.openable && <span className="fc-solid-open" aria-hidden="true">+</span>}
+          {data.badge}
+        </div>
+        <span className="fc-card-name fc-card-caption fc-solid-name" title={data.title}>{data.title}</span>
+        <Handle type="target" position={Position.Left} id="l" className="fc-dot" isConnectable={false} style={{ top: S / 2 }} />
+        <Handle type="source" position={Position.Right} id="r" className="fc-dot" isConnectable={false} style={{ top: S / 2 }} />
+      </div>
+    );
+  }
   // Semantic zoom (docs/design/fused-canvas.md §zoom): far = the caption under
   // the tile, mid = role, files, symbols, in/out, flow badges, fence badge and
   // the last-run dot, near = the function list. A resize forces a level – the
