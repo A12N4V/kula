@@ -126,14 +126,27 @@ const BlockCard = memo((props: NodeProps) => {
           {data.chains?.length ? <span title={`chains: ${data.chains.join(", ")}`}>{data.chains.length} chains</span> : null}
         </div>
       ) : null}
-      {stage >= 3 && data.functions?.length ? (
-        <ul className="fc-card-fns">
-          {data.functions.slice(0, 12).map((f, i) => (
-            <li key={i} title={`${f.name}${f.kind ? ` · ${f.kind}` : ""}`}><span className="fm-kind">{kindGlyph[f.kind] ?? "ƒ"}</span>{f.name}</li>
-          ))}
-          {data.functions.length > 12 && <li className="fc-card-more">+ {data.functions.length - 12} more</li>}
-        </ul>
-      ) : null}
+      {/* Mid shows the first few functions too: the card keeps its full box
+          at mid zoom, and three lines over an empty body read as a broken
+          card (U5, B4 text density). Near lists up to 12. */}
+      {stage >= 2 && data.functions?.length ? (() => {
+        const cap = stage >= 3 ? 12 : 5;
+        // Same-named functions (overloads, per-impl methods) collapse into
+        // one row with a ×N count – five "begin" rows read as a glitch.
+        const rows: { name: string; kind?: string; n: number }[] = [];
+        for (const f of data.functions) {
+          const hit = rows.find((r) => r.name === f.name);
+          if (hit) hit.n++; else rows.push({ name: f.name, kind: f.kind, n: 1 });
+        }
+        return (
+          <ul className="fc-card-fns">
+            {rows.slice(0, cap).map((f, i) => (
+              <li key={i} title={`${f.name}${f.kind ? ` · ${f.kind}` : ""}${f.n > 1 ? ` · ${f.n} definitions` : ""}`}><span className="fm-kind">{kindGlyph[f.kind ?? ""] ?? "ƒ"}</span>{f.name}{f.n > 1 && <span className="fc-card-x">×{f.n}</span>}</li>
+            ))}
+            {rows.length > cap && <li className="fc-card-more">+ {rows.length - cap} more</li>}
+          </ul>
+        );
+      })() : null}
       {data.members ? (
         <div className="fc-card-members">
           {data.members.slice(0, 24).map((m) => (

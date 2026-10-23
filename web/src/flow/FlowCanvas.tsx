@@ -182,8 +182,28 @@ function FlowCanvasInner(props: FlowCanvasProps) {
               const n = focusId ? rf.getNode(focusId) : null;
               if (n) {
                 const d = n.data as FlowNode;
-                const cx = n.position.x + ((d.size?.w ?? 200) / 2), cy = n.position.y + ((d.size?.h ?? 120) / 2);
-                rf.setCenter(cx, cy, { zoom: props.initialZoom ?? 0.85, duration: reduced.current ? 0 : 200 });
+                const z = props.initialZoom ?? 0.85;
+                // Section members are positioned relative to their frame:
+                // walk the parent chain for the canvas position.
+                const abs = { ...n.position };
+                for (let p = n.parentId ? rf.getNode(n.parentId) : undefined; p; p = p.parentId ? rf.getNode(p.parentId) : undefined) { abs.x += p.position.x; abs.y += p.position.y; }
+                let cx = abs.x + ((d.size?.w ?? 200) / 2), cy = abs.y + ((d.size?.h ?? 120) / 2);
+                // Never land with empty canvas above or left of the map: when
+                // the focus sits near the map's top-left, clamp the camera so
+                // the view starts at the map's edge (U5 – the landing showed
+                // ~300px of nothing over the first row).
+                const box = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
+                const tops = rf.getNodes().filter((m) => !m.parentId);
+                if (box && tops.length) {
+                  const minX = Math.min(...tops.map((m) => m.position.x)), minY = Math.min(...tops.map((m) => m.position.y));
+                  cx = Math.max(cx, minX - 40 + box.width / (2 * z));
+                  // Clear whatever chrome floats over the canvas top (the map HUD row
+                  // drops onto the canvas on phone).
+                  const hudBottom = Math.max(box.top, ...[...document.querySelectorAll(".map-hud")].map((h) => h.getBoundingClientRect().bottom));
+                  const pad = Math.max(34, hudBottom - box.top + 16) / z;
+                  cy = Math.max(cy, minY - pad + box.height / (2 * z));
+                }
+                rf.setCenter(cx, cy, { zoom: z, duration: reduced.current ? 0 : 200 });
               } else {
                 rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 });
               }

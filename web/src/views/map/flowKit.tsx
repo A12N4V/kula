@@ -274,6 +274,20 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   const bandShown = band.filter((id) => sections[id] && shown(sections[id]));
   if (bandShown.length) columns.push(bandShown);
   const colOf = new Map<string, number>();
+  // A busy layer used to stack every section into one column thousands of
+  // pixels tall, so the map read as a thin strip and Fit bottomed out at the
+  // min zoom. Wrap a layer into sub-columns past a target height picked so
+  // the whole map lands near the canvas's 16:10 shape (B4 text density).
+  const kidsOf = (id: string) => sections[id].children.map((c) => data.blocks[c]).filter((k): k is Block => !!k && shown(k));
+  const extent = (id: string) => {
+    const kids = kidsOf(id);
+    if (!(depth >= 2 && kids.length > 0)) return { w: 288, h: (kids.length ? 304 : 192) + GAP_Y };
+    const cols = Math.min(3, Math.ceil(Math.sqrt(kids.length)));
+    return { w: cols * CELL_W, h: HEAD + Math.ceil(kids.length / cols) * CELL_H + GAP_Y };
+  };
+  const area = columns.flat().reduce((a, id) => { const e = extent(id); return a + (e.w + GAP_X) * e.h; }, 0);
+  const tallest = Math.max(0, ...columns.flat().map((id) => extent(id).h));
+  const WRAP_H = Math.max(tallest, Math.sqrt(area / 1.6));
   let x = 0;
   columns.forEach((col, ci) => {
     if (!col.length) return;
@@ -281,7 +295,8 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     for (const id of col) {
       const s = sections[id];
       colOf.set(id, ci);
-      const kids = s.children.map((c) => data.blocks[c]).filter((k): k is Block => !!k && shown(k));
+      if (y > 0 && y + extent(id).h > WRAP_H) { x += colW + GAP_Y * 2; y = 0; colW = 288; }
+      const kids = kidsOf(id);
       const open = depth >= 2 && kids.length > 0;
       if (!open) {
         // The section card: same information-rich card, its blocks listed inside.

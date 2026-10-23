@@ -90,6 +90,7 @@
 .fc-card-fns { margin: 2px 0 0; padding: 0 0 0 2px; list-style: none; overflow-y: auto; min-height: 0;
   border-top: 1px solid var(--line); padding-top: 4px; display: flex; flex-direction: column; gap: 2px; }
 .fc-card-fns li { font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-card-fns .fc-card-x { color: var(--text-3); margin-left: 6px; font-size: 10px; }
 .fc-card-fns .fm-kind { color: var(--text-3); margin-right: 4px; }
 .fc-card-more { color: var(--text-3); font-size: 10.5px; }
 .fc-card-members { display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; min-height: 0; }
