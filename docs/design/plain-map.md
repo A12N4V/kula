@@ -191,3 +191,110 @@ that must make the test pass; X6 un-fixmes as each lands.
 
 Visual styling of plain captions, animation timings, wire routing – U8.
 Panel typography – U7. B11 protocol and the final record – X7.
+
+## 8. The record – readability for non-coders (X7, wave 3)
+
+Final record for the plain-language map, run per [PLAN] §B11 and §B10 on the
+fixture repo (`web/e2e/fixture.sh`), one run per viewport × colour scheme:
+1440×900 and 390×844, dark and light. Probe: `.kula-team/scratch/x7-probe.mjs`
+(+ `x7-bench.mjs` for the canvas numbers), raw logs, screenshots and the bench
+JSON in `.kula-team/scratch/x7-{1440d,1440l,390d,390l}.log/.png` and
+`x7-bench-1440.json`. Scores are evidence-based: the evaluator read only the
+words and controls on screen (DOM dump + screenshots), as the non-coder rule
+requires – no code names in the reasoning.
+
+### 8.1 State at recording
+
+The record was taken on the wave-2 exit state (U7 rework `3ae6bfe` merged,
+`7321ed0`): **U9's reading layer had not landed yet** – `views/map/plain.tsx`
+did not exist, no `x5-plain-*` or `x5-question-*` id was in the DOM. This
+section therefore serves double duty: it is the *before* column U9 is building
+against, and the protocol U9 (or the critic) re-runs on the end state. Rows
+marked **pending-U9** must be re-measured after the reading layer lands; the
+table below is not acceptance of §1/§4.
+
+### 8.2 B11 – five non-coder tasks (target: all correct, median ≤ 30 s)
+
+| # | task | result | on-screen evidence |
+|---|---|---|---|
+| 1 | What are the 3 main things this software does? | **fail** | Captions are technical (`src · compare`, `web · flow`, `json · begin`); the legend (1440, visible on landing – 3 ms probe) explains colour and size but names no capability. A non-coder cannot name three things the software does. |
+| 2 | Where is the part that saves files? | **fail** | No question box (`x5-question-mode` absent); typing "saves files" into the rail search lit 0 squares and returned code names only. |
+| 3 | Which agent can change the settings code? | **fail** | Agents toggle on ⇒ 0 agent squares on the terrain (agent marks stay a list off-map at this state); no dashed squares to read capability from. |
+| 4 | Follow what happens when a user runs a search – name the steps. | **fail** | No journey rows reachable without first clicking a square (rows live in the inspector aside); the strip never opened, so there were no numbered steps to follow. |
+| 5 | What did the last run change? | **partial** | The Changes view answers *count* honestly (3 changed files listed) but in jargon: `STAGED`, `M`, `Stage all`, raw diff hunk text. A non-coder can say "3 files", not what changed in plain words. |
+
+**Score: 0 of 5 correct** (task 5 partial). Median task time is not
+meaningful against the target while tasks 1–4 fail at the first screen.
+Scripted interaction times (probe): T1 72 ms, T2 2.2 s, T3 1.0 s, T4 0.1 s
+(no rows), T5 1.6 s – the failures are comprehension failures, not
+navigation-cost failures.
+
+### 8.3 B10 – PREVis, 4 dimensions, 7-point (target ≥ 5.5 each)
+
+Dimensions per the PREVis protocol: Understandability, Relevance,
+Readability, Legibility.
+
+| viewport | Understandability | Relevance | Readability | Legibility |
+|---|---|---|---|---|
+| 1440 dark | 2.5 | 4.0 | 4.0 | 4.5 |
+| 1440 light | 2.5 | 4.0 | 4.0 | 4.5 |
+| 390 dark | 2.0 | 3.0 | 3.5 | 3.5 |
+| 390 light | 2.0 | 3.0 | 3.5 | 3.5 |
+
+Every dimension is below 5.5. Posted to U9 with the fix each implies:
+
+- **Understandability (2.0–2.5)** – plain names missing everywhere. Fix:
+  build §1 – plain caption as default, sentence on hover, code names only on
+  toggle or near zoom.
+- **Relevance (3.0–4.0)** – the legend decodes the visual grammar but no
+  journey rows or question box are reachable from the landing state; at 390
+  the legend is not on landing at all (`legendVisibleOnLanding=false`). Fix:
+  surface journeys + question mode without a click-first path, and keep the
+  key on the phone landing (the docked key hides on phone where the panel
+  legend serves – but the panel is not on the landing state either).
+- **Readability (3.5–4.0)** – captions read `dir · name` with symbol-count
+  prefixes (`RS76+` in the raw dump) that mean nothing to a non-coder; the
+  Changes view mixes stage jargon with diffs. Fix: §1 reading layer for
+  squares; plain-word run summary is a U9/lead follow-up (run diff wording).
+- **Legibility (3.5–4.5)** – no horizontal scroll at 390 (good), but the
+  fit-view caption size at 390 is far under comfortable reading size. Fix:
+  U8's 3-step size scale already landed for squares; captions on phone need
+  the same floor at fit zoom (re-measure B4 at 390 after U9).
+
+### 8.4 Final benchmark table (baseline → end of run)
+
+Baseline column = X6's mid-wave numbers on the U6 base (§1 of
+`plain-interactions.md`); end column = this record, same fixture, 1440×900
+dark, fit view.
+
+| id | metric | baseline (wave 2 mid) | end (this record) | target |
+|---|---|---|---|---|
+| B1 | crossing ratio | 0.358 | 0.365 (808 pairs / 57 nodes, 67 edges) | ≤ 0.05 at rest |
+| B2 | edges through nodes | 62 | 62 | 0 |
+| B3 | border/label vs edge contrast (dark) | holds (.835 vs .418) | holds (.835 vs .418) | holds |
+| B4 | median text density per node | 0.171 | **0.123** (U8 captions in `measure`) | – |
+| B5 | port count / size | 176 × 10.2 px (wave 2 exit) | 114 × 10.2 px | – |
+| B6 | overlap problems 1440 / 390 | 23 / 19 | not re-run (X7 docs-only; U7's final probe reported baseline values) | 0 |
+| B11 | non-coder 5 tasks | not measured (no protocol) | 0/5 correct | 5/5, median ≤ 30 s |
+| B10 | PREVis min dimension | not measured | 2.0 (390 Understandability) | ≥ 5.5 each |
+| B12 | chrome controls @1440 | 24 | not re-run (X7 docs-only) | ≤ 18 |
+
+Notes on the table: B1/B2 remain the open wires-cross gap (recorded since
+X6, no wave-2 work targeted it); B4 improved 0.171 → 0.123 with U8's
+captions-in-`measure`; B5 fell 176 → 114 ports on the current node set (the
+3-step size scale). B6/B12 need a UI module's probe re-run and are marked as
+such rather than guessed.
+
+### 8.5 What the record asks of the remaining work
+
+1. U9 lands §1/§4; this section's B11/B10 numbers are re-measured and the
+   pending rows replaced – the protocol is exactly §8.2/§8.3, the probe
+   script is in `.kula-team/scratch/x7-probe.mjs`.
+2. Journey rows and the question box must be reachable from the landing
+   state with no click-first path (X6's always-available rule, now measured
+   in B11 task 4 and Relevance at 390).
+3. The phone needs its own pass: legend off landing at 390 is the reason
+   Relevance drops 1.0 between viewports.
+4. Plain-word wording for the Changes view (task 5) is outside §1/§4 scope;
+   recorded as a request to the lead in `handoff-x7.md`.
+
