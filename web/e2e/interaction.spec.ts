@@ -18,6 +18,8 @@ async function opened(page: Page) {
 }
 
 // §2/§6 – the journey strip must not cover the canvas centre (U7)
+// Re-fixmed after live-checking a699d36: journey rows live in the
+// inspector aside (hidden until selection) – see plain.spec.ts note.
 test.fixme("x6-canvas-strip the journey strip stays below 82% of the canvas height", async ({ page }) => {
   await opened(page);
   await page.locator('[data-testid="x5-journey-row"]').first().click();

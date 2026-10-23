@@ -103,6 +103,10 @@ test.fixme("T4 the explain run shows named/total progress and renders the reason
 });
 
 // §2 Legend (U7)
+// T5–T7 re-fixmed by X6 after live-checking a699d36: U7 mounts the legend
+// and journeys rows inside the inspector aside, which is hidden until a
+// square is selected – X5 §2 requires the key visible on #map with no
+// click, open on first visit. Un-fixme when U7 mounts it always-available.
 
 test.fixme("T5 the legend is a collapsible key in the right column with the five rows", async ({ page }) => {
   await opened(page);
