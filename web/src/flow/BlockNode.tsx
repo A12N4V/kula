@@ -5,7 +5,7 @@
 // flow/positions.ts), sections render as frames with their blocks inside.
 // Three size stages (BLOCK_SIZES): more room shows more detail, up to the
 // function list. Nothing here talks to React Flow – the kit wraps it.
-import { memo, useCallback } from "react";
+import { memo, useCallback, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { GLYPH } from "../colors";
 import { RoleMark, ROLE_COLOR } from "../views/map/icons";
@@ -14,9 +14,43 @@ import { TBar } from "./nodes";
 import type { BlockCardData, FlowNode } from "./types";
 import { BLOCK_SIZES, RESIZE_MAX, RESIZE_MIN, snap } from "./types";
 import { useFc } from "./fcContext";
+import { useExplain, useQuestionHits, useShowCode } from "../views/map/plain";
 
 // Kind letters come from the shared GLYPH map (same tiles the graph draws).
 const kindGlyph: Record<string, string> = { fn: GLYPH.function, class: GLYPH.class, var: GLYPH.file, type: "T", method: GLYPH.method, interface: GLYPH.interface };
+
+/** U9 – the reading layer on a solid square: plain name ≤ 4 words by default
+    (the code name returns via the "Show code names" toggle or near zoom),
+    the one-sentence summary on hover, and the question box's lit squares.
+    Words come from the shared explain store; until named, the block's theme
+    fallback (already in `title`) stands – the map never blanks. */
+function PlainCaption({ data, title }: { data: BlockCardDataWithSize; title: string }) {
+  const ex = useExplain();
+  const show = useShowCode();
+  const { zoomLevel = "mid" } = useFc();
+  const [hover, setHover] = useState(false);
+  const { hits, top } = useQuestionHits();
+  const id = data.id;
+  const block = id ? ex?.blocks[id] : undefined;
+  const code = show || zoomLevel === "near";
+  const words = code ? title : (block?.plain || title);
+  const lit = hits.includes(id ?? "");
+  const isTop = top != null && top === id;
+  return (
+    <>
+      <span
+        className={`fc-card-name fc-card-caption fc-solid-name${lit ? " u9-lit" : ""}${isTop ? " u9-top" : ""}`}
+        data-testid="x5-plain-caption" data-block={id} title={code ? title : (block?.plain || title)}
+        onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      >{words}</span>
+      {hover && block?.sentence && (
+        // X5 §1.3 – the summary is anchored to the square (not the pointer),
+        // floats above the node face like n8n's hover toolbar.
+        <div className="u9-sentence" data-testid="x5-plain-sentence" role="tooltip">{block.sentence}</div>
+      )}
+    </>
+  );
+}
 
 /** The resize handle: bottom-right, 12 px hit (40 px at touch). Drag end
     commits the size through onResize so the kit persists it once, not per
@@ -78,6 +112,11 @@ const BlockCard = memo((props: NodeProps) => {
   // Read once, above both branches – a hook after an early return is out of
   // order; the solid branch also needs the zoom level (U8 far-zoom caption).
   const { zoomLevel = "mid" } = useFc();
+  // U9 – the question box's lit squares carry their test ids on the square
+  // face (the top hit's full ring + label, the rest lit lighter).
+  const qLit = useQuestionHits();
+  const qTop = qLit.top != null && qLit.top === (data.id ?? id);
+  const qHit = qLit.hits.includes(data.id ?? id ?? "");
   if (data.solid) {
     // Nested-squares map: a solid square in the directory hue carrying the
     // language/kind glyph (the Graph view's hub tile); the name rides under
@@ -85,17 +124,17 @@ const BlockCard = memo((props: NodeProps) => {
     // lifts the count and the open mark so they stay readable (U8).
     const S = w;
     return (
-      <div data-fc-has={data.has} className={`fc-node fc-card fc-solid${data.leaf ? " fc-solid-leaf" : ""}${selected ? " fc-sel" : ""}${data.dim ? " fc-dim" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}${zoomLevel === "far" ? " fc-solid-far" : ""}`}
+      <div data-fc-has={data.has} className={`fc-node fc-card fc-solid${data.leaf ? " fc-solid-leaf" : ""}${selected ? " fc-sel" : ""}${data.dim ? " fc-dim" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}${zoomLevel === "far" ? " fc-solid-far" : ""}${qHit ? " u9-q-hit" : ""}${qTop ? " u9-q-top" : ""}`}
         style={{ width: w, height: h, ["--fc-hue" as string]: data.hue ?? data.color ?? "var(--text-3)" }}
-        data-testid={`fc-node-${id}`} data-fc-stage="1" title={`${data.title}${data.dir ? ` – ${data.dir}` : ""}${data.openable ? " · click to open" : ""}`}>
+        data-testid={`fc-node-${id}`} data-fc-stage="1" data-block={id} title={`${data.title}${data.dir ? ` – ${data.dir}` : ""}${data.openable ? " · click to open" : ""}`}>
         <TBar id={id ?? data.id} data={data} />
-        <div className={`fc-solid-sq${data.flowHue ? " fc-solid-flow" : ""}`} style={{ width: S, height: S, ...(data.flowHue ? { ["--vf-hue" as string]: data.flowHue } : {}) }}>
+        <div className={`fc-solid-sq${data.flowHue ? " fc-solid-flow" : ""}`} style={{ width: S, height: S, ...(data.flowHue ? { ["--vf-hue" as string]: data.flowHue } : {}) }} data-testid={qTop ? "x5-question-top" : qHit ? "x5-question-hit" : undefined}>
           <span className="fc-solid-glyph" aria-hidden="true">{data.glyph ?? "·"}</span>
           {!data.leaf && data.symbols ? <span className="fc-solid-n mono">{data.symbols}</span> : null}
           {data.openable && <span className="fc-solid-open" aria-hidden="true">+</span>}
           {data.badge}
         </div>
-        <span className="fc-card-name fc-card-caption fc-solid-name" title={data.title}>{data.title}</span>
+        <PlainCaption data={data} title={data.title} />
         <Handle type="target" position={Position.Left} id="l" className="fc-dot" isConnectable={false} style={{ top: S / 2 }} />
         <Handle type="source" position={Position.Right} id="r" className="fc-dot" isConnectable={false} style={{ top: S / 2 }} />
       </div>

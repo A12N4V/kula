@@ -20,6 +20,7 @@ import { MapViewSidebar } from "./map/sidebar";
 import { FlowKitView } from "./map/flowKit";
 import { flowHue, JourneysPanel, JourneyStrip } from "./map/flowsPanel";
 import { Legend } from "./map/legend"; // U7 – the map's key (announced: mount-only glue)
+import { PlainPanel, RailSearch } from "./map/plain"; // U9 – the reading layer (announced: mount-only glue)
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf, type Focus } from "./map/chainFocus";
 import { Library, ReviewPanel, RunPanel, fencedSectionsOf, filesOf, sectionAtPoint, sectionOf, stashNewItem, useAgentFence, useLive, useMarks, type Marks } from "./map/workspace";
@@ -679,11 +680,10 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
         onNote={() => addSticky()}
         onPanel={() => openInsp("pipeline")}
         search={searchOpen && (
-          <form className="u2-rail-search" data-testid="u2-rail-search-form"
-            onSubmit={(e) => { e.preventDefault(); void searchGo(); }}>
-            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search code…"
-              data-testid="u2-rail-search-input" aria-label="Search the map" />
-          </form>
+          // U9 – the rail search gains the "Ask in plain words" question mode
+          // (mount-only glue; the plain path keeps searchGo exactly as it was).
+          <RailSearch value={q} onChange={setQ} onSubmit={() => void searchGo()}
+            onPick={(id) => { setSelBlock(id); setReveal(id); setSearchOpen(false); setQ(""); }} />
         )}
       />
       {addOpen && ws.info && (
@@ -785,6 +785,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           <Grip id="inspector" edge="left" min={300} max={960} label="Resize inspector" />
           {/* U7 – the key: always available at the top of the right column. */}
           <Legend data={data} ringHue={flowPick != null ? flowHue(flowPick) : null} />
+          {/* U9 – the reading layer: run control, progress, code-names toggle. */}
+          <PlainPanel agents={ws.info?.workflows.filter((w) => !w.builtin).map((w) => w.name)} />
           <header>            <div className="row">
               <div className="kind">{inspHead.kind}</div>
               <span className="spacer" />

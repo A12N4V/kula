@@ -16,6 +16,7 @@
 @import "./styles/sweep.css";
 @import "./styles/map.css"; /* U1 · MapView */
 @import "./styles/flow.css"; /* F1 · flow canvas kit */
+@import "./styles/plain.css"; /* U9 · the reading layer */
 @import "./styles/workspace.css"; /* workspace: agents on the map */
 @import "./styles/dock.css"; /* bottom dock: terminal + run log */
 

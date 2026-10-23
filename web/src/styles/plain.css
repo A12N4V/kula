@@ -1,0 +1,58 @@
+/* U9 – the reading layer: plain captions, the hover sentence, the question
+   box's lit squares, the panel and the rail question mode. Square caption
+   classes stay flow.css's (U8); everything new here is u9-*. */
+
+/* The one-sentence hover summary – anchored to the square (X5 §1.3), floats
+   above the node face like n8n's hover toolbar. */
+.fc-card { position: relative; }
+.u9-sentence {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  max-width: 260px;
+  padding: 6px 9px;
+  background: var(--bg-1, #111);
+  border: 1px solid var(--line-2, #333);
+  color: var(--text-1, #eee);
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: normal;
+  text-align: left;
+  z-index: 30;
+  pointer-events: none;
+}
+
+/* The question box's lit squares: the top hit wears the full accent ring and
+   a brighter caption, the other hits a lighter ring. */
+.fc-node.u9-q-hit .fc-solid-sq { box-shadow: 0 0 0 2px var(--accent, #f80); }
+.fc-node.u9-q-top .fc-solid-sq { box-shadow: 0 0 0 3px var(--accent, #f80); }
+.fc-solid-name.u9-lit { color: var(--accent, #f80); }
+.fc-solid-name.u9-top { color: var(--accent, #f80); font-weight: 600; }
+
+/* The right column's panel: run control, progress, reason, code-names toggle. */
+.u9-panel { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line-1, #222); }
+.u9-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.u9-agent { font-size: 11px; padding: 2px 4px; }
+.u9-progress { font-size: 11px; color: var(--text-2, #999); }
+.u9-reason { font-size: 11.5px; color: var(--accent, #f80); }
+.u9-toggle-row { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+
+/* The rail question mode: mode pill, results list under the box. */
+.u9-q-mode {
+  font: inherit; font-size: 10.5px; letter-spacing: 0.02em;
+  padding: 3px 8px; border: 1px solid var(--line-2, #333);
+  background: transparent; color: var(--text-2, #999); cursor: pointer;
+}
+.u9-q-mode.on { border-color: var(--accent, #f80); color: var(--accent, #f80); }
+.u2-rail-search { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.u9-results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.u9-result {
+  display: flex; justify-content: space-between; gap: 8px; width: 100%;
+  padding: 5px 8px; font: inherit; font-size: 11.5px; text-align: left;
+  background: transparent; color: var(--text-1, #eee);
+  border: 0; border-bottom: 1px solid var(--line-1, #222); cursor: pointer;
+}
+.u9-result:hover { background: var(--bg-2, #1a1a1a); }
+.u9-result-score { color: var(--text-3, #777); }
+.u9-results-empty { font-size: 11px; color: var(--text-3, #777); padding: 4px 8px; }
