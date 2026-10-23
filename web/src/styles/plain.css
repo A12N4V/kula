@@ -32,8 +32,12 @@
 
 /* The rail's search slot shares the HUD's z-index (22) but sits earlier in
    the DOM, so at narrow desktop widths the HUD's vertical stack covers the
-   slot's top – the slot drops below the rail's buttons (flex order). */
-.u2-rail > .u9-q-peek, .u2-rail > .u2-rail-search { order: 10; }
+   slot's top – the slot drops below the rail's buttons (flex order). The
+   closed-state pill hangs BELOW the rail's buttons, out of the rail's flow:
+   the rail keeps the four-button height the HUD's stack was sized against
+   (a taller rail collides with the HUD's last button at 1280x800). */
+.u2-rail > .u9-q-peek { order: 10; position: absolute; top: calc(100% + 6px); right: 0; }
+.u2-rail > .u2-rail-search { order: 10; }
 
 /* The right column's panel: run control, progress, reason, code-names toggle. */
 .u9-panel { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line-1, #222); }

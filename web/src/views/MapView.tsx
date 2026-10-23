@@ -17,7 +17,7 @@ import { fixture } from "./map/fixture";
 import { BlockCanvas } from "./map/canvas";
 import { Readout, SubwayStrip } from "./map/readout";
 import { MapViewSidebar } from "./map/sidebar";
-import { FlowKitView, mapFlowLayout } from "./map/flowKit"; // U9 – mapFlowLayout read-only, for the on-load reveal target
+import { FlowKitView } from "./map/flowKit";
 import { flowHue, JourneysPanel, JourneyStrip } from "./map/flowsPanel";
 import { Legend } from "./map/legend"; // U7 – the map's key (announced: mount-only glue)
 import { PlainPanel, RailSearch } from "./map/plain"; // U9 – the reading layer (announced: mount-only glue)
@@ -93,29 +93,6 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState("");
   const [reveal, setReveal] = useState<string | null>(null);
-  // U9 – the camera opens on the first block so the reading layer's first
-  // square (the hover target for the sentence summary) is on-screen instead
-  // of off the fitted view's left edge. Announced glue logic, mount-shaped.
-  const revealDone = useRef(false);
-  useEffect(() => {
-    if (!data) return;
-    // The first block in the kit's DOM order – the layers walk, not the data
-    // order – is the square the reading layer's first hover lands on; the
-    // camera must open on it or it sits off the fitted view's left edge.
-    const first = mapFlowLayout(data).layers[0]?.[0];
-    if (!first) return;
-    // StrictMode double-invokes this effect and its cleanup, so the guard is
-    // checked when the timer FIRES, not when it is set – the second run must
-    // be able to reschedule the one-shot pan. After the kit's hydration focus
-    // (initialFocus centres the busiest block and would overwrite an
-    // earlier pan).
-    const t = window.setTimeout(() => {
-      if (revealDone.current) return;
-      revealDone.current = true;
-      setReveal(first);
-    }, 3000);
-    return () => window.clearTimeout(t);
-  }, [data]);
   // Tidy snapshot: the persisted drag positions + sizes, kept so one undo
   // puts every card back exactly where it was (PLAN P4: explicit, undoable).
   const [tidyUndo, setTidyUndo] = useState<{ key: string; map: Record<string, { x: number; y: number }>; sizes: Record<string, { w: number; h: number }> } | null>(() => {

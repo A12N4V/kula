@@ -42,9 +42,19 @@ async function opened(page: Page) {
 }
 
 /** One of the fixture's blocks whose plain name is stable and known
- *  (verified live: `/api/map/explain` returns source "name" entries). */
+ *  (verified live: `/api/map/explain` returns source "name" entries), and
+ *  that is on screen – the fitted view pans the first blocks off the left
+ *  edge, so the hover target is picked from the visible squares. */
 async function aBlock(page: Page) {
-  return page.locator(".fc-node[data-block]").first();
+  const id = await page.evaluate(() => {
+    for (const el of document.querySelectorAll(".fc-node[data-block]")) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 40 && r.top > 0 && r.bottom < innerHeight && r.left > 0 && r.right < innerWidth)
+        return el.getAttribute("data-block");
+    }
+    return null;
+  });
+  return page.locator(`.fc-node[data-block="${id}"]`).first();
 }
 
 // §1 Reading layer (U9)
