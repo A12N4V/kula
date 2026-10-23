@@ -10,6 +10,26 @@ import { FIXTURE } from "../playwright.config";
 
 test.use({ baseURL: FIXTURE });
 
+/** The fixture's agent list is shared by every suite: seed the fenced agent
+    ("polish", src/**) and the unfenced one ("everywhere") before each test,
+    keeping the rest – same seeding U6's suite uses (U6 hand-off). */
+async function seedAgents(request: import("@playwright/test").APIRequestContext) {
+  const h = { "x-kula-token": "test" };
+  const info = await (await request.get(`${FIXTURE}/api/agents`, { headers: h })).json();
+  const all = (info.workflows ?? []) as { name: string; builtin?: boolean }[];
+  const own = all.filter((w) => !w.builtin);
+  const want = [
+    { name: "polish", about: "Small cleanups", scope: ["src/**"], steps: ["Tidy", "verify"] },
+    { name: "everywhere", about: "Runs anywhere", steps: ["Tidy"] },
+  ];
+  const merged = [...own];
+  for (const w of want) if (!own.some((x) => x.name === w.name)) merged.push(w);
+  if (merged.length === own.length) return;
+  const r = await request.post(`${FIXTURE}/api/agents/workflows_save`, { headers: h, data: { workflows: merged } });
+  expect(r.ok(), await r.text()).toBeTruthy();
+}
+test.beforeEach(async ({ request }) => { await seedAgents(request); });
+
 async function opened(page: Page) {
   await page.addInitScript(() => {
     try { sessionStorage.setItem("kula.opened", "1"); localStorage.setItem("kula.settings.v1", JSON.stringify({ opening: false })); } catch { /* */ }
@@ -144,12 +164,14 @@ test.fixme("T8 asking in plain words lights the top hit distinctly and lists pla
 
 // §5 Agents on the terrain (U6)
 
-test.fixme("T9 a fenced agent sits beside its first fenced square with dashed wires", async ({ page }) => {
+test("T9 a fenced agent sits beside its first fenced square with dashed wires", async ({ page }) => {
   await opened(page);
   // agents layer on (U5's toggle in the bottom summary)
   if ((await page.locator('[data-testid="u2-layer-agents"]').getAttribute("aria-pressed")) !== "true")
     await page.locator('[data-testid="u2-frame-agents"]').click();
-  const agent = page.locator('[data-testid="x5-agent-node"]').first();
+  // U6 realises the x5-agent-node contract as the kit node fc-node-agent:<name>
+  // (harmonograph mark, dashed hue border); U6 hand-off, decision 1.
+  const agent = page.locator('[data-testid^="fc-node-agent:"]').first();
   await expect(agent).toBeVisible({ timeout: 30_000 });
   const agentBox = await agent.boundingBox();
   const squares = await page.locator(".fc-node").evaluateAll((els) => els.map((e) => e.getBoundingClientRect()));
@@ -158,20 +180,22 @@ test.fixme("T9 a fenced agent sits beside its first fenced square with dashed wi
   // adjacent: within one grid cell of its first fenced square
   const gap = Math.min(...near.map((s) => Math.abs(s.x - (agentBox!.x + agentBox!.width))));
   expect(gap).toBeLessThan(120);
-  await expect(page.locator('[data-testid="x5-agent-dashed"]').first()).toBeVisible();
+  // x5-agent-dashed is realised as the kit's dashed 1px edge class (U6 hand-off)
+  await expect(page.locator(".fc-edge.fc-dashed").first()).toBeAttached();
 });
 
-test.fixme("T10 an unfenced agent gets the whole-codebase block; the toggle removes every agent mark", async ({ page }) => {
+test("T10 an unfenced agent gets the whole-codebase block; the toggle removes every agent mark", async ({ page }) => {
   await opened(page);
   if ((await page.locator('[data-testid="u2-layer-agents"]').getAttribute("aria-pressed")) !== "true")
     await page.locator('[data-testid="u2-frame-agents"]').click();
   // the fixture seeds an unfenced agent: it gets one banded whole-codebase block
-  const whole = page.locator('[data-testid="x5-agent-whole"]');
+  const whole = page.locator('[data-testid="fc-node-codebase"]');
   await expect(whole).toBeVisible({ timeout: 30_000 });
-  // bands = directory shares: more than one hue band on the square
-  expect(await whole.locator(".x5-agent-band").count()).toBeGreaterThan(1);
+  // bands = directory shares: the band row carries one hue band (i) per
+  // top directory – more than one means real shares, not a flat block
+  expect(await whole.locator('[data-testid="x5-agent-band"] i').count()).toBeGreaterThan(1);
   // agents off ⇒ zero agent marks in the DOM (removed, not hidden)
   await page.locator('[data-testid="u2-layer-agents"]').click();
-  await expect(page.locator('[data-testid="x5-agent-node"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="x5-agent-whole"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid^="fc-node-agent:"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="fc-node-codebase"]')).toHaveCount(0);
 });
