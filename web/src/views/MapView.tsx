@@ -18,7 +18,7 @@ import { BlockCanvas } from "./map/canvas";
 import { Readout, SubwayStrip } from "./map/readout";
 import { MapViewSidebar } from "./map/sidebar";
 import { FlowKitView } from "./map/flowKit";
-import { FlowsPanel, FlowsOverlay } from "./map/flowsPanel";
+import { FlowsPanel, FlowsOverlay, flowHue } from "./map/flowsPanel";
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf, type Focus } from "./map/chainFocus";
 import { Library, ReviewPanel, RunPanel, fencedSectionsOf, filesOf, sectionAtPoint, sectionOf, stashNewItem, useAgentFence, useLive, useMarks, type Marks } from "./map/workspace";
@@ -81,6 +81,12 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     setLayers((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
   const [frame, setFrame] = useState<Frame>("map");
+  // The picked value flow: its hue rings its squares and paints its wires.
+  const [flowPick, setFlowPick] = useState<number | null>(null);
+  const flowTint = useMemo(() => {
+    const f = flowPick != null ? data?.value_flows?.[flowPick] : undefined;
+    return f ? { color: flowHue(flowPick!), sections: new Set(f.sections) } : null;
+  }, [flowPick, data]);
   const [addOpen, setAddOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -644,7 +650,12 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           in the inspector, roles opens from the canvas HUD. */}
       {/* U2: centred Map · Runs · Evals switch – the segments re-frame the
           same canvas, they are not new views. */}
-      <FrameSwitch frame={frame} onFrame={(f) => { setFrame(f); if (f === "runs") openInsp("pipeline"); }} />
+      <FrameSwitch frame={frame} onFrame={(f) => { setFrame(f); if (f === "runs") openInsp("pipeline"); }}
+        counts={{
+          runs: runner.runs.length ? `${runner.runs.length}` : undefined,
+          agents: ws.info ? `${ws.info.workflows.filter((w) => !w.research && !w.builtin).length + ws.info.teams.length}` : undefined,
+        }}
+        agentsOn={layers.agents} onAgents={() => toggleLayer("agents")} />
       {frame === "evals" && <EvalsBoard onRuns={() => { setFrame("runs"); openInsp("pipeline"); }} />}
       {/* U2: the bottom-left chrome stack – layer toggle, tidy strip, then the
           canvas zoom bar (fit · in · out · minimap) below them. */}
@@ -701,7 +712,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       <div className="sy-split" style={listWidth("map", 360)}>
         {path.length
           ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
-          : <div className="ws-drop" ref={canvasWrapRef} onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView marks={fenceMarks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={fenceFocus ?? (layers.chains && chain ? focusOf(data, chain) : null)} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
+          : <div className="ws-drop" ref={canvasWrapRef} onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView flowTint={flowTint} marks={fenceMarks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={fenceFocus ?? (layers.chains && chain ? focusOf(data, chain) : null)} selection={selBlock} onSelect={setSelBlock} onDrill={drill} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
             reveal={reveal}
             pinned={pinned && !selStep ? pinned : null}
             onNodeTool={(id, action) => {
@@ -790,7 +801,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             {chainCard}
             {/* Flows as overlays (R0): a compact list on the inspector –
                 picking a flow selects its sections on the one canvas. */}
-            <FlowsOverlay data={data} onSection={(id) => { setSelBlock(id); setInspForced(true); }} />
+            <FlowsOverlay data={data} active={flowPick} onFlow={setFlowPick} onSection={(id) => { setSelBlock(id); setInspForced(true); }} />
             {<Readout data={data} block={readBlock} onLeaf={selectLeaf} onFamily={(famId) => { loadChains(famId).then((p) => { const c = p.chains[0]; if (c) selectChain(c); }).catch(() => { /* no chains pageable */ }); }} />}
           </>}
           {tab === "structure" && chainCard}

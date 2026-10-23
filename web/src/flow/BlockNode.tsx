@@ -85,7 +85,7 @@ const BlockCard = memo((props: NodeProps) => {
         style={{ width: w, height: h, ["--fc-hue" as string]: data.hue ?? data.color ?? "var(--text-3)" }}
         data-testid={`fc-node-${id}`} data-fc-stage="1" title={`${data.title}${data.dir ? ` – ${data.dir}` : ""}${data.openable ? " · click to open" : ""}`}>
         <TBar id={id ?? data.id} data={data} />
-        <div className="fc-solid-sq" style={{ width: S, height: S }}>
+        <div className={`fc-solid-sq${data.flowHue ? " fc-solid-flow" : ""}`} style={{ width: S, height: S, ...(data.flowHue ? { ["--vf-hue" as string]: data.flowHue } : {}) }}>
           <span className="fc-solid-glyph" aria-hidden="true">{data.glyph ?? "·"}</span>
           {!data.leaf && data.symbols ? <span className="fc-solid-n mono">{data.symbols}</span> : null}
           {data.openable && <span className="fc-solid-open" aria-hidden="true">+</span>}

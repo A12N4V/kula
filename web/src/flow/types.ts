@@ -74,6 +74,8 @@ export type FlowEdge = {
   main?: boolean;
   /** Orthogonal gutter route (flow/route.ts), absolute canvas points. */
   route?: { x: number; y: number }[];
+  /** On the picked value flow – full strength. */
+  lit?: boolean;
   /** Rides a highway (skips columns) – rests fainter than local wires. */
   long?: boolean;
   /** Wire colour – the source section's hue (Excalidraw-style regions). */
@@ -101,6 +103,8 @@ export type FlowSelection = { id: string; kind: FlowNodeKind } | null;
 /* The block node's payload (R0): the old Blocks-lens card, as the node itself.
    Kept here so the kit stays the single type surface for every canvas. */
 export type BlockCardData = {
+  /** A picked value flow's hue: rings the square. */
+  flowHue?: string;
   /** Space-separated ids of the blocks folded inside a closed square. */
   has?: string;
   /** Directory hue (Graph view palette), the block's language glyph and dir label. */

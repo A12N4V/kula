@@ -18,6 +18,10 @@ type Props = {
   onSection?: (blockId: string) => void;
 };
 
+/** One hue per value flow (vivid, distinct from the directory hues' role):
+ *  the list swatch, the ring on its squares and its wires share it. */
+export const FLOW_HUES = ["#ff6b6b", "#4dabf7", "#51cf66", "#fcc419", "#cc5de8", "#22b8cf", "#ff922b", "#f06595", "#94d82d", "#845ef7"];
+export const flowHue = (i: number) => FLOW_HUES[i % FLOW_HUES.length];
 const entId = (n: number) => `vf:e${n}`;
 const flowId = (i: number) => `vf:f${i}`;
 const secId = (b: string) => `vf:b${b}`;
@@ -100,7 +104,7 @@ export function FlowsPanel({ data, onSection }: Props) {
     tabs. Picking a flow selects its entry block on the canvas and the flow's
     sections into the inspector's flow path (the canvas highlights what it
     crosses). Pure list, no canvas of its own. */
-export function FlowsOverlay({ data, onSection }: { data: MapData; onSection?: (blockId: string) => void }) {
+export function FlowsOverlay({ data, onSection, onFlow, active }: { data: MapData; onSection?: (blockId: string) => void; onFlow?: (i: number | null) => void; active?: number | null }) {
   const flows = data.value_flows ?? [];
   if (!flows.length)
     return <p className="sy-summary" data-testid="map-flows-empty">No value flows yet – the extractor found no entry-to-side-effect chains.</p>;
@@ -109,9 +113,10 @@ export function FlowsOverlay({ data, onSection }: { data: MapData; onSection?: (
       <span className="sy-section-label">value flows</span>
       <ol className="vf-rows">
         {flows.slice(0, 24).map((f, i) => (
-          <li key={i} className="vf-row">
-            <button className="vf-row-btn" data-testid={`map-flow-${i}`} title={`${f.name} – ${f.outcome}`}
-              onClick={() => { for (const b of f.sections) onSection?.(b); }}>
+          <li key={i} className={`vf-row${active === i ? " on" : ""}`} style={{ ["--vf-hue" as string]: flowHue(i) }}>
+            <button className="vf-row-btn" data-testid={`map-flow-${i}`} title={`${f.name} – ${f.outcome}`} aria-pressed={active === i}
+              onClick={() => { onFlow?.(active === i ? null : i); for (const b of f.sections) onSection?.(b); }}>
+              <span className="vf-swatch" aria-hidden="true" />
               <span className="mono vf-row-n">{i + 1}</span>
               <span className="vf-row-name">{f.name}</span>
               <span className="vf-row-meta mono">{f.sections.length} sections</span>

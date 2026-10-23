@@ -37,6 +37,8 @@ type Props = {
   data: MapData & { flows?: Flow[] };
   roles: Set<Role>;
   focus?: Focus | null;
+  /** A picked value flow: its sections ring in its hue, its wires carry it, the rest dims. */
+  flowTint?: { color: string; sections: Set<string> } | null;
   selection?: string | null;
   onSelect?: (id: string | null) => void;
   onDrill: (id: string) => void;
@@ -187,14 +189,23 @@ function fnIcon(kind: string) {
     degree, the flows and chains it belongs to); sections render as frames
     holding their cards. Selection is single-writer (the kit); a focused
     chain dims everything it does not cross through the kit's `dim` flag. */
-export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal }: Props) {
+export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   const lit = (id: string) => !focus?.chain || focus.on.has(id);
   const [openPath, setOpenPath] = useState<string[]>([]);
   // Directory ranks come from the Graph view's own node set, so a directory
   // has the same hue on both canvases (src/ blue, web/src/ orange, …).
-  const [graphPaths, setGraphPaths] = useState<string[] | null>(null);
-  useEffect(() => { let live = true; api.graph("symbol").then((g) => { if (live) setGraphPaths(g.nodes.filter((n) => n.kind !== "package").map((n) => n.path)); }).catch(() => {}); return () => { live = false; }; }, []);
+  // Cached per session so the first paint already has the Graph's hues.
+  const [graphPaths, setGraphPaths] = useState<string[] | null>(() => { try { return JSON.parse(sessionStorage.getItem("kula.map.graphPaths") || "null"); } catch { return null; } });
+  useEffect(() => {
+    let live = true;
+    api.graph("symbol").then((g) => {
+      const paths = g.nodes.filter((n) => n.kind !== "package").map((n) => n.path);
+      try { sessionStorage.setItem("kula.map.graphPaths", JSON.stringify(paths)); } catch { /* private window */ }
+      if (live) setGraphPaths(paths);
+    }).catch(() => {});
+    return () => { live = false; };
+  }, []);
   const shown = (b: Block) => roles.has(b.role);
 
   // Membership + degree, computed once per payload: the cards read them from
@@ -323,6 +334,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
         const c = blockCard(b, sec);
         const inside: string[] = []; const walk = (id: string) => { for (const k of data.blocks[id]?.children ?? []) { inside.push(k); walk(k); } }; walk(b.id);
         if (c.card) c.card.has = inside.join(" ");
+        if (flowTint && c.card) { if (flowTint.sections.has(sec)) c.card.flowHue = flowTint.color; else c.dim = true; }
         nodes.push({ ...c, solid: true, openable: kids.length > 0 || fns.length > 0, size: { w: S, h: S + 22 }, pos: { x, y }, ...markOf(sec, b.id === sec) });
         reps.set(b.id, b.id);
       } };
@@ -492,7 +504,8 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     if (seenEdge.has(key)) continue;
     seenEdge.add(key);
     outCount.set(f.from, (outCount.get(f.from) ?? 0) + 1);
-    edges.push({ id: key, source: a, target: b, weight: edgeWeight(f.weight, maxW), color: regionHue(f.from) });
+    const inFlow = !!flowTint && flowTint.sections.has(f.from) && flowTint.sections.has(f.to);
+    edges.push({ id: key, source: a, target: b, weight: inFlow ? 4 : edgeWeight(f.weight, maxW), color: inFlow ? flowTint!.color : regionHue(f.from), flow: undefined, label: undefined, ...(inFlow ? { lit: true } : {}) } as FlowEdge);
   }
 
     // The card payload rides flat on the node data (the kit's BlockCard contract:
@@ -501,7 +514,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     const flat = nodes.map((n) => (n.card ? { ...n, ...n.card } : n));
     return { nodes: flat, edges, groups, reps };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, roles, focus, depth, marks, steps, scheme, meta, onNodeTool, pinned, openPath, graphPaths]);
+  }, [data, roles, focus, depth, marks, steps, scheme, meta, onNodeTool, pinned, openPath, graphPaths, flowTint]);
 
   // The landing zoom (R0, readable by default): the busiest section, at a
   // scale where the card labels are legible – fit stays one key away.

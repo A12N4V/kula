@@ -230,6 +230,7 @@ test.fixme("crossings stay at or below 5% and no edge passes through a node", as
 test("selecting an agent draws its fence hull and dims non-fenced blocks to 35%", async ({ page, request }) => {
   await seedPolish(request);
   await opened(page, "map", FIXTURE);
+  await page.locator('[data-testid="u2-frame-agents"]').click();
   await expect(page.locator('[data-testid="actor-band"]')).toBeVisible({ timeout: 30_000 });
   const agent = page.locator('[data-testid="at-agent-polish"]');
   await expect(agent).toBeVisible({ timeout: 30_000 });
@@ -248,6 +249,7 @@ test("selecting an agent draws its fence hull and dims non-fenced blocks to 35%"
 test("rail + and output-port + open the inspector add form; no global add-block button", async ({ page, request }) => {
   await seedPolish(request);
   await opened(page, "map", FIXTURE);
+  await page.locator('[data-testid="u2-frame-agents"]').click();
   await expect(page.locator('[data-testid="actor-band"]')).toBeVisible({ timeout: 30_000 });
   const form = page.locator('[data-testid="ag-add-form"]');
   // rail + opens the add form (u2-add-pop for the rail, map-inspector for the band)
@@ -273,7 +275,7 @@ test("one layer toggle with the six layers and defaults, plus the Map Runs Evals
   for (const id of ["blocks", "flows", "chains", "fences", "agents", "runs"])
     await expect(toggle.locator(`[data-testid="u2-layer-${id}"]`)).toBeVisible();
   const on = (await toggle.locator("[aria-pressed=true]").allTextContents()).sort();
-  expect(on, "defaults are Blocks + Flows + Agents + Runs (contract §5)").toEqual(["Agents", "Blocks", "Flows", "Runs"]);
+  expect(on, "defaults are Blocks + Flows + Runs (contract §5; Agents is a toggle since U5)").toEqual(["Blocks", "Flows", "Runs"]);
   const seg = page.locator('[data-testid="u2-frames"]');
   await expect(seg).toBeVisible();
   for (const mode of ["Map", "Runs", "Evals"]) await expect(seg.getByText(mode, { exact: true })).toBeVisible();

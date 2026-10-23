@@ -401,3 +401,8 @@ span.fm-lane-stop { cursor: default; }
 .u4-change-del { color: var(--red); }
 .u4-change-add .btn, .u4-change-del .btn { margin-left: 10px; }
 .tp-plan-on { border-color: var(--accent); color: var(--accent); }
+
+/* Value-flow hues (U5): each flow's swatch matches its ring and wires on the map. */
+.vf-swatch { width: 10px; height: 10px; flex: none; background: var(--vf-hue); border-radius: var(--radius-sm, 2px); }
+.vf-row.on .vf-row-btn { background: color-mix(in srgb, var(--vf-hue) 18%, transparent); }
+.vf-row .vf-sec { border-color: color-mix(in srgb, var(--vf-hue) 55%, var(--line-2)); }

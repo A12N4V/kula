@@ -84,7 +84,7 @@ const FlowEdgeView = memo((props: EdgeProps) => {
   const flow = data?.flow as string | undefined;
   const tools = data?.tools as React.ReactNode | undefined;
   const hot = hoverEdge === props.id;
-  const cls = `fc-edge${data?.color ? " fc-edge-hue" : ""}${data?.long && fresh ? " fc-edge-long" : ""}${backward && !fresh ? " fc-back" : ""}${dashed || !main ? " fc-dashed" : ""}${selected ? " fc-edge-sel" : ""}${flow ? ` fc-flow-${flow}` : ""}${hot ? " fc-edge-hot" : ""}${touch}`;
+  const cls = `fc-edge${data?.lit ? " fc-edge-lit fc-edge-flow" : ""}${data?.color ? " fc-edge-hue" : ""}${data?.long && fresh ? " fc-edge-long" : ""}${backward && !fresh ? " fc-back" : ""}${dashed || !main ? " fc-dashed" : ""}${selected ? " fc-edge-sel" : ""}${flow ? ` fc-flow-${flow}` : ""}${hot ? " fc-edge-hot" : ""}${touch}`;
   return (
     <>
       <BaseEdge id={props.id} path={path} markerEnd={markerEnd} className={cls} style={{ strokeWidth: stroke, ...(data?.color ? { stroke: data.color as string } : {}) }} data-testid={data?.testid as string | undefined} />

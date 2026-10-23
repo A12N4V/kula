@@ -22,9 +22,9 @@ test("the layer toggle exists with the six layers and the contract defaults", as
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toBeVisible();
   // Defaults: Blocks + Flows + Agents + Runs on, the rest off (contract §5;
   // Flows on since U5 routes wires through the gutters).
-  for (const id of ["blocks", "flows", "agents", "runs"])
+  for (const id of ["blocks", "flows", "runs"])
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toHaveAttribute("aria-pressed", "true");
-  for (const id of ["chains", "fences"])
+  for (const id of ["chains", "fences", "agents"])
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toHaveAttribute("aria-pressed", "false");
 });
 
