@@ -91,3 +91,9 @@
 .u9-result-score { color: var(--text-3, #777); }
 .u9-results-empty { font-size: 11px; color: var(--text-3, #777); padding: 4px 8px; }
 @media (min-width: 721px) { .u9-insp-only { display: none; } }
+/* Agents layer on: the actor band holds the canvas's left edge – the key and
+   the plain-words panel step right of it. */
+@media (min-width: 721px) {
+  .sy-root:has(.at-band) .u7-key-dock { left: 264px; }
+  .sy-root:has(.at-band) .u9-dock { left: 476px; }
+}

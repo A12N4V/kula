@@ -448,7 +448,15 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   if (agentsOn && agents.length) {
     const AGENT_W = 176, GRID = 40;
     const agentHue = (n: string) => `hsl(${hue(n)} 60% 58%)`;
-    const posOf = new Map(nodes.filter((n) => n.pos).map((n) => [n.id, n.pos!]));
+    // Absolute positions: squares inside an open frame carry frame-relative
+    // positions, so walk the parent chain (agent squares are top-level).
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const absPos = (id: string) => {
+      let n = byId.get(id), x = 0, y = 0;
+      while (n?.pos) { x += n.pos.x; y += n.pos.y; n = n.parent ? byId.get(n.parent) : undefined; }
+      return { x, y };
+    };
+    const posOf = new Map(nodes.filter((n) => n.pos).map((n) => [n.id, absPos(n.id)]));
     const unfenced = agents.filter((a) => !a.sections.length);
     if (unfenced.length) {
       // Directory shares across the whole map, as the square's colour bands
@@ -486,6 +494,8 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
       });
     }
     const idsNow = new Set(nodes.map((n) => n.id));
+    const laneTop = Math.min(...[...posOf.values()].map((p) => p.y));
+    let laneN = 0;
     for (const a of agents) {
       if (!a.sections.length) continue;
       const targets = a.sections.map((s) => reps.get(s)).filter((r): r is string => !!r && idsNow.has(r));
@@ -496,7 +506,9 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
         id: `agent:${a.name}`, kind: "agent", title: a.name,
         subtitle: `${a.sections.length} fenced`,
         color: agentHue(a.name), size: { w: AGENT_W, h: 96 },
-        pos: { x: first.x - AGENT_W - GRID, y: first.y },
+        // the lane above the map, straight over its first fenced square –
+        // the column gutters are narrower than an agent square
+        pos: { x: first.x + (laneN++) * (AGENT_W + 16), y: laneTop - 96 - GRID },
       } as FlowNode);
       for (const t of targets) edges.push({ id: `agent:${a.name}>${t}`, source: `agent:${a.name}`, target: t, main: false, color: agentHue(a.name) } as FlowEdge);
     }
