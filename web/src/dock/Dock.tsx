@@ -22,6 +22,13 @@ export function Dock({ open, setOpen, tab, setTab, nav }: { open: boolean; setOp
   // VS Code's panel: closed means gone – the view takes the whole height.
   const height = Math.round(max ? window.innerHeight * 0.8 : Math.min(h, window.innerHeight * 0.6));
   useEffect(() => { document.documentElement.style.setProperty("--dock-h", `${open ? height : 0}px`); }, [open, height]);
+  // Same contract as every pane: Esc leaves the maximized state first.
+  useEffect(() => {
+    if (!max || !open) return;
+    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") { e.stopImmediatePropagation(); e.preventDefault(); setMax(false); } };
+    window.addEventListener("keydown", esc, true);
+    return () => window.removeEventListener("keydown", esc, true);
+  }, [max, open]);
   const n = useSyncExternalStore(onLog, () => logLines().length);
   if (!open) return null;
 
@@ -46,10 +53,10 @@ export function Dock({ open, setOpen, tab, setTab, nav }: { open: boolean; setOp
         ))}
         <span className="spacer" />
         {tab === "run" && <button className="dock-act" onClick={clearLog} title="Clear" aria-label="Clear run log"><Icon.sweep /></button>}
-        <button className="dock-act" data-testid="dock-max" onClick={() => setMax(!max)} title={max ? "Restore panel size" : "Maximize panel size"} aria-label={max ? "Restore panel size" : "Maximize panel size"}>
+        <button className="pane-btn" data-testid="dock-max" onClick={() => setMax(!max)} title={max ? "Restore panel size" : "Maximize panel size"} aria-label={max ? "Restore panel size" : "Maximize panel size"}>
           {max ? <Icon.shrink /> : <Icon.expand />}
         </button>
-        <button className="dock-act" data-testid="dock-toggle" onClick={() => setOpen(false)} title="Hide panel  ctrl+`" aria-label="Hide panel"><Icon.close /></button>
+        <button className="pane-btn" data-testid="dock-toggle" onClick={() => setOpen(false)} title="Hide panel  ctrl+`" aria-label="Hide panel"><Icon.close /></button>
       </div>
       <div className="dock-body">
         {tab === "terminal" ? <Suspense fallback={<div className="view-loading">loading…</div>}><Console {...nav} compact /></Suspense> : <RunLog />}
