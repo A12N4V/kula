@@ -51,6 +51,11 @@ export type FlowCanvasProps = {
   onKey?: (key: string, sel: string | null, ev: React.KeyboardEvent) => boolean;
   /** Pan to this node when it changes (n8n brings a new node into view). */
   reveal?: string | null;
+  /** U8 – like reveal, but always centres: the camera follows an opened
+      square even when the frame is already on screen (a search reveal must
+      not yank the viewport, an open should keep the square under the
+      pointer). */
+  anchor?: string | null;
   /** A node was dragged to a new position (flow coords). */
   onMoved?: (id: string, pos: { x: number; y: number }) => void;
   /** Readable by default (R0): land centred on this node at `initialZoom`
@@ -88,7 +93,7 @@ const toRf = (n: FlowNode, sel: string | null, collapsed: Set<string>, chipIds: 
 };
 
 function FlowCanvasInner(props: FlowCanvasProps) {
-  const { nodes, edges, groups = EMPTY_GROUPS, selection, onSelect, layoutKey = "default", ns = "lab", sidebar, onOpen, testId = "flow-canvas", onContextMenu, onConnect, onConnectToPane, onStub, onKey, onMoved, reveal } = props;
+  const { nodes, edges, groups = EMPTY_GROUPS, selection, onSelect, layoutKey = "default", ns = "lab", sidebar, onOpen, testId = "flow-canvas", onContextMenu, onConnect, onConnectToPane, onStub, onKey, onMoved, reveal, anchor } = props;
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
   const rf = useReactFlow();
   const updateInternals = useUpdateNodeInternals();
@@ -235,7 +240,10 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             // the first landing stays at the readable zoom (R0), and a poll
             // refresh of known ids must never move the camera.
             window.requestAnimationFrame(() => {
-              if (!live || !freshArrivals) return;
+              // An anchor (U8) owns the camera for this layout: opening a
+              // square is a fresh-arrival run, but the camera must follow the
+              // opened square, not re-fit the whole map over it.
+              if (!live || !freshArrivals || anchor) return;
               const el = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
               if (!el) return;
               const t = rf.getViewport();
@@ -282,20 +290,23 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   // Reveal: once the node is laid out, pan it into view unless it already is.
   const revealed = useRef<string | null>(null);
   useEffect(() => {
-    if (!reveal || revealed.current === reveal) return;
-    const n = rfNodes.find((x) => x.id === reveal);
+    const id = anchor ?? reveal;
+    if (!id || revealed.current === id) return;
+    const n = rfNodes.find((x) => x.id === id);
     if (!n) return;
-    revealed.current = reveal;
+    revealed.current = id;
     const s2 = nodeSize(n.data);
     // Members of a frame carry positions relative to it – pan to the absolute one.
-    const abs = rf.getInternalNode(reveal)?.internals.positionAbsolute ?? n.position;
+    const abs = rf.getInternalNode(id)?.internals.positionAbsolute ?? n.position;
     const cx = abs.x + s2.w / 2, cy = abs.y + s2.h / 2;
     const el = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
     const t = rf.getViewport();
     const sx = cx * t.zoom + t.x, sy = cy * t.zoom + t.y;
-    if (el && sx > 40 && sy > 40 && sx < el.width - 40 && sy < el.height - 40) return;
+    // An anchor (U8 open/fold) always centres; a plain reveal (search) only
+    // pans when the node is off screen – a visible hit must not be yanked.
+    if (!anchor && el && sx > 40 && sy > 40 && sx < el.width - 40 && sy < el.height - 40) return;
     rf.setCenter(cx, cy, { zoom: Math.max(t.zoom, 0.6), duration: reduced.current ? 0 : 200 });
-  }, [reveal, rfNodes, rf, testId]);
+  }, [anchor, reveal, rfNodes, rf, testId]);
 
   // Collapsed groups: members + frame hidden, one chip per collapsed group,
   // edges re-anchored to the chip (docs/design/flow-canvas.md §4).

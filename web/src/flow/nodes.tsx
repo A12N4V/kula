@@ -141,7 +141,11 @@ const GroupNode = memo(({ data, selected }: NodeProps & { data: FcData }) => {
       <TBar id={data.id} data={data} />
       <div className="fc-group-head">
         <span className="fc-group-label">{data.title}</span>
+        <span className="fc-group-crumb">{data.badge}</span>
         <span className="fc-group-count">{data.subtitle}</span>
+        {/* U8 fold affordance: the click bubbles to the node, the kit folds
+            the open path exactly as a click on the frame head does. */}
+        <button className="fc-group-fold nodrag" data-testid={`fc-fold-${data.id}`} title="Fold" aria-label="Fold">–</button>
       </div>
       <Handles data={data} nodeW={w} nodeH={h} />
     </div>

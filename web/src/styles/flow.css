@@ -416,4 +416,44 @@ html[data-rm="1"] .fc-dot { transition: none; }
 .fc-card.fc-solid { text-overflow: ellipsis; }
 .fc-solid-sq.fc-solid-flow { outline: 4px solid var(--vf-hue); outline-offset: 3px; }
 .fc-solid.fc-dim { opacity: .3; }
+
+/* ---- U8 – open and fold as one motion -------------------------------- */
+/* A square opening (or folding) mounts its nodes fresh, so a 160 ms fade
+   reads as the square disassembling in place, not as a page load. Opacity
+   only – no scale, no shadow (D1). Stopped under reduced motion and the
+   runtime flag, like every other flow animation. */
+@keyframes fc-open-in { from { opacity: 0; } to { opacity: 1; } }
+.fm-flow .fc-solid, .fm-flow .fc-group { animation: fc-open-in 160ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .fm-flow .fc-solid, .fm-flow .fc-group { animation: none; } }
+html[data-rm="1"] .fm-flow .fc-solid, html[data-rm="1"] .fm-flow .fc-group { animation: none; }
+
+/* U8 – hover lifts the hovered square's wires to full and dims the rest:
+   the faint rung of the brightness ladder drops from .25 to .15 so the
+   hovered square's own wires read at 100% against a quieter field. */
+.fc-edge-faint { opacity: .15; }
+
+/* U8 – the frame header: breadcrumb of the open path beside the label, the
+   child count under it, and a fold button at the right edge. */
+.fc-group-crumb { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; }
+.fc-crumb { display: flex; align-items: center; gap: 4px; font: 500 10px var(--mono); letter-spacing: .04em; color: color-mix(in srgb, var(--fc-hue) 80%, var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-crumb-seg { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fc-crumb-sep { color: var(--text-3); flex: none; }
+.fc-group-fold {
+  position: absolute; right: 8px; top: 8px; z-index: 5;
+  width: 22px; height: 22px; display: grid; place-items: center;
+  background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--radius-xs, 4px);
+  color: var(--text-2); font: 600 13px var(--mono); cursor: pointer;
+}
+.fc-group-fold:hover { color: var(--accent); border-color: var(--accent); }
+
+/* U8 – readable at far zoom: the child count gets a size step and a touch
+   more ink, the open mark a bordered chip so it survives a washed square. */
+.fc-solid-n { font-size: 11px; opacity: .9; }
+.fc-solid-open {
+  right: 5px; top: 4px; width: 15px; height: 15px; display: grid; place-items: center;
+  font-size: 12px; line-height: 1; opacity: .9;
+  background: rgba(11, 11, 11, .18); border-radius: 3px;
+}
+.fc-solid-far .fc-solid-n { font-size: 12px; opacity: 1; }
+.fc-solid-far .fc-solid-open { width: 17px; height: 17px; font-size: 14px; background: rgba(11, 11, 11, .26); }
 .react-flow__edge-path.fc-edge-flow { stroke-opacity: 1; }
