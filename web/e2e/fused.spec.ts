@@ -351,9 +351,15 @@ test("hover toolbar shows the contract verbs and the leftover chrome rows are go
   const card = page.locator(`[data-testid="${cid}"]`);
   const hb = await card.boundingBox();
   expect(hb).toBeTruthy();
-  await page.mouse.move(hb!.x + hb!.width / 2, hb!.y + hb!.height / 2, { steps: 4 });
-  await page.waitForTimeout(300);
   const bar = page.locator(".fc-toolbar");
+  // the hover state can race the canvas's landing zoom/pan – re-hover until
+  // the toolbar mounts instead of trusting one mouse move
+  for (let i = 0; i < 8 && (await bar.count()) === 0; i++) {
+    const b = await card.boundingBox();
+    if (!b) break;
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 4 });
+    await page.waitForTimeout(250);
+  }
   await expect(bar).toBeVisible();
   await expect(bar.locator("[data-testid^=fn-run-]")).toBeVisible();
   await expect(bar.locator("[data-testid^=fn-open-]")).toBeVisible();
