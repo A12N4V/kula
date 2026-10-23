@@ -452,7 +452,7 @@ html[data-rm="1"] .fm-flow .fc-solid, html[data-rm="1"] .fm-flow .fc-group { ani
 .fc-solid-open {
   right: 5px; top: 4px; width: 15px; height: 15px; display: grid; place-items: center;
   font-size: 12px; line-height: 1; opacity: .9;
-  background: rgba(11, 11, 11, .18); border-radius: 3px;
+  background: rgba(11, 11, 11, .18); border-radius: var(--radius-xs, 4px);
 }
 .fc-solid-far .fc-solid-n { font-size: 12px; opacity: 1; }
 .fc-solid-far .fc-solid-open { width: 17px; height: 17px; font-size: 14px; background: rgba(11, 11, 11, .26); }
