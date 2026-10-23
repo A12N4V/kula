@@ -185,3 +185,9 @@ Only two, both probes, both owned by X6 and wired into
   top + leaf directory names.
 
 Everything else keeps X5's ids exactly.
+
+Realised ids (recorded after live checks): U8 implements the frame header
+per opened node as `fc-crumb-<id>` (segments `.fc-crumb-seg`) with the fold
+button `fc-fold-open:<id>` – adopted in place of the single
+`x6-frame-header`; the probe test asserts the crumb through those ids.
+U7's strip keeps `x5-journey-strip`/`-step-<n>`/`-next`/`-prev`.
