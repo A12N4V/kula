@@ -2727,9 +2727,13 @@ test.describe("map", () => {
     // "outside of the viewport" even though it is visible on screen.
     const nb = await node.boundingBox();
     if (!nb) throw new Error("the picked card has no bounding box");
-    await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2, { steps: 3 });
-    await page.waitForTimeout(150);
     const lit = page.locator("[data-testid=map-flow] .fc-edge-lit").first();
+    // the hover state can race the canvas's landing zoom – re-hover until a
+    // wire lights instead of trusting one mouse move
+    for (let i = 0; i < 8 && (await lit.count()) === 0; i++) {
+      await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2, { steps: 3 });
+      await page.waitForTimeout(150);
+    }
     await expect(lit).toBeAttached();
     const lum = (rgb: string | undefined) => {
       if (!rgb) return -1;
