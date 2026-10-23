@@ -112,25 +112,39 @@ test("dragging a block onto a fenced-in agent adds its section to the fence", as
 
 test("edit fence on canvas: clicking a block toggles its section in the fence", async ({ page }) => {
   await opened(page);
-  await selectAgent(page, FENCE_DROP); // created in the drag test, or below
-  if (!await page.locator(`[data-testid=at-agent-${FENCE_DROP}]`).count()) {
-    await selectAgent(page, "polish");
-  }
+  // A fresh agent with an empty fence gives the toggle a deterministic
+  // before/after: one click adds the clicked block's section (0 → 1). A
+  // pre-fenced agent would flip the first visible block's section back out.
+  const FRESH = `fence-edit-${Date.now()}`;
+  await page.locator('[data-testid="at-band-add"]').click();
+  const form = page.locator('[data-testid="map-inspector"] [data-testid="ag-add-form"]');
+  await expect(form).toBeVisible();
+  await form.locator('[data-testid="ag-add-name"]').fill(FRESH);
+  await form.locator('button[aria-label="Remove src/**"]').click();
+  await form.locator('[data-testid="ag-add-create"]').click();
+  await expect(page.locator(`[data-testid=at-agent-${FRESH}]`)).toBeVisible({ timeout: 10_000 });
+  await selectAgent(page, FRESH);
+  expect(await fenceCount(page, FRESH)).toBe(0);
   await page.locator('[data-testid="at-edit-fence"]').click();
   await expect(page.locator('[data-testid="at-edit-fence"]')).toHaveAttribute("aria-pressed", "true");
   // Click a block that is actually on screen – the canvas pans, so scan.
+  // U6 puts agent squares and the whole-codebase block on the terrain with
+  // Agents on; selecting those is the agent gesture, not a fence toggle, so
+  // the scan takes a real code block only.
   const id = await page.evaluate(() => {
     for (const el of document.querySelectorAll(".fc-node")) {
+      const tid = el.getAttribute("data-testid") ?? "";
+      if (tid.startsWith("fc-node-agent:") || tid === "fc-node-codebase") continue;
       const r = el.getBoundingClientRect();
       if (r.width > 40 && r.top > 0 && r.bottom < innerHeight && r.left > 0 && r.right < innerWidth && el.closest("[data-testid^='fc-node-step']") === null) {
         el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        return el.getAttribute("data-testid");
+        return tid;
       }
     }
     return null;
   });
   expect(id, "a visible block was clickable").toBeTruthy();
-  await expect.poll(() => fenceCount(page, FENCE_DROP), { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(() => fenceCount(page, FRESH), { timeout: 10_000 }).toBe(1);
   await expect(page.locator('[data-testid="fence-hull"]')).toBeVisible(); // hull redraws
 });
 
