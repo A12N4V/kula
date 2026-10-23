@@ -32,23 +32,37 @@ baseline B1–B12 mid-wave measurements U7/U8 must not regress.
 
 ## 1. Baseline measurements (X6, on the live fixture, before U7/U8 land)
 
-Recorded per probe; raw outputs in `.kula-team/scratch/x6-bench-*.txt`.
+Recorded per probe; raw outputs in `.kula-team/scratch/x6-bench-1440.txt`
+(canvas bench via Playwright on the U6 base, fit view, dark) and
+`x6-map-{1440,390}.txt` (probes).
 
-- **B12 baseline: 24 interactive controls** visible on the Map at 1440 before
-  any click (5 frame buttons + rail add/search/note/panel + layer toggles +
-  zoom row + summary counts). Base was ≈ 30; the base's own consolidation
-  already got it to 24. U7's Journeys panel must *replace* the old flows
-  controls, not add to them; target ≤ 18: fold layer toggles into one
-  toggles row and keep the legend as the only new control.
-- **B6 overlap probe**: X5's saved runs
-  (`.kula-team/scratch/x5-map-{1440,1100,390}.txt`) show 24 hits of
-  frame-switch buttons overlapping the canvas at 1100×800 and 32 small
-  targets at 390 – pre-existing, still present on the U6 base. U7 (right
-  column layout) and U8 (canvas chrome) both re-probe after landing; these
-  must reach 0 at 1440/1100/390.
-- B1/B2/B3/B4 measured with `web/scripts/canvas-bench.js` on the fixture at
-  1440 (numbers in §1.1–§1.2 as run); B7–B9 via scripted Playwright counts
-  (§1.4); B11 protocol dry-run recorded (§1.5) for X7.
+- **B1 = 0.358** (791 of 2,211 crossing pairs; 57 nodes, 67 edges at fit).
+  The known gap from the base's plan ("wires cross heavily at fit") is
+  still open; U8's hover rule and the 3-step scale do not move it – out of
+  wave 2 scope, recorded for X7's table.
+- **B2 = 62** edges pass through a node at fit (target 0). Same scope note.
+- **B3 holds** in dark: border 0.835 > edge effective 0.418; label uses the
+  caption ladder (edge width 4.25 px at fit is the zoomed stroke, not a
+  resting regression). Light theme re-checked by the critic.
+- **B4 = 0.171 median text/node area** (target ≥ 0.25). The reading layer
+  (U9) and captions-in-`measure` (U8 §5) are the levers; U8's caption rule
+  is written to raise, not lower, this number.
+- **B8 = 946 px max node shift after reload** in my run – but the fixture
+  builds its map cold on the first GET (≈ 11 s) and my fit click raced it;
+  U6's hand-off reports 0 with persisted positions. Caveat recorded; the
+  number to trust is 0 once the layout cache is warm (re-measure in the
+  final probe).
+- **B12 = 48 interactive controls** visible at 1440 before any click by the
+  strict DOM filter (buttons + inputs + tabbables incl. node port buttons).
+  The plan's base ≈ 30 counts chrome only. By chrome-only count (buttons in
+  the rails/summary/zoom row) the number is **24**. U7's target: chrome
+  ≤ 18, no new controls beyond the legend; node ports don't count.
+- **B6 overlap probe** (fresh runs this turn):
+  `x6-map-1440.txt` 23 problems (frame-switch and layer buttons overlap the
+  canvas edge region), `x6-map-390.txt` 20 problems (rail/team overlaps,
+  small targets). Pre-existing (matches X5's baseline); U7 (right column)
+  and U8 (canvas chrome) re-probe after landing; must reach 0 at
+  1440/1100/390.
 
 ## 2. Journeys (U7) – decisions beyond X5 §3
 
