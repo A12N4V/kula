@@ -42,14 +42,24 @@ async function opened(page: Page) {
 }
 
 /** One of the fixture's blocks whose plain name is stable and known
- *  (verified live: `/api/map/explain` returns source "name" entries). */
+ *  (verified live: `/api/map/explain` returns source "name" entries), and
+ *  that is on screen – the fitted view pans the first blocks off the left
+ *  edge, so the hover target is picked from the visible squares. */
 async function aBlock(page: Page) {
-  return page.locator(".fc-node[data-block]").first();
+  const id = await page.evaluate(() => {
+    for (const el of document.querySelectorAll(".fc-node[data-block]")) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 40 && r.top > 0 && r.bottom < innerHeight && r.left > 0 && r.right < innerWidth)
+        return el.getAttribute("data-block");
+    }
+    return null;
+  });
+  return page.locator(`.fc-node[data-block="${id}"]`).first();
 }
 
 // §1 Reading layer (U9)
 
-test.fixme("T1 captions show plain names by default, never dir · code-name", async ({ page }) => {
+test("T1 captions show plain names by default, never dir · code-name", async ({ page }) => {
   await opened(page);
   const caption = page.locator('[data-testid="x5-plain-caption"]').first();
   await expect(caption).toBeVisible();
@@ -60,7 +70,7 @@ test.fixme("T1 captions show plain names by default, never dir · code-name", as
   await expect(page.locator(".fc-node", { hasText: /\w+ · \w+/ })).toHaveCount(0);
 });
 
-test.fixme("T2 the Show code names toggle swaps captions to technical names and back", async ({ page }) => {
+test("T2 the Show code names toggle swaps captions to technical names and back", async ({ page }) => {
   await opened(page);
   const toggle = page.locator('[data-testid="x5-plain-toggle"]');
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
@@ -75,7 +85,7 @@ test.fixme("T2 the Show code names toggle swaps captions to technical names and 
   await expect(page.locator('[data-testid="x5-plain-caption"]').first()).toHaveText(plain);
 });
 
-test.fixme("T3 hovering a square shows its one-sentence summary", async ({ page }) => {
+test("T3 hovering a square shows its one-sentence summary", async ({ page }) => {
   await opened(page);
   const block = await aBlock(page);
   await block.hover();
@@ -86,7 +96,7 @@ test.fixme("T3 hovering a square shows its one-sentence summary", async ({ page 
   expect(text.trim().endsWith(".")).toBeTruthy();
 });
 
-test.fixme("T4 the explain run shows named/total progress and renders the reason when it cannot start", async ({ page }) => {
+test("T4 the explain run shows named/total progress and renders the reason when it cannot start", async ({ page }) => {
   await opened(page);
   await page.locator('[data-testid="x5-plain-run"]').click();
   const progress = page.locator('[data-testid="x5-plain-progress"]');
@@ -153,7 +163,7 @@ test.fixme("T7 Next walks the camera square to square; the step is marked curren
 
 // §4 Question box (U9)
 
-test.fixme("T8 asking in plain words lights the top hit distinctly and lists plain results", async ({ page }) => {
+test("T8 asking in plain words lights the top hit distinctly and lists plain results", async ({ page }) => {
   await opened(page);
   await page.locator('[data-testid="x5-question-mode"]').click();
   await page.locator('[data-testid="x5-question-input"]').fill("save files");

@@ -1,0 +1,93 @@
+/* U9 – the reading layer: plain captions, the hover sentence, the question
+   box's lit squares, the panel and the rail question mode. Square caption
+   classes stay flow.css's (U8); everything new here is u9-*. */
+
+/* The one-sentence hover summary – anchored to the square (X5 §1.3), floats
+   above the node face like n8n's hover toolbar. */
+.fc-card { position: relative; }
+.u9-sentence {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  max-width: 260px;
+  padding: 6px 9px;
+  background: var(--bg-1, #111);
+  border: 1px solid var(--line-2, #333);
+  color: var(--text-1, #eee);
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: normal;
+  text-align: left;
+  z-index: 30;
+  pointer-events: none;
+}
+
+/* The question box's lit squares: the top hit wears the full accent ring and
+   a brighter caption, the other hits a lighter ring. */
+.fc-node.u9-q-hit .fc-solid-sq { box-shadow: 0 0 0 2px var(--accent, #f80); }
+.fc-node.u9-q-top .fc-solid-sq { box-shadow: 0 0 0 3px var(--accent, #f80); }
+.fc-solid-name.u9-lit { color: var(--accent, #f80); }
+.fc-solid-name.u9-top { color: var(--accent, #f80); font-weight: 600; }
+
+/* The rail's search slot shares the HUD's z-index (22) but sits earlier in
+   the DOM, so at narrow desktop widths the HUD's vertical stack covers the
+   slot's top – the slot drops below the rail's buttons (flex order). The
+   closed-state pill hangs BELOW the rail's buttons, out of the rail's flow:
+   the rail keeps the four-button height the HUD's stack was sized against
+   (a taller rail collides with the HUD's last button at 1280x800). */
+.u2-rail > .u9-q-peek { order: 10; position: absolute; top: calc(100% + 6px); right: 0; }
+.u2-rail > .u2-rail-search { order: 10; }
+
+/* The right column's panel: run control, progress, reason, code-names toggle. */
+.u9-panel { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line-1, #222); }
+.u9-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.u9-agent { font-size: 11px; padding: 2px 4px; }
+.u9-progress { font-size: 11px; color: var(--text-2, #999); }
+.u9-reason { font-size: 11.5px; color: var(--accent, #f80); }
+/* The toggle is a button with aria-pressed (a checkbox's role ignores it). */
+.u9-toggle-row {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;
+  font: inherit; padding: 3px 6px; background: transparent; color: var(--text-2, #999);
+  border: 1px solid var(--line-2, #333); align-self: flex-start; text-align: left;
+}
+.u9-toggle-row[aria-pressed="true"] { border-color: var(--accent, #f80); color: var(--accent, #f80); }
+
+/* The panel docked on the map when the inspector is closed – always
+   reachable, no click (X5 §1; the critic's T2/T4 finding). The key dock owns
+   the bottom-left, so the reading layer rides the bottom-right. */
+.u9-dock { position: absolute; left: 224px; bottom: 52px; z-index: 8; width: 250px;
+  background: var(--panel, #121110); border: 1px solid var(--line-2); border-radius: var(--radius); pointer-events: auto; }
+.u9-dock .u9-panel { border-bottom: 0; }
+/* Phone: the right column and layers fill the edge – the panel lives in the
+   inspector there, and the rail search icon carries the question. */
+@media (max-width: 720px) { .u9-dock, .u2-rail > .u9-q-peek { display: none; } }
+
+/* The question box's closed-state pill on the rail: the mode is reachable
+   with no click (X5 §4; the critic's T8 finding). */
+.u9-q-peek {
+  font: inherit; font-size: 10.5px; letter-spacing: 0.02em;
+  padding: 4px 8px; border: 1px solid var(--line-2, #333); border-radius: var(--radius-sm, 6px);
+  background: var(--panel, #121110); color: var(--text-2, #999); cursor: pointer; white-space: nowrap;
+}
+.u9-q-peek:hover { border-color: var(--accent, #f80); color: var(--accent, #f80); }
+
+/* The rail question mode: mode pill, results list under the box. */
+.u9-q-mode {
+  font: inherit; font-size: 10.5px; letter-spacing: 0.02em;
+  padding: 3px 8px; border: 1px solid var(--line-2, #333);
+  background: transparent; color: var(--text-2, #999); cursor: pointer;
+}
+.u9-q-mode.on { border-color: var(--accent, #f80); color: var(--accent, #f80); }
+.u2-rail-search { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.u9-results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.u9-result {
+  display: flex; justify-content: space-between; gap: 8px; width: 100%;
+  padding: 5px 8px; font: inherit; font-size: 11.5px; text-align: left;
+  background: transparent; color: var(--text-1, #eee);
+  border: 0; border-bottom: 1px solid var(--line-1, #222); cursor: pointer;
+}
+.u9-result:hover { background: var(--bg-2, #1a1a1a); }
+.u9-result-score { color: var(--text-3, #777); }
+.u9-results-empty { font-size: 11px; color: var(--text-3, #777); padding: 4px 8px; }
+@media (min-width: 721px) { .u9-insp-only { display: none; } }

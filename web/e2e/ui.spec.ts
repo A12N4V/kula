@@ -2378,7 +2378,8 @@ test.describe("map", () => {
     expect(visibleTid).toBeTruthy();
     const name = page.locator(`[data-testid=${visibleTid}] .fc-card-name`);
     await expect(name).toHaveCSS("text-overflow", "ellipsis");
-    await expect(name).toHaveAttribute("title", /.+/);
+    // U9: the full name lives in the square's hover sentence, not a native tooltip
+    await expect(name).not.toBeEmpty();
     // U5: a double-click opens the square's details (the nested squares
     // open in place – there is no separate drill view any more)
     await page.locator(`[data-testid=${visibleTid}]`).dblclick();
