@@ -48,8 +48,7 @@ async function seedPolish(request: import("@playwright/test").APIRequestContext)
 test("luminance ladder holds: label > node border > resting edge, dark and light", async ({ page }) => {
   await opened(page, "map");
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible({ timeout: 15_000 });
-  // the Flows layer must be on for a resting edge to exist
-  await page.locator('[data-testid="u2-layer-flows"]').click();
+  // the Flows layer is on by default, so a resting edge exists
   const edge = page.locator("[data-testid=map-flow] .fc-edge").first();
   await expect(edge).toBeVisible();
   // the fit zoom is far (captions only) – walk in until a mid/near card
@@ -272,7 +271,7 @@ test("one layer toggle with the six layers and defaults, plus the Map Runs Evals
   for (const id of ["blocks", "flows", "chains", "fences", "agents", "runs"])
     await expect(toggle.locator(`[data-testid="u2-layer-${id}"]`)).toBeVisible();
   const on = (await toggle.locator("[aria-pressed=true]").allTextContents()).sort();
-  expect(on, "defaults are Blocks + Agents + Runs (contract §5)").toEqual(["Agents", "Blocks", "Runs"]);
+  expect(on, "defaults are Blocks + Flows + Agents + Runs (contract §5)").toEqual(["Agents", "Blocks", "Flows", "Runs"]);
   const seg = page.locator('[data-testid="u2-frames"]');
   await expect(seg).toBeVisible();
   for (const mode of ["Map", "Runs", "Evals"]) await expect(seg.getByText(mode, { exact: true })).toBeVisible();
@@ -443,11 +442,11 @@ test("resizing a card stops at the neighbour below and never overlaps it", async
   expect(after, `resized card bottom ${after} overlaps the neighbour at ${found!.nbTop}`).toBeLessThanOrEqual(found!.nbTop + 1);
 });
 
-// Function-list dedupe (interactions §6.4) – NOT landed: BlockNode.tsx:130
+// Function-list dedupe (interactions §6.4) – landed in U5 (BlockNode ×N rows).
 // renders data.functions raw. X2 proved the test catches it on the live
 // tree: 'function name "mbegin" appears twice'. Fix = collapse repeated
 // names into one row with a ×N chip; then un-fixme this test.
-test.fixme("near-zoom function list dedupes repeated names with a xN count", async ({ page }, info) => {
+test("near-zoom function list dedupes repeated names with a xN count", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "resize needs a pointer");
   await opened(page, "map");
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible({ timeout: 15_000 });

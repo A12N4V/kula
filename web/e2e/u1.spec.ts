@@ -22,9 +22,7 @@ const lum = (color: string): number => {
 test("the edge brightness ladder holds: text > node border > resting edge", async ({ page }) => {
   await open(page);
   await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
-  // U2 layer contract: Flows is off until picked from a list (fused-canvas
-  // §5) – pick it so the ladder's resting-edge rung exists to sample.
-  await page.locator("[data-testid=u2-layer-flows]").click();
+  // Flows is on by default (fused-canvas §5), so a resting edge exists.
   const edge = page.locator("[data-testid=map-flow] .fc-edge").first();
   await expect(edge).toBeVisible();
   // The fit zoom is far (captions only) – walk in until a mid/near card

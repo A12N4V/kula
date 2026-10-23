@@ -174,7 +174,7 @@ export function layoutSync(nodes: FlowNode[], edges: FlowEdge[], groups: FlowGro
       maxY = Math.max(maxY, m.pos!.y + s.h);
     }
     groupNodes.push({
-      id: g.id, kind: "group", title: g.label, subtitle: `${members.length}`,
+      id: g.id, kind: "group", title: g.label, subtitle: `${members.length}`, color: g.color,
       size: { w: snap(maxX - minX + GROUP_PAD * 2), h: snap(maxY - minY + GROUP_PAD * 2) },
       pos: { x: snap(minX - GROUP_PAD), y: snap(minY - GROUP_PAD) },
       parent: undefined,

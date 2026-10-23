@@ -9,6 +9,8 @@
 
 import { useMemo, useState } from "react";
 import { FlowCanvas, type FlowEdge, type FlowGroup, type FlowNode } from "../../flow";
+import { dirColor, groupDirs } from "../../colors";
+import { settings as appSettings } from "../../settings";
 import { KindIcon, RoleMark, ROLE_COLOR, sectionLogo } from "./icons";
 import type { Block, MapData, Role } from "./types";
 import { capabilities } from "./lenses";
@@ -221,6 +223,25 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     const groups: FlowGroup[] = [];
     const reps = new Map<string, string>();
 
+  const st = appSettings.get();
+  const dg = groupDirs(Object.values(data.leaves).map((l) => l.path), st.dirDepth);
+  const EXT: Record<string, string> = { rs: "RS", ts: "TS", tsx: "TX", js: "JS", jsx: "JX", mjs: "JS", py: "PY", go: "GO", css: "CS", md: "MD" };
+  const dirMemo = new Map<string, { dir: string; color: string; lang: string }>();
+  const dirOfBlock = (id: string) => {
+    let v = dirMemo.get(id);
+    if (v) return v;
+    const tally = new Map<string, number>(), langs = new Map<string, number>();
+    for (const sid of symbolsUnder(data.blocks, id)) {
+      const l = data.leaves[sid]; if (!l) continue;
+      const d = dg.of(l.path); tally.set(d, (tally.get(d) ?? 0) + 1);
+      const x = EXT[l.path.split(".").pop() ?? ""] ?? "··"; langs.set(x, (langs.get(x) ?? 0) + 1);
+    }
+    const top = (m: Map<string, number>) => [...m].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const dir = top(tally) ?? ".";
+    v = { dir, color: dirColor(dir, dg, st), lang: top(langs) ?? "··" };
+    dirMemo.set(id, v);
+    return v;
+  };
   const colorOf = (b: Block, sec: string) =>
     scheme === "section" ? `hsl(${hue(sec)} 60% 58%)`
     : scheme === "mono" ? "var(--text-3)"
@@ -246,6 +267,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
       color: colorOf(b, sec), entry: b.role === "entry", dim: !lit(b.id),
       toolbar: nodeTools,
       card: {
+        hue: dirOfBlock(b.id).color, glyph: dirOfBlock(b.id).lang, dir: dg.label(dirOfBlock(b.id).dir),
         role: b.role, roleColor: colorOf(b, sec),
         logo: sectionLogo(`${b.theme ?? ""} ${b.name} ${b.summary ?? ""}`, b.role),
         files: b.files, symbols: fnIds.length,
@@ -269,6 +291,11 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   // The view owns the layout (the kit's preset mode): one column per
   // pipeline layer, left to right, shared utilities last. Every section is
   // a frame (depth 2) holding its block cards, or a single card at depth 1.
+  // Region hues = the Graph view's directory palette (colors.ts): a block
+  // takes the colour of the directory most of its symbols live in, so src/
+  // is the same blue here as on the Graph. Frames are tinted with it, wires
+  // carry it, and far zoom draws the block as a node of that colour.
+  const regionHue = (id: string) => dirOfBlock(id).color;
   const CELL_W = 336, CELL_H = 320, GAP_Y = 48, GAP_X = 160, HEAD = 48; // cells clear the 320×304 full card in both axes
   const columns: string[][] = [...layers.map((l) => l.filter((id) => sections[id] && shown(sections[id])))];
   const bandShown = band.filter((id) => sections[id] && shown(sections[id]));
@@ -312,7 +339,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
         const r = Math.floor(i / cols), c = i % cols;
         nodes.push({ ...blockCard(k, id), pos: { x: x + c * CELL_W, y: y + HEAD + r * CELL_H }, ...markOf(id, i === 0) });
       });
-      groups.push({ id: secId(s), label: `${title(s)} · ${kids.length} blocks`, members: kids.map((k) => k.id) });
+      groups.push({ id: secId(s), label: `${title(s)} · ${kids.length} blocks`, members: kids.map((k) => k.id), color: regionHue(id) });
       reps.set(id, kids[0].id);
       const rows = Math.ceil(kids.length / cols);
       y += HEAD + rows * CELL_H + GAP_Y;
@@ -429,8 +456,9 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     if (seenEdge.has(key)) continue;
     seenEdge.add(key);
     outCount.set(f.from, (outCount.get(f.from) ?? 0) + 1);
-    edges.push({ id: key, source: a, target: b, weight: edgeWeight(f.weight, maxW) });
+    edges.push({ id: key, source: a, target: b, weight: edgeWeight(f.weight, maxW), color: regionHue(f.from) });
   }
+
     // The card payload rides flat on the node data (the kit's BlockCard contract:
 // BlockCardDataWithSize = the FlowNode with the card's fields spread over it),
 // so the renderers read files/symbols/functions without reaching into .card.
@@ -474,6 +502,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
         {...canvas}
         reveal={reveal ?? (selection?.startsWith("step:") ? selection : null)}
         minZoom={0.1}
+        route
         initialFocus={busiest}
         initialZoom={0.85}
         nodes={nodes} edges={edges} groups={groups}

@@ -57,7 +57,19 @@ const FlowEdgeView = memo((props: EdgeProps) => {
   let path: string;
   let labelX = (sourceX + targetX) / 2;
   let labelY = (sourceY + targetY) / 2;
-  if (backward) {
+  // A gutter route (flow/route.ts) wins while the cards sit where it was
+  // routed; a dragged card falls back to the bezier until the next layout.
+  const route = data?.route as { x: number; y: number }[] | undefined;
+  const fresh = route && route.length > 2 && Math.abs(route[0].x - sourceX) < 6 && Math.abs(route[0].y - sourceY) < 6
+    && Math.abs(route[route.length - 1].x - targetX) < 6 && Math.abs(route[route.length - 1].y - targetY) < 6;
+  if (fresh) {
+    const pts = route!.map((p) => ({ ...p }));
+    pts[0] = { x: sourceX, y: sourceY }; pts[1].y = sourceY;
+    pts[pts.length - 1] = { x: targetX, y: targetY }; pts[pts.length - 2].y = targetY;
+    path = roundedPath(pts, 12);
+    const m = pts[Math.floor(pts.length / 2)];
+    labelX = m.x; labelY = m.y;
+  } else if (backward) {
     path = backwardPath(sourceX, sourceY, targetX, targetY);
     labelY = Math.max(sourceY, targetY) + 48;
   } else {
@@ -72,10 +84,10 @@ const FlowEdgeView = memo((props: EdgeProps) => {
   const flow = data?.flow as string | undefined;
   const tools = data?.tools as React.ReactNode | undefined;
   const hot = hoverEdge === props.id;
-  const cls = `fc-edge${backward ? " fc-back" : ""}${dashed || !main ? " fc-dashed" : ""}${selected ? " fc-edge-sel" : ""}${flow ? ` fc-flow-${flow}` : ""}${hot ? " fc-edge-hot" : ""}${touch}`;
+  const cls = `fc-edge${data?.color ? " fc-edge-hue" : ""}${data?.long && fresh ? " fc-edge-long" : ""}${backward && !fresh ? " fc-back" : ""}${dashed || !main ? " fc-dashed" : ""}${selected ? " fc-edge-sel" : ""}${flow ? ` fc-flow-${flow}` : ""}${hot ? " fc-edge-hot" : ""}${touch}`;
   return (
     <>
-      <BaseEdge id={props.id} path={path} markerEnd={markerEnd} className={cls} style={{ strokeWidth: stroke }} data-testid={data?.testid as string | undefined} />
+      <BaseEdge id={props.id} path={path} markerEnd={markerEnd} className={cls} style={{ strokeWidth: stroke, ...(data?.color ? { stroke: data.color as string } : {}) }} data-testid={data?.testid as string | undefined} />
       {/* 40 px invisible hit path (n8n §4) – thin wires stay easy to hover. */}
       {tools && <path d={path} className="fc-edge-hit" onPointerEnter={() => setHoverEdge?.(props.id)} onPointerLeave={() => setHoverEdge?.(null)} />}
       {tools && (

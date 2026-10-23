@@ -13,6 +13,7 @@ import { edgeTypes } from "./edges";
 import { layout, layoutWorkerUsed } from "./layout";
 import { applyPersisted, applySizes, clearPersisted, persist, persistSizes } from "./positions";
 import { CHIP, nodeSize, snap, type FlowEdge, type FlowGroup, type FlowNode } from "./types";
+import { routeEdges } from "./route";
 import { nodeTypes } from "./nodes";
 import { Icon } from "../ui";
 
@@ -21,6 +22,8 @@ const EMPTY_GROUPS: FlowGroup[] = [];
 export type FlowCanvasProps = {
   /** Lowest zoom; big preset maps pass less so fit can show everything. */
   minZoom?: number;
+  /** Route main wires orthogonally through the column gutters (flow/route.ts). */
+  route?: boolean;
   nodes: FlowNode[];
   edges: FlowEdge[];
   groups?: FlowGroup[];
@@ -133,6 +136,20 @@ function FlowCanvasInner(props: FlowCanvasProps) {
       (window as unknown as { __fcLayout?: { ms: number; nodes: number; worker: boolean; mainEdges: [string, string][] } }).__fcLayout = { ms: res.ms, nodes: res.nodes.filter((n) => n.kind !== "group").length, worker: !!layoutWorkerUsed(), mainEdges: edges.filter((e) => e.main !== false).map((e) => [e.source, e.target]) };
       if (!live) return;
       const withDrags = applyPersisted(ns, layoutKey, res.nodes);
+      // Gutter routing (flow/route.ts) on the final positions – after layout,
+      // stored sizes and persisted drags – in absolute canvas coordinates.
+      let wires = edges;
+      if (props.route) {
+        const byId = new Map(withDrags.map((n) => [n.id, n]));
+        const absOf = (n: FlowNode): { x: number; y: number } => {
+          const p = n.parent ? byId.get(n.parent) : undefined;
+          const o = p ? absOf(p) : { x: 0, y: 0 };
+          return { x: o.x + (n.pos?.x ?? 0), y: o.y + (n.pos?.y ?? 0) };
+        };
+        wires = routeEdges(withDrags.map((n) => ({ ...n, pos: absOf(n) })), edges.filter((e) => !e.source.startsWith("step:")));
+        const lane = edges.filter((e) => e.source.startsWith("step:"));
+        wires = wires.concat(lane);
+      }
       // Progressive hydration: paint the first chunk now (the ready marker and
       // the first viewport come up immediately), the rest lands next frame so
       // a 2 600-node canvas still paints under the perf bar.
@@ -164,7 +181,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
         if (!edgesSet && done >= Math.min(FIRST + CHUNK, sorted.length)) {
           // Edges hydrate with the second chunk – the first paint renders nodes only.
           edgesSet = true;
-          setRfEdges(edges.map((e) => ({
+          setRfEdges(wires.map((e) => ({
             id: e.id, source: e.source, target: e.target, type: "flow-edge",
             data: { ...e }, zIndex: 0, // edges under nodes (n8n §5): the 40 px hit path must never eat a card's hover or drag
           })));

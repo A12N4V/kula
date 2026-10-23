@@ -89,16 +89,21 @@ const BlockCard = memo((props: NodeProps) => {
   return (
     <div
       className={`fc-node fc-card${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}${data.members ? " fc-card-sec" : ""} fc-stage-${stage}`}
-      style={{ width: w, height: h, ["--fc-role" as string]: data.roleColor ?? ROLE_COLOR[role] }}
+      style={{ width: w, height: h, ["--fc-role" as string]: data.roleColor ?? ROLE_COLOR[role], ...(data.hue ? { ["--fc-hue" as string]: data.hue } : {}) }}
       data-testid={`fc-node-${id}`}
       data-fc-stage={stage}
       title={`${data.title}${data.subtitle ? ` – ${data.subtitle}` : ""}`}
     >
       <TBar id={id ?? data.id} data={data} />
       {stage === 1 ? (
-        // Far zoom: the tile itself, the name as a caption under it (n8n §2).
-        <div className="fc-card-tile" data-testid={`fc-card-tile-${id}`}>
-          <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>
+        // Far zoom: the Graph view's node – a circle in the directory hue,
+        // sized by symbol count, with the language square riding its rim;
+        // the name is a caption under it.
+        <div className={`fc-card-tile${data.hue ? " fc-card-orb" : ""}`} data-testid={`fc-card-tile-${id}`}
+          style={data.hue ? { ["--fc-orb" as string]: `${Math.round(44 + 52 * Math.min(1, Math.sqrt((data.symbols ?? 0) / 80)))}%` } : undefined}>
+          {data.hue
+            ? <span className="fc-card-sq fc-card-sq-rim" aria-hidden="true">{data.glyph}</span>
+            : <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>}
           {data.status && <span className={`fc-status fc-st-${data.status === "success" ? "ok" : data.status === "error" ? "err" : "run"}`} title={data.status} />}
           {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} />}
           {data.ring === "fence" && <span className="fc-card-fence-badge" title="fenced by an agent" />}
@@ -110,7 +115,9 @@ const BlockCard = memo((props: NodeProps) => {
         <>
           <div className="fc-card-head">
             <span className="fc-card-role"><RoleMark role={role} /></span>
-            <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>
+            {data.hue
+              ? <span className="fc-card-sq" aria-hidden="true" title={data.dir}>{data.glyph}</span>
+              : <span className="fc-card-logo" aria-hidden="true">{data.logo ?? sectionLogo(`${data.title}`, role)}</span>}
             <span className="fc-card-name" title={data.title}>{data.title}</span>
             {data.status && <span className={`fc-status fc-st-${data.status === "success" ? "ok" : data.status === "error" ? "err" : "run"}`} title={data.status} />}
             {data.lastRun && <span className={`fc-lastrun fc-lastrun-${data.lastRun}`} title={data.lastRun === "ok" ? "last run – passed" : "last run – failed"} />}

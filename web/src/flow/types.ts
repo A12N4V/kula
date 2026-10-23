@@ -64,6 +64,12 @@ export type FlowEdge = {
   label?: string;
   /** Main flow edge (default). Non-main edges are dashed and 1 px. */
   main?: boolean;
+  /** Orthogonal gutter route (flow/route.ts), absolute canvas points. */
+  route?: { x: number; y: number }[];
+  /** Rides a highway (skips columns) – rests fainter than local wires. */
+  long?: boolean;
+  /** Wire colour – the source section's hue (Excalidraw-style regions). */
+  color?: string;
   /** Explicit backward routing hint; the renderer also detects it from x. */
   backward?: boolean;
   /** Run state of the wire: data moving (animated), passed, failed. */
@@ -77,6 +83,8 @@ export type FlowGroup = {
   id: string;
   label: string;
   members: string[];
+  /** Region hue: tints the frame and its title. */
+  color?: string;
 };
 
 /** What the kit hands back on selection. */
@@ -85,6 +93,10 @@ export type FlowSelection = { id: string; kind: FlowNodeKind } | null;
 /* The block node's payload (R0): the old Blocks-lens card, as the node itself.
    Kept here so the kit stays the single type surface for every canvas. */
 export type BlockCardData = {
+  /** Directory hue (Graph view palette), the block's language glyph and dir label. */
+  hue?: string;
+  glyph?: string;
+  dir?: string;
   role?: string;
   roleColor?: string;
   logo?: string;

@@ -368,3 +368,29 @@ html[data-rm="1"] .fc-dot { transition: none; }
 .fc-card.fc-stage-1 .fc-card-caption { flex: none; max-width: 100%; margin-top: 8px; text-align: center; font-size: 13px; line-height: 16px; }
 .fc-card.fc-sel .fc-card-tile { border-color: var(--accent); background: var(--accent-soft); }
 .fc-card-fence-badge { position: absolute; top: -5px; right: -5px; width: 10px; height: 10px; background: var(--accent); border: 2px solid var(--bg); border-radius: 50%; }
+
+/* Region hues (U5, Excalidraw-style): a section frame carries a soft tint of
+   its hue and a coloured title; wires carry the source region's hue at rest,
+   full strength on hover or when their card is hovered. */
+.fc-group.fc-group-hue { background: color-mix(in srgb, var(--fc-hue) 11%, transparent); border-color: color-mix(in srgb, var(--fc-hue) 70%, var(--line)); }
+.fc-group.fc-group-hue .fc-group-label { color: color-mix(in srgb, var(--fc-hue) 80%, var(--text)); }
+.react-flow__edge-path.fc-edge-hue { stroke-opacity: .55; }
+.react-flow__edge-path.fc-edge-hue.fc-edge-long { stroke-opacity: .28; }
+.react-flow__edge-path.fc-edge-hue.fc-edge-faint { stroke-opacity: .15; }
+.react-flow__edge-path.fc-edge-hue.fc-edge-lit, .react-flow__edge-path.fc-edge-hue.fc-edge-hot, .react-flow__edge-path.fc-edge-hue.fc-edge-sel { stroke-opacity: 1; }
+
+/* Directory hue on block cards (U5 – the Graph view's language, not n8n's):
+   a solid square carrying the language glyph, as the Graph draws hubs, and a
+   border tinted with the directory colour. */
+.fc-card[style*="--fc-hue"] { border-color: color-mix(in srgb, var(--fc-hue) 80%, var(--line-2)); background: color-mix(in srgb, var(--fc-hue) 6%, var(--panel)); }
+.fc-card[style*="--fc-hue"] .fc-card-head { background: color-mix(in srgb, var(--fc-hue) 22%, transparent); margin: -8px -12px 4px; padding: 7px 12px; }
+.fc-card-sq { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 3px; border-radius: var(--radius-sm, 2px);
+  background: var(--fc-hue); color: #0b0b0b; font: 700 9.5px var(--mono); letter-spacing: 0; flex: none; }
+/* Far zoom: a filled circle, area ~ symbols, the square on its rim. */
+.fc-card-tile.fc-card-orb { background: none; border: 0; display: grid; place-items: center; position: relative; }
+.fc-card-tile.fc-card-orb::before { content: ""; width: var(--fc-orb, 70%); aspect-ratio: 1; border-radius: 50%;
+  background: var(--fc-hue); grid-area: 1 / 1; }
+.fc-card-tile.fc-card-orb .fc-card-sq-rim { grid-area: 1 / 1; align-self: end; justify-self: end; outline: 2px solid var(--bg); }
+.fc-card.fc-stage-1[style*="--fc-hue"] { border-color: transparent; background: none; }
+.fc-card.fc-sel .fc-card-orb::before { outline: 2px solid var(--accent); outline-offset: 3px; }
+.fc-card.fc-sel .fc-card-tile.fc-card-orb { background: none; }

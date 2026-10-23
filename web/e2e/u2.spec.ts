@@ -20,17 +20,17 @@ test("the layer toggle exists with the six layers and the contract defaults", as
   await expect(layers).toBeVisible();
   for (const id of ["blocks", "flows", "chains", "fences", "agents", "runs"])
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toBeVisible();
-  // Defaults: Blocks + Agents + Runs on, the rest off (contract §5).
-  for (const id of ["blocks", "agents", "runs"])
+  // Defaults: Blocks + Flows + Agents + Runs on, the rest off (contract §5;
+  // Flows on since U5 routes wires through the gutters).
+  for (const id of ["blocks", "flows", "agents", "runs"])
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toHaveAttribute("aria-pressed", "true");
-  for (const id of ["flows", "chains", "fences"])
+  for (const id of ["chains", "fences"])
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toHaveAttribute("aria-pressed", "false");
 });
 
 test("turning a layer off hides its marks and back on restores them", async ({ page }) => {
   await open(page);
-  // Flows is off by default (contract §5) – pick it from the layer list first.
-  await page.locator("[data-testid=u2-layer-flows]").click();
+  // Flows is on by default (contract §5).
   const edge = page.locator("[data-testid=map-flow] .react-flow__edge").first();
   await expect(edge).toBeVisible();
   await page.locator("[data-testid=u2-layer-flows]").click();

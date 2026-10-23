@@ -20,7 +20,7 @@ export const LAYERS: { id: LayerId; label: string; hint: string }[] = [
 ];
 export type Layers = Record<LayerId, boolean>;
 /** Contract §5 defaults: Blocks + Agents + Runs on; the rest off until picked. */
-export const DEFAULT_LAYERS: Layers = { blocks: true, flows: false, chains: false, fences: false, agents: true, runs: true };
+export const DEFAULT_LAYERS: Layers = { blocks: true, flows: true, chains: false, fences: false, agents: true, runs: true };
 
 /** One compact toggle, no sub-tabs (contract §5): six square chips in a row.
     Turning a layer off hides its marks and never navigates. */
