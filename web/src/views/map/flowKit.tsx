@@ -338,7 +338,18 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   // continuum: three fixed sizes read as a system, one per order of amount
   // of code, and the open frame's rows stay on a shared rhythm.
   const SOLID_SIZES = [96, 136, 176] as const;
-  const sq = (b: Block) => { const n = symbolsUnder(data.blocks, b.id).length; return n < 20 ? SOLID_SIZES[0] : n < 100 ? SOLID_SIZES[1] : SOLID_SIZES[2]; };
+  // U8 (X6's contract) – the breaks sit at the 40th/75th percentile of the
+  // symbols-under counts over the shown blocks, so the three steps split the
+  // map's own distribution instead of hard-coded numbers.
+  const underCache = new Map<string, number>();
+  const under = (id: string) => { let n = underCache.get(id); if (n == null) { n = symbolsUnder(data.blocks, id).length; underCache.set(id, n); } return n; };
+  const SOLID_BREAKS = (() => {
+    const counts = Object.values(data.blocks).filter((b) => shown(b)).map((b) => under(b.id)).sort((a, b) => a - b);
+    if (!counts.length) return [20, 100];
+    const at = (p: number) => counts[Math.min(counts.length - 1, Math.floor(p * (counts.length - 1)))];
+    return [at(0.4), Math.max(at(0.75), at(0.4) + 1)];
+  })();
+  const sq = (b: Block) => { const n = under(b.id); return n < SOLID_BREAKS[0] ? SOLID_SIZES[0] : n < SOLID_BREAKS[1] ? SOLID_SIZES[1] : SOLID_SIZES[2]; };
   const kidsOf = (id: string) => (data.blocks[id]?.children ?? []).map((c) => data.blocks[c]).filter((k): k is Block => !!k && shown(k));
   const isOpen = (id: string) => openPath.includes(id);
   type Box = { w: number; h: number; place: (x: number, y: number) => void };

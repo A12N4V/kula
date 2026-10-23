@@ -54,17 +54,21 @@ test("the open frame header carries the breadcrumb of the open path and a fold b
   const { id } = await openFirst(page);
   // The crumb for the opened block lists its open path. A top-level section
   // is a one-segment path, so open a child inside the frame to see the chain.
-  const frameBox = await page.locator('[data-testid^="fc-node-open:"]').first().boundingBox();
-  expect(frameBox).toBeTruthy();
+  // The camera keeps panning (the anchor's ~200 ms pan), so the frame box is
+  // re-measured inside the child loop – never captured once before it.
+  await page.waitForTimeout(400); // let the anchor pan settle
+  const frameBox = () => page.locator('[data-testid^="fc-node-open:"]').first().boundingBox();
+  expect(await frameBox()).toBeTruthy();
   const kids = page.locator(".fm-flow .fc-solid:not(.fc-solid-leaf):not(.fc-dim)");
   const nKids = await kids.count();
   let childId: string | null = null;
   for (let i = 0; i < nKids && !childId; i++) {
     const k = kids.nth(i);
     const b = await k.boundingBox();
-    if (!b) continue;
+    const fb = await frameBox();
+    if (!b || !fb) continue;
     const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
-    if (cx > frameBox!.x && cx < frameBox!.x + frameBox!.width && cy > frameBox!.y && cy < frameBox!.y + frameBox!.height) {
+    if (cx > fb.x && cx < fb.x + fb.width && cy > fb.y && cy < fb.y + fb.height) {
       childId = (await k.getAttribute("data-testid"))!.replace("fc-node-", "");
       await k.click();
     }
