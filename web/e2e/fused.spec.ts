@@ -538,6 +538,18 @@ test("ask gate docks above the transport with three answers and keys 1/2/3, not 
   await opened(page, "map", FIXTURE);
   const transport = page.locator('[data-testid="ws-runbar"]');
   await expect(transport).toBeVisible({ timeout: 30_000 });
+  // a pipeline to dry-run (as u4.spec seeds it): trigger → agent → gate
+  await page.evaluate(() => {
+    const ids = [...document.querySelectorAll('[data-testid^="fc-node-sec:"]')].map((e) => (e.getAttribute("data-testid") ?? "").slice("fc-node-".length));
+    const [sec1, sec2] = [...new Set(ids)];
+    localStorage.setItem("kula.pipeline.map", JSON.stringify([
+      { id: "u4-t", kind: "trigger", ref: "manual", name: "Start", section: sec1 },
+      { id: "u4-a", kind: "agent", ref: "polish", name: "Polish agent", section: sec2 },
+      { id: "u4-g", kind: "gate", ref: "kula check", name: "Check" },
+    ]));
+  });
+  await page.reload();
+  await expect(page.locator('[data-testid="ws-seg-u4-a"]')).toBeVisible({ timeout: 30_000 });
   // trigger an ask the way u4.spec does: dry-run a plan, approve it – the
   // fake run's first agent reaches outside its fence and the gate opens
   await page.locator('[data-testid="u4-dry-run"]').click();

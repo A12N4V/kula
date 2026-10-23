@@ -101,7 +101,9 @@ test("conflict marks land on the block in place; change badges show + and acknow
   await expect(page.locator('[data-testid="ndv"]')).toBeVisible();
   await expect(page.locator('[data-testid^="u4-decision-"]').first()).toBeVisible();
   await expect(page.locator('[data-testid^="u4-ndv-changes-"] p').first()).toContainText("+");
-  await page.locator('[data-testid^="u4-ack-"]').first().click();
+  // acknowledge every change in the step – a block can carry several
+  const acks = page.locator('[data-testid^="u4-ack-"]');
+  while (await acks.count()) await acks.first().click();
   // acknowledged changes stop showing badges on the map
   await expect(page.locator('[data-testid^="u4-badge-"]')).toHaveCount(0, { timeout: 10_000 });
 });

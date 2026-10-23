@@ -57,7 +57,7 @@
 /* Shared editor chrome: tabs, inspector, chips, preview */
 .team-card .ag-body { gap: 0; }
 .team-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 10px; overflow-x: auto; }
-.team-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.team-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
 .team-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
 .team-tabs .team-tab-add { margin-left: 4px; }
 .team-stage { display: grid; grid-template-columns: minmax(0, 1fr) 320px; border: 1px solid var(--line); min-height: 420px; }

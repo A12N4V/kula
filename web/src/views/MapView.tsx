@@ -713,7 +713,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
               hint={insert?.after ? `Insert after ${pipe.steps.find((x) => x.id === insert.after)?.name ?? "block"}` : lastSec ? `Add on ${data.blocks[lastSec]?.theme || data.blocks[lastSec]?.name}` : "Add a block"} />
             {menu && <ContextMenu at={menu.at} items={menuItems(menu)} onClose={() => setMenu(null)} />}
             {ndvStep && <StepDetails data={data} s={ndvStep} pipe={pipe} runner={runner} sections={sections} prev={ndvPrev} onClose={() => setNdv(null)} sup={sup} />}
-            <Transport runner={runner} steps={runnable(pipe.steps)} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} sel={selStep} onPick={(id) => (sup.planActive ? sup.toggleStrike(id) : setSelBlock(`step:${id}`))} sup={sup} />
+            <Transport runner={runner} steps={runnable(pipe.steps)} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} sel={selStep} onPick={(id) => (sup.planActive ? sup.toggleStrike(id) : setSelBlock(`step:${id}`))} onOpen={(id) => { setSelBlock(`step:${id}`); setNdv(id); }} sup={sup} />
             {/* U3 – the fence hull around the selected agent's sections (§8.5). */}
             <FenceHull canvas={canvasWrapRef} fencedIds={fenced} agent={selAgent} />
             {/* U4 – run supervision: plan overlay (read outline / write tint /
@@ -818,7 +818,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     time and filled by its state; the block in flight is the lit region, the
     way sema shades the window on its recording strip. Click a segment to open
     that block. */
-function Transport({ runner, steps, waiting, last, sel, onPick, sup }: { runner: ReturnType<typeof useRunner>; steps: Step[]; waiting: { id: string; name: string } | null; last: { status: string; ms: number } | null; sel: string | null; onPick: (id: string) => void; sup: ReturnType<typeof useSupervision> }) {
+function Transport({ runner, steps, waiting, last, sel, onPick, onOpen, sup }: { runner: ReturnType<typeof useRunner>; steps: Step[]; waiting: { id: string; name: string } | null; last: { status: string; ms: number } | null; sel: string | null; onPick: (id: string) => void; onOpen: (id: string) => void; sup: ReturnType<typeof useSupervision> }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { if (!runner.running) return; const t = window.setInterval(() => setNow(Date.now()), 250); return () => window.clearInterval(t); }, [runner.running]);
   const blocks = steps.length;
@@ -858,7 +858,8 @@ function Transport({ runner, steps, waiting, last, sel, onPick, sup }: { runner:
             const live = runner.running && runner.cursor && runner.cursor.at === i + 1;
             return (
               <button key={s.id} role="listitem" className={`tp-seg tp-seg-${st}${live ? " live" : ""}${sel === s.id ? " sel" : ""}`}
-                style={{ flexGrow: span[i] / total }} onClick={() => onPick(s.id)} data-testid={`ws-seg-${s.id}`}
+                style={{ flexGrow: span[i] / total }} onClick={() => onPick(s.id)} onDoubleClick={() => onOpen(s.id)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !sup.planActive) { e.preventDefault(); onOpen(s.id); } }} data-testid={`ws-seg-${s.id}`}
                 title={`${i + 1}. ${s.name} – ${st}${s.ms ? ` · ${clock(s.ms)}` : ""}`}>
                 <span className="tp-seg-n mono">{i + 1}</span><span className="tp-seg-name">{s.name}</span>
               </button>

@@ -2340,7 +2340,9 @@ test.describe("map", () => {
   test("the flow is the default: a headline, block cards and frames, readable landing zoom", async ({ page }, info) => {
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
-    await expect(page.locator("[data-testid=map-headline]")).toContainText("executes");
+    // the headline is the executed path itself – the "executes" eyebrow went
+    // (fused-canvas-review finding 2)
+    await expect(page.locator("[data-testid=map-headline]")).not.toBeEmpty();
     await expect(page.locator("[data-testid=map-headline] .fm-headline-v")).not.toHaveText("–");
     // the nodes are the block cards now (R0) – name, role mark, meta row
     await expect(page.locator(".fc-card").first()).toBeVisible();
