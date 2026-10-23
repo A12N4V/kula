@@ -2048,17 +2048,25 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid^=pl-row-]").first()).toBeVisible();
   };
   const blocksView = async (page: Page) => {
-    // the section frame drills into its block tree (a double-click opens);
-    // fall back to the first block card
-    const sec = page.locator("[data-testid^='fc-node-sec:']").first();
-    await sec.or(page.locator(".fc-card").first()).first().waitFor({ state: "visible", timeout: 30_000 });
-    // let the initial fit and the virtualized remount settle: a dblclick
-    // dispatched mid-remount is lost
+    // U5: a square's hover toolbar "Open" drills into its block tree (a
+    // click unfolds it in place, a double-click opens details)
+    await page.locator(".fc-solid").first().waitFor({ state: "attached", timeout: 30_000 });
     await page.waitForTimeout(800);
-    const target = (await sec.count()) ? sec : page.locator(".fc-card").first();
-    // a plain dblclick is intercepted by the edge interaction paths over the
-    // frames – dispatch the event instead
-    await target.dispatchEvent("dblclick");
+    // a square on top at its centre, clear of the inspector and the right column
+    const pt = await page.evaluate(() => {
+      for (const e of document.querySelectorAll(".fc-solid .fc-solid-sq")) {
+        const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const top = document.elementFromPoint(x, y);
+        if ((e.parentElement as HTMLElement | null)?.dataset.fcHas && r.left > 80 && r.top > 120 && r.right < innerWidth - 520 && r.bottom < innerHeight - 120 && top && e.contains(top))
+          return { x, y, id: (e.closest("[data-testid^=fc-node-]") as HTMLElement).dataset.testid!.replace("fc-node-", "") };
+      }
+      return null;
+    });
+    expect(pt, "a square clear of the panels").toBeTruthy();
+    const id = pt!.id;
+    await page.mouse.move(pt!.x, pt!.y, { steps: 3 });
+    // clicking through the mouse would leave the square and hide its toolbar
+    await page.locator(`[data-testid="fn-open-${id}"]`).evaluate((el) => (el as HTMLElement).click());
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible({ timeout: 15_000 });
   };
   // The inspector is closed until a click; Structure opens it on the block tree.
@@ -2643,6 +2651,7 @@ test.describe("map", () => {
     await expect(page.locator(".fc-solid").first()).toBeVisible();
     await expect(page.locator("[data-testid^='fc-node-open:']")).toHaveCount(0);
     await page.locator("[data-testid=fc-fit]").click();
+    await page.waitForTimeout(500);
     const openable = page.locator(".fc-solid:has(.fc-solid-open)");
     const ids = await openable.evaluateAll((els) => els.filter((e) => {
       const r = e.querySelector(".fc-solid-sq")!.getBoundingClientRect();
@@ -2651,16 +2660,17 @@ test.describe("map", () => {
     }).map((e) => e.getAttribute("data-testid")!.slice("fc-node-".length)));
     expect(ids.length).toBeGreaterThan(1);
     const [a, b] = ids;
-    const tap = async (sel: string) => { const bb = await page.locator(sel).boundingBox(); await page.mouse.click(bb!.x + bb!.width / 2, bb!.y + 20); };
+    const tap = async (sel: string) => { const bb = await page.locator(sel).boundingBox(); await page.mouse.click(bb!.x + bb!.width / 2, bb!.y + Math.min(20, bb!.height / 2)); await page.waitForTimeout(400); };
     await tap(`[data-testid="fc-node-${a}"] .fc-solid-sq`);
     await expect(page.locator(`[data-testid="fc-node-open:${a}"]`)).toBeVisible();
     // opening another branch folds the first back into its square
     await page.locator("[data-testid=fc-fit]").click();
+    await page.waitForTimeout(500);
     await tap(`[data-testid="fc-node-${b}"] .fc-solid-sq`);
     await expect(page.locator(`[data-testid="fc-node-open:${b}"]`)).toBeVisible();
     await expect(page.locator(`[data-testid="fc-node-open:${a}"]`)).toHaveCount(0);
     // the frame header folds it
-    await tap(`[data-testid="fc-node-open:${b}"] .fc-group-head`);
+    await tap(`[data-testid="fc-node-open:${b}"] .fc-group-label`);
     await expect(page.locator("[data-testid^='fc-node-open:']")).toHaveCount(0);
   });
 

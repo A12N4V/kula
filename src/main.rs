@@ -20,6 +20,7 @@ mod kg;
 mod lang_cmd;
 mod map;
 mod map_api;
+mod explain;
 mod map_cmd;
 mod map_run;
 mod mcp;
@@ -458,6 +459,39 @@ enum MapSub {
         /// Only this role.
         #[arg(long)]
         role: Option<String>,
+    },
+    /// Plain words for the map – named by your own agent's model (the
+    /// kula-map skill), stored in git on refs/kula/map, shared by `kula share`.
+    #[command(subcommand)]
+    Explain(ExplainCmd),
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ExplainCmd {
+    /// The blocks that still need plain words, with their context (JSON).
+    Todo {
+        /// Every block – to re-map with another model.
+        #[arg(long)]
+        all: bool,
+        #[arg(long, default_value_t = 25)]
+        limit: usize,
+    },
+    /// Store words from a JSON file (or - for stdin): { "<id>": { "plain", "sentence" } }.
+    Apply {
+        /// The model that wrote them, e.g. claude-opus-5-5.
+        #[arg(long)]
+        model: String,
+        file: String,
+    },
+    /// How much of the map has plain words, and by which models.
+    Status,
+    /// Ask your default agent (or --agent) to run the kula-map skill now.
+    Run {
+        #[arg(long)]
+        agent: Option<String>,
+        /// Re-map every block, not only the unnamed ones.
+        #[arg(long)]
+        all: bool,
     },
 }
 
@@ -1624,6 +1658,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Kg(kc) => kg_cmd(&repo, kc, json)?,
         Cmd::Sync { remote, overwrite } => {
             print!("{}", meta::sync(&repo, &remote, false)?);
+            print!("{}", explain::sync(&repo, &remote, false)?);
             match setup::pull(&repo, &remote, overwrite)? {
                 None => println!("remote has no shared agent setup"),
                 Some(r) => {
@@ -1647,6 +1682,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Share { remote } => {
             let shared = setup::snapshot(&repo)?;
             print!("{}", meta::sync(&repo, &remote, true)?);
+            print!("{}", explain::sync(&repo, &remote, true)?);
             setup::push(&repo, &remote)?;
             println!("shared the agent setup ({} files) on {}", shared.len(), setup::REF);
             println!("{}", dim("anyone who clones gets it with `kula sync` (a fork: `kula sync upstream`)"));

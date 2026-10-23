@@ -10,6 +10,7 @@ pub fn run(sub: Option<MapSub>, repo: &git::Repo, json: bool) -> anyhow::Result<
         MapSub::Blocks { depth } => blocks(repo, json, depth),
         MapSub::Chains { from, to, all } => chains(repo, json, from.as_deref(), to.as_deref(), all),
         MapSub::Roles { role } => roles(repo, json, role.as_deref()),
+        MapSub::Explain(cmd) => explain_cmd(repo, cmd),
     }
 }
 
@@ -134,4 +135,33 @@ fn roles(repo: &git::Repo, json: bool, role: Option<&str>) -> anyhow::Result<()>
         println!("  {:<12} {}  {}", r, ids.len(), map::role_rule(r));
     }
     Ok(())
+}
+
+fn explain_cmd(repo: &git::Repo, cmd: crate::ExplainCmd) -> anyhow::Result<()> {
+    use crate::explain;
+    match cmd {
+        crate::ExplainCmd::Todo { all, limit } => {
+            if explain::ensure_skill(repo)? {
+                eprintln!("wrote the {} skill to {}/{} – `kula skill sync` shares it with every agent", explain::SKILL, crate::skills::SOURCE, explain::SKILL);
+            }
+            print_json(&explain::todo(repo, all, limit)?)
+        }
+        crate::ExplainCmd::Apply { model, file } => {
+            let text = if file == "-" { let mut s = String::new(); std::io::Read::read_to_string(&mut std::io::stdin(), &mut s)?; s } else { std::fs::read_to_string(&file)? };
+            let n = explain::apply(repo, &model, &serde_json::from_str(&text)?)?;
+            println!("stored {n} names by {model} on {} – `kula share` sends them to everyone", explain::REF);
+            Ok(())
+        }
+        crate::ExplainCmd::Status => print_json(&explain::status(repo)?),
+        crate::ExplainCmd::Run { agent, all } => {
+            explain::ensure_skill(repo)?;
+            let Some(cmd) = explain::agent_command(repo, agent.as_deref(), all) else {
+                anyhow::bail!("no default agent – connect one (`kula connect claude`) or run the kula-map skill from your agent");
+            };
+            eprintln!("running: {}", cmd.join(" "));
+            let st = std::process::Command::new(&cmd[0]).args(&cmd[1..]).current_dir(&repo.root).status()?;
+            if !st.success() { anyhow::bail!("the agent exited with {st}"); }
+            print_json(&explain::status(repo)?)
+        }
+    }
 }
