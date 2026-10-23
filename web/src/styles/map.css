@@ -406,3 +406,89 @@ span.fm-lane-stop { cursor: default; }
 .vf-swatch { width: 10px; height: 10px; flex: none; background: var(--vf-hue); border-radius: var(--radius-sm, 2px); }
 .vf-row.on .vf-row-btn { background: color-mix(in srgb, var(--vf-hue) 18%, transparent); }
 .vf-row .vf-sec { border-color: color-mix(in srgb, var(--vf-hue) 55%, var(--line-2)); }
+
+/* U7 – Journeys: the value-flow list as the right column's panel. One row
+   per flow: hue swatch, plain title, step count. Picking rings its squares. */
+.u7-journeys { display: flex; flex-direction: column; gap: 6px; padding: 10px 0 4px; }
+.u7-j-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.u7-j-btn { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 4px 8px; text-align: left;
+  background: none; border: 1px solid transparent; border-radius: var(--radius-sm, 2px); color: var(--text); cursor: pointer; }
+.u7-j-btn:hover { background: var(--hover-bg, rgba(255,255,255,.04)); border-color: var(--hover-line, var(--line-2)); }
+.u7-j-row.on .u7-j-btn { background: color-mix(in srgb, var(--vf-hue) 18%, transparent); border-color: color-mix(in srgb, var(--vf-hue) 55%, var(--line-2)); }
+.u7-j-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.u7-j-meta { flex: none; font-size: 10.5px; color: var(--text-3); }
+.u7-journeys-empty { padding: 10px 0; }
+
+/* U7 – the journey strip over the canvas (plain-map.md §3): numbered sentence
+   steps docked above the transport while a journey is picked. */
+.u7-strip { position: absolute; left: 50%; transform: translateX(-50%); bottom: 84px; z-index: 9;
+  display: flex; align-items: center; gap: 6px; max-width: min(860px, calc(100% - 32px)); padding: 6px 8px;
+  background: var(--panel, #121110); border: 1px solid var(--line-2); border-left: 2px solid var(--vf-hue, var(--accent));
+  border-radius: var(--radius); pointer-events: auto; }
+/* Placement is measured in flowsPanel.tsx (the map root sits inside
+   transformed ancestors, so CSS anchoring lands off-screen) – the strip is
+   docked between the viewport's left edge and the floating inspector. */
+.u7-steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: thin; }
+.u7-steps li { display: contents; }
+.u7-step { display: flex; align-items: center; gap: 6px; padding: 4px 8px; min-height: 28px; white-space: nowrap;
+  background: none; border: 1px solid transparent; border-radius: var(--radius-sm, 2px); color: var(--text-2); cursor: pointer; }
+.u7-step:hover { background: var(--hover-bg, rgba(255,255,255,.04)); border-color: var(--hover-line, var(--line-2)); }
+.u7-step.cur { background: color-mix(in srgb, var(--vf-hue) 18%, transparent); border-color: var(--vf-hue, var(--accent)); color: var(--text); }
+.u7-step.done { opacity: .65; }
+.u7-step-n { font-size: 10.5px; color: var(--vf-hue, var(--accent)); }
+.u7-step-txt { font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.u7-step-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  background: none; border: 1px solid transparent; border-radius: var(--radius-sm, 2px); color: var(--text-2); cursor: pointer; padding: 0; }
+.u7-step-btn:hover:not(:disabled) { background: var(--hover-bg, rgba(255,255,255,.04)); border-color: var(--hover-line, var(--line-2)); color: var(--text); }
+.u7-step-btn:disabled { opacity: .35; cursor: default; }
+.u7-step-btn svg, .u7-chev { display: flex; }
+.u7-chev.l svg { transform: rotate(90deg); }
+.u7-chev.r svg { transform: rotate(270deg); }
+.u7-strip-close { margin-left: 2px; border-color: var(--line-2); }
+
+/* U7 – the key docked bottom-left of the map (the right edge is the nav column)
+   (X5 §2: the key is always on the map, no click to know it exists). */
+.u7-key-dock { position: absolute; left: 12px; bottom: 52px; z-index: 8; width: 200px;
+  background: var(--panel, #121110); border: 1px solid var(--line-2); border-radius: var(--radius); pointer-events: auto; }
+.u7-key-dock .u7-legend { border-bottom: 0; }
+/* X6 §3.2: the key is ≤ 200 px tall – one line per row in the dock. */
+.u7-key-dock .u7-lg-row dd { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* U7 – dead journeys: a flow with no visible sections is disabled, not empty. */
+.u7-j-btn:disabled { opacity: .38; cursor: default; }
+.u7-j-btn:disabled:hover { background: none; border-color: transparent; color: var(--text-2); }
+
+/* U7 – the key (plain-map.md §2): collapsible legend in the right column. */
+.u7-legend { border-bottom: 1px solid var(--line); }
+.u7-legend-head { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 28px; padding: 6px 12px;
+  background: none; border: 0; color: var(--text-3); font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .12em; cursor: pointer; }
+.u7-legend-head:hover { background: var(--hover-bg, rgba(255,255,255,.04)); color: var(--text); }
+.u7-legend-panel { margin: 0 12px 8px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.u7-lg-row { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 11.5px; color: var(--text-2); }
+.u7-lg-row dt { flex: none; color: var(--text); font-weight: 500; }
+.u7-lg-row dd { margin: 0; }
+.u7-lg-sample { flex: none; display: inline-flex; align-items: center; gap: 3px; width: 64px; }
+.u7-lg-swatch { width: 10px; height: 10px; flex: none; border-radius: var(--radius-sm, 2px); }
+.u7-lg-sq { display: inline-block; background: var(--text-3); border-radius: var(--radius-sm, 2px); flex: none; }
+.u7-sq-1 { width: 5px; height: 5px; }
+.u7-sq-2 { width: 8px; height: 8px; }
+.u7-sq-3 { width: 12px; height: 12px; }
+.u7-lg-glyph { font-size: 9.5px; color: var(--text-2); }
+.u7-lg-ring { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--accent); flex: none; }
+.u7-lg-agent { display: inline-block; width: 12px; height: 12px; border: 1px dashed var(--violet, var(--text-3)); flex: none; }
+
+/* U7 phone (≤ 720): the strip becomes a bottom sheet, the legend rows keep
+   the hit-target floor. */
+@media (max-width: 720px) {
+  .u7-strip { left: 12px; right: 12px; transform: none; bottom: 12px; max-width: none;
+    flex-wrap: wrap; gap: 4px; padding: 10px 10px 12px; }
+  .u7-steps { flex: 1 1 100%; flex-direction: column; max-height: 40vh; }
+  .u7-step { min-height: 40px; white-space: normal; }
+  .u7-step-txt { max-width: none; white-space: normal; }
+  .u7-step-btn { width: 40px; height: 40px; }
+  .u7-legend-head { min-height: 40px; }
+  .u7-lg-row { min-height: 32px; }
+}
+/* Phone: no room for a floating key beside the layer column – the key lives
+   in the panel's legend instead. */
+@media (max-width: 720px) { .u7-key-dock { display: none; } }
