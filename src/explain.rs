@@ -253,7 +253,7 @@ fn resolve(repo: &Repo, map: &Value) -> (Map<String, Value>, Vec<String>) {
         let mut v = fallback(&c, id);
         match stored.get(id) {
             Some(e) if e["hash"].as_str() == Some(hash.as_str()) => {
-                for k in ["plain", "sentence"] {
+                for k in ["plain", "sentence", "area"] {
                     if let Some(x) = e.get(k).filter(|x| x.as_str().map(|s| !s.is_empty()).unwrap_or(false)) {
                         v[k] = x.clone();
                     }
@@ -311,7 +311,7 @@ pub fn todo(repo: &Repo, all: bool, limit: usize) -> Result<Value> {
         "remaining": total,
         "batch": items,
         "write_back": "kula map explain apply --model <your model> <file.json>",
-        "answer_shape": { "<id>": { "hash": "<hash from the batch>", "plain": "≤ 4 everyday words", "sentence": "one sentence on what it does for the person using the software" } },
+        "answer_shape": { "<id>": { "hash": "<hash from the batch>", "plain": "≤ 4 everyday words", "sentence": "one sentence on what it does for the person using the software", "area": "≤ 3 words: the product area – what the person is trying to get done (shared by related blocks)" } },
     }))
 }
 
@@ -338,10 +338,18 @@ pub fn apply(repo: &Repo, model: &str, answers: &Value) -> Result<usize> {
                 continue;
             }
             let plain: String = plain.split_whitespace().take(4).collect::<Vec<_>>().join(" ");
+            // optional: the product area, so the map can group by intent
+            let area: String = a["area"].as_str().unwrap_or("").split_whitespace().take(3).collect::<Vec<_>>().join(" ");
             // the words describe the code as it is now – re-hash, never trust a stale hash
             blocks.insert(
                 id.clone(),
-                json!({ "hash": block_hash(&c, id), "plain": plain, "sentence": sentence.replace('—', "–"), "model": model, "at": at }),
+                {
+                    let mut e = json!({ "hash": block_hash(&c, id), "plain": plain, "sentence": sentence.replace('—', "–"), "model": model, "at": at });
+                    if !area.is_empty() {
+                        e["area"] = json!(area);
+                    }
+                    e
+                },
             );
             n += 1;
         }
@@ -392,7 +400,11 @@ for them again.
      file names, no camelCase.
    - `sentence` – one short sentence on what it does **for the person using
      the software**. Read the files when the names are not enough.
-3. Save `{ "<id>": { "hash": "…", "plain": "…", "sentence": "…" } }` to a
+   - `area` – at most 3 words for the product area: what the person is
+     trying to get done ("Agent safety", "Seeing changes", "Promo films").
+     Reuse the same area for related blocks – the map groups by it, so aim
+     for 5–9 areas over the whole codebase, never one per block.
+3. Save `{ "<id>": { "hash": "…", "plain": "…", "sentence": "…", "area": "…" } }` to a
    temp file and run `kula map explain apply --model <your model id> <file>`.
 4. Repeat until `remaining` is 0. Then `kula map explain status`.
 

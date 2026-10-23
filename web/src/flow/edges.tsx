@@ -3,6 +3,7 @@
 // midpoint labels, weight → 1–4 px stroke zoom-compensated so it stays crisp.
 // docs/design/flow-canvas.md §3.2.
 import { memo } from "react";
+import { svgId } from "./agentMark";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useStore, type EdgeProps } from "@xyflow/react";
 import { useFc } from "./fcContext";
 
@@ -52,7 +53,8 @@ const FlowEdgeView = memo((props: EdgeProps) => {
   const weight = clampW(data?.weight as number | undefined);
   const base = main ? weight : 1.5;
   const stroke = base / zoom; // zoom-compensated: visual px stays constant
-  const backward = data?.backward === true || targetX < sourceX;
+  // agent wires (gradient) are direct curves into the code they work on
+  const backward = !data?.gradient && (data?.backward === true || targetX < sourceX);
 
   let path: string;
   let labelX = (sourceX + targetX) / 2;
@@ -80,14 +82,25 @@ const FlowEdgeView = memo((props: EdgeProps) => {
   }
 
   const { hoverEdge, setHoverEdge, hovered } = useFc();
-  const touch = hovered ? (props.source === hovered || props.target === hovered ? " fc-edge-lit" : " fc-edge-faint") : "";
+  const touches = data?.touches as string[] | undefined;
+  const touch = hovered ? (props.source === hovered || props.target === hovered || touches?.includes(hovered) ? " fc-edge-lit" : " fc-edge-faint") : "";
   const flow = data?.flow as string | undefined;
   const tools = data?.tools as React.ReactNode | undefined;
   const hot = hoverEdge === props.id;
+  const grad = data?.gradient as [string, string] | undefined;
+  const gradId = `eg-${svgId(props.id)}`;
   const cls = `fc-edge${data?.lit ? " fc-edge-lit fc-edge-flow" : ""}${data?.color ? " fc-edge-hue" : ""}${data?.long && fresh ? " fc-edge-long" : ""}${backward && !fresh ? " fc-back" : ""}${dashed || !main ? " fc-dashed" : ""}${selected ? " fc-edge-sel" : ""}${flow ? ` fc-flow-${flow}` : ""}${hot ? " fc-edge-hot" : ""}${touch}`;
   return (
     <>
-      <BaseEdge id={props.id} path={path} markerEnd={markerEnd} className={cls} style={{ strokeWidth: stroke, ...(data?.color ? { stroke: data.color as string } : {}) }} data-testid={data?.testid as string | undefined} />
+      {grad && (
+        <defs>
+          <linearGradient id={gradId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
+            <stop offset="0" stopColor={grad[0]} />
+            <stop offset="1" stopColor={grad[1]} />
+          </linearGradient>
+        </defs>
+      )}
+      <BaseEdge id={props.id} path={path} markerEnd={markerEnd} className={`${cls}${grad ? " fc-edge-grad" : ""}`} style={{ strokeWidth: stroke, ...(grad ? { stroke: `url(#${gradId})` } : data?.color ? { stroke: data.color as string } : {}) }} data-testid={data?.testid as string | undefined} />
       {/* 40 px invisible hit path (n8n §4) – thin wires stay easy to hover. */}
       {tools && <path d={path} className="fc-edge-hit" onPointerEnter={() => setHoverEdge?.(props.id)} onPointerLeave={() => setHoverEdge?.(null)} />}
       {tools && (

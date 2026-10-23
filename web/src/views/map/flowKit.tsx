@@ -19,6 +19,9 @@ import type { Focus } from "./chainFocus";
 import { Icon } from "../../ui";
 import type { Marks } from "./workspace";
 import { KIND_COLOR, KindIco, type Step } from "./pipeline";
+import { useExplain } from "./plain";
+import { meaningZones, type Zone } from "./meaning";
+import { agentGradient } from "../../flow/agentMark";
 
 export type Scheme = "role" | "section" | "heat" | "mono";
 export const SCHEMES: { id: Scheme; label: string; hint: string }[] = [
@@ -168,6 +171,13 @@ function edgeWeight(weight: number, max: number): number {
   return Math.min(4, Math.max(1, Math.round(1 + 3 * Math.sqrt(weight / m))));
 }
 
+/** A square's mark: the initials of its plain name ("Agent safety fences" → AS). */
+function initials(plain?: string): string | undefined {
+  if (!plain) return undefined;
+  const w = plain.split(/\s+/).filter((x) => x && !/^(and|of|the|a|to|for)$/i.test(x));
+  return (w.length > 1 ? w[0][0] + w[1][0] : w[0]?.slice(0, 2) ?? "").toUpperCase() || undefined;
+}
+
 /** The busiest section: the one the most flow runs through (R0 – the
     readable-by-default landing centred on it). */
 export function busiestSection(data: MapData & { flows?: Flow[] }): string | null {
@@ -197,6 +207,27 @@ function fnIcon(kind: string) {
     chain dims everything it does not cross through the kit's `dim` flag. */
 export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal, agents = [], agentsOn = false }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
+  // The meaning layout (meaning.ts): sections grouped into intent zones by
+  // what they do and how work flows between them – not by directory or
+  // language. The plain words come from the user's own model when named.
+  const ex = useExplain();
+  const meaning = useMemo(() => {
+    const words = (id: string) => { const w = ex?.blocks?.[id]; return w ? `${w.plain ?? ""}. ${w.sentence ?? ""}` : ""; };
+    const secs = Object.values(sections).map((b) => {
+      const parts: string[] = [words(b.id), words(b.id), words(b.id)];
+      const walk = (id: string) => { for (const k of data.blocks[id]?.children ?? []) { parts.push(words(k)); walk(k); } };
+      walk(b.id);
+      // no model words yet: the theme, the code name and the function names stand in
+      if (!ex?.blocks?.[b.id]?.plain) { parts.push(b.theme ?? "", b.summary ?? "", b.name); for (const sid of b.symbols.slice(0, 40)) { const l = data.leaves[sid]; if (l) parts.push(l.name); } }
+      // the section's area: its own, else the most common among its blocks
+      const tally = new Map<string, number>();
+      const count = (id: string) => { const ar = ex?.blocks?.[id]?.area; if (ar) tally.set(ar, (tally.get(ar) ?? 0) + 1); for (const k of data.blocks[id]?.children ?? []) count(k); };
+      count(b.id);
+      const area = ex?.blocks?.[b.id]?.area ?? [...tally].sort((p, q) => q[1] - p[1])[0]?.[0];
+      return { id: b.id, text: parts.join(". "), role: b.role, plain: ex?.blocks?.[b.id]?.plain, area };
+    });
+    return meaningZones(secs, flows);
+  }, [sections, flows, ex, data]);
   const lit = (id: string) => !focus?.chain || focus.on.has(id);
   const [openPath, setOpenPath] = useState<string[]>([]);
   // U8 – the camera follows the opened square: opening (or folding) sets a
@@ -273,6 +304,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
     dirMemo.set(id, v);
     return v;
   };
+  const zoneColor = (sec: string) => meaning.zoneOf.get(sec)?.hue ?? dirOfBlock(sec).color;
   const colorOf = (b: Block, sec: string) =>
     scheme === "section" ? `hsl(${hue(sec)} 60% 58%)`
     : scheme === "mono" ? "var(--text-3)"
@@ -298,7 +330,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
       color: colorOf(b, sec), entry: b.role === "entry", dim: !lit(b.id),
       toolbar: nodeTools,
       card: {
-        hue: dirOfBlock(b.id).color, glyph: dirOfBlock(b.id).lang, dir: dg.label(dirOfBlock(b.id).dir),
+        hue: zoneColor(sec), glyph: initials(ex?.blocks?.[b.id]?.plain) ?? dirOfBlock(b.id).lang, dir: meaning.zoneOf.get(sec)?.name ?? dg.label(dirOfBlock(b.id).dir),
         role: b.role, roleColor: colorOf(b, sec),
         logo: sectionLogo(`${b.theme ?? ""} ${b.name} ${b.summary ?? ""}`, b.role),
         files: b.files, symbols: fnIds.length,
@@ -326,7 +358,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   // takes the colour of the directory most of its symbols live in, so src/
   // is the same blue here as on the Graph. Frames are tinted with it, wires
   // carry it, and far zoom draws the block as a node of that colour.
-  const regionHue = (id: string) => dirOfBlock(id).color;
+  const regionHue = (id: string) => zoneColor(id);
   // Nested squares (U5, the Graph view's hub language): every block is one
   // solid square in its directory hue, sized by symbol count. Clicking a
   // square disassembles it in place into a tinted frame holding its children
@@ -414,28 +446,60 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
       if (first) reps.set(b.id, reps.get(first) ?? first);
     } };
   };
-  const columns: string[][] = [...layers.map((l) => l.filter((id) => sections[id] && shown(sections[id])))];
-  const bandShown = band.filter((id) => sections[id] && shown(sections[id]));
-  if (bandShown.length) columns.push(bandShown);
+  // Meaning layout: intent zones left to right in the direction work flows,
+  // each a labelled frame in its hue; inside a zone, members fill columns of
+  // `perCol` in barycentre order (meaning.ts), so wires leave on the side
+  // they head to. An open section breaks its column and takes the room it needs.
   const colOf = new Map<string, number>();
-  // Wrap a busy layer into sub-columns so the closed map lands near 16:10.
-  const closedH = Math.max(...Object.values(sections).map((b) => sq(b) + 22), 120) + GAP_Y;
-  const nSecs = columns.flat().length;
-  const perCol = Math.max(3, Math.ceil(Math.sqrt(nSecs / 1.6)));
+  const zoneRank = (id: string) => meaning.zoneOf.get(id)?.rank ?? 0;
+  const nSecs = Object.values(sections).filter((b) => shown(b)).length;
+  const perCol = Math.max(3, Math.ceil(Math.sqrt(nSecs / 2.2)));
+  const ZONE_GAP = 112, ZONE_PAD = 28, ZONE_HEAD = 84, IN_GAP = 40;
+  // Agents live inside the map: a fenced agent sits in the zone that holds
+  // most of the code it may change, in a row along the zone's top, so its
+  // gradient wires drop straight into the squares it works on.
+  const AGENT_W = 208, AGENT_H = 112;
+  const homeOf = new Map<string, string>();
+  if (agentsOn) for (const a of agents) {
+    if (!a.sections.length) continue;
+    const tally = new Map<string, number>();
+    for (const sid of a.sections) { const z = meaning.zoneOf.get(secOf[sid] ?? sid); if (z) tally.set(z.id, (tally.get(z.id) ?? 0) + 1); }
+    const best = [...tally].sort((p, q) => q[1] - p[1])[0];
+    if (best) homeOf.set(a.name, best[0]);
+  }
+  const zoneBox = new Map<string, { x: number; w: number; h: number }>();
   let x = 0;
-  columns.forEach((col, ci) => {
-    if (!col.length) return;
-    let y = 0, colW = 0, inCol = 0;
-    for (const id of col) {
-      colOf.set(id, ci);
+  meaning.zones.forEach((z: Zone) => {
+    const members = z.members.filter((id) => sections[id] && shown(sections[id]));
+    if (!members.length) return;
+    const x0 = x;
+    const here = agents.filter((a) => homeOf.get(a.name) === z.id);
+    const top = ZONE_HEAD + ZONE_PAD + (here.length ? AGENT_H + GAP_Y : 0);
+    let agentRowW = 0;
+    here.forEach((a, i) => {
+      const [g0, g1] = agentGradient(a.name);
+      nodes.push({ id: `agent:${a.name}`, kind: "agent", title: a.name, subtitle: `${a.sections.length} fenced`,
+        color: g0, gradient: [g0, g1], size: { w: AGENT_W, h: AGENT_H },
+        pos: { x: x + ZONE_PAD + i * (AGENT_W + IN_GAP), y: ZONE_HEAD + ZONE_PAD } } as FlowNode);
+      agentRowW = (i + 1) * (AGENT_W + IN_GAP) - IN_GAP;
+    });
+    let cx = x + ZONE_PAD, y = top, colW = 0, inCol = 0, maxY = top + (here.length ? 0 : 0), sub = 0;
+    for (const id of members) {
       const box = measure(sections[id], id, 0);
-      if (inCol >= perCol && !isOpen(id)) { x += colW + GAP_X; y = 0; colW = 0; inCol = 0; }
-      box.place(x, y);
-      y += box.h + GAP_Y; colW = Math.max(colW, box.w); inCol++;
+      if (inCol > 0 && (inCol >= perCol || isOpen(id))) { cx += colW + IN_GAP; y = top; colW = 0; inCol = 0; sub++; }
+      colOf.set(id, z.rank * 100 + sub);
+      box.place(cx, y);
+      y += box.h + GAP_Y; colW = Math.max(colW, box.w); inCol++; maxY = Math.max(maxY, y);
+      if (isOpen(id)) { inCol = perCol; }
     }
-    x += colW + GAP_X;
+    // never narrower than its name (36px mono ≈ 22px a letter, plus tracking) – the name is the point
+    const w = Math.max(cx + colW, x0 + ZONE_PAD + agentRowW, x0 + z.name.length * 24 + ZONE_PAD) + ZONE_PAD - x0, h = maxY - GAP_Y + ZONE_PAD;
+    nodes.push({ id: z.id, kind: "group", title: z.name, subtitle: `${members.length} parts`, color: z.hue,
+      size: { w, h }, pos: { x: x0, y: 0 }, z: -200, anchors: true } as FlowNode);
+    zoneBox.set(z.id, { x: x0, w, h });
+    x += w + ZONE_GAP;
   });
-  void closedH;
+  void layers; void band; void GAP_X;
 
   // U6 – agents on the terrain. With the Agents layer on: a fenced agent is
   // an agent square (harmonograph mark, its name, a dashed hue border)
@@ -446,8 +510,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   // map's directory shares, wired into by every unfenced agent. Agents off
   // → no agent marks anywhere (nothing below runs).
   if (agentsOn && agents.length) {
-    const AGENT_W = 176, GRID = 40;
-    const agentHue = (n: string) => `hsl(${hue(n)} 60% 58%)`;
+    const GRID = 40;
     // Absolute positions: squares inside an open frame carry frame-relative
     // positions, so walk the parent chain (agent squares are top-level).
     const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -466,10 +529,11 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
       for (const sid of Object.keys(sections)) {
         const n = symbolsUnder(data.blocks, sid).length;
         if (!n) continue;
-        const d = dirOfBlock(sid);
-        const cur = share.get(d.dir) ?? { n: 0, color: d.color };
+        const z = meaning.zoneOf.get(sid);
+        const key = z?.id ?? sid;
+        const cur = share.get(key) ?? { n: 0, color: zoneColor(sid) };
         cur.n += n;
-        share.set(d.dir, cur);
+        share.set(key, cur);
         total += n;
       }
       const bands = [...share.values()].sort((a, b) => b.n - a.n).slice(0, 4)
@@ -485,32 +549,21 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
         </span>,
       } as FlowNode);
       unfenced.forEach((a, i) => {
+        const g = agentGradient(a.name);
         nodes.push({
           id: `agent:${a.name}`, kind: "agent", title: a.name, subtitle: "whole codebase",
-          color: agentHue(a.name), size: { w: AGENT_W, h: 96 },
+          color: g[0], gradient: g, size: { w: AGENT_W, h: AGENT_H },
           pos: { x: CB.x - AGENT_W - GRID, y: CB.y + i * 120 },
         } as FlowNode);
-        edges.push({ id: `agent:${a.name}>codebase`, source: `agent:${a.name}`, target: "codebase", main: false, color: agentHue(a.name) } as FlowEdge);
+        edges.push({ id: `agent:${a.name}>codebase`, source: `agent:${a.name}`, target: "codebase", main: true, weight: 2, dashed: true, gradient: g } as FlowEdge);
       });
     }
     const idsNow = new Set(nodes.map((n) => n.id));
-    const laneTop = Math.min(...[...posOf.values()].map((p) => p.y));
-    let laneN = 0;
     for (const a of agents) {
-      if (!a.sections.length) continue;
-      const targets = a.sections.map((s) => reps.get(s)).filter((r): r is string => !!r && idsNow.has(r));
-      if (!targets.length) continue;
-      const first = posOf.get(targets[0]);
-      if (!first) continue;
-      nodes.push({
-        id: `agent:${a.name}`, kind: "agent", title: a.name,
-        subtitle: `${a.sections.length} fenced`,
-        color: agentHue(a.name), size: { w: AGENT_W, h: 96 },
-        // the lane above the map, straight over its first fenced square –
-        // the column gutters are narrower than an agent square
-        pos: { x: first.x + (laneN++) * (AGENT_W + 16), y: laneTop - 96 - GRID },
-      } as FlowNode);
-      for (const t of targets) edges.push({ id: `agent:${a.name}>${t}`, source: `agent:${a.name}`, target: t, main: false, color: agentHue(a.name) } as FlowEdge);
+      if (!a.sections.length || !idsNow.has(`agent:${a.name}`)) continue;
+      const g = agentGradient(a.name);
+      const targets = [...new Set(a.sections.map((sid) => reps.get(sid)).filter((r): r is string => !!r && idsNow.has(r)))];
+      for (const t of targets) edges.push({ id: `agent:${a.name}>${t}`, source: `agent:${a.name}`, sourceHandle: "down", target: t, main: true, weight: 2, dashed: true, gradient: g } as FlowEdge);
     }
   }
 
@@ -610,14 +663,59 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   const seenEdge = new Set<string>();
   const maxW = flows.reduce((m, f) => Math.max(m, f.weight), 0) || 1;
   const outCount = new Map<string, number>();
+  // Between zones: one wire per zone pair, as thick as the work that flows
+  // between them (bundled – the map reads as a few clear roads, not a
+  // tangle). Within a zone: each section's two heaviest flows. A picked
+  // value flow still draws its own section wires across zones.
+  const zoneFlow = new Map<string, number>();
+  for (const f of flows) {
+    const za = meaning.zoneOf.get(f.from), zb = meaning.zoneOf.get(f.to);
+    if (!za || !zb || za === zb || !colOf.has(f.from) || !colOf.has(f.to)) continue;
+    const [p0, p1] = za.rank < zb.rank ? [za, zb] : [zb, za];
+    zoneFlow.set(`${p0.id}>${p1.id}`, (zoneFlow.get(`${p0.id}>${p1.id}`) ?? 0) + f.weight);
+  }
+  const zMax = Math.max(1, ...zoneFlow.values());
+  const zoneIds = new Set(nodes.filter((n) => n.id.startsWith("zone-")).map((n) => n.id));
+  // keep each zone's strongest roads: the top 2 per zone plus anything ≥ 25% of the busiest
+  const zoneDeg = new Map<string, number>();
+  // Roads between neighbouring zones are short direct curves; a road that
+  // skips zones runs metro-style in its own lane under the map (shorter
+  // spans in the upper lanes), so no road ever crosses a zone it skips.
+  const mapBottom = Math.max(0, ...[...zoneBox.values()].map((b) => b.h));
+  const kept: { k: string; v: number; za: string; zb: string }[] = [];
+  for (const [k, v] of [...zoneFlow].sort((p, q) => q[1] - p[1])) {
+    const [za, zb] = k.split(">");
+    if (!zoneIds.has(za) || !zoneIds.has(zb)) continue;
+    const strong = v >= 0.25 * zMax;
+    if (!strong && (zoneDeg.get(za) ?? 0) >= 2 && (zoneDeg.get(zb) ?? 0) >= 2) continue;
+    zoneDeg.set(za, (zoneDeg.get(za) ?? 0) + 1); zoneDeg.set(zb, (zoneDeg.get(zb) ?? 0) + 1);
+    kept.push({ k, v, za, zb });
+  }
+  const rankOfZone = (id: string) => meaning.zones.find((z) => z.id === id)?.rank ?? 0;
+  const span = (r: { za: string; zb: string }) => rankOfZone(r.zb) - rankOfZone(r.za);
+  let lane = 0;
+  for (const r of [...kept].sort((p, q) => span(p) - span(q))) {
+    const hueA = meaning.zones.find((z) => z.id === r.za)?.hue ?? "var(--text-3)";
+    const hueB = meaning.zones.find((z) => z.id === r.zb)?.hue ?? hueA;
+    const A = zoneBox.get(r.za), B = zoneBox.get(r.zb);
+    let route: { x: number; y: number }[] | undefined;
+    if (A && B && span(r) > 1) {
+      const y = mapBottom + 56 + (lane++) * 22, sx = A.x + A.w, tx = B.x;
+      route = [{ x: sx, y: A.h / 2 }, { x: sx + 20, y: A.h / 2 }, { x: sx + 20, y }, { x: tx - 20, y }, { x: tx - 20, y: B.h / 2 }, { x: tx, y: B.h / 2 }];
+    }
+    const repsOf = (zid: string) => (meaning.zones.find((z) => z.id === zid)?.members ?? []).map((m) => reps.get(m)).filter((x): x is string => !!x);
+    edges.push({ id: `road:${r.k}`, source: r.za, target: r.zb, main: true, weight: edgeWeight(r.v, zMax) + 1, gradient: [hueA, hueB], route, touches: [...repsOf(r.za), ...repsOf(r.zb)] } as FlowEdge);
+  }
   for (const f of flows) {
     if (!colOf.has(f.from) || !colOf.has(f.to)) continue;
+    const inPicked = !!flowTint && flowTint.sections.has(f.from) && flowTint.sections.has(f.to);
+    if (zoneRank(f.from) !== zoneRank(f.to) && !inPicked) continue;
     if ((outCount.get(f.from) ?? 0) >= 2) continue;
     const a = reps.get(f.from)!, b = reps.get(f.to)!;
     if (a === b || !nodeIds.has(a) || !nodeIds.has(b)) continue;
     // Flows back into an earlier column (or within one) would wrap the whole
     // canvas; the default view reads left to right, the sidebar lists them.
-    if (colOf.get(f.to)! <= colOf.get(f.from)!) continue;
+    if (zoneRank(f.to) < zoneRank(f.from) || (zoneRank(f.to) === zoneRank(f.from) && colOf.get(f.to)! <= colOf.get(f.from)!)) continue;
     const key = `${a}>${b}`;
     if (seenEdge.has(key)) continue;
     seenEdge.add(key);
@@ -632,7 +730,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
     const flat = nodes.map((n) => (n.card ? { ...n, ...n.card } : n));
     return { nodes: flat, edges, groups, reps };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, roles, focus, depth, marks, steps, scheme, meta, onNodeTool, pinned, openPath, graphPaths, flowTint, agents, agentsOn]);
+  }, [data, roles, focus, depth, marks, steps, scheme, meta, onNodeTool, pinned, openPath, graphPaths, flowTint, agents, agentsOn, meaning, ex]);
 
   // The landing zoom (R0, readable by default): the busiest section, at a
   // scale where the card labels are legible – fit stays one key away.
@@ -685,7 +783,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   // clicked block up to its section, so every other branch snaps shut.
   const chainOf = (id: string) => { const out: string[] = []; for (let b: Block | undefined = data.blocks[id]; b; b = b.parent ? data.blocks[b.parent] : undefined) { out.unshift(b.id); if (sections[b.id]) break; } return out; };
   const select = (id: string | null) => {
-    if (!id || id === "lane") { onSelect?.(null); return; }
+    if (!id || id === "lane" || id.startsWith("zone-")) { onSelect?.(null); return; }
     if (id.startsWith("open:") && byPointer()) { const bid = id.slice(5); onClickRelease(() => { setOpenPath(chainOf(bid).slice(0, -1)); setOpenReveal(bid); }); onSelect?.(bid); return; }
     if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
     if (byPointer() && data.blocks[id] && (kidsOfAny(id) || data.blocks[id].symbols.length)) onClickRelease(() => { setOpenPath(chainOf(id)); setOpenReveal(`open:${id}`); });

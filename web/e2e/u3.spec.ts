@@ -68,8 +68,11 @@ test("selecting an agent draws its fence hull and dims non-fenced blocks to at m
   await selectAgent(page, "polish");
   await expect(page.locator('[data-testid="fence-hull"]')).toBeVisible();
   await expect(page.locator('[data-testid="fence-hull-label"]')).toHaveText(/fence · Polish/i);
-  const ops = await page.evaluate(() =>
+  const read = () => page.evaluate(() =>
     [...document.querySelectorAll(".fc-node")].map((n) => +getComputedStyle(n).opacity));
+  // the dim fades in – read once it has settled
+  await expect.poll(async () => (await read()).every((o) => o === 1 || o <= DIM_MAX), { timeout: 5_000 }).toBe(true);
+  const ops = await read();
   const bright = ops.filter((o) => o > DIM_MAX).length;
   expect(bright, "some blocks stay bright (the fenced ones)").toBeGreaterThan(0);
   for (const o of ops) expect(o === 1 || o <= DIM_MAX, `opacity ${o} is in the dead zone`).toBeTruthy();
@@ -96,7 +99,7 @@ test("dragging a block onto a fenced-in agent adds its section to the fence", as
   // flow-level hook (recorded in the hand-off for U1).
   const ref = await page.evaluate(() => {
     const el = document.querySelector('[data-testid^="fc-node-sec:"]') as HTMLElement | null
-      ?? document.querySelector('[data-testid^="fc-node-"]:not([data-testid^="fc-node-agent:"]):not([data-testid="fc-node-codebase"])');
+      ?? document.querySelector('[data-testid^="fc-node-"]:not([data-testid^="fc-node-agent:"]):not([data-testid="fc-node-codebase"]):not([data-testid^="fc-node-zone-"])');
     return el ? el.getAttribute("data-testid")!.replace("fc-node-", "").replace(/^sec:/, "") : "";
   });
   expect(ref, "a block to drag exists on the canvas").toBeTruthy();
@@ -134,7 +137,7 @@ test("edit fence on canvas: clicking a block toggles its section in the fence", 
   const id = await page.evaluate(() => {
     for (const el of document.querySelectorAll(".fc-node")) {
       const tid = el.getAttribute("data-testid") ?? "";
-      if (tid.startsWith("fc-node-agent:") || tid === "fc-node-codebase") continue;
+      if (tid.startsWith("fc-node-agent:") || tid === "fc-node-codebase" || tid.startsWith("fc-node-zone-")) continue;
       const r = el.getBoundingClientRect();
       if (r.width > 40 && r.top > 0 && r.bottom < innerHeight && r.left > 0 && r.right < innerWidth && el.closest("[data-testid^='fc-node-step']") === null) {
         el.dispatchEvent(new MouseEvent("click", { bubbles: true }));

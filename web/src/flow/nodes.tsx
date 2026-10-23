@@ -8,6 +8,7 @@ import { Icon } from "../ui";
 import { CIRCLE, TILE, WIDE, type FlowNode, type PortSpec } from "./types";
 import { useFc } from "./fcContext";
 import BlockCard from "./BlockNode";
+import { AgentHarmonograph } from "./agentMark";
 
 const SIDE = { bottom: Position.Bottom, right: Position.Right, left: Position.Left, top: Position.Top };
 
@@ -65,6 +66,11 @@ function Handles({ data }: { data: FcData; nodeW: number; nodeH: number }) {
       {data.kind === "circle" && <Handle type="target" position={Position.Top} id="t" className="fc-diamond" isConnectable={false} />}
       {data.kind !== "group" && <Handle type="source" position={data.kind === "circle" ? Position.Bottom : Position.Right} id="r" className={`fc-dot${data.connectable ? " fc-dot-out" : ""}`} isConnectable={!!data.connectable} />}
       {data.hasSub && <Handle type="source" position={Position.Bottom} id="b" className="fc-diamond" isConnectable={false} />}
+      {/* a frame that wires attach to (a meaning zone's roads): invisible anchors */}
+      {data.kind === "group" && data.anchors && <>
+        <Handle type="target" position={Position.Left} id="l" className="fc-anchor" isConnectable={false} />
+        <Handle type="source" position={Position.Right} id="r" className="fc-anchor" isConnectable={false} />
+      </>}
     </>
   );
 }
@@ -213,7 +219,7 @@ const AgentNode = memo(({ data, selected, id }: NodeProps & { data: FcData }) =>
     <div className={`fc-node fc-agent${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${stCls(data)}`} style={{ width: w, height: h }} data-testid={`fc-node-${id}`}>
       <TBar id={id ?? data.id} data={data} />
       <div className="fc-agent-in" style={{ ["--fc-role" as string]: data.color }}>
-        <span className="fc-agent-hg" data-figure aria-hidden="true"><Hgraph /></span>
+        <span className="fc-agent-hg" data-figure aria-hidden="true">{data.gradient ? <AgentHarmonograph name={data.title} size={56} /> : <Hgraph />}</span>
         <div className="fc-wide-text">
           <div className="fc-wide-title">{data.title}</div>
           {data.subtitle && <div className="fc-sub">{data.subtitle}</div>}
@@ -223,6 +229,8 @@ const AgentNode = memo(({ data, selected, id }: NodeProps & { data: FcData }) =>
       </div>
       {data.badge && <span className="fc-badge">{data.badge}</span>}
       <Handles data={data} nodeW={w} nodeH={h} />
+      {/* an agent on the map fans its gradient wires down into its code */}
+      {data.gradient && <Handle type="source" position={Position.Bottom} id="down" className="fc-anchor" isConnectable={false} />}
       {data.ports && <TypedPorts ports={data.ports} />}
       {data.noOut && <Stub id={data.id} />}
     </div>

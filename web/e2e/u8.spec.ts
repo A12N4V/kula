@@ -22,7 +22,8 @@ async function opened(page: Page) {
 async function openFirst(page: Page) {
   await page.locator('[data-testid="fc-fit"]').click();
   await page.waitForTimeout(500);
-  const sq = page.locator(".fm-flow .fc-solid:not(.fc-solid-leaf):not(.fc-dim)").first();
+  // a square that holds sub-blocks (not only functions), so its frame has openable children
+  const sq = page.locator('.fm-flow .fc-solid[data-fc-has]:not([data-fc-has=""]):not(.fc-solid-leaf):not(.fc-dim)').first();
   const id = await sq.getAttribute("data-testid");
   await sq.click();
   const frame = page.locator('[data-testid^="fc-node-open:"]').first();

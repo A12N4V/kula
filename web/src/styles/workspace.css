@@ -489,7 +489,8 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
 .ws-drop .fc-controls { background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-sm, 6px); padding: 2px; }
 
 /* Layers off – marks hidden, never navigated (contract §5). */
-.u2-l-flows-off .fm-flow .react-flow__edge { display: none; }
+/* agent wires belong to the Agents layer, not Flows */
+.u2-l-flows-off .fm-flow .react-flow__edge:not([data-testid^="rf__edge-agent:"]) { display: none; }
 .u2-l-blocks-off .fm-flow .react-flow__node { opacity: 0; pointer-events: none; }
 .u2-l-fences-off .fence-hull { display: none; }
 .u2-l-fences-off .fc-ring-fence .fc-tile-box, .u2-l-fences-off .fc-ring-fence .fc-wide-in { outline: none; }

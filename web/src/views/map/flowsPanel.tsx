@@ -187,8 +187,9 @@ export function JourneyStrip({ data, flowPick, onPickStep, onClose }: {
   const stripRef = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<{ left: number; width: number } | null>(null);
   useEffect(() => {
-    if (window.innerWidth <= 720) { setPlace(null); return; }
     const measure = () => {
+      // phone: the bottom sheet is pure CSS – also after a resize down
+      if (window.innerWidth <= 720) { setPlace(null); return; }
       const el = stripRef.current;
       const cb = (el?.offsetParent ?? null) as HTMLElement | null;
       if (!el || !cb) return;

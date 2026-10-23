@@ -58,6 +58,10 @@ export type FlowNode = {
   ports?: PortSpec[];
   /** A last-run dot on the node (state without colouring the whole node). */
   lastRun?: "ok" | "err";
+  /** An agent's own two-hue gradient (its mark and its wires). */
+  gradient?: [string, string];
+  /** A group frame that wires attach to (invisible side anchors). */
+  anchors?: boolean;
 };
 
 export type PortSpec = { id: string; label: string; side: "bottom" | "right" | "left" | "top" };
@@ -80,6 +84,14 @@ export type FlowEdge = {
   long?: boolean;
   /** Wire colour – the source section's hue (Excalidraw-style regions). */
   color?: string;
+  /** An agent's own two-hue gradient, run from source to target. */
+  gradient?: [string, string];
+  /** Other nodes whose hover lights this wire (a zone road lights for its squares). */
+  touches?: string[];
+  /** Dashed but full weight (an agent's reach, not a flow). */
+  dashed?: boolean;
+  /** Which source handle the wire leaves from (default: the right edge). */
+  sourceHandle?: string;
   /** Explicit backward routing hint; the renderer also detects it from x. */
   backward?: boolean;
   /** Run state of the wire: data moving (animated), passed, failed. */

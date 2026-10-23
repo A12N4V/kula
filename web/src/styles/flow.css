@@ -457,3 +457,13 @@ html[data-rm="1"] .fm-flow .fc-solid, html[data-rm="1"] .fm-flow .fc-group { ani
 .fc-solid-far .fc-solid-n { font-size: 12px; opacity: 1; }
 .fc-solid-far .fc-solid-open { width: 17px; height: 17px; font-size: 14px; background: rgba(11, 11, 11, .26); }
 .react-flow__edge-path.fc-edge-flow { stroke-opacity: 1; }
+
+/* Meaning zones (views/map/meaning.ts): the zone frame names an area of the
+   product – read from fit zoom, so the name is large and the frame has no
+   fold control (a zone is not a square). */
+[data-testid^="fc-node-zone-"] .fc-group-label { font-size: 36px; line-height: 1.1; letter-spacing: .02em; text-transform: none; font-weight: 600; }
+[data-testid^="fc-node-zone-"] .fc-group-count { font-size: 20px; }
+[data-testid^="fc-node-zone-"] .fc-group-fold { display: none; }
+.react-flow__handle.fc-anchor { opacity: 0; width: 1px; height: 1px; min-width: 0; min-height: 0; border: 0; pointer-events: none; }
+/* a zone frame is a backdrop: clicks and drags fall through to the canvas */
+.react-flow__node:has(> [data-testid^="fc-node-zone-"]) { pointer-events: none !important; }

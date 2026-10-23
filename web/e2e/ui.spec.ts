@@ -2051,6 +2051,9 @@ test.describe("map", () => {
     // U5: a square's hover toolbar "Open" drills into its block tree (a
     // click unfolds it in place, a double-click opens details)
     await page.locator(".fc-solid").first().waitFor({ state: "attached", timeout: 30_000 });
+    // fit first: the meaning layout spreads zones wide, so the deepest square
+    // may sit outside the landing view
+    await page.locator("[data-testid=fc-fit]").click();
     await page.waitForTimeout(800);
     // a square on top at its centre, clear of the inspector and the right column
     const pt = await page.evaluate(() => {
@@ -2858,7 +2861,7 @@ test.describe("map", () => {
       const seed = await page.evaluate(() => {
         const me = (window as unknown as { __fcLayout?: { mainEdges: [string, string][] } }).__fcLayout?.mainEdges ?? [];
         for (const [src] of me) {
-          if (src.startsWith("step:")) continue;
+          if (src.startsWith("step:") || src.startsWith("zone-") || src.startsWith("agent:")) continue;
           if (document.querySelector(`[data-testid=fc-node-${src}]`)) return src;
         }
         return null;
@@ -2999,7 +3002,8 @@ test.describe("map", () => {
     const vp3 = await vp();
     expect(Math.abs(vp3.x - vp2.x) + Math.abs(vp3.y - vp2.y)).toBeLessThan(20);
     // Click a tile (an empty-pane click is just a deselect) – the inspector opens; Esc closes it.
-    const tile = page.locator("[data-testid=map-flow] .react-flow__node").first();
+    // (a meaning-zone frame is a backdrop, not a tile)
+    const tile = page.locator("[data-testid=map-flow] .react-flow__node:not(:has([data-testid^='fc-node-zone-']))").first();
     // dispatch: edge interaction paths over the nodes intercept real clicks
     await tile.dispatchEvent("click");
     await expect(page.locator("[data-testid=map-inspector]")).toBeVisible({ timeout: 5_000 });

@@ -188,7 +188,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
           // Edges hydrate with the second chunk – the first paint renders nodes only.
           edgesSet = true;
           setRfEdges(wires.map((e) => ({
-            id: e.id, source: e.source, target: e.target, type: "flow-edge",
+            id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, type: "flow-edge",
             data: { ...e }, zIndex: 0, // edges under nodes (n8n §5): the 40 px hit path must never eat a card's hover or drag
           })));
         }
@@ -479,7 +479,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     (async () => {
       const res = await layout(applySizes(ns, layoutKey, nodes), edges, groups, `${layoutKey}:tidy${tidySeq.current}`);
       setRfNodes(res.nodes.map((n) => toRf(n, null, collapsed, new Set())));
-      setRfEdges(edges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: "flow-edge", data: { ...e }, zIndex: 0 })));
+      setRfEdges(edges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, type: "flow-edge", data: { ...e }, zIndex: 0 })));
       rf.fitView({ padding: 0.12, duration: reduced.current ? 0 : 120 });
     })();
   }, [nodes, edges, groups, layoutKey, ns, rf, collapsed]);

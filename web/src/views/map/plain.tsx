@@ -11,6 +11,8 @@ import { get, post } from "../../api";
 
 export interface ExplainBlock {
   plain?: string;
+  journeys?: string[];
+  area?: string;
   sentence?: string;
   source?: "model" | "theme" | "name";
 }

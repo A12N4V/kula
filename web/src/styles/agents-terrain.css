@@ -155,3 +155,8 @@
 @media (max-width: 720px) {
   .sy-root .sy-split { grid-template-rows: minmax(0, 1fr) auto; }
 }
+
+/* An agent on the map: its own harmonograph, large, in its own gradient. */
+.fc-agent[data-testid^="fc-node-agent:"] .fc-agent-in { gap: 12px; }
+.fc-agent[data-testid^="fc-node-agent:"] .fc-agent-hg svg { width: 56px; height: 56px; }
+.fc-agent[data-testid^="fc-node-agent:"] .fc-wide-title { font-size: 15px; }
