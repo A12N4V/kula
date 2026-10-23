@@ -29,8 +29,10 @@ async function opened(page: Page) {
  *  plan both a write tint and a read outline. */
 async function seedPipeline(page: Page) {
   await page.evaluate(() => {
-    const ids = [...document.querySelectorAll('[data-testid^="fc-node-sec:"]')]
-      .map((e) => (e.getAttribute("data-testid") ?? "").slice("fc-node-".length));
+    // nested-squares map: sections land as closed solid squares
+    const ids = [...document.querySelectorAll('.fc-solid[data-testid^="fc-node-"]')]
+      .map((e) => (e.getAttribute("data-testid") ?? "").slice("fc-node-".length))
+      .filter((id) => !id.startsWith("fn:") && !id.startsWith("step:"));
     const [sec1, sec2] = [...new Set(ids)];
     localStorage.setItem("kula.pipeline.map", JSON.stringify([
       { id: "u4-t", kind: "trigger", ref: "manual", name: "Start", section: sec1 },

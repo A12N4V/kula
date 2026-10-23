@@ -321,6 +321,8 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
       const S = sq(b);
       return { w: S, h: S + 22, place: (x, y) => {
         const c = blockCard(b, sec);
+        const inside: string[] = []; const walk = (id: string) => { for (const k of data.blocks[id]?.children ?? []) { inside.push(k); walk(k); } }; walk(b.id);
+        if (c.card) c.card.has = inside.join(" ");
         nodes.push({ ...c, solid: true, openable: kids.length > 0 || fns.length > 0, size: { w: S, h: S + 22 }, pos: { x, y }, ...markOf(sec, b.id === sec) });
         reps.set(b.id, b.id);
       } };
@@ -512,14 +514,46 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
   // sidebar reads blocks. Selections that open panels must not run inside
   // React Flow's click dispatch – a synchronous parent update there
   // re-enters the store (React error 185). Defer them a tick.
+  // A search hit (reveal) or an outside selection folded inside a closed
+  // square opens the branch that holds it, so the camera has a node to go to.
+  useEffect(() => {
+    const target = reveal ?? selection;
+    const bid = target?.startsWith("step:") ? null : target?.replace(/^sec:|^open:/, "");
+    const b = bid ? data.blocks[bid] : undefined;
+    if (!b || sections[b.id] || !b.parent) return;
+    const chain: string[] = [];
+    for (let p: Block | undefined = data.blocks[b.parent]; p; p = p.parent ? data.blocks[p.parent] : undefined) { chain.unshift(p.id); if (sections[p.id]) break; }
+    if (chain.join() !== openPath.slice(0, chain.length).join()) setOpenPath(chain);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal, selection, data]);
+  // Only a pointer click opens/folds – keyboard traversal (arrows walk the
+  // edges) moves the selection without rearranging the map under it.
+  useEffect(() => {
+    const down = (e: PointerEvent) => { const w = window as unknown as { __fcPtr?: number; __fcAt?: [number, number] }; w.__fcPtr = performance.now(); w.__fcAt = [e.clientX, e.clientY]; };
+    const upAt = (e: PointerEvent) => { (window as unknown as { __fcUp?: [number, number, number] }).__fcUp = [e.clientX, e.clientY, performance.now()]; };
+    window.addEventListener("pointerdown", down, true);
+    window.addEventListener("pointerup", upAt, true);
+    return () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointerup", upAt, true); };
+  }, []);
+  const byPointer = () => performance.now() - ((window as unknown as { __fcPtr?: number }).__fcPtr ?? -1e9) < 800;
+  // Open on a real click only: wait for the pointer to come up within 5px of
+  // where it went down – a drag selects the square without unfolding it.
+  const onClickRelease = (fn: () => void) => {
+    const w = window as unknown as { __fcAt?: [number, number]; __fcUp?: [number, number, number]; __fcPtr?: number };
+    const at = w.__fcAt;
+    // already released (React Flow selects on click): judge it now
+    if (w.__fcUp && w.__fcPtr != null && w.__fcUp[2] >= w.__fcPtr) { if (!at || Math.hypot(w.__fcUp[0] - at[0], w.__fcUp[1] - at[1]) < 5) fn(); return; }
+    const up = (e: PointerEvent) => { window.removeEventListener("pointerup", up, true); if (!at || Math.hypot(e.clientX - at[0], e.clientY - at[1]) < 5) fn(); };
+    window.addEventListener("pointerup", up, true);
+  };
   // Click = disassemble (or fold): the open branch is the chain from the
   // clicked block up to its section, so every other branch snaps shut.
   const chainOf = (id: string) => { const out: string[] = []; for (let b: Block | undefined = data.blocks[id]; b; b = b.parent ? data.blocks[b.parent] : undefined) { out.unshift(b.id); if (sections[b.id]) break; } return out; };
   const select = (id: string | null) => {
     if (!id || id === "lane") { onSelect?.(null); return; }
-    if (id.startsWith("open:")) { const bid = id.slice(5); setTimeout(() => setOpenPath(chainOf(bid).slice(0, -1)), 0); onSelect?.(bid); return; }
+    if (id.startsWith("open:") && byPointer()) { const bid = id.slice(5); onClickRelease(() => setOpenPath(chainOf(bid).slice(0, -1))); onSelect?.(bid); return; }
     if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
-    if (data.blocks[id] && (kidsOfAny(id) || data.blocks[id].symbols.length)) { setTimeout(() => setOpenPath(chainOf(id)), 0); return; }
+    if (byPointer() && data.blocks[id] && (kidsOfAny(id) || data.blocks[id].symbols.length)) onClickRelease(() => setOpenPath(chainOf(id)));
     onSelect?.(id.startsWith("sec:") ? id.slice(4) : id);
   };
   function kidsOfAny(id: string) { return (data.blocks[id]?.children ?? []).length > 0; }
@@ -529,7 +563,7 @@ export function FlowKitView({ data, roles, focus, selection, onSelect, onDrill, 
     // Double-click = details: the inspector for a block, the code for a function.
     if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
     const bid = id.startsWith("open:") ? id.slice(5) : id.startsWith("sec:") ? id.slice(4) : id;
-    setTimeout(() => onSelect?.(bid), 0);
+    setTimeout(() => onDrill(bid), 0);
   };
 
   const dense = edges.length > 120;

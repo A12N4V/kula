@@ -20,6 +20,7 @@ const lum = (color: string): number => {
 };
 
 test("the edge brightness ladder holds: text > node border > resting edge", async ({ page }) => {
+  test.skip(true, "retired with the U5 nested-squares map (no card body/border/resize) – see BRIEF-fuse2 S-tests for the square-era replacement");
   await open(page);
   await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   // Flows is on by default (fused-canvas §5), so a resting edge exists.
@@ -111,6 +112,7 @@ test("port count per kind: gates fork pass/fail, agents carry the four capabilit
 });
 
 test("semantic zoom: resize forces a level and the function list appears", async ({ page }, info) => {
+  test.skip(true, "retired with the U5 nested-squares map (no card body/border/resize) – see BRIEF-fuse2 S-tests for the square-era replacement");
   test.skip(info.project.name !== "desktop", "resize needs a pointer and a wide canvas");
   await open(page);
   await expect(page.locator("[data-testid=map-flow]")).toBeVisible();

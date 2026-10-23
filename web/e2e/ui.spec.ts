@@ -2407,11 +2407,7 @@ test.describe("map", () => {
   test("the flow canvas paints sections as group frames; selecting a block fills the details", async ({ page }) => {
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
-    const frames = page.locator("[data-testid^='fc-node-sec:']");
-    await expect(frames.first()).toBeVisible();
-    expect(await frames.count()).toBeGreaterThan(0);
-    // every frame is titled and carries block cards
-    await expect(page.locator(".fc-group-label").first()).toBeVisible();
+    // nested-squares map: sections are solid squares (frames only when opened)
     await expect(page.locator(".fc-card").first()).toBeVisible();
     // the LAST card in DOM: sibling group frames render above earlier
     // groups' children (each frame is its own stacking context)
@@ -2452,6 +2448,7 @@ test.describe("map", () => {
   });
 
   test("a block card resizes from its corner and more room shows more detail", async ({ page }, info) => {
+  test.skip(true, "retired with the U5 nested-squares map (no card body/border/resize) – see BRIEF-fuse2 S-tests for the square-era replacement");
     test.skip(info.project.name !== "desktop", "resize needs a pointer and a wide canvas");
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
@@ -2638,20 +2635,28 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=ws-rerun]")).toBeVisible();
   });
 
-  test("R0: sections render as frames whose members are the block cards", async ({ page }) => {
+  test("U5 nested squares: a click disassembles a section, one branch open at a time", async ({ page }) => {
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible({ timeout: 30_000 });
-    const frames = page.locator("[data-testid^='fc-node-sec:']");
-    await expect(frames.first()).toBeVisible();
-    expect(await frames.count()).toBeGreaterThan(0);
-    // every frame is labelled and carries block cards inside
-    await expect(page.locator(".fc-group-label").first()).toBeVisible();
-    await expect(page.locator(".fc-card").first()).toBeVisible();
-    // a section card (depth-1 column) lists its member blocks
-    const secCard = page.locator(".fc-card-sec").first();
-    if (await secCard.count()) {
-      await expect(secCard.locator(".fc-card-members .fc-card-member").first()).toBeVisible();
-    }
+    // closed: every section is one solid square, no frames
+    await expect(page.locator(".fc-solid").first()).toBeVisible();
+    await expect(page.locator("[data-testid^='fc-node-open:']")).toHaveCount(0);
+    await page.locator("[data-testid=fc-fit]").click();
+    const openable = page.locator(".fc-solid:has(.fc-solid-open)");
+    const ids = await openable.evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")!.slice("fc-node-".length)));
+    expect(ids.length).toBeGreaterThan(1);
+    const [a, b] = ids;
+    const tap = async (sel: string) => { const bb = await page.locator(sel).boundingBox(); await page.mouse.click(bb!.x + bb!.width / 2, bb!.y + 20); };
+    await tap(`[data-testid="fc-node-${a}"] .fc-solid-sq`);
+    await expect(page.locator(`[data-testid="fc-node-open:${a}"]`)).toBeVisible();
+    // opening another branch folds the first back into its square
+    await page.locator("[data-testid=fc-fit]").click();
+    await tap(`[data-testid="fc-node-${b}"] .fc-solid-sq`);
+    await expect(page.locator(`[data-testid="fc-node-open:${b}"]`)).toBeVisible();
+    await expect(page.locator(`[data-testid="fc-node-open:${a}"]`)).toHaveCount(0);
+    // the frame header folds it
+    await tap(`[data-testid="fc-node-open:${b}"] .fc-group-head`);
+    await expect(page.locator("[data-testid^='fc-node-open:']")).toHaveCount(0);
   });
 
   test("R0: the lens switcher is gone and the roles filter moved to the inspector", async ({ page }) => {
@@ -2885,8 +2890,13 @@ test.describe("map", () => {
     await page.waitForTimeout(300);
     // a section card may sit outside the virtualized window at the landing
     // zoom – bring it into view before the hover
-    const wide = (await page.locator(".fc-card-sec").count()) ? page.locator(".fc-card-sec").last() : page.locator(".fc-card").last();
-    await wide.scrollIntoViewIfNeeded();
+    // nested-squares map: drag a square that sits well inside the viewport
+    const squares = page.locator(".fc-solid .fc-solid-sq");
+    let wide = squares.first();
+    for (let i = 0; i < await squares.count(); i++) {
+      const bb = await squares.nth(i).boundingBox();
+      if (bb && bb.x > 300 && bb.y > 300 && bb.x < 1100 && bb.y < 650) { wide = squares.nth(i); break; }
+    }
     await wide.hover({ timeout: 10_000 });
     const before = await wide.boundingBox();
     await page.mouse.down();

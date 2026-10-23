@@ -101,6 +101,8 @@ export type FlowSelection = { id: string; kind: FlowNodeKind } | null;
 /* The block node's payload (R0): the old Blocks-lens card, as the node itself.
    Kept here so the kit stays the single type surface for every canvas. */
 export type BlockCardData = {
+  /** Space-separated ids of the blocks folded inside a closed square. */
+  has?: string;
   /** Directory hue (Graph view palette), the block's language glyph and dir label. */
   hue?: string;
   glyph?: string;

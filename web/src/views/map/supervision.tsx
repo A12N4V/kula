@@ -186,7 +186,9 @@ function useBoxes(canvas: React.RefObject<HTMLElement | null>, ids: string[]): M
       const m = new Map<string, Box>();
       for (const id of key.split("|").filter(Boolean)) {
         const el = canvas.current!.querySelector(`[data-testid="fc-node-${CSS.escape("sec:" + id)}"]`)
-          ?? canvas.current!.querySelector(`[data-testid="fc-node-${CSS.escape(id)}"]`);
+          ?? canvas.current!.querySelector(`[data-testid="fc-node-${CSS.escape(id)}"]`)
+          // folded inside a closed square (nested-squares map): mark the square
+          ?? canvas.current!.querySelector(`[data-fc-has~="${CSS.escape(id)}"]`);
         if (!el) continue;
         const n = el.getBoundingClientRect();
         m.set(id, { left: n.left - c.left, top: n.top - c.top, width: n.width, height: n.height });

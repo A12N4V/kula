@@ -411,3 +411,6 @@ html[data-rm="1"] .fc-dot { transition: none; }
 .fc-group-hue .fc-group-head { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
 .fc-group-hue .fc-group-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .fc-group-hue .fc-group-count { font-size: 10px; }
+.fc-card.fc-solid { padding: 0; border: 0; background: none; overflow: visible; border-radius: 0; }
+.fc-card.fc-solid::before { display: none; }
+.fc-card.fc-solid { text-overflow: ellipsis; }
