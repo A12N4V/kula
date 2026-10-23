@@ -2054,13 +2054,16 @@ test.describe("map", () => {
     await page.waitForTimeout(800);
     // a square on top at its centre, clear of the inspector and the right column
     const pt = await page.evaluate(() => {
+      // the clear square with the deepest contents, so the drill view nests
+      let best: { x: number; y: number; id: string; n: number } | null = null;
       for (const e of document.querySelectorAll(".fc-solid .fc-solid-sq")) {
         const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
         const top = document.elementFromPoint(x, y);
-        if ((e.parentElement as HTMLElement | null)?.dataset.fcHas && r.left > 80 && r.top > 120 && r.right < innerWidth - 520 && r.bottom < innerHeight - 120 && top && e.contains(top))
-          return { x, y, id: (e.closest("[data-testid^=fc-node-]") as HTMLElement).dataset.testid!.replace("fc-node-", "") };
+        const n = ((e.parentElement as HTMLElement | null)?.dataset.fcHas ?? "").split(" ").filter(Boolean).length;
+        if (n && r.left > 80 && r.top > 120 && r.right < innerWidth - 520 && r.bottom < innerHeight - 120 && top && e.contains(top) && (!best || n > best.n))
+          best = { x, y, n, id: (e.closest("[data-testid^=fc-node-]") as HTMLElement).dataset.testid!.replace("fc-node-", "") };
       }
-      return null;
+      return best;
     });
     expect(pt, "a square clear of the panels").toBeTruthy();
     const id = pt!.id;
@@ -2167,11 +2170,13 @@ test.describe("map", () => {
     // drill: click a section box that nests further (a single-file section
     // shows only leaves), walking boxes until the next level renders
     let drilled = -1;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < Math.min(6, top); i++) {
       await page.locator(".sy-box-title").nth(i).click();
       await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(3);
       if ((await page.locator(".sy-grid .sy-box").count()) > 0) { drilled = i; break; }
-      await page.locator("[data-testid=map-breadcrumb] .crumb-link").first().click();
+      // back one level (to the section), not to the map root
+      await page.locator("[data-testid=map-breadcrumb] .crumb-link").nth(1).click();
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
     }
     expect(drilled).toBeGreaterThanOrEqual(0);
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();

@@ -83,6 +83,11 @@ const SHOT_CSS = `.topbar .crumb-repo, .topbar .chip { display: inline-block; wi
  *  name, branch, change badges, the Overview title – with fixed placeholders,
  *  so a baseline shot in one worktree matches every other. */
 async function stabilise(page: Page) {
+  // the map's directory hues come from the Graph's node set, fetched async –
+  // wait for them so a shot never catches the first-paint colours
+  if (await page.locator("[data-testid=map-flow]").count())
+    await page.waitForFunction(() => !!sessionStorage.getItem("kula.map.graphPaths"), undefined, { timeout: 30_000 }).catch(() => {});
+  await page.waitForTimeout(300);
   await page.evaluate(() => {
     const set = (sel: string, text: string) => document.querySelectorAll(sel).forEach((e) => { e.textContent = text; });
     set(".topbar .crumb-repo", "repo");
