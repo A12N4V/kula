@@ -6,6 +6,7 @@
 // mark. Assert by name, never by fixture counts.
 import { expect, test, type Page } from "@playwright/test";
 import { FIXTURE } from "../playwright.config";
+import { explore } from "./explore";
 
 // Against the disposable fixture clone, never the repo under test: these
 // tests save agents and fences to kula.toml, and a write to the real
@@ -41,8 +42,7 @@ async function opened(page: Page, base = "") {
   // the fixture builds its map cold on the first GET /api/map (~11 s)
   // U5: agents are a layer (off by default) – the bottom summary's Agents turns it on
   await page.locator(".fc-solid").first().waitFor({ state: "attached", timeout: 30_000 });
-  if ((await page.locator('[data-testid="u2-layer-agents"]').getAttribute("aria-pressed")) !== "true") await page.locator('[data-testid="u2-frame-agents"]').click();
-  await expect(page.locator('[data-testid="actor-band"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-testid^="at-agent-"]').first()).toBeVisible({ timeout: 30_000 });
 }
 
 const FENCE_DROP = `fence-drop-${Date.now()}`;
@@ -84,7 +84,7 @@ test("dragging a block onto a fenced-in agent adds its section to the fence", as
   await opened(page);
   // A fresh agent starts with no fence: "no fence" on the card, so the drop
   // has a deterministic before/after (B7: fence a block in ≤ 2 moves).
-  await page.locator('[data-testid="at-band-add"]').click();
+  await explore(page); await page.locator('[data-testid="u2-rail-add"]').click();
   const form = page.locator('[data-testid="map-inspector"] [data-testid="ag-add-form"]');
   await expect(form).toBeVisible();
   await form.locator('[data-testid="ag-add-name"]').fill(FENCE_DROP);
@@ -119,7 +119,7 @@ test("edit fence on canvas: clicking a block toggles its section in the fence", 
   // before/after: one click adds the clicked block's section (0 → 1). A
   // pre-fenced agent would flip the first visible block's section back out.
   const FRESH = `fence-edit-${Date.now()}`;
-  await page.locator('[data-testid="at-band-add"]').click();
+  await explore(page); await page.locator('[data-testid="u2-rail-add"]').click();
   const form = page.locator('[data-testid="map-inspector"] [data-testid="ag-add-form"]');
   await expect(form).toBeVisible();
   await form.locator('[data-testid="ag-add-name"]').fill(FRESH);
@@ -152,16 +152,12 @@ test("edit fence on canvas: clicking a block toggles its section in the fence", 
   await expect(page.locator('[data-testid="fence-hull"]')).toBeVisible(); // hull redraws
 });
 
-test("the band + and the unconnected Fence port + open the R1 add form in the inspector", async ({ page }) => {
+test("the Explorer's + Agent opens the R1 add form in the inspector", async ({ page }) => {
   await opened(page);
-  await page.locator('[data-testid="at-band-add"]').click();
+  await explore(page); await page.locator('[data-testid="u2-rail-add"]').click();
   await expect(page.locator('[data-testid="map-inspector"] [data-testid="ag-add-form"]')).toBeVisible();
   await page.locator('[data-testid="map-inspector"] [data-testid="ag-add-cancel"]').click();
   await expect(page.locator('[data-testid="map-inspector"] [data-testid="ag-add-form"]')).toHaveCount(0);
-  const stub = page.locator('[data-testid="port-add"]').first();
-  await expect(stub).toBeVisible();
-  await stub.click();
-  await expect(page.locator('[data-testid="map-inspector"] [data-testid="ag-add-form"]')).toBeVisible();
   expect(await page.getByTestId("add-block-global").count()).toBe(0);
 });
 

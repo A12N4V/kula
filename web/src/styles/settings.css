@@ -54,6 +54,22 @@
 .grip-top::after { left: 0; right: 0; top: 0; height: 2px; }
 .grip-bottom::after { left: 0; right: 0; bottom: 0; height: 2px; }
 .grip:hover::after, .grip:focus-visible::after, .grip:active::after { opacity: .85; }
+/* ── popped panels ── one corner pair on every panel: full screen · close
+   (PaneControls in resize.tsx). Full screen is [data-max] on the [data-pane]
+   element: it takes the window over everything, grips hide, Esc restores. */
+.pane-ctl { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }
+.pane-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--text-2); cursor: pointer; transition: background .12s var(--ease), color .12s var(--ease); }
+.pane-btn:hover { background: var(--panel-2); color: var(--text); }
+.pane-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pane-btn[aria-pressed="true"] { color: var(--accent); }
+.pane-btn .ico { width: 15px; height: 15px; }
+[data-pane][data-max] {
+  position: fixed !important; inset: 10px !important; width: auto !important; height: auto !important;
+  max-width: none !important; max-height: none !important; min-width: 0 !important; transform: none !important;
+  z-index: 400 !important; border-radius: 10px; box-shadow: 0 0 0 100vmax rgb(0 0 0 / .55), 0 20px 60px rgb(0 0 0 / .5);
+}
+[data-pane][data-max] > .grip { display: none; }
 html[data-resizing] { user-select: none; -webkit-user-select: none; }
 html[data-resizing="x"] * { cursor: col-resize !important; }
 html[data-resizing="y"] * { cursor: row-resize !important; }
@@ -83,6 +99,8 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .split-canvas { grid-template-columns: minmax(160px, var(--size-before, 1fr)) minmax(160px, 1fr); }
 
 .settings { position: relative; width: min(var(--size-settings, 380px), 100vw); }
+.code-panel { width: min(var(--size-code, 620px), calc(100vw - 24px)); }
+.contrast-panel .cp-head .row { display: flex; align-items: center; gap: 8px; }
 
 @media (max-width: 760px) {
   .grip { display: none; }

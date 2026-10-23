@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { FIXTURE } from "../playwright.config";
+import { explore } from "./explore";
 
 // Text-overlap probe: on every view at desktop, laptop and phone widths, no
 // two visible runs of text collide, no text is cut off without an ellipsis,
@@ -17,7 +18,7 @@ const SPOTS: Spot[] = [
   {
     name: "workspace + inspector", hash: "map", then: async (page) => {
       // the Workspace may land with a block already selected
-      if (!(await page.getByTestId("map-inspector").isVisible())) await page.getByTestId("map-side-toggle").click({ timeout: 5_000 });
+      await explore(page); if (!(await page.getByTestId("map-inspector").isVisible())) await page.getByTestId("map-side-toggle").click({ timeout: 5_000 });
       await expect(page.getByTestId("map-inspector")).toBeVisible({ timeout: 5_000 });
     },
   },

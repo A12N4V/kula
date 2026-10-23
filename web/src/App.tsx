@@ -1,5 +1,6 @@
 import { CodeProvider } from "./CodePanel";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { PaneControls } from "./resize";
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
 import type { ContrastMode, Go, Target, View } from "./nav";
@@ -423,8 +424,8 @@ function Help({ onClose }: { onClose: () => void }) {
   // One registry, one sheet: the list cannot drift from what the shell does.
   return (
     <div className="scrim" onMouseDown={onClose}>
-      <div className="palette help" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Keyboard shortcuts">
-        <div className="help-head"><Logo /><h2>Keyboard shortcuts</h2><span className="spacer" /><button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button></div>
+      <div className="palette help" data-pane onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Keyboard shortcuts">
+        <div className="help-head"><Logo /><h2>Keyboard shortcuts</h2><span className="spacer" /><PaneControls onClose={onClose} testId="help" /></div>
         <div className="help-grid" data-testid="help-grid">
           {GLOBAL_SHORTCUTS.map((k) => (<div key={k.keys} className="help-row" data-keys={k.keys}><kbd>{k.keys}</kbd><span>{k.label}</span></div>))}
           <div className="help-sep">Views</div>

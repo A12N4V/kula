@@ -20,7 +20,7 @@ import { PreEditPanel } from "../AgentChecks";
 import type { IndexProgress } from "../api";
 import Contrast from "./Contrast";
 import type { ContrastMode, Go } from "../nav";
-import { Grip } from "../resize";
+import { Grip, PaneControls } from "../resize";
 
 type Props = {
   focus: number | null; setFocus: (id: number | null) => void; onChanged: () => void; version: number;
@@ -941,7 +941,7 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
   };
 
   return (
-    <aside className="inspector" aria-label="Symbol inspector">
+    <aside className="inspector" aria-label="Symbol inspector" data-pane>
       <Grip id="inspector" edge="left" min={300} max={960} label="Resize inspector" />
       <header>
         <div className="row">
@@ -949,7 +949,7 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
           <span className="spacer" />
           <button className="btn ghost sm" disabled={trail.current.at <= 0} onClick={() => step(-1)} aria-label="Back" title="Back  [">←</button>
           <button className="btn ghost sm" disabled={trail.current.at >= trail.current.stack.length - 1} onClick={() => step(1)} aria-label="Forward" title="Forward  ]">→</button>
-          <button className="btn ghost sm" onClick={onClose} aria-label="Close" title="Close  esc"><Icon.close /></button>
+          <PaneControls onClose={onClose} testId="insp" />
         </div>
         <h2>{ctx?.node.name ?? "…"}</h2>
         {ctx && <div className="muted mono" style={{ fontSize: 11.5 }}>{ctx.node.path}:{ctx.node.start_line}–{ctx.node.end_line}</div>}

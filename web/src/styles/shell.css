@@ -38,6 +38,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .list-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 12px 14px; background: var(--bg-2); border-bottom: 1px solid var(--line); }
 .list-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .item { display: flex; gap: 10px; align-items: flex-start; padding: 9px 14px; border-bottom: 1px solid var(--line); cursor: pointer; transition: background 0.12s; }
+.item > .dot { align-self: center; } /* the dot sits level with its two-line label, not its first line */
 .item:hover { background: var(--panel); }
 .item.on { background: var(--bg-3); }
 .item .title { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

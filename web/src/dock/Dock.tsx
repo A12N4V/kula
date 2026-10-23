@@ -47,7 +47,7 @@ export function Dock({ open, setOpen, tab, setTab, nav }: { open: boolean; setOp
         <span className="spacer" />
         {tab === "run" && <button className="dock-act" onClick={clearLog} title="Clear" aria-label="Clear run log"><Icon.sweep /></button>}
         <button className="dock-act" data-testid="dock-max" onClick={() => setMax(!max)} title={max ? "Restore panel size" : "Maximize panel size"} aria-label={max ? "Restore panel size" : "Maximize panel size"}>
-          <span className={`ws-chev${max ? "" : " up"}`}><Icon.chevron /></span>
+          {max ? <Icon.shrink /> : <Icon.expand />}
         </button>
         <button className="dock-act" data-testid="dock-toggle" onClick={() => setOpen(false)} title="Hide panel  ctrl+`" aria-label="Hide panel"><Icon.close /></button>
       </div>

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { explore } from "./explore";
 
 // Visual baselines – the committed reference for what the UI looked like when
 // wave 1 (U1) landed. Later modules update a baseline only for a change they
@@ -138,7 +139,7 @@ test.describe("visual baselines", () => {
         });
         // Open the inspector via the HUD Structure button (deterministic –
         // no canvas hit-testing).
-        await page.getByTestId("map-side-toggle").click();
+        await explore(page); await page.getByTestId("map-side-toggle").click();
         await expect(page.getByTestId("map-inspector")).toBeVisible({ timeout: 5_000 });
         await page.waitForTimeout(400);
         await stabilise(page);

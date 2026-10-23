@@ -75,6 +75,11 @@ export const Icon = {
   chevron: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m6 9 6 6 6-6" /></svg>),
   sun: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>),
   check: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>),
+  expand: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5" /></svg>),
+  shrink: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M20 10h-6V4M4 14h6v6M14 10l6.5-6.5M10 14l-6.5 6.5" /></svg>),
+  layers: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m12 4 8 4-8 4-8-4 8-4Z" /><path d="m4 12 8 4 8-4M4 16l8 4 8-4" /></svg>),
+  explore: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="4" y="4" width="16" height="16" rx="2.5" /><path d="M15 4v16M17.5 8h0M17.5 12h0M17.5 16h0" /></svg>),
+  map: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="5" width="7" height="6" rx="1.2" /><rect x="13.5" y="13" width="7" height="6" rx="1.2" /><path d="M10.5 8h3a3 3 0 0 1 3 3v2" /></svg>),
 };
 /**
  * The mark: the kula ring drawn with kula rings (src/mark.ts). Small sizes show

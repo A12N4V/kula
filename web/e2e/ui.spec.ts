@@ -3,6 +3,7 @@ import { GLOBAL_SHORTCUTS } from "../src/nav";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
+import { explore } from "./explore";
 
 /** Path to e2e/fixture.sh whether the runner was started from web/ or the repo root. */
 function fixtureScript(): string {
@@ -2039,7 +2040,7 @@ test.describe("map", () => {
   const addBlock = async (page: Page, testid: string, query: string) => {
     if (!(await page.locator("[data-testid=map-sidebar]").isVisible())) {
       await page.locator("[data-testid=map-hud]").or(page.locator("[data-testid=map-inspector]")).first().waitFor({ state: "visible", timeout: 30_000 });
-      if (await page.locator("[data-testid=map-side-toggle]").isVisible()) await page.locator("[data-testid=map-side-toggle]").click();
+      await explore(page); if (await page.locator("[data-testid=map-side-toggle]").isVisible()) await page.locator("[data-testid=map-side-toggle]").click();
     }
     await page.locator("[data-testid=ws-tab-pipeline]").click();
     await page.locator("[data-testid=pl-add]").click();
@@ -2081,7 +2082,7 @@ test.describe("map", () => {
     // A cold server builds the map inside the first GET /api/map: wait for
     // the canvas (or an already-open inspector) before looking for the HUD.
     await page.locator("[data-testid=map-hud]").or(page.locator("[data-testid=map-inspector]")).first().waitFor({ state: "visible", timeout: 30_000 });
-    if (await page.locator("[data-testid=map-side-toggle]").isVisible()) await page.locator("[data-testid=map-side-toggle]").click();
+    await explore(page); if (await page.locator("[data-testid=map-side-toggle]").isVisible()) await page.locator("[data-testid=map-side-toggle]").click();
     else await page.locator("[data-testid=ws-tab-structure]").click();
     await expect(page.locator("[data-testid=map-filter]")).toBeVisible();
   };
@@ -2107,9 +2108,9 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=map-stats-table]")).toContainText("families");
     // R0 – no View menu: the lens is one click on the lens bar; roles opens
     // the filter popover.
-    await page.locator("[data-testid=map-roles-btn]").click();
+    await explore(page); await page.locator("[data-testid=map-roles-btn]").click();
     await expect(page.locator("[data-testid=map-role-filter]")).toBeVisible();
-    await page.locator("[data-testid=map-roles-btn]").click(); // close
+    await explore(page); await page.locator("[data-testid=map-roles-btn]").click(); // close
   });
 
   test("expanding a family pages its chains; selecting one draws the path", async ({ page }) => {
@@ -2255,7 +2256,7 @@ test.describe("map", () => {
     await open(page, "map");
     const side = page.locator("[data-testid=map-sidebar]");
     await expect(side).toBeHidden();
-    await page.locator("[data-testid=map-side-toggle]").click();
+    await explore(page); await page.locator("[data-testid=map-side-toggle]").click();
     await expect(side).toBeVisible();
     await expect(page.locator("[data-testid=map-filter]")).toBeVisible();
     await page.locator("[data-testid=map-side-close]").click();
@@ -2284,11 +2285,11 @@ test.describe("map", () => {
     // glyph shows the family's source role, so on live data model ("m") and
     // config ("k") sources appear beside utility ("u") ones
     // the roles popover hosts the lens presets (R0 – no View menu)
-    await page.locator("[data-testid=map-roles-btn]").click();
+    await explore(page); await page.locator("[data-testid=map-roles-btn]").click();
     await expect(page.locator("[data-testid=map-role-filter]")).toBeVisible();
-    await page.locator("[data-testid=map-lens-utilities]").click();
+    await explore(page); await page.locator("[data-testid=map-lens-utilities]").click();
     // the popover closes on a preset pick; reopen it for the role legend
-    await page.locator("[data-testid=map-roles-btn]").click();
+    await explore(page); await page.locator("[data-testid=map-roles-btn]").click();
     await expect(page.locator("[data-testid=map-role-filter]")).toBeVisible();
     for (const role of ["entry", "orchestrator", "core", "utility", "adapter", "model", "config", "test", "glue"]) {
       await expect(page.locator(`[data-testid=map-role-${role}]`)).toBeVisible();
@@ -2298,8 +2299,8 @@ test.describe("map", () => {
     expect(glyphs.length).toBeGreaterThan(0);
     expect(glyphs.every((g) => ["u", "m", "k"].includes(g))).toBe(true);
     // back to All: the full list returns – non-utility entries are visible again
-    await page.locator("[data-testid=map-lens-all]").click();
-    await page.locator("[data-testid=map-roles-btn]").click(); // close the popover
+    await explore(page); await page.locator("[data-testid=map-lens-all]").click();
+    await explore(page); await page.locator("[data-testid=map-roles-btn]").click(); // close the popover
     const allGlyphs = await page.locator(".sy-family .sy-role").allTextContents();
     // (no count comparison: the list is windowed, so rendered rows ≠ matches)
     expect(allGlyphs.some((g) => g !== "u")).toBe(true);
@@ -2311,7 +2312,7 @@ test.describe("map", () => {
     // count only after the data has landed, so `all` is not 0
     await expect(page.locator(".sy-family").first()).toBeVisible();
     const all = await page.locator(".sy-family").count();
-    await page.locator("[data-testid=map-roles-btn]").click();
+    await explore(page); await page.locator("[data-testid=map-roles-btn]").click();
     await page.locator("[data-testid=map-role-test]").click();
     const fewer = await page.locator(".sy-family").count();
     expect(fewer).toBeLessThanOrEqual(all);
@@ -2463,7 +2464,7 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid^=fn-pin-]").first()).toHaveClass(/on/);
     // re-layout is tidy now, one undoable home in the U2 chrome strip (the
     // canvas's plain fc-tidy is hidden on the map) – the map survives it
-    await page.locator("[data-testid=u2-tidy]").click();
+    await explore(page); await page.locator("[data-testid=u2-tidy]").click();
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
 
@@ -2540,7 +2541,7 @@ test.describe("map", () => {
     await open(page, "map");
     // the inspector opens from the HUD; Overview is its first tab
     await expect(page.locator("[data-testid=map-inspector]")).toHaveCount(0);
-    await page.locator("[data-testid=hud-pipeline]").click();
+    await explore(page); await page.locator("[data-testid=hud-pipeline]").click();
     await expect(page.locator("[data-testid=ws-tab-pipeline]")).toHaveAttribute("aria-selected", "true");
     await page.locator("[data-testid=pl-add]").click();
     const np = page.locator("[data-testid=np]");
@@ -2694,9 +2695,9 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid=ws-add]")).toHaveCount(0);
     await expect(page.locator("[data-testid=cm-add]")).toHaveCount(0);
     // the role filters live in the inspector's Overview tab now
-    await page.locator("[data-testid=map-roles-btn]").click();
+    await explore(page); await page.locator("[data-testid=map-roles-btn]").click();
     await expect(page.locator("[data-testid=map-role-filter]")).toBeVisible();
-    await page.locator("[data-testid=map-roles-btn]").click();
+    await explore(page); await page.locator("[data-testid=map-roles-btn]").click();
     // the flows list is an inspector overlay, not a canvas of its own –
     // open the inspector with a selection first
     await (await cardInView(page)).click();
@@ -2708,7 +2709,7 @@ test.describe("map", () => {
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible({ timeout: 30_000 });
     // U2 layer contract: Flows is off until picked from a list (§5).
-    await page.locator("[data-testid=u2-layer-flows]").click();
+    await explore(page); await page.locator("[data-testid=u2-layer-flows]").click();
     const edge = page.locator("[data-testid=map-flow] .fc-edge").first();
     await expect(edge).toBeAttached();
     const stroke = () => edge.evaluate((el) => {
@@ -2905,7 +2906,7 @@ test.describe("map", () => {
     // the kit controls are present on the map canvas. Tidy has one undoable
     // home since U2 (the chrome strip, contract §5) – the canvas's own plain
     // fc-tidy is hidden there.
-    await expect(page.locator("[data-testid=u2-tidy]")).toBeVisible();
+    await explore(page); await expect(page.locator("[data-testid=u2-tidy]")).toBeVisible();
     await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-fit]")).toBeVisible();
     await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-minimap-toggle]")).toBeVisible();
     // the minimap starts hidden and toggles on
@@ -2942,7 +2943,7 @@ test.describe("map", () => {
     });
     expect(persisted).toBe(true);
     // tidy re-runs dagre and clears persisted drags; fit recentres the view
-    await page.locator("[data-testid=u2-tidy]").click();
+    await explore(page); await page.locator("[data-testid=u2-tidy]").click();
     await page.waitForTimeout(600);
     expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("kula.flow.pos.v1.map.")).length)).toBe(0);
     const zoomBefore = Number((await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom]").textContent())?.replace("%", ""));
@@ -3124,7 +3125,7 @@ test.describe("agents add from the map rail (U3)", () => {
     test.setTimeout(90_000);
     await open(page, "map");
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
-    await page.locator("[data-testid=map-side-toggle]").click();
+    await explore(page); await page.locator("[data-testid=map-side-toggle]").click();
     await page.locator("[data-testid=ws-tab-library]").click();
     // one obvious add per kind, in the rail's head – both open the same form
     await expect(page.locator("[data-testid=lib-add-team]")).toBeVisible();
@@ -3151,7 +3152,7 @@ test.describe("agents add from the map rail (U3)", () => {
     // add agent from the rail: the workflow editor opens on it, fence prefilled
     await open(page, "map");
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
-    await page.locator("[data-testid=map-side-toggle]").click();
+    await explore(page); await page.locator("[data-testid=map-side-toggle]").click();
     await page.locator("[data-testid=ws-tab-library]").click();
     await page.locator("[data-testid=lib-add-agent]").click();
     const wfName = `rail-agent-${Date.now()}`;
@@ -3176,7 +3177,7 @@ test.describe("agents add from the map rail (U3)", () => {
     test.skip(info.project.name !== "phone", "the sheet layout is the 390 form");
     await open(page, "map");
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
-    await page.locator("[data-testid=map-side-toggle]").click();
+    await explore(page); await page.locator("[data-testid=map-side-toggle]").click();
     await page.locator("[data-testid=ws-tab-library]").click();
     await page.locator("[data-testid=lib-add-team]").click();
     const form = page.locator("[data-testid=ag-add-form]");

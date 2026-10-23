@@ -216,9 +216,13 @@ GateNode.displayName = "GateNode";
 const AgentNode = memo(({ data, selected, id }: NodeProps & { data: FcData }) => {
   const w = data.size?.w ?? WIDE.w, h = data.size?.h ?? 96;
   return (
-    <div className={`fc-node fc-agent${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${stCls(data)}`} style={{ width: w, height: h }} data-testid={`fc-node-${id}`}>
+    <div className={`fc-node fc-agent${data.status === "disabled" ? " fc-off" : ""}${data.dim ? " fc-dim" : ""}${selected ? " fc-sel" : ""}${stCls(data)}`} style={{ width: w, height: h }} data-testid={`fc-node-${id}`}
+      data-agent={data.gradient ? data.title : undefined}>
       <TBar id={id ?? data.id} data={data} />
-      <div className="fc-agent-in" style={{ ["--fc-role" as string]: data.color }}>
+      {/* a map agent (it carries its own gradient) answers to the actor ids:
+          pick it, drop a block on it to fence that block */}
+      <div className={`fc-agent-in${selected ? " sel" : ""}`} style={{ ["--fc-role" as string]: data.color }}
+        data-testid={data.gradient ? `at-agent-${data.title}` : undefined}>
         <span className="fc-agent-hg" data-figure aria-hidden="true">{data.gradient ? <AgentHarmonograph name={data.title} size={56} /> : <Hgraph />}</span>
         <div className="fc-wide-text">
           <div className="fc-wide-title">{data.title}</div>

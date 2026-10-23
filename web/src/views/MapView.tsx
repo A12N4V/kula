@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Workflow } from "../api";
 import { Icon } from "../ui";
 import { useCode } from "../CodePanel";
-import { Grip, listWidth } from "../resize";
+import { Grip, listWidth, PaneControls } from "../resize";
 import { fixture } from "./map/fixture";
 import { BlockCanvas } from "./map/canvas";
 import { Readout, SubwayStrip } from "./map/readout";
@@ -26,8 +26,9 @@ import { focusOf, type Focus } from "./map/chainFocus";
 import { Library, ReviewPanel, RunPanel, fencedSectionsOf, filesOf, sectionAtPoint, sectionOf, stashNewItem, useAgentFence, useLive, useMarks, type Marks } from "./map/workspace";
 // U2 chrome: rail, layers, Map·Runs·Evals, tidy (undoable) – new file, so
 // this diff stays wiring-only.
-import { DEFAULT_LAYERS, EvalsBoard, FrameSwitch, LayerBar, MapRail, TidyStrip, type Frame, type LayerId, type Layers } from "./map/chrome";
-import { ActorBand, FenceHull } from "./agents/actors";
+import { DEFAULT_LAYERS, EvalsBoard, Explorer, FrameSwitch, LayerBar, type Frame, type LayerId, type Layers } from "./map/chrome";
+import { FenceHull } from "./agents/actors";
+import { AgentHarmonograph } from "../flow/agentMark";
 import { AgentInspector } from "./agents/AgentInspector";
 import { AddForm } from "./agents/AddForm";
 import { clearPersisted } from "../flow/positions";
@@ -89,8 +90,10 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     const f = flowPick != null ? data?.value_flows?.[flowPick] : undefined;
     return f ? { color: flowHue(flowPick!), sections: new Set(f.sections) } : null;
   }, [flowPick, data]);
-  const [addOpen, setAddOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [exOpen, setExOpen] = useState(false);
+  // "/" (search) opens the Explorer it lives in
+  useEffect(() => { if (searchOpen) setExOpen(true); }, [searchOpen]);
   const [q, setQ] = useState("");
   const [reveal, setReveal] = useState<string | null>(null);
   // Tidy snapshot: the persisted drag positions + sizes, kept so one undo
@@ -355,6 +358,18 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editFence, selBlock, selAgent, data, fenced]);
   const openAgentAdd = useCallback(() => { setAgentAdd(true); setInspForced(true); }, []);
+  // An agent square on the map picks the agent (a second click lets it go);
+  // anything else is a block pick. The agent stays picked while blocks are
+  // clicked, so its fence hull holds and "Edit fence" can toggle them.
+  const pickOnCanvas = useCallback((id: string | null) => {
+    if (id?.startsWith("agent:")) {
+      const name = id.slice(6);
+      setEditFence(false);
+      setSelAgent((cur) => { const next = cur === name ? null : name; if (next) setInspForced(true); return next; });
+      return;
+    }
+    setSelBlock(id);
+  }, []);
   const createAgent = useCallback((wf: Workflow) => {
     api.agentAction("workflows_save", { workflows: [...(ws.info?.workflows ?? []).filter((w) => !w.builtin), wf] })
       .catch(() => { /* the editor shows the server's state */ })
@@ -390,12 +405,19 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     if (!data || !isItemDrag(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
+    // over an agent square: it lights as the drop target (the drop fences the block)
+    const ag = (e.target as Element).closest?.(".fc-agent[data-agent]");
+    document.querySelectorAll(".fc-agent.over").forEach((n) => { if (n !== ag) n.classList.remove("over"); });
+    ag?.classList.add("over");
     const sec = sectionAtPoint(data, e.clientX, e.clientY);
     if (sec !== dropTarget) setDropTarget(sec);
   };
   const onCanvasDrop = (e: React.DragEvent) => {
     if (!data) return;
     const it = droppedItem(e);
+    const onAgent = (e.target as Element).closest?.("[data-agent]") as HTMLElement | null;
+    document.querySelectorAll(".fc-agent.over").forEach((n) => n.classList.remove("over"));
+    if (onAgent) { e.preventDefault(); setDropTarget(null); dropOnAgent(onAgent.dataset.agent!, it); return; }
     const sec = sectionAtPoint(data, e.clientX, e.clientY);
     setDropTarget(null);
     if (!it) return;
@@ -597,10 +619,14 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
         ],
       };
     }
+    if (selAgent && !b) return {
+      kind: <><Icon.agents />agent</>, title: selAgent, sub: ws.info?.workflows.find((w) => w.name === selAgent)?.about ?? "",
+      facts: [[String(fenced.length), fenced.length === 1 ? "fenced section" : "fenced sections"]] as [string, string][], actions: [],
+    };
     if (selChain && data) return { kind: <>chain</>, title: `${data.leaves[selChain.source]?.name} → ${data.leaves[selChain.terminal]?.name}`, sub: `${selChain.len} steps`, facts: [] as [string, string][], actions: [] };
     return { kind: <>workspace</>, title: "Map", sub: `${sections.length} sections · ${Object.keys(data?.blocks ?? {}).length} blocks`, facts: [] as [string, string][], actions: [] };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selStep, pipe.steps, readBlock, selChain, data, marks, pinned, runner.running, sections]);
+  }, [selStep, pipe.steps, readBlock, selChain, data, marks, pinned, runner.running, sections, selAgent, fenced, ws.info]);
   const chainCard = !selChain || !data ? null : (
               <div className="fm-chain-card" data-testid="map-chain-card">
                 <div className="fm-chain-card-head">
@@ -660,46 +686,33 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       {/* U2: centred Map · Runs · Evals switch – the segments re-frame the
           same canvas, they are not new views. */}
       <FrameSwitch frame={frame} onFrame={(f) => { setFrame(f); if (f === "runs") openInsp("pipeline"); }}
-        counts={{
-          runs: runner.runs.length ? `${runner.runs.length}` : undefined,
-          agents: ws.info ? `${ws.info.workflows.filter((w) => !w.research && !w.builtin).length + ws.info.teams.length}` : undefined,
-        }}
-        agentsOn={layers.agents} onAgents={() => toggleLayer("agents")} />
+        counts={{ runs: runner.runs.length ? `${runner.runs.length}` : undefined }} />
       {frame === "evals" && <EvalsBoard onRuns={() => { setFrame("runs"); openInsp("pipeline"); }} />}
-      {/* U2: the bottom-left chrome stack – layer toggle, tidy strip, then the
-          canvas zoom bar (fit · in · out · minimap) below them. */}
-      <div className="u2-hud-bl">
-        <LayerBar layers={layers} onToggle={toggleLayer} />
-        <TidyStrip onTidy={tidy} canUndo={!!tidyUndo} onUndo={undoTidy} />
-      </div>
-      {/* U2: the right rail – add, search, note, panel. With the inspector
-          open it docks beside it like the Roles HUD, so both stay reachable. */}
-      <MapRail
-        onAdd={() => setAddOpen(true)}
-        onSearch={() => setSearchOpen((s) => !s)}
-        onNote={() => addSticky()}
-        onPanel={() => openInsp("pipeline")}
-        search={( // U9 – the rail search (now always mounted, collapsed via its
-          // `open` prop) gains the "Ask in plain words" question mode that is
-          // reachable with no click. Mount-only glue; the plain path keeps
-          // searchGo exactly as it was.
+      {/* The Explorer: one toggle in the canvas's top-right corner holds the
+          search, the panels, the layers and the canvas verbs – the right edge
+          carries nothing else. With the inspector open it steps left of it. */}
+      <Explorer open={exOpen} onOpen={setExOpen}
+        search={(<>
+          {!searchOpen && <button className="ex-verb ex-find" data-testid="u2-rail-search" title="Search  /" onClick={() => setSearchOpen(true)}><Icon.search /> Search code</button>}
           <RailSearch open={searchOpen} value={q} onChange={setQ} onSubmit={() => void searchGo()}
             onPick={(id) => { setSelBlock(id); setReveal(id); setSearchOpen(false); setQ(""); }} />
-        )}
-      />
-      {addOpen && ws.info && (
-        <div className="u2-add-pop" data-testid="u2-add-pop">
-          <AddForm kind="agent" info={ws.info}
-            onCreate={(wf: Workflow) => { stashNewItem("agent", wf.name); setAddOpen(false); }}
-            onCancel={() => setAddOpen(false)} />
-        </div>
-      )}
+        </>)}
+        panels={<>
+          <button className="ex-row" onClick={() => { setExOpen(false); openInsp("pipeline"); }} data-testid="hud-pipeline"><Icon.flows /> Pipeline{pipe.steps.length ? <b>{runnable(pipe.steps).length}</b> : null}</button>
+          <button className="ex-row" onClick={() => { setExOpen(false); openInsp("live"); }} data-testid="hud-live"><Icon.agents /> Agents{ws.info ? <b>{ws.info.workflows.filter((w) => !w.research && !w.builtin).length + ws.info.teams.length}</b> : null}{(ws.info?.task || ws.info?.team) && <i className="hud-dot" />}</button>
+          <button className="ex-row" onClick={() => { setExOpen(false); openInsp("changes"); }} data-testid="hud-changes"><Icon.changes /> Changes{ws.files.length ? <b>{ws.files.length}</b> : null}</button>
+          <button className="ex-row" onClick={() => { setExOpen(false); openInsp("structure"); }} data-testid="map-side-toggle"><Icon.sidebar /> Structure</button>
+          <button className={`ex-row${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
+            onClick={() => setRolesOpen((o) => !o)}><Icon.types /> Roles</button>
+        </>}
+        layers={<LayerBar layers={layers} onToggle={toggleLayer} />}
+        verbs={<>
+          <button className="ex-verb" data-testid="u2-rail-add" title="Add agent  n" onClick={() => { setExOpen(false); openAgentAdd(); }}><Icon.plus /> Agent</button>
+          <button className="ex-verb" data-testid="u2-rail-note" title="Add sticky note  ⇧S" onClick={() => { setExOpen(false); addSticky(); }}><Icon.doc /> Note</button>
+          <button className="ex-verb" data-testid="u2-tidy" title="Tidy – re-run the layout (T)" onClick={tidy}><Icon.sweep /> Tidy</button>
+          {tidyUndo && <button className="ex-verb ex-undo" data-testid="u2-tidy-undo" title="Undo tidy  ⌘Z" onClick={undoTidy}><Icon.rerun /> Undo</button>}
+        </>} />
       {live?.running && <ProgressStrip p={live} />}
-      {/* U3 – the actor band on top (contract §1): one row, 144px, never wraps. */}
-      <ActorBand info={ws.info} selected={selAgent}
-        onSelect={(name) => { setSelAgent(name); setEditFence(false); if (name) setInspForced(true); }}
-        fencePaths={fence.fencePaths} editFence={editFence} onEditFence={setEditFence}
-        onDropBlock={dropOnAgent} onAdd={openAgentAdd} />
       {rolesOpen && (
         <div className="sy-roles" id="map-role-filter" data-testid="map-role-filter" role="group" aria-label="Role filter">
           {/* R0 – the lens presets live with the role filter now (no View menu). */}
@@ -721,7 +734,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       <div className="sy-split" style={listWidth("map", 360)}>
         {path.length
           ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
-          : <div className="ws-drop" ref={canvasWrapRef} onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView agents={terrainAgents} agentsOn={layers.agents} flowTint={flowTint} marks={fenceMarks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={fenceFocus ?? (layers.chains && chain ? focusOf(data, chain) : null)} selection={selBlock} onSelect={setSelBlock} onDrill={(id) => { setSelBlock(id); setInspForced(true); }} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
+          : <div className="ws-drop" ref={canvasWrapRef} onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView agents={terrainAgents} agentsOn={layers.agents} flowTint={flowTint} marks={fenceMarks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={fenceFocus ?? (layers.chains && chain ? focusOf(data, chain) : null)} selection={selBlock ?? (selAgent ? `agent:${selAgent}` : null)} onSelect={pickOnCanvas} onDrill={(id) => { setSelBlock(id); setInspForced(true); }} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
             reveal={reveal}
             pinned={pinned && !selStep ? pinned : null}
             onNodeTool={(id, action) => {
@@ -749,16 +762,6 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
 
         {/* The canvas is everything until a click: then Graph's inspector – a
             floating panel with a header (kind, name, facts, actions) and sub-tabs. */}
-        {!insp && (
-          <div className="map-hud" data-testid="map-hud">
-            <button className={`btn sm${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
-              onClick={() => setRolesOpen((o) => !o)}>Roles</button>
-            <button className="btn sm" onClick={() => openInsp("pipeline")} data-testid="hud-pipeline"><Icon.flows /> Pipeline{pipe.steps.length ? <b>{runnable(pipe.steps).length}</b> : null}</button>
-            <button className="btn sm" onClick={() => openInsp("live")} data-testid="hud-live"><Icon.agents /> Agents{(ws.info?.task || ws.info?.team) && <i className="hud-dot" />}</button>
-            <button className="btn sm" onClick={() => openInsp("changes")} data-testid="hud-changes"><Icon.changes /> Changes{ws.files.length ? <b>{ws.files.length}</b> : null}</button>
-            <button className="btn sm" onClick={() => openInsp("structure")} data-testid="map-side-toggle"><Icon.sidebar /> Structure</button>
-          </div>
-        )}
         {/* U7 – the key is always on the map (X5 §2, critic blocking): with
             the inspector closed it docks at the right edge so landing #map
             still shows it – no click to know the key exists. */}
@@ -774,21 +777,11 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
         <div className="u9-dock" data-testid="map-plain-dock">
           <PlainPanel agents={ws.info?.workflows.filter((w) => !w.builtin).map((w) => w.name)} />
         </div>
-        {/* With the inspector open the other HUD buttons would hide behind it
-            (the inspector covers the top-right), but Roles must stay reachable
-            – the lens presets and role filter live in its popover. It docks to
-            the left of the inspector instead of vanishing. */}
-        {insp && (
-          <div className="map-hud map-hud-side" data-testid="map-hud">
-            <button className={`btn sm${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
-              onClick={() => setRolesOpen((o) => !o)}>Roles</button>
-          </div>
-        )}
         {/* The add-block palette shares the inspector's corner – while it is
             open it rides above (n8n slides its panel over the canvas), so the
             inspector steps aside until the pick lands. */}
         {insp && (
-        <aside className="inspector map-insp" id="map-sidebar" aria-label="Map inspector" data-testid="map-inspector"
+        <aside className="inspector map-insp" id="map-sidebar" data-pane aria-label="Map inspector" data-testid="map-inspector"
           style={panel ? { zIndex: 24 } : undefined}>
           <Grip id="inspector" edge="left" min={300} max={960} label="Resize inspector" />
           {/* U7 – the key: always available at the top of the right column. */}
@@ -799,7 +792,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           <header>            <div className="row">
               <div className="kind">{inspHead.kind}</div>
               <span className="spacer" />
-              <button className="btn ghost sm" onClick={closeInsp} aria-label="Close" title="Close  esc"><Icon.close /></button>
+              <PaneControls onClose={closeInsp} testId="insp" />
             </div>
             <h2>{inspHead.title}</h2>
             {inspHead.sub && <div className="muted mono" style={{ fontSize: 11.5 }}>{inspHead.sub}</div>}
@@ -817,6 +810,17 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
             ))}
           </div>
           <div className="body">
+          {selAgent && ws.info && (
+            <div className="ag-bar" data-testid="ag-bar">
+              <AgentHarmonograph name={selAgent} size={28} />
+              <b className="mono">{selAgent}</b>
+              <span className="spacer" />
+              <button className={`btn sm${editFence ? " on" : ""}`} data-testid="at-edit-fence" aria-pressed={editFence}
+                title="Click blocks on the canvas to add or remove them from this agent's fence"
+                onClick={() => setEditFence((v) => !v)}><Icon.fence /> {editFence ? "Done editing fence" : "Edit fence on canvas"}</button>
+              <button className="btn sm ghost" data-testid="ag-bar-release" title="Let the agent go" onClick={() => { setSelAgent(null); setEditFence(false); }}>Unpick</button>
+            </div>
+          )}
           {selAgent && ws.info && (
             <AgentInspector info={ws.info} agent={selAgent} data={data} onSaved={ws.reload}
               onFocusBlock={(id) => { setSelBlock(id); setInspForced(true); }}

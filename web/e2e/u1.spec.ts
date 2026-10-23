@@ -261,7 +261,7 @@ test("text overlap probe: the map canvas is clean at 1440, 1100 and 390", async 
       // headline row and each other (the 1100 px Roles × headline finding),
       // not with the nodes beneath them.
       const nodes = [...document.querySelectorAll("[data-testid=map-flow] .fc-node:not(.fc-group), [data-testid=map-flow] .fm-headline-v, [data-testid=map-flow] .fc-edge-label, .map-hud .btn")] as HTMLElement[];
-      const hud = (el: Element) => el.classList.contains("btn") && !!el.closest(".map-hud");
+      const hud = (el: Element) => el.classList.contains("btn") && !!el.closest(".ex-wrap");
       const rect = (el: HTMLElement) => {
         const r = el.getBoundingClientRect();
         if (r.width < 2 || r.height < 2) return null;

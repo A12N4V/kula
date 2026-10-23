@@ -17,6 +17,7 @@
 // right-click menu.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Grip, PaneControls } from "../../resize";
 import { createPortal } from "react-dom";
 import { api, type AgentsInfo, type FileStatus } from "../../api";
 import { log, logLines, onLog, openDock, setRunTree, type RunStep } from "../../dock/bus";
@@ -382,12 +383,13 @@ export function NodePanel({ info, open, onClose, onPick, hint }: { info: AgentsI
     else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (cat && !q) back(); else onClose(); }
   };
   return (
-    <aside className={`np${open ? " open" : ""}${dragging ? " np-dragging" : ""}`} aria-hidden={!open} aria-label="Add a block" data-testid="np" onKeyDown={onKey}>
+    <aside className={`np${open ? " open" : ""}${dragging ? " np-dragging" : ""}`} aria-hidden={!open} aria-label="Add a block" data-testid="np" data-pane onKeyDown={onKey}>
+      <Grip id="np" edge="left" min={280} max={900} label="Resize block panel" />
       <div className="np-head">
         {current && !s
           ? <button className="np-back" onClick={back} data-testid="np-back" aria-label="Back to categories"><span className="np-back-ico"><Icon.back /></span>{current.label}</button>
           : <span className="np-title">{hint}</span>}
-        <button className="ws-x" onClick={onClose} aria-label="Close panel">×</button>
+        <PaneControls onClose={onClose} closeLabel="Close panel" testId="np" />
       </div>
       <input ref={input} className="np-search" placeholder="Search blocks…" value={q} onChange={(e) => { setQ(e.target.value); setHi(0); }} data-testid="np-search" />
       <div className="np-list" key={s ? "search" : cat ?? "root"} data-dir={dir}>
@@ -545,13 +547,13 @@ export function StepDetails({ data, s, pipe, runner, sections, prev, onClose, su
   const secName = (id: string | null) => (id ? data.blocks[id]?.theme || data.blocks[id]?.name : null);
   return createPortal(
     <div className="scrim ndv-scrim" onMouseDown={onClose}>
-      <div className="ndv" role="dialog" aria-label={`${s.name} details`} data-testid="ndv" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="ndv" data-pane role="dialog" aria-label={`${s.name} details`} data-testid="ndv" onMouseDown={(e) => e.stopPropagation()}>
         <header className="ndv-head">
           {ico(s.kind)}
           <div className="ndv-titles"><h2>{s.name}</h2><span className="ndv-sub">{s.kind}{s.ref && s.kind !== "note" ? ` · ${s.ref}` : ""}{secName(s.section) ? ` on ${secName(s.section)}` : ""}</span></div>
           <span className="spacer" />
           {s.kind !== "note" && <button className="btn sm primary" onClick={() => { onClose(); void runner.run(s.id); }} disabled={runner.running} data-testid="ndv-run"><Icon.play /> Run from here</button>}
-          <button className="ws-x" onClick={onClose} aria-label="Close">×</button>
+          <PaneControls onClose={onClose} testId="ndv" />
         </header>
         <div className="ndv-cols">
           <section className="ndv-col ndv-in">

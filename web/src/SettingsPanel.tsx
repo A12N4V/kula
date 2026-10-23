@@ -4,7 +4,7 @@ import { fuzzyScore } from "./nav";
 import { settings, useKnownDirs, useSettings, type Settings } from "./settings";
 import { Icon } from "./ui";
 import { api, type LangRow } from "./api";
-import { hasCustomSizes, resetSizes } from "./resize";
+import { Grip, hasCustomSizes, PaneControls, resetSizes } from "./resize";
 
 // I1 · Embeddings: the check table and the run state as the Rust side sends them.
 interface EmbedStats {
@@ -295,13 +295,14 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="scrim" onMouseDown={onClose}>
-      <section className="settings dialog" role="dialog" aria-modal="true" aria-label="Settings" onMouseDown={(e) => e.stopPropagation()}>
+      <section className="settings dialog" role="dialog" aria-modal="true" aria-label="Settings" data-pane onMouseDown={(e) => e.stopPropagation()}>
+        <Grip id="settings" edge="right" min={340} max={1100} label="Resize settings" />
         <header>
           <Icon.gear />
           <h2>Settings</h2>
           <span className="spacer" />
           <button className="btn ghost sm restore-m" onClick={() => { resetSizes(); settings.reset(); }}>Restore defaults</button>
-          <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
+          <PaneControls onClose={onClose} testId="settings" />
         </header>
         <div className="set-search">
           <Icon.search />

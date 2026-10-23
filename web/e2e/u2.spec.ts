@@ -4,6 +4,7 @@
 // segmented control, tidy explicit and undoable, rail add/note/panel.
 // Assert by name – the fixture is per worker.
 import { expect, test, type Page } from "@playwright/test";
+import { explore } from "./explore";
 
 async function open(page: Page, hash = "map") {
   await page.addInitScript(() => {
@@ -44,13 +45,13 @@ test("turning a layer off hides its marks and back on restores them", async ({ p
   expect(id).toBeTruthy();
   const edge = page.locator(`[data-testid=map-flow] .react-flow__edge[data-id="${id}"]`);
   await expect(edge).toBeVisible();
-  await page.locator("[data-testid=u2-layer-flows]").click();
+  await explore(page); await page.locator("[data-testid=u2-layer-flows]").click();
   await expect(edge).not.toBeVisible();
-  await page.locator("[data-testid=u2-layer-flows]").click();
+  await explore(page); await page.locator("[data-testid=u2-layer-flows]").click();
   await expect(edge).toBeVisible();
   // Runs off hides the last-run dots, never navigates: the canvas stays.
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible();
-  await page.locator("[data-testid=u2-layer-runs]").click();
+  await explore(page); await page.locator("[data-testid=u2-layer-runs]").click();
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible();
 });
 
@@ -75,18 +76,20 @@ test("the centred Map · Runs · Evals switch re-frames without losing the canva
 
 test("the rail opens the add form, adds a note and opens the panel", async ({ page }) => {
   await open(page);
+  await explore(page);
   const rail = page.locator("[data-testid=u2-rail]");
   await expect(rail).toBeVisible();
   // + opens the R1 add form (contract §8.6) – the agents info must be in.
   await rail.locator("[data-testid=u2-rail-add]").click();
-  await expect(page.locator("[data-testid=u2-add-pop]")).toBeVisible();
   await expect(page.locator("[data-testid=ag-add-form]")).toBeVisible();
   await page.keyboard.press("Escape");
   // Note adds a sticky in the pipeline.
-  await rail.locator("[data-testid=u2-rail-note]").click();
+  await explore(page);
+  await page.locator("[data-testid=u2-rail-note]").click();
   await expect(page.locator("[data-testid=ws-tab-pipeline]")).toHaveAttribute("aria-selected", "true");
   // Panel opens the pipeline inspector.
-  await rail.locator("[data-testid=u2-rail-panel]").click();
+  await explore(page);
+  await page.locator("[data-testid=hud-pipeline]").click();
   await expect(page.locator("[data-testid=map-inspector]")).toBeVisible();
 });
 
@@ -101,9 +104,9 @@ test("search moves the camera and never re-lays-out", async ({ page }) => {
   const before = await tf();
   const vp = page.locator("[data-testid=map-flow-canvas] .react-flow__viewport");
   const transformBefore = await vp.getAttribute("style");
-  await page.locator("[data-testid=u2-rail-search]").click();
-  await page.locator("[data-testid=u2-rail-search-input]").fill("serve");
-  await page.locator("[data-testid=u2-rail-search-input]").press("Enter");
+  await explore(page); await page.locator("[data-testid=u2-rail-search]").click();
+  await explore(page); await page.locator("[data-testid=u2-rail-search-input]").fill("serve");
+  await explore(page); await page.locator("[data-testid=u2-rail-search-input]").press("Enter");
   await page.waitForTimeout(600); // the pan animates; the layout must not move
   // The camera moved…
   expect(await vp.getAttribute("style")).not.toEqual(transformBefore);
@@ -139,8 +142,8 @@ test("tidy is explicit and one undo puts the cards back", async ({ page }) => {
   };
   // Tidy: one confirmation-free click. The seeded drag is snapshot to the
   // undo chip, cleared from the store, and the kit re-lays out.
-  await page.locator("[data-testid=u2-tidy]").click();
-  await expect(page.locator("[data-testid=u2-tidy-undo]")).toBeVisible();
+  await explore(page); await page.locator("[data-testid=u2-tidy]").click();
+  await explore(page); await expect(page.locator("[data-testid=u2-tidy-undo]")).toBeVisible();
   await page.waitForTimeout(700);
   const tidied = await xy();
   expect(Math.abs(tidied!.x - seed!.x) + Math.abs(tidied!.y - seed!.y)).toBeGreaterThan(8);
@@ -149,7 +152,7 @@ test("tidy is explicit and one undo puts the cards back", async ({ page }) => {
   // seeded drag (the kit's hydration re-snaps the absolute during the
   // rebuild, so the transform is asserted by direction and distance, not
   // to the pixel).
-  await page.locator("[data-testid=u2-tidy-undo]").click();
+  await explore(page); await page.locator("[data-testid=u2-tidy-undo]").click();
   await page.waitForTimeout(900);
   const undone = await xy();
   const restored = await page.evaluate((s) =>
@@ -158,5 +161,5 @@ test("tidy is explicit and one undo puts the cards back", async ({ page }) => {
   expect(Math.abs(undone!.x - seed!.x) + Math.abs(undone!.y - seed!.y)).toBeLessThan(
     Math.abs(tidied!.x - seed!.x) + Math.abs(tidied!.y - seed!.y));
   // The undo chip disappears once there is nothing to undo.
-  await expect(page.locator("[data-testid=u2-tidy-undo]")).toHaveCount(0);
+  await explore(page); await expect(page.locator("[data-testid=u2-tidy-undo]")).toHaveCount(0);
 });

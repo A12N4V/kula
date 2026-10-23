@@ -9,6 +9,7 @@
 // PUT /api/file with the load-time hash, guarded, atomic and re-indexed.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Grip, PaneControls } from "./resize";
 import { get, type Node, type Verdict } from "./api";
 import { Icon, Kind } from "./ui";
 import { visit } from "./near";
@@ -194,7 +195,8 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
   const [dir, file] = [t.path.slice(0, t.path.lastIndexOf("/") + 1), t.path.slice(t.path.lastIndexOf("/") + 1)];
 
   return (
-    <aside className="code-panel" aria-label={`Source of ${t.name ?? t.path}`}>
+    <aside className="code-panel" aria-label={`Source of ${t.name ?? t.path}`} data-pane>
+      <Grip id="code" edge="left" min={320} max={1600} label="Resize source panel" />
       <header>
         <div className="cp-kind">{t.kind && <Kind kind={t.kind} size={14} />}<span>{t.kind ?? "file"}</span>{t.line ? <span className="muted">· lines {t.line}–{t.end ?? t.line}</span> : <span className="muted">· {lines.length} lines</span>}</div>
         <h2>{t.name ?? file}{dirty && <span className="cp-dot" data-testid="cp-modified" title="unsaved changes" />}</h2>
@@ -213,7 +215,7 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
             </>
           )}
           <span className="spacer" />
-          <button className="btn sm ghost icon-only" onClick={onClose} aria-label="Close source" title="Close  esc"><Icon.close /></button>
+          <PaneControls onClose={onClose} closeLabel="Close source" testId="cp" />
         </div>
       </header>
       {note && (

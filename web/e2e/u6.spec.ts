@@ -6,6 +6,7 @@
 // column stays as the phone-only list fallback. Assert by name, never counts.
 import { expect, test, type Page } from "@playwright/test";
 import { FIXTURE } from "../playwright.config";
+import { explore } from "./explore";
 
 test.use({ baseURL: FIXTURE });
 
@@ -39,7 +40,6 @@ async function opened(page: Page) {
   await page.goto(`/#map`);
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
   await page.locator(".fc-solid").first().waitFor({ state: "attached", timeout: 30_000 });
-  await page.locator('[data-testid="u2-frame-agents"]').click();
   await expect(page.locator('[data-testid="fc-node-agent:polish"]')).toBeAttached({ timeout: 30_000 });
 }
 
@@ -49,11 +49,11 @@ test("agents layer off → no agent marks anywhere, on → the agent squares app
   await expect(page.locator('[data-testid="fc-node-agent:polish"]')).toBeVisible();
   await expect(page.locator('[data-testid="fc-node-agent:everywhere"]')).toBeVisible();
   // off: removed from the DOM, not hidden
-  await page.locator('[data-testid="u2-layer-agents"]').click();
+  await explore(page); await page.locator('[data-testid="u2-layer-agents"]').click();
   await expect(page.locator('[data-testid^="fc-node-agent:"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="fc-node-codebase"]')).toHaveCount(0);
   // back on for the rest of the checks
-  await page.locator('[data-testid="u2-layer-agents"]').click();
+  await explore(page); await page.locator('[data-testid="u2-layer-agents"]').click();
   await expect(page.locator('[data-testid="fc-node-agent:polish"]')).toBeVisible();
 });
 
@@ -98,11 +98,15 @@ test("an unfenced agent wires into the whole-codebase block (colour-banded)", as
   expect(side, "unfenced agent square is left of the whole-codebase block").toBe(true);
 });
 
-// Lead: the band stays on desktop for now – U3 selection, add and drop-to-fence
-// still live there until agent squares take those gestures (U7/U9).
-test.skip("desktop hides the actor band when the terrain shows the agents; phone keeps it", async ({ page }) => {
+// The actor band is gone: agents live only on the map, and clicking an
+// agent's square picks it (the inspector opens on it with the fence verbs).
+test("no actor band; clicking an agent square picks the agent", async ({ page }) => {
   await opened(page);
-  await expect(page.locator('[data-testid="actor-band"]')).toBeHidden();
-  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('[data-testid="actor-band"]')).toHaveCount(0);
+  await page.locator('[data-testid="at-agent-polish"]').click();
+  await expect(page.locator('[data-testid="at-agent-polish"]')).toHaveClass(/sel/);
+  await expect(page.locator('[data-testid="ag-bar"]')).toBeVisible();
+  await expect(page.locator('[data-testid="at-edit-fence"]')).toBeVisible();
+});
   await expect(page.locator('[data-testid="actor-band"]')).toBeVisible();
 });

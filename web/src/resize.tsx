@@ -1,9 +1,12 @@
-// Hand-sized panels. Every pane edge carries a grip; the size it sets is a CSS
+// Hand-sized panels – one mechanism for every panel that pops open. Each
+// carries a Grip on its free edge and PaneControls (full screen · close) in
+// its top-right corner. Hand-sized panels. Every pane edge carries a grip; the size it sets is a CSS
 // variable on <html> (`--size-<id>`), so rules that depend on a panel – the
 // canvas inset beside the contrast panel, the zoom stack beside the inspector –
 // follow it without any wiring. Sizes persist per browser; double-click resets.
 
-import { useRef, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { Icon } from "./ui";
 
 const KEY = "kula.sizes.v1";
 let sizes: Record<string, number> = (() => {
@@ -92,3 +95,43 @@ export function Grip({ id, edge, min, max, target = "parent", label }: {
 
 /** Style for a `.split` whose list column is hand-sized under `id`. */
 export const listWidth = (id: string, def: number) => ({ ["--list-w" as string]: `var(--size-${id}, ${def}px)` }) as CSSProperties;
+
+/**
+ * The two buttons every popped panel carries in its top-right corner: full
+ * screen (the panel takes the window over everything, Esc or the button
+ * restores it) and close. The panel is the nearest `[data-pane]` ancestor;
+ * the state is an attribute on it, so the CSS does the rest
+ * (`[data-pane][data-max]` in base.css) and no panel needs extra wiring.
+ */
+export function PaneControls({ onClose, closeLabel = "Close", closeTitle = "Close  esc", testId }: {
+  onClose?: () => void; closeLabel?: string; closeTitle?: string; testId?: string;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [max, setMax] = useState(false);
+  const pane = () => ref.current?.closest("[data-pane]") as HTMLElement | null;
+  useEffect(() => {
+    const el = pane();
+    if (!el) return;
+    if (max) el.dataset.max = ""; else delete el.dataset.max;
+    if (!max) return;
+    // Esc restores first; a second Esc reaches the panel's own close.
+    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") { e.stopImmediatePropagation(); e.preventDefault(); setMax(false); } };
+    window.addEventListener("keydown", esc, true);
+    return () => { window.removeEventListener("keydown", esc, true); delete el.dataset.max; };
+  }, [max]);
+  return (
+    <span className="pane-ctl" ref={ref} data-testid={testId ? `${testId}-ctl` : "pane-ctl"}>
+      <button type="button" className="pane-btn" data-testid={testId ? `${testId}-max` : "pane-max"} aria-pressed={max}
+        aria-label={max ? "Exit full screen" : "Full screen"} title={max ? "Exit full screen  esc" : "Full screen"}
+        onClick={(e) => { e.stopPropagation(); setMax((m) => !m); }}>
+        {max ? <Icon.shrink /> : <Icon.expand />}
+      </button>
+      {onClose && (
+        <button type="button" className="pane-btn" data-testid={testId ? `${testId}-close` : "pane-close"} aria-label={closeLabel} title={closeTitle}
+          onClick={(e) => { e.stopPropagation(); setMax(false); onClose(); }}>
+          <Icon.close />
+        </button>
+      )}
+    </span>
+  );
+}

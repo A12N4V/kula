@@ -1,6 +1,6 @@
-// U2 – Map chrome: the right rail (add, search, note, panel), the layer
-// toggle (Blocks · Flows · Chains · Fences · Agents · Runs), the centred
-// Map · Runs · Evals switch and the tidy strip (explicit tidy, one-click
+// U2 – Map chrome: the Explorer (search, panels, layers, canvas verbs in
+// one top-right toggle), the layer toggle (Blocks · Flows · Chains · Fences ·
+// Agents · Runs), the Map · Runs · Evals icon switch and the tidy strip (explicit tidy, one-click
 // undo). Contract: docs/design/fused-canvas.md §5 (layer names and defaults,
 // verb list), §7 (empty states teach); fused-interactions.md §2 (states) as
 // summarised in handoff-x3. All pieces live here so MapView.tsx stays a
@@ -19,77 +19,92 @@ export const LAYERS: { id: LayerId; label: string; hint: string }[] = [
   { id: "runs", label: "Runs", hint: "last-run dots and run state" },
 ];
 export type Layers = Record<LayerId, boolean>;
-/** Contract §5 defaults: Blocks + Agents + Runs on; the rest off until picked. */
-export const DEFAULT_LAYERS: Layers = { blocks: true, flows: true, chains: false, fences: false, agents: false, runs: true };
+/** Defaults: Blocks, Flows, Agents and Runs on – agents live on the map, beside the code they cover. */
+export const DEFAULT_LAYERS: Layers = { blocks: true, flows: true, chains: false, fences: false, agents: true, runs: true };
 
-/** One compact toggle, no sub-tabs (contract §5): six square chips in a row.
+const LAYER_ICON: Record<LayerId, () => React.ReactElement> = {
+  blocks: Icon.box, flows: Icon.flows, chains: Icon.workflow, fences: Icon.fence, agents: Icon.agents, runs: Icon.play,
+};
+
+/** One compact toggle, no sub-tabs (contract §5): six icon chips in a grid.
     Turning a layer off hides its marks and never navigates. */
 export function LayerBar({ layers, onToggle }: { layers: Layers; onToggle: (id: LayerId) => void }) {
   return (
     <div className="u2-layers" role="group" aria-label="Layers" data-testid="u2-layers">
-      {LAYERS.map((l) => (
-        <button key={l.id} className={`u2-layer${layers[l.id] ? " on" : ""}`} data-testid={`u2-layer-${l.id}`}
-          aria-pressed={layers[l.id]} title={`${l.label} – ${l.hint}`} onClick={() => onToggle(l.id)}>
-          {l.label}
-        </button>
-      ))}
+      {LAYERS.map((l) => {
+        const I = LAYER_ICON[l.id];
+        return (
+          <button key={l.id} className={`u2-layer${layers[l.id] ? " on" : ""}`} data-testid={`u2-layer-${l.id}`}
+            aria-pressed={layers[l.id]} title={`${l.label} – ${l.hint}`} onClick={() => onToggle(l.id)}>
+            <I /><span>{l.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-/** Centred segmented switch (ux §7.217): the segments re-frame the same data –
-    Runs brings the pipeline and transport forward, Evals shows the (empty)
-    eval board. They are not new views, so the canvas never unmounts. */
+/** The view switch in the run bar: three icons, one picked. Map · Runs ·
+    Evals re-frame the same canvas (ux §7.217) – the canvas never unmounts.
+    Layers (Agents among them) live in the Explorer, so nothing here is a
+    toggle posing as a tab. */
 export type Frame = "map" | "runs" | "evals";
-/** The bottom summary (U5): Map · Runs · Evals · Agents in the run bar,
-    each with its live count, so the top of the map carries no chrome. */
-export function FrameSwitch({ frame, onFrame, counts, agentsOn, onAgents }: {
+const FRAMES: { id: Frame; label: string; I: () => React.ReactElement }[] = [
+  { id: "map", label: "Map", I: Icon.map },
+  { id: "runs", label: "Runs", I: Icon.play },
+  { id: "evals", label: "Evals", I: Icon.flask },
+];
+export function FrameSwitch({ frame, onFrame, counts }: {
   frame: Frame; onFrame: (f: Frame) => void;
-  counts?: { runs?: string; evals?: string; agents?: string };
-  agentsOn?: boolean; onAgents?: () => void;
+  counts?: { runs?: string; evals?: string };
 }) {
   return (
-    <div className="u2-frames" role="tablist" aria-label="Map · Runs · Evals · Agents" data-testid="u2-frames">
-      {(["map", "runs", "evals"] as const).map((f) => (
-        <button key={f} role="tab" aria-selected={frame === f} className={`u2-frame${frame === f ? " on" : ""}`}
-          data-testid={`u2-frame-${f}`} onClick={() => onFrame(f)}>
-          {f === "map" ? "Map" : f === "runs" ? "Runs" : "Evals"}
-          {f !== "map" && counts?.[f] ? <b className="u2-frame-n">{counts[f]}</b> : null}
+    <div className="u2-frames" role="tablist" aria-label="View" data-testid="u2-frames">
+      {FRAMES.map(({ id, label, I }) => (
+        <button key={id} role="tab" aria-selected={frame === id} aria-label={label} title={label}
+          className={`u2-frame${frame === id ? " on" : ""}`} data-testid={`u2-frame-${id}`} onClick={() => onFrame(id)}>
+          <I />
+          {id !== "map" && counts?.[id] ? <b className="u2-frame-n">{counts[id]}</b> : null}
         </button>
       ))}
-      {onAgents && (
-        <button className={`u2-frame${agentsOn ? " on" : ""}`} data-testid="u2-frame-agents" aria-pressed={!!agentsOn} onClick={onAgents}>
-          Agents{counts?.agents ? <b className="u2-frame-n">{counts.agents}</b> : null}
-        </button>
-      )}
     </div>
   );
 }
 
-/** The right rail (contract §8.6): the first click of the add flow (rail +
-    opens the R1 add form), search, note, panel. n8n keeps canvas chrome in
-    one edge column – the HUD owns the top-right corner, the rail the middle
-    of the edge, so `map-roles-btn` stays reachable with the inspector open. */
-export function MapRail({ onAdd, onSearch, onNote, onPanel, search }: {
-  onAdd: () => void; onSearch: () => void; onNote: () => void; onPanel: () => void;
-  search: React.ReactNode;
+/** The Explorer: one toggle in the canvas's top-right corner instead of a
+    column of buttons down the right edge. It opens a compact sheet – search,
+    the panels (pipeline, agents, changes, structure, roles), the layers and
+    the canvas verbs (add agent, note, tidy). Click away or Esc closes it. */
+export function Explorer({ open, onOpen, search, panels, layers, verbs }: {
+  open: boolean; onOpen: (o: boolean) => void;
+  search: React.ReactNode; panels: React.ReactNode; layers: React.ReactNode; verbs: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    const away = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const away = (e: PointerEvent) => {
+      const t = e.target as Element;
+      if (!ref.current?.contains(t) && !t.closest?.("#map-role-filter")) onOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target as Element)?.closest?.("input")) onOpen(false); };
     window.addEventListener("pointerdown", away);
-    return () => window.removeEventListener("pointerdown", away);
-  }, [open]);
+    window.addEventListener("keydown", esc);
+    return () => { window.removeEventListener("pointerdown", away); window.removeEventListener("keydown", esc); };
+  }, [open, onOpen]);
   return (
-    <div className="u2-rail" ref={ref} data-testid="u2-rail">
-      {search}
-      <button className="u2-rail-btn" data-testid="u2-rail-add" title="Add agent  n" aria-label="Add agent" onClick={onAdd}><Icon.plus /></button>
-      <button className={`u2-rail-btn${search ? " on" : ""}`} data-testid="u2-rail-search" title="Search  /" aria-label="Search"
-        onClick={() => { setOpen(false); onSearch(); }}><Icon.search /></button>
-      <button className="u2-rail-btn" data-testid="u2-rail-note" title="Add sticky note  ⇧S" aria-label="Add sticky note" onClick={onNote}><Icon.doc /></button>
-      <button className="u2-rail-btn" data-testid="u2-rail-panel" title="Pipeline panel" aria-label="Pipeline panel" onClick={onPanel}><Icon.flows /></button>
+    <div className="ex-wrap" ref={ref} data-testid="map-hud">
+      <button className={`ex-btn${open ? " on" : ""}`} data-testid="map-explorer-btn" aria-expanded={open} aria-controls="map-explorer"
+        title="Explorer – panels, layers, search  e" onClick={() => onOpen(!open)}>
+        <Icon.explore /><span>Explore</span>
+      </button>
+      {open && (
+        <div className="ex-sheet" id="map-explorer" data-testid="map-explorer" role="dialog" aria-label="Explorer">
+          <div className="ex-search">{search}</div>
+          <div className="ex-sec"><span className="ex-h">Panels</span><div className="ex-panels">{panels}</div></div>
+          <div className="ex-sec"><span className="ex-h">Layers</span>{layers}</div>
+          <div className="ex-sec"><span className="ex-h">Canvas</span><div className="ex-verbs" data-testid="u2-rail">{verbs}</div></div>
+        </div>
+      )}
     </div>
   );
 }

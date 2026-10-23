@@ -13,7 +13,7 @@ import { attachOverlay, CURVATURE, cssVar, drawHover, drawOutlinedLabel, withAlp
 import { groupDirs } from "../colors";
 import { useSettings } from "../settings";
 
-import { Grip } from "../resize";
+import { Grip, PaneControls } from "../resize";
 import AsciiMark from "../AsciiMark";
 
 type Props = {
@@ -308,10 +308,10 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, mode
         )}
       </div>
 
-      <aside className="contrast-panel">
+      <aside className="contrast-panel" data-pane>
         <Grip id="contrast" edge="left" min={260} max={900} label="Resize contrast panel" />
         <div className="cp-head">
-          <div className="eyebrow">Contrast</div>
+          <div className="row"><div className="eyebrow">Contrast</div><PaneControls testId="contrast" /></div>
           <div className="mono cp-revs"><span>{base}</span><span className="muted">→</span><span>{head}</span></div>
         </div>
         {sm && (

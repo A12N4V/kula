@@ -256,3 +256,16 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 .iso-save input { flex: 1; min-width: 0; height: 26px; padding: 0 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font-size: 11.5px; }
 .iso-save input:focus { outline: none; border-color: var(--accent); }
 @media (max-width: 760px) { .iso-panel { width: auto; right: 14px; max-height: 50%; } }
+
+/* Phone: the graph's top bar is one row that scrolls sideways – icon-only
+   buttons, no stats line – so it never wraps over the graph or spills past
+   the screen edge. */
+@media (max-width: 720px) {
+  .graph-overlay.hud { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; left: 8px; right: 8px; top: 8px; gap: 4px; }
+  .graph-overlay.hud::-webkit-scrollbar { display: none; }
+  .graph-overlay.hud > * { flex: none; }
+  .graph-overlay.hud .hud-btn { width: 40px; padding: 0; justify-content: center; font-size: 0; gap: 0; }
+  .graph-overlay.hud .hud-btn svg { width: 16px; height: 16px; }
+  .graph-overlay.hud .hud-btn b, .graph-overlay.hud .hud-btn .n { font-size: 10px; }
+  .graph-overlay.hud .hud-stats { display: none; }
+}

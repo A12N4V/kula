@@ -122,7 +122,7 @@
 .ws-drop { position: relative; }
 
 /* Node panel: slides in from the right edge of the canvas. */
-.np { position: absolute; top: 56px; right: 12px; bottom: 76px; width: 340px; max-width: calc(100% - 24px); z-index: 25;
+.np { position: absolute; top: 56px; right: 12px; bottom: 76px; width: var(--size-np, 340px); max-width: calc(100% - 24px); z-index: 25;
   display: flex; flex-direction: column; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius);
   transform: translateX(calc(100% + 24px)); opacity: 0; pointer-events: none; visibility: hidden;
   transition: transform .22s cubic-bezier(.2,.8,.2,1), opacity .16s ease-out, visibility 0s .22s; }
@@ -496,12 +496,10 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
 .u2-l-fences-off .fc-ring-fence .fc-tile-box, .u2-l-fences-off .fc-ring-fence .fc-wide-in { outline: none; }
 .u2-l-runs-off .fc-lastrun-ok, .u2-l-runs-off .fc-lastrun-err { display: none; }
 .u2-l-agents-off .at-band { display: none; }
-.u2-l-agents-off .u2-frames, .sy-root:not(:has(.at-band)) .u2-frames { top: 44px; }
 
 @media (max-width: 720px) {
   .u2-rail { flex-direction: row; top: auto; bottom: 140px; right: 8px; transform: none; }
   .u2-rail-search input { width: 140px; }
-  .u2-frames { top: 8px; }
   .u2-frame { padding: 0 10px; }
   .u2-layers { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   /* phone = viewer and supervisor (refs §10): no Tidy; the layer row sits
@@ -513,52 +511,78 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
 }
 @media (prefers-reduced-motion: reduce) { .u2-frame, .u2-layer, .u2-rail-btn, .u2-tidy-btn { transition: none; } }
 
-/* U5 – one navigation column on the right, a summary in the run bar.
-   Top → bottom on the right edge: view buttons, rail, layers + tidy, zoom.
-   Nothing rides the left of the canvas; agents appear there only when the
-   Agents layer is on (the band becomes a left column of actor squares). */
-.map-hud { flex-direction: column; align-items: stretch; gap: 4px; }
-.map-hud .btn { justify-content: flex-start; height: 30px; }
-.u2-rail { top: auto; bottom: 392px; transform: none; }
-.u2-hud-bl { left: auto; right: 12px; bottom: 140px; flex-direction: column; align-items: flex-end; }
-.u2-hud-bl .u2-layers { flex-direction: column; }
-.u2-hud-bl .u2-layers .u2-layer + .u2-layer { border-left: 0; border-top: 1px solid var(--line-2); }
+/* The Explorer – one toggle in the canvas's top-right corner holds the
+   search, the panels, the layers and the canvas verbs; the right edge
+   carries nothing else. With the inspector open it steps left of it. */
+.ex-wrap { position: absolute; top: 12px; right: 12px; z-index: 28; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+body:has([data-testid=map-inspector]) .ex-wrap { right: calc(var(--size-inspector, 400px) + 24px); }
+.ex-btn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 8px;
+  background: var(--panel); color: var(--text-2); font: 500 12px var(--mono); cursor: pointer; transition: border-color .12s, color .12s; }
+.ex-btn svg { width: 14px; height: 14px; }
+.ex-btn:hover, .ex-btn.on { color: var(--text); border-color: var(--text-2); }
+.ex-btn.on { border-color: var(--accent); color: var(--accent); }
+.ex-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.ex-sheet { width: 288px; max-width: calc(100vw - 24px); max-height: calc(100% - 60px); overflow: auto; display: flex; flex-direction: column; gap: 12px;
+  padding: 12px; background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: 0 14px 40px rgb(0 0 0 / .45);
+  animation: ex-in .14s var(--ease, ease-out); }
+@keyframes ex-in { from { opacity: 0; transform: translateY(-4px); } }
+.ex-sec { display: flex; flex-direction: column; gap: 6px; }
+.ex-h { font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--text-3, var(--muted)); }
+.ex-panels { display: flex; flex-direction: column; }
+.ex-row { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 8px; border: 0; border-radius: 6px; background: none;
+  color: var(--text-2); font: 500 12px var(--mono); text-align: left; cursor: pointer; position: relative; }
+.ex-row svg { width: 14px; height: 14px; flex: none; }
+.ex-row:hover, .ex-row.on { background: var(--hover-bg); color: var(--text); }
+.ex-row b { margin-left: auto; font: 600 10.5px var(--mono); padding: 1px 6px; border-radius: 4px; background: var(--bg-3); color: var(--text-2); }
+.ex-row .hud-dot { position: static; margin-left: 6px; }
+.ex-search { display: flex; flex-direction: column; gap: 6px; }
+.ex-search .u9-q-peek { position: static; width: 100%; }
+.ex-find { width: 100%; justify-content: flex-start; padding: 0 10px; }
+.ex-search .u2-rail-search input { width: 100%; }
+.ex-sheet .u2-layers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: none; border: 0; overflow: visible; }
+.ex-sheet .u2-layer { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 50px; padding: 0 4px;
+  border: 1px solid var(--line); border-radius: 6px; font-size: 10.5px; }
+.ex-sheet .u2-layer + .u2-layer { border-left: 1px solid var(--line); }
+.ex-sheet .u2-layer svg { width: 15px; height: 15px; }
+.ex-sheet .u2-layer.on { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: var(--accent); color: var(--text); }
+.ex-verbs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+.ex-verb { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; border: 1px solid var(--line); border-radius: 6px;
+  background: none; color: var(--text-2); font: 500 11.5px var(--mono); cursor: pointer; }
+.ex-verb svg { width: 13px; height: 13px; }
+.ex-verb:hover { color: var(--text); border-color: var(--text-2); }
+.ex-undo { border-color: var(--accent); color: var(--accent); }
+.sy-roles { position: absolute; margin: 0; top: 56px; right: 312px; z-index: 29; max-width: min(520px, calc(100vw - 340px)); }
+body:has([data-testid=map-inspector]) .sy-roles { right: calc(var(--size-inspector, 400px) + 324px); }
+
 .ws-drop .react-flow__panel.fc-controls { left: auto; right: 12px; bottom: 12px; flex-direction: row; align-items: center; }
 .ws-drop .fc-controls .fc-zoom { padding: 0 6px; }
-/* The summary switch docks in the run bar's middle. */
-.u2-frames { top: auto; bottom: 3px; z-index: 40; left: auto; right: 8px; transform: none; }
-/* the summary replaces the run bar's right-hand context line */
-.tp .tp-ctx { visibility: hidden; }
-.sy-root:not(:has(.at-band)) .u2-frames, .u2-l-agents-off .u2-frames { top: auto; }
-.u2-frame { height: 30px; display: inline-flex; align-items: center; gap: 6px; }
-.u2-frame-n { font: 600 10px var(--mono); padding: 0 5px; background: var(--bg-3); color: var(--text-2); }
-.u2-frame.on .u2-frame-n { background: color-mix(in srgb, var(--bg) 25%, transparent); color: inherit; }
-/* Agents layer on: the actor band is a column at the canvas's left edge. */
-.at-band { position: absolute; left: 0; top: 37px; bottom: 37px; width: 252px; z-index: 21; border-bottom: 0; border-right: 1px solid var(--line); overflow-y: auto; }
-.at-band .at-band-row { flex-direction: column; max-height: none; height: auto; overflow: visible; }
-.at-band .at-team, .at-band .at-card { width: auto; }
-.at-band .at-team-members { flex-wrap: wrap; height: auto; }
-@media (max-width: 720px) {
-  /* phone: the right column folds into rows – view buttons top-right, the
-     rail and the layer row above the run bar; pinch replaces the zoom row. */
-  .map-hud { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 16px); }
-  .u2-rail { bottom: 92px; right: 8px; flex-direction: row; }
-  .u2-hud-bl { left: 8px; right: auto; bottom: 48px; flex-direction: row; max-width: calc(100vw - 16px); }
-  .u2-hud-bl .u2-layers { flex-direction: row; }
-  .u2-hud-bl .u2-layers .u2-layer + .u2-layer { border-top: 0; border-left: 1px solid var(--line-2); }
-  .ws-drop .react-flow__panel.fc-controls { display: none; }
-  .u2-frames { bottom: 44px; left: auto; right: 8px; transform: none; }
-  .u2-hud-bl { bottom: 92px; }
-  .u2-rail { bottom: 136px; }
-  .at-band { width: 70vw; }
-}
-/* With the inspector open the whole right column docks beside it. */
-body:has([data-testid=map-inspector]) .u2-hud-bl { right: calc(var(--size-inspector, 400px) + 24px); }
 body:has([data-testid=map-inspector]) .ws-drop .react-flow__panel.fc-controls { right: calc(var(--size-inspector, 400px) + 24px); }
+
+/* The view switch in the run bar: three icons, one picked – compact, no
+   toggles posing as tabs (layers live in the Explorer). */
+.u2-frames { top: auto; bottom: 4px; left: auto; right: 8px; transform: none; z-index: 40; padding: 2px; gap: 2px; border-radius: 8px; }
+.u2-frame { height: 26px; min-width: 32px; padding: 0 7px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border-radius: 6px; }
+.u2-frame + .u2-frame { border-left: 0; }
+.u2-frame svg { width: 14px; height: 14px; }
+.u2-frame.on { background: var(--text); color: var(--bg); }
+.u2-frame-n { font: 600 10px var(--mono); padding: 0 4px; border-radius: 3px; background: var(--bg-3); color: var(--text-2); }
+.u2-frame.on .u2-frame-n { background: color-mix(in srgb, var(--bg) 25%, transparent); color: inherit; }
+/* the switch replaces the run bar's right-hand context line */
+.tp .tp-ctx { visibility: hidden; }
+
+/* Agents live on the map now: a picked agent rides the inspector's top. */
+.ag-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.ag-bar b { font-size: 13px; }
+.ag-bar .btn svg { width: 13px; height: 13px; }
+.fc-agent.over .fc-agent-in { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+
 @media (max-width: 720px) {
-  .u2-frames { top: 44px; bottom: auto; right: 8px; left: auto; transform: none; }
-  body:has([data-testid=map-inspector]) .u2-frames,
-  body:has([data-testid=map-inspector]) .u2-hud-bl,
-  body:has([data-testid=map-inspector]) .u2-rail { display: none; }
-  body:has([data-testid=map-inspector]) .u2-hud-bl { right: auto; }
+  .ex-wrap { top: 8px; right: 8px; }
+  .ex-btn span { display: none; }
+  .ex-btn { width: 36px; padding: 0; justify-content: center; }
+  .ex-sheet { width: calc(100vw - 16px); max-height: 70vh; }
+  .sy-roles { top: auto; bottom: 96px; left: 8px; right: 8px; max-width: none; }
+  .ws-drop .react-flow__panel.fc-controls { display: none; }
+  body:has([data-testid=map-inspector]) .ex-wrap,
+  body:has([data-testid=map-inspector]) .u2-frames { display: none; }
 }

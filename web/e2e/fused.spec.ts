@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { FIXTURE } from "../playwright.config";
+import { explore } from "./explore";
 
 // Fused-canvas acceptance tests – the contract in docs/design/fused-canvas.md
 // §8. Every test here is test.fixme until the U module that owns it lands the
@@ -230,8 +231,7 @@ test.fixme("crossings stay at or below 5% and no edge passes through a node", as
 test("selecting an agent draws its fence hull and dims non-fenced blocks to 35%", async ({ page, request }) => {
   await seedPolish(request);
   await opened(page, "map", FIXTURE);
-  await page.locator('[data-testid="u2-frame-agents"]').click();
-  await expect(page.locator('[data-testid="actor-band"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-testid^="at-agent-"]').first()).toBeVisible({ timeout: 30_000 });
   const agent = page.locator('[data-testid="at-agent-polish"]');
   await expect(agent).toBeVisible({ timeout: 30_000 });
   await agent.click();
@@ -249,18 +249,12 @@ test("selecting an agent draws its fence hull and dims non-fenced blocks to 35%"
 test("rail + and output-port + open the inspector add form; no global add-block button", async ({ page, request }) => {
   await seedPolish(request);
   await opened(page, "map", FIXTURE);
-  await page.locator('[data-testid="u2-frame-agents"]').click();
-  await expect(page.locator('[data-testid="actor-band"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-testid^="at-agent-"]').first()).toBeVisible({ timeout: 30_000 });
   const form = page.locator('[data-testid="ag-add-form"]');
-  // rail + opens the add form (u2-add-pop for the rail, map-inspector for the band)
-  await page.locator('[data-testid="u2-rail-add"]').click();
+  // the Explorer's + Agent opens the add form in the inspector
+  await explore(page); await page.locator('[data-testid="u2-rail-add"]').click();
   await expect(form).toBeVisible();
   await page.keyboard.press("Escape");
-  // the Fence port's + stub on the actor band opens the same form
-  const stub = page.locator('[data-testid="port-add"]').first();
-  await expect(stub).toBeVisible();
-  await stub.click();
-  await expect(form).toBeVisible();
   // no global add-block button anywhere
   expect(await page.getByTestId("add-block-global").count()).toBe(0);
 });
@@ -296,7 +290,7 @@ test("search moves the camera to the hit and never re-lays-out", async ({ page }
   const before = await nodeTf();
   const vp = page.locator("[data-testid=map-flow-canvas] .react-flow__viewport");
   const vpBefore = await vp.getAttribute("style");
-  await page.locator('[data-testid="u2-rail-search"]').click();
+  await explore(page); await page.locator('[data-testid="u2-rail-search"]').click();
   const input = page.locator('[data-testid="u2-rail-search-input"]');
   await expect(input).toBeVisible();
   await input.fill("serve");

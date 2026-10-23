@@ -7,6 +7,7 @@
 // Assert by name, never by fixture counts (the fixture is per worker).
 import { expect, test, type Page } from "@playwright/test";
 import { FIXTURE } from "../playwright.config";
+import { explore } from "./explore";
 
 test.use({ baseURL: FIXTURE });
 
@@ -165,7 +166,7 @@ test.fixme("T7 Next walks the camera square to square; the step is marked curren
 
 test("T8 asking in plain words lights the top hit distinctly and lists plain results", async ({ page }) => {
   await opened(page);
-  await page.locator('[data-testid="x5-question-mode"]').click();
+  await explore(page); await page.locator('[data-testid="x5-question-mode"]').click();
   await page.locator('[data-testid="x5-question-input"]').fill("save files");
   await page.locator('[data-testid="x5-question-input"]').press("Enter");
   await expect(page.locator('[data-testid="x5-question-result"]').first()).toBeVisible();
@@ -181,8 +182,6 @@ test("T8 asking in plain words lights the top hit distinctly and lists plain res
 test("T9 a fenced agent sits beside its first fenced square with dashed wires", async ({ page }) => {
   await opened(page);
   // agents layer on (U5's toggle in the bottom summary)
-  if ((await page.locator('[data-testid="u2-layer-agents"]').getAttribute("aria-pressed")) !== "true")
-    await page.locator('[data-testid="u2-frame-agents"]').click();
   // U6 realises the x5-agent-node contract as the kit node fc-node-agent:<name>
   // (harmonograph mark, dashed hue border); U6 hand-off, decision 1.
   const agent = page.locator('[data-testid^="fc-node-agent:"]').first();
@@ -200,8 +199,6 @@ test("T9 a fenced agent sits beside its first fenced square with dashed wires", 
 
 test("T10 an unfenced agent gets the whole-codebase block; the toggle removes every agent mark", async ({ page }) => {
   await opened(page);
-  if ((await page.locator('[data-testid="u2-layer-agents"]').getAttribute("aria-pressed")) !== "true")
-    await page.locator('[data-testid="u2-frame-agents"]').click();
   // the fixture seeds an unfenced agent: it gets one banded whole-codebase block
   const whole = page.locator('[data-testid="fc-node-codebase"]');
   await expect(whole).toBeVisible({ timeout: 30_000 });
@@ -209,7 +206,7 @@ test("T10 an unfenced agent gets the whole-codebase block; the toggle removes ev
   // top directory – more than one means real shares, not a flat block
   expect(await whole.locator('[data-testid="x5-agent-band"] i').count()).toBeGreaterThan(1);
   // agents off ⇒ zero agent marks in the DOM (removed, not hidden)
-  await page.locator('[data-testid="u2-layer-agents"]').click();
+  await explore(page); await page.locator('[data-testid="u2-layer-agents"]').click();
   await expect(page.locator('[data-testid^="fc-node-agent:"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="fc-node-codebase"]')).toHaveCount(0);
 });
