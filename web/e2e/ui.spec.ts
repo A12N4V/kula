@@ -2366,9 +2366,10 @@ test.describe("map", () => {
     const name = page.locator(`[data-testid=${visibleTid}] .fc-card-name`);
     await expect(name).toHaveCSS("text-overflow", "ellipsis");
     await expect(name).toHaveAttribute("title", /.+/);
-    // opening a card drills into the nested boxes; Esc returns to the flow
+    // U5: a double-click opens the square's details (the nested squares
+    // open in place – there is no separate drill view any more)
     await page.locator(`[data-testid=${visibleTid}]`).dblclick();
-    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+    await expect(page.locator("[data-testid=map-inspector]")).toBeVisible();
     await page.locator("body").press("Escape");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
@@ -2643,7 +2644,11 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid^='fc-node-open:']")).toHaveCount(0);
     await page.locator("[data-testid=fc-fit]").click();
     const openable = page.locator(".fc-solid:has(.fc-solid-open)");
-    const ids = await openable.evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")!.slice("fc-node-".length)));
+    const ids = await openable.evaluateAll((els) => els.filter((e) => {
+      const r = e.querySelector(".fc-solid-sq")!.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + 20);
+      return r.left > 80 && r.right < innerWidth - 200 && r.top > 120 && r.bottom < innerHeight - 120 && !!top && e.contains(top);
+    }).map((e) => e.getAttribute("data-testid")!.slice("fc-node-".length)));
     expect(ids.length).toBeGreaterThan(1);
     const [a, b] = ids;
     const tap = async (sel: string) => { const bb = await page.locator(sel).boundingBox(); await page.mouse.click(bb!.x + bb!.width / 2, bb!.y + 20); };
@@ -2862,8 +2867,9 @@ test.describe("map", () => {
     // ArrowRight again, then Enter opens the selection (a block drills in)
     await page.keyboard.press("ArrowRight");
     await expect.poll(selOf).not.toBe(start);
+    // U5: Enter unfolds the selected square in place (the keyboard click)
     await page.keyboard.press("Enter");
-    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+    await expect(page.locator("[data-testid^='fc-node-open:']")).toHaveCount(1);
     await page.keyboard.press("Escape");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
@@ -3162,6 +3168,8 @@ test.describe("agents add from the map rail (U3)", () => {
  *  in on the busiest section (R0), so the first card in the DOM can be
  *  off-canvas, and React Flow cannot scroll a card into view. */
 async function cardInView(page: import("@playwright/test").Page) {
+  // nested-squares map: wait for the squares, and keep clear of the right column
+  await page.locator(".fc-solid").first().waitFor({ state: "attached", timeout: 30_000 });
   const id = await page.evaluate(() => {
     const c = document.querySelector("[data-testid=map-flow] .react-flow")?.getBoundingClientRect();
     if (!c) return null;
@@ -3170,7 +3178,7 @@ async function cardInView(page: import("@playwright/test").Page) {
     const el = [...document.querySelectorAll(".fc-card:not(.fc-card-sec)")].find((e) => {
       const r = e.getBoundingClientRect();
       const x = r.left + r.width / 2, y = r.top + r.height / 2; // where hover() and click() aim
-      if (x < c.left + 20 || x > c.right - 20 || y < c.top + 20 || y > c.bottom - 90) return false;
+      if (x < c.left + 20 || x > c.right - 170 || y < c.top + 20 || y > c.bottom - 90) return false;
       const hit = document.elementFromPoint(x, y);
       return !!hit && e.contains(hit);
     });

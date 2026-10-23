@@ -75,12 +75,14 @@ test.describe("map value flows", () => {
  *  in on the busiest section (R0), so the first card in the DOM can be
  *  off-canvas, and React Flow cannot scroll a card into view. */
 async function cardInView(page: import("@playwright/test").Page) {
+  // nested-squares map: wait for the squares, and keep clear of the right column
+  await page.locator(".fc-solid").first().waitFor({ state: "attached", timeout: 30_000 });
   const id = await page.evaluate(() => {
     const c = document.querySelector("[data-testid=map-flow] .react-flow")?.getBoundingClientRect();
     if (!c) return null;
     const el = [...document.querySelectorAll(".fc-card:not(.fc-card-sec)")].find((e) => {
       const r = e.getBoundingClientRect();
-      return r.left > c.left + 20 && r.top > c.top + 60 && r.right < c.right - 20 && r.bottom < c.bottom - 90;
+      return r.left > c.left + 20 && r.top > c.top + 60 && r.right < c.right - 170 && r.bottom < c.bottom - 90;
     });
     return (el?.closest("[data-testid^=fc-node-]") as HTMLElement | null)?.dataset.testid ?? null;
   });

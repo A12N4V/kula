@@ -525,7 +525,9 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
 .ws-drop .react-flow__panel.fc-controls { left: auto; right: 12px; bottom: 12px; flex-direction: row; align-items: center; }
 .ws-drop .fc-controls .fc-zoom { padding: 0 6px; }
 /* The summary switch docks in the run bar's middle. */
-.u2-frames { top: auto; bottom: 3px; z-index: 40; }
+.u2-frames { top: auto; bottom: 3px; z-index: 40; left: auto; right: 8px; transform: none; }
+/* the summary replaces the run bar's right-hand context line */
+.tp .tp-ctx { visibility: hidden; }
 .sy-root:not(:has(.at-band)) .u2-frames, .u2-l-agents-off .u2-frames { top: auto; }
 .u2-frame { height: 30px; display: inline-flex; align-items: center; gap: 6px; }
 .u2-frame-n { font: 600 10px var(--mono); padding: 0 5px; background: var(--bg-3); color: var(--text-2); }
@@ -548,4 +550,14 @@ body:has([data-testid=map-inspector]) .u2-rail { right: calc(var(--size-inspecto
   .u2-hud-bl { bottom: 92px; }
   .u2-rail { bottom: 136px; }
   .at-band { width: 70vw; }
+}
+/* With the inspector open the whole right column docks beside it. */
+body:has([data-testid=map-inspector]) .u2-hud-bl { right: calc(var(--size-inspector, 400px) + 24px); }
+body:has([data-testid=map-inspector]) .ws-drop .react-flow__panel.fc-controls { right: calc(var(--size-inspector, 400px) + 24px); }
+@media (max-width: 720px) {
+  .u2-frames { top: 44px; bottom: auto; right: 8px; left: auto; transform: none; }
+  body:has([data-testid=map-inspector]) .u2-frames,
+  body:has([data-testid=map-inspector]) .u2-hud-bl,
+  body:has([data-testid=map-inspector]) .u2-rail { display: none; }
+  body:has([data-testid=map-inspector]) .u2-hud-bl { right: auto; }
 }

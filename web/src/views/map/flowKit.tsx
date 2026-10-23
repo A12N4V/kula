@@ -551,7 +551,11 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   const byPointer = () => performance.now() - ((window as unknown as { __fcPtr?: number }).__fcPtr ?? -1e9) < 800;
   // Open on a real click only: wait for the pointer to come up within 5px of
   // where it went down – a drag selects the square without unfolding it.
-  const onClickRelease = (fn: () => void) => {
+  // A double-click means "details", so a single click waits one beat
+  // before unfolding – the second click of a double-click cancels it.
+  const pendingOpen = (window as unknown as { __fcOpenT?: number });
+  const onClickRelease = (fn0: () => void) => {
+    const fn = () => { window.clearTimeout(pendingOpen.__fcOpenT); pendingOpen.__fcOpenT = window.setTimeout(fn0, 220); };
     const w = window as unknown as { __fcAt?: [number, number]; __fcUp?: [number, number, number]; __fcPtr?: number };
     const at = w.__fcAt;
     // already released (React Flow selects on click): judge it now
@@ -573,9 +577,12 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   const open = (id: string) => {
     if (id.startsWith("step:")) { onStepTool?.(id.slice(5), "open"); return; }
     if (id === "lane") return;
+    window.clearTimeout(pendingOpen.__fcOpenT);
     // Double-click = details: the inspector for a block, the code for a function.
     if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
     const bid = id.startsWith("open:") ? id.slice(5) : id.startsWith("sec:") ? id.slice(4) : id;
+    // Enter on the keyboard is the click: it unfolds (or folds) the square.
+    if (!byPointer() && data.blocks[bid]) { setOpenPath(id.startsWith("open:") ? chainOf(bid).slice(0, -1) : chainOf(bid)); return; }
     setTimeout(() => onDrill(bid), 0);
   };
 

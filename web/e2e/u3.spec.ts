@@ -40,7 +40,8 @@ async function opened(page: Page, base = "") {
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
   // the fixture builds its map cold on the first GET /api/map (~11 s)
   // U5: agents are a layer (off by default) – the bottom summary's Agents turns it on
-  if (!(await page.locator('[data-testid="actor-band"]').isVisible())) await page.locator('[data-testid="u2-frame-agents"]').click();
+  await page.locator(".fc-solid").first().waitFor({ state: "attached", timeout: 30_000 });
+  if ((await page.locator('[data-testid="u2-layer-agents"]').getAttribute("aria-pressed")) !== "true") await page.locator('[data-testid="u2-frame-agents"]').click();
   await expect(page.locator('[data-testid="actor-band"]')).toBeVisible({ timeout: 30_000 });
 }
 
