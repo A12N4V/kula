@@ -30,8 +30,19 @@ test("the layer toggle exists with the six layers and the contract defaults", as
 
 test("turning a layer off hides its marks and back on restores them", async ({ page }) => {
   await open(page);
-  // Flows is on by default (contract §5).
-  const edge = page.locator("[data-testid=map-flow] .react-flow__edge").first();
+  // Flows is on by default (contract §5). Pick an edge with a non-empty
+  // bounding box – U8's size scale can make the first DOM edge an exactly
+  // horizontal wire, which has zero height and counts as hidden.
+  const edges = page.locator("[data-testid=map-flow] .react-flow__edge");
+  const id = await edges.evaluateAll((els) => {
+    for (const el of els) {
+      const b = el.getBoundingClientRect();
+      if (b.width > 0 && b.height > 0) return el.getAttribute("data-id");
+    }
+    return null;
+  });
+  expect(id).toBeTruthy();
+  const edge = page.locator(`[data-testid=map-flow] .react-flow__edge[data-id="${id}"]`);
   await expect(edge).toBeVisible();
   await page.locator("[data-testid=u2-layer-flows]").click();
   await expect(edge).not.toBeVisible();

@@ -199,6 +199,13 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   const lit = (id: string) => !focus?.chain || focus.on.has(id);
   const [openPath, setOpenPath] = useState<string[]>([]);
+  // U8 – the camera follows the opened square: opening (or folding) sets a
+  // reveal for the node that now stands where the click happened (the frame
+  // after an open, the square again after a fold) and the canvas centres it,
+  // so the square stays under the pointer instead of jumping away. Cleared
+  // whenever the outside asks for its own reveal (search, selection).
+  const [openReveal, setOpenReveal] = useState<string | null>(null);
+  useEffect(() => { if (reveal) setOpenReveal(null); }, [reveal]);
   // Directory ranks come from the Graph view's own node set, so a directory
   // has the same hue on both canvases (src/ blue, web/src/ orange, …).
   // Cached per session so the first paint already has the Graph's hues.
@@ -327,7 +334,22 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   // `openPath` is the chain section → … → block, so opening anything off the
   // path snaps the rest shut and the canvas stays compact.
   const GAP_X = 120, GAP_Y = 32, PAD = 16, HEAD = 46, FN = 72;
-  const sq = (b: Block) => { const n = symbolsUnder(data.blocks, b.id).length; return Math.round((96 + 56 * Math.min(1, Math.sqrt(n / 150))) / 8) * 8; };
+  // U8 – the square size is a 3-step scale (small / medium / large), not a
+  // continuum: three fixed sizes read as a system, one per order of amount
+  // of code, and the open frame's rows stay on a shared rhythm.
+  const SOLID_SIZES = [96, 136, 176] as const;
+  // U8 (X6's contract) – the breaks sit at the 40th/75th percentile of the
+  // symbols-under counts over the shown blocks, so the three steps split the
+  // map's own distribution instead of hard-coded numbers.
+  const underCache = new Map<string, number>();
+  const under = (id: string) => { let n = underCache.get(id); if (n == null) { n = symbolsUnder(data.blocks, id).length; underCache.set(id, n); } return n; };
+  const SOLID_BREAKS = (() => {
+    const counts = Object.values(data.blocks).filter((b) => shown(b)).map((b) => under(b.id)).sort((a, b) => a - b);
+    if (!counts.length) return [20, 100];
+    const at = (p: number) => counts[Math.min(counts.length - 1, Math.floor(p * (counts.length - 1)))];
+    return [at(0.4), Math.max(at(0.75), at(0.4) + 1)];
+  })();
+  const sq = (b: Block) => { const n = under(b.id); return n < SOLID_BREAKS[0] ? SOLID_SIZES[0] : n < SOLID_BREAKS[1] ? SOLID_SIZES[1] : SOLID_SIZES[2]; };
   const kidsOf = (id: string) => (data.blocks[id]?.children ?? []).map((c) => data.blocks[c]).filter((k): k is Block => !!k && shown(k));
   const isOpen = (id: string) => openPath.includes(id);
   type Box = { w: number; h: number; place: (x: number, y: number) => void };
@@ -367,7 +389,20 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
     const w = Math.max(240, ...rows.map(rw)) + PAD * 2;
     const h = HEAD + rows.reduce((a, r) => a + rh(r), 0) + GAP_Y * (rows.length - 1) + PAD * 2;
     return { w, h, place: (x, y) => {
-      nodes.push({ id: `open:${b.id}`, kind: "group", title: `${title(b)}`, subtitle: kids.length ? `${kids.length} blocks · click to fold` : `${b.symbols.length} symbols · click to fold`,
+      // U8 – the frame header carries the breadcrumb of the open path
+      // (section → … → block) so the reader always knows how deep they are;
+      // the fold affordance rides beside it in the frame's head.
+      const crumbs: string[] = [];
+      for (let p: Block | undefined = b; p; p = p.parent ? data.blocks[p.parent] : undefined) { crumbs.unshift(title(p)); if (sections[p.id]) break; }
+      const crumb = (
+        <span className="fc-crumb" data-testid={`fc-crumb-${b.id}`}>
+          {crumbs.map((c, i) => (
+            <span key={i} className="fc-crumb-seg">{i > 0 && <span className="fc-crumb-sep" aria-hidden="true">→</span>}{c}</span>
+          ))}
+        </span>
+      );
+      nodes.push({ id: `open:${b.id}`, kind: "group", title: `${title(b)}`, badge: crumb,
+        subtitle: kids.length ? `${kids.length} blocks · click to fold` : `${b.symbols.length} symbols · click to fold`,
         color: regionHue(sec), size: { w, h }, pos: { x, y }, z: -100 + level } as FlowNode);
       let cy = y + HEAD + PAD;
       for (const r of rows) {
@@ -639,9 +674,9 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   const chainOf = (id: string) => { const out: string[] = []; for (let b: Block | undefined = data.blocks[id]; b; b = b.parent ? data.blocks[b.parent] : undefined) { out.unshift(b.id); if (sections[b.id]) break; } return out; };
   const select = (id: string | null) => {
     if (!id || id === "lane") { onSelect?.(null); return; }
-    if (id.startsWith("open:") && byPointer()) { const bid = id.slice(5); onClickRelease(() => setOpenPath(chainOf(bid).slice(0, -1))); onSelect?.(bid); return; }
+    if (id.startsWith("open:") && byPointer()) { const bid = id.slice(5); onClickRelease(() => { setOpenPath(chainOf(bid).slice(0, -1)); setOpenReveal(bid); }); onSelect?.(bid); return; }
     if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
-    if (byPointer() && data.blocks[id] && (kidsOfAny(id) || data.blocks[id].symbols.length)) onClickRelease(() => setOpenPath(chainOf(id)));
+    if (byPointer() && data.blocks[id] && (kidsOfAny(id) || data.blocks[id].symbols.length)) onClickRelease(() => { setOpenPath(chainOf(id)); setOpenReveal(`open:${id}`); });
     onSelect?.(id.startsWith("sec:") ? id.slice(4) : id);
   };
   function kidsOfAny(id: string) { return (data.blocks[id]?.children ?? []).length > 0; }
@@ -653,7 +688,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
     if (id.startsWith("fn:")) { onLeaf(Number(id.slice(3))); return; }
     const bid = id.startsWith("open:") ? id.slice(5) : id.startsWith("sec:") ? id.slice(4) : id;
     // Enter on the keyboard is the click: it unfolds (or folds) the square.
-    if (!byPointer() && data.blocks[bid]) { setOpenPath(id.startsWith("open:") ? chainOf(bid).slice(0, -1) : chainOf(bid)); return; }
+    if (!byPointer() && data.blocks[bid]) { setOpenPath(id.startsWith("open:") ? chainOf(bid).slice(0, -1) : chainOf(bid)); setOpenReveal(id.startsWith("open:") ? bid : `open:${bid}`); return; }
     setTimeout(() => onDrill(bid), 0);
   };
 
@@ -669,6 +704,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
       <FlowCanvas
         {...canvas}
         reveal={reveal ?? (selection?.startsWith("step:") ? selection : null)}
+        anchor={openReveal}
         minZoom={0.1}
         initialFocus={busiest}
         initialZoom={0.85}

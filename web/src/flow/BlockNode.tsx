@@ -75,13 +75,17 @@ const BlockCard = memo((props: NodeProps) => {
   const w = data.size?.w ?? BLOCK_SIZES[1].w;
   const h = data.size?.h ?? BLOCK_SIZES[1].h;
   const role = (data.role ?? "core") as Parameters<typeof RoleMark>[0]["role"];
+  // Read once, above both branches – a hook after an early return is out of
+  // order; the solid branch also needs the zoom level (U8 far-zoom caption).
+  const { zoomLevel = "mid" } = useFc();
   if (data.solid) {
     // Nested-squares map: a solid square in the directory hue carrying the
     // language/kind glyph (the Graph view's hub tile); the name rides under
-    // it. Openable squares show their child count in the corner.
+    // it. Openable squares show their child count in the corner. Far zoom
+    // lifts the count and the open mark so they stay readable (U8).
     const S = w;
     return (
-      <div data-fc-has={data.has} className={`fc-node fc-card fc-solid${data.leaf ? " fc-solid-leaf" : ""}${selected ? " fc-sel" : ""}${data.dim ? " fc-dim" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}`}
+      <div data-fc-has={data.has} className={`fc-node fc-card fc-solid${data.leaf ? " fc-solid-leaf" : ""}${selected ? " fc-sel" : ""}${data.dim ? " fc-dim" : ""}${data.ring ? ` fc-ring-${data.ring}` : ""}${zoomLevel === "far" ? " fc-solid-far" : ""}`}
         style={{ width: w, height: h, ["--fc-hue" as string]: data.hue ?? data.color ?? "var(--text-3)" }}
         data-testid={`fc-node-${id}`} data-fc-stage="1" title={`${data.title}${data.dir ? ` – ${data.dir}` : ""}${data.openable ? " · click to open" : ""}`}>
         <TBar id={id ?? data.id} data={data} />
@@ -102,7 +106,6 @@ const BlockCard = memo((props: NodeProps) => {
   // the last-run dot, near = the function list. A resize forces a level – the
   // width the user drags the card to wins over the canvas zoom, never the
   // reverse, so content is only ever revealed, never hidden by zooming in.
-  const { zoomLevel = "mid" } = useFc();
   // Size against the default: full width forces near, compact forces far,
   // and a default-sized card follows the canvas zoom (semantic zoom).
   const sizeStage = w >= BLOCK_SIZES[2].w ? 3 : w <= BLOCK_SIZES[0].w ? 1 : 0;
