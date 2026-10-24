@@ -27,3 +27,14 @@
   .m1-node { min-height: 40px; min-width: 40px; }
   .m1-under { gap: 10px 16px; }
 }
+
+/* ============================== X10 · memory: TencentDB import banner ============================== */
+/* One compact line when memory_sources finds a store: counts, Import, MCP. */
+.mem-x10 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--accent); background: var(--accent-soft); font-size: 12.5px; }
+.mem-x10-badge { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--text); }
+.mem-x10-counts { font-size: 12px; }
+.mem-x10 .btn { flex: none; }
+/* phone floor: every hit target is at least 40 px */
+@media (max-width: 900px) {
+  .mem-x10 .btn { min-height: 40px; }
+}
