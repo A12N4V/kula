@@ -65,11 +65,13 @@ test.describe("u13 toggles, icons and lists", () => {
         const doc = document.documentElement;
         if (!bar) return { page: doc.scrollWidth - doc.clientWidth, bar: 0, wrapped: false };
         const kids = Array.from(bar.children) as HTMLElement[];
+        // align-items:center lets a 30px control sit ~9px below the 40px row's
+        // top on one line; a genuinely wrapped row starts a full row lower.
         return {
           page: doc.scrollWidth - doc.clientWidth,
           // above 720 the bar is not a scroller – it must fit outright
           bar: bar.scrollWidth - bar.clientWidth,
-          wrapped: kids.some((k) => k.getBoundingClientRect().top > bar.getBoundingClientRect().top + 4),
+          wrapped: kids.some((k) => k.getBoundingClientRect().top > bar.getBoundingClientRect().top + 24),
         };
       });
       expect(geo.page, `page overflow at ${w}px`).toBeLessThanOrEqual(2);
@@ -87,7 +89,7 @@ test.describe("u13 toggles, icons and lists", () => {
     const bad = await page.evaluate(() => {
       const out: string[] = [];
       for (const row of Array.from(document.querySelectorAll<HTMLElement>(".item"))) {
-        const dot = row.querySelector<HTMLElement>("> .dot");
+        const dot = row.querySelector<HTMLElement>(":scope > .dot");
         if (!dot) continue;
         const r = row.getBoundingClientRect(), d = dot.getBoundingClientRect();
         const mid = (d.top + d.bottom) / 2, rowMid = (r.top + r.bottom) / 2;
