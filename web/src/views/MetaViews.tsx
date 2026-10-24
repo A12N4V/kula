@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, colorFor, relTime, type Compare, type Flow, type Meta, type Node } from "../api";
-import { Empty, Icon, Kind, Md, Sym, useToast } from "../ui";
+import { Empty, Icon, Kind, Md, Sym, Toggle, useToast } from "../ui";
 import { CompareReport } from "./GitViews";
 import type { Go, Target } from "../nav";
 import { Grip, listWidth } from "../resize";
@@ -212,7 +212,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
         <div className="notes-split" style={graphOn ? undefined : { gridTemplateColumns: "1fr" }}>
           {graphOn && <NotesGraph notes={meta?.notes ?? []} sel={sel} onPick={setSel} />}
           <aside className="notes-side detail-pad" style={graphOn ? undefined : { borderLeft: 0, maxWidth: 980 }}>
-            <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{shown.length}</span><span className="spacer" />{sel && <button className="btn sm ghost" onClick={() => setSel("")}>All</button>}<button className={`btn sm graph-toggle ${graphOn ? "on" : ""}`} aria-pressed={graphOn} onClick={toggleGraph} title="Show notes as a graph beside the list"><Icon.graph /> Graph {graphOn ? "on" : "off"}</button></div>
+            <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{shown.length}</span><span className="spacer" />{sel && <button className="btn sm ghost" onClick={() => setSel("")}>All</button>}<Toggle label="Graph" checked={graphOn} onChange={toggleGraph} hint="Show notes as a graph beside the list" testId="notes-graph-toggle" className="sm" /></div>
             <input className="input" style={{ width: "100%", marginBottom: 14 }} placeholder="Search notes…" value={q} onChange={(e) => setQ(e.target.value)} />
             {shown.length === 0 && <Empty title={sel ? "No notes here" : "No notes yet"}>{sel ? "Write one on the left – the target is filled in." : "Annotate the repo, any file, symbol, commit or cluster."}</Empty>}
             {[...groups.entries()].filter(([t]) => !sel || t === sel).map(([t, list]) => (
