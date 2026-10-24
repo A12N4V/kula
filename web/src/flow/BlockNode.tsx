@@ -35,7 +35,11 @@ function PlainCaption({ data, title, hover }: { data: BlockCardDataWithSize; tit
   // While the explain payload is in flight the caption shows a quiet
   // placeholder, never the technical title – the default reading layer must
   // not flash code names on first paint (X5 §1.1; the critic's T1 finding).
-  const words = code ? title : (block?.plain || (ex ? title.replace(/^.*? · /, "") : "…"));
+  // Code names show the technical caption: the directory-qualified name when
+  // the card carries one (the form the default layer must not show), else the
+  // bare title. Without the prefix a name-derived block's "code name" equals
+  // its plain name and the toggle appears dead.
+  const words = code ? (data.dir ? `${data.dir} · ${title}` : title) : (block?.plain || (ex ? title.replace(/^.*? · /, "") : "…"));
   const lit = hits.includes(id ?? "");
   const isTop = top != null && top === id;
   return (

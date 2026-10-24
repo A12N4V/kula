@@ -132,6 +132,10 @@ test("edit fence on canvas: clicking a block toggles its section in the fence", 
   expect(await fenceCount(page, FRESH)).toBe(0);
   await page.locator('[data-testid="at-edit-fence"]').click();
   await expect(page.locator('[data-testid="at-edit-fence"]')).toHaveAttribute("aria-pressed", "true");
+  // Creating an agent can re-fit the canvas and remount its nodes; under load
+  // the scan has raced that remount and seen an empty canvas. Wait for the
+  // squares to be back before scanning.
+  await expect(page.locator(".fc-node").first()).toBeVisible({ timeout: 15_000 });
   // Click a block that is actually on screen – the canvas pans, so scan.
   // U6 puts agent squares and the whole-codebase block on the terrain with
   // Agents on; selecting those is the agent gesture, not a fence toggle, so
