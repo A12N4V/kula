@@ -127,6 +127,36 @@ export function Sym({ n, onClick, right }: { n: Node; onClick?: (n: Node) => voi
   );
 }
 
+// ---------- toggle ----------
+/**
+ * The one switch: every binary choice – on/off settings, show/hide options,
+ * Packages and Fences on the graph, layer rows – renders a Toggle with a
+ * label, role="switch" and aria-checked. Two-way *modes* (Symbols/Files,
+ * light/dark, Open/Closed) are not choices of on/off – those stay segmented
+ * controls. Styles live in system.css (the .tgl block).
+ */
+export function Toggle({ label, checked, onChange, hint, count, testId, className = "", disabled }: {
+  label: ReactNode; checked: boolean; onChange: (v: boolean) => void;
+  /** aria-label + tooltip: what the switch does, not its state. */
+  hint?: string; /** trailing figure (e.g. package count) – stays inside the label. */
+  count?: ReactNode; testId?: string; className?: string; disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button" role="switch" aria-checked={checked} aria-label={hint} title={hint}
+      data-testid={testId} disabled={disabled}
+      className={`tgl ${checked ? "on" : ""} ${className}`}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="tgl-label">
+        {label}
+        {count != null && count !== "" && <span className="tgl-count">{count}</span>}
+      </span>
+      <span className="tgl-track" aria-hidden="true"><span className="tgl-thumb" /></span>
+    </button>
+  );
+}
+
 // ---------- tooltips ----------
 /**
  * The one tooltip: appears after a short delay, carries real information

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, colorFor, relTime, type Compare, type Flow, type Meta, type Node, type Note } from "../api";
-import { Empty, Icon, Kind, Md, Sym, useToast } from "../ui";
+import { Empty, Icon, Kind, Md, Sym, Toggle, useToast } from "../ui";
 import { CompareReport } from "./GitViews";
 import type { Go, Target } from "../nav";
 import { Grip, listWidth } from "../resize";
@@ -191,13 +191,23 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
       toast("Saved"); await afterWrite();
     },
   });
-  const newNote = () => code.open({
-    note: { target: sel || "repo", body: "" },
-    save: async (body, target) => {
-      await api.metaAction("notes", "new", { target, body });
-      toast("Saved"); await afterWrite();
-    },
-  });
+  const newNote = () => {
+    // The first Save creates the note and keeps its id; a second Save then
+    // updates that note instead of posting a duplicate.
+    let madeId: number | undefined;
+    code.open({
+      note: { target: sel || "repo", body: "" },
+      save: async (body, target) => {
+        // Once the note exists, save to its id; before that, create it.
+        const r = madeId != null
+          ? await api.metaAction<{ id?: number }>("notes", madeId, { body })
+          : await api.metaAction<{ id?: number } | null>("notes", "new", { target, body });
+        if (r && typeof r.id === "number") madeId = r.id;
+        toast("Saved"); await afterWrite();
+        return madeId;
+      },
+    });
+  };
 
   const TargetGlyph = ({ t }: { t: string }) => (
     <span style={{ color: "var(--text-3)", marginTop: 1 }}>
@@ -233,7 +243,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
         <div className="notes-split" style={graphOn ? undefined : { gridTemplateColumns: "1fr" }}>
           {graphOn && <NotesGraph notes={all} sel={sel} onPick={setSel} onOpenNote={openNote} />}
           <aside className="notes-side detail-pad" style={graphOn ? undefined : { borderLeft: 0, maxWidth: 980 }}>
-            <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{shown.length}</span><span className="spacer" /><button className="btn sm" onClick={newNote}><Icon.plus /> New note</button><button className={`btn sm graph-toggle ${graphOn ? "on" : ""}`} aria-pressed={graphOn} onClick={toggleGraph} title="Show notes as a graph beside the list"><Icon.graph /> Graph {graphOn ? "on" : "off"}</button></div>
+            <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{shown.length}</span><span className="spacer" /><button className="btn sm" onClick={newNote}><Icon.plus /> New note</button><Toggle label="Graph" checked={graphOn} onChange={toggleGraph} hint="Show notes as a graph beside the list" testId="notes-graph-toggle" className="sm" /></div>
             {shown.length === 0 && <Empty title={sel ? "No notes here" : "No notes yet"}>{sel ? "Write one – the target is filled in." : "Annotate the repo, any file, symbol, commit or cluster."}</Empty>}
             {[...groups.entries()].filter(([t]) => !sel || t === sel).map(([t, list]) => (
               <div key={t} style={{ marginBottom: 18 }}>

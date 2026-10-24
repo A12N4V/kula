@@ -79,10 +79,38 @@ export function MiniGraph({ nodes, edges, sel, onPick, groupLabel, label, height
     ov.set({ flows: cfg.flow === false ? [] : flows, territories: true, curvature: cfg.curved ? CURVATURE : 0 });
     s.on("enterNode", ({ node }) => { hover.current = node; nb = near(); s.refresh({ skipIndexation: true }); ov.set({ quiet: true }); el.style.cursor = "pointer"; });
     s.on("leaveNode", () => { hover.current = null; nb = near(); s.refresh({ skipIndexation: true }); ov.set({ quiet: false }); el.style.cursor = ""; });
-    s.on("clickNode", ({ node }) => pick.current?.(node));
+    // Pointer-based picking: the renderer's own hit test can miss (a click on
+    // a node raises clickStage but never clickNode), so pick the node nearest
+    // the pointer in viewport space. A drag pans instead of picking.
+    let down: { x: number; y: number } | null = null;
+    const local = (e: PointerEvent) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    const nearest = (px: number, py: number) => {
+      let best: string | null = null, bd = Infinity;
+      g.forEachNode((id) => {
+        const d = s.getNodeDisplayData(id);
+        if (!d) return;
+        const v = s.graphToViewport({ x: d.x, y: d.y });
+        const dx = v.x - px, dy = v.y - py, dist = dx * dx + dy * dy;
+        if (dist < bd) { bd = dist; best = id; }
+      });
+      return bd <= 24 * 24 ? best : null;
+    };
+    const onDown = (e: PointerEvent) => { down = local(e); };
+    const onUp = (e: PointerEvent) => {
+      if (!down) return;
+      const p = local(e), moved = Math.hypot(p.x - down.x, p.y - down.y);
+      down = null;
+      if (moved <= 6) { const id = nearest(p.x, p.y); if (id) pick.current?.(id); }
+    };
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointerup", onUp);
     view.current = { s, ov, g };
     onSigma?.(s);
-    return () => { ov.kill(); s.kill(); view.current = null; onSigma?.(null); };
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointerup", onUp);
+      ov.kill(); s.kill(); view.current = null; onSigma?.(null);
+    };
   }, [key, cfg.curved, cfg.flow]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
