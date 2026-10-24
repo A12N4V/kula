@@ -537,7 +537,9 @@ export function StepDetails({ data, s, pipe, runner, sections, prev, onClose, su
   const [, tick] = useState(0);
   useEffect(() => onLog(() => tick((x) => x + 1)), []);
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    // Esc restores a maximized pane first (PaneControls): only close on a
+    // plain Esc, when no pane is in full screen.
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector("[data-pane][data-max]")) { e.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", esc, true);
     return () => window.removeEventListener("keydown", esc, true);
   }, [onClose]);
@@ -617,7 +619,7 @@ export function ContextMenu({ at, items, onClose }: { at: { x: number; y: number
     if (r) setPos({ x: Math.min(at.x, window.innerWidth - r.width - 8), y: Math.min(at.y, window.innerHeight - r.height - 8) });
     ref.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
     const away = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector("[data-pane][data-max]")) { e.stopPropagation(); onClose(); } };
     window.addEventListener("pointerdown", away, true); window.addEventListener("keydown", esc, true);
     return () => { window.removeEventListener("pointerdown", away, true); window.removeEventListener("keydown", esc, true); };
   }, [at]);

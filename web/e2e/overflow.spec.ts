@@ -80,7 +80,31 @@ async function overlaps(page: Page) {
   });
 }
 
-const VIEWS = ["graph", "overview", "changes", "agents", "map"] as const;
+const VIEWS = ["graph", "overview", "changes", "history", "branches", "proposals", "issues", "notes", "flows", "query", "agents", "map"] as const;
+
+test.describe("x8 findings", () => {
+  // X8 finding 2 (docs/design/fuse3-audit.md): the map legend overflows its
+  // box (pinned by content). Fails until U11 fixes the legend.
+  test("x8/U11: map legend does not overflow its box", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "widths are set in the spec");
+    for (const [w, h] of [[1440, 900], [1100, 900], [390, 844]] as const) {
+      await page.setViewportSize({ width: w, height: h });
+      await open(page, "map");
+      await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
+      await expect(page.getByTestId("map-view")).toBeVisible({ timeout: 15_000 });
+      // The map payload loads after the shell – wait for squares to render.
+      await expect(page.locator("[data-testid^=fc-node-]").first()).toBeVisible({ timeout: 15_000 });
+      const bad = await page.evaluate(() => {
+        const el = document.querySelector<HTMLElement>(".u7-legend");
+        // U11's fix replaces the open legend with a collapsed chip – absent is
+        // the fix, not a skip.
+        if (!el) return null;
+        return el.scrollWidth - el.clientWidth > 2 ? `sw ${el.scrollWidth}>${el.clientWidth}` : null;
+      });
+      expect(bad, `legend problem at ${w}px: ${bad}`).toBeNull();
+    }
+  });
+});
 
 test.describe("overflow", () => {
   for (const width of [390, 1100] as const) {

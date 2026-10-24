@@ -14,6 +14,12 @@ const SPOTS: Spot[] = [
   { name: "overview", hash: "overview" },
   { name: "changes", hash: "changes" },
   { name: "history", hash: "history" },
+  { name: "branches", hash: "branches" },
+  { name: "proposals", hash: "proposals" },
+  { name: "issues", hash: "issues" },
+  { name: "notes", hash: "notes" },
+  { name: "flows", hash: "flows" },
+  { name: "query", hash: "query" },
   { name: "workspace", hash: "map" },
   {
     name: "workspace + inspector", hash: "map", then: async (page) => {
@@ -141,3 +147,63 @@ for (const width of [1440, 1100, 390] as const) {
     expect(bad, bad.join("\n")).toEqual([]);
   });
 }
+
+/** True when two page boxes visibly intersect. */
+async function collide(page: Page, a: string, b: string) {
+  return page.evaluate(([sa, sb]) => {
+    const rect = (sel: string) => Array.from(document.querySelectorAll(sel)).map((el) => { const r = el.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
+    for (const ra of rect(sa!)) for (const rb of rect(sb!)) {
+      const ix = Math.min(ra.r, rb.r) - Math.max(ra.l, rb.l);
+      const iy = Math.min(ra.b, rb.b) - Math.max(ra.t, rb.t);
+      if (ix > 3 && iy > 3) return `${ix.toFixed(0)}×${iy.toFixed(0)}px`;
+    }
+    return null;
+  }, [a, b]);
+}
+
+// X8 findings – one test per finding, tagged with the owning module; each
+// fails until the owner fixes it (see docs/design/fuse3-audit.md).
+
+test.describe("x8 findings", () => {
+  test("x8/U13: agents – sb-help buttons do not collide with page buttons", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "widths are set in the spec");
+    test.setTimeout(120_000);
+    for (const [w, h] of [[1440, 900], [390, 844]] as const) {
+      await page.setViewportSize({ width: w, height: h });
+      await open(page, { name: "agents", hash: "agents", base: FIXTURE });
+      const bad = await collide(page, ".sb-help", ".btn.sm");
+      expect(bad, `sb-help × btn.sm at ${w}px: ${bad}`).toBeNull();
+    }
+  });
+
+  test("x8/U11: map – colour key and plain-words panel do not cover block squares", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "widths are set in the spec");
+    test.setTimeout(120_000);
+    for (const [w, h] of [[1440, 900], [1100, 900], [390, 844]] as const) {
+      await page.setViewportSize({ width: w, height: h });
+      await open(page, { name: "map", hash: "map" });
+      await expect(page.getByTestId("map-view")).toBeVisible({ timeout: 15_000 });
+      const squares = page.locator("[data-testid^=fc-node-]");
+      await expect(squares.first()).toBeVisible({ timeout: 15_000 });
+      for (const chip of ["[data-testid=x5-legend]", "[data-testid=u9-plain-panel]"]) {
+        if (!(await page.locator(chip).first().isVisible().catch(() => false))) continue;
+        const bad = await page.evaluate(([sel]) => {
+          const r = (el: Element) => el.getBoundingClientRect();
+          const chipRect = r(document.querySelector(sel!));
+          return [...document.querySelectorAll("[data-testid^=fc-node-]")]
+            .filter((sq) => { const s = r(sq); return s.left < chipRect.right && s.right > chipRect.left && s.top < chipRect.bottom && s.bottom > chipRect.top; })
+            .map((sq) => (sq as HTMLElement).dataset.block);
+        }, [chip]);
+        expect(bad, `${chip} covers squares at ${w}px: ${bad.join(", ")}`).toEqual([]);
+      }
+    }
+  });
+
+  test("x8/U11: map phone – transport does not overlap the zoom row", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "widths are set in the spec");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, { name: "map", hash: "map" });
+    const bad = await collide(page, ".tp", ".react-flow__controls");
+    expect(bad, `transport × zoom row at 390px: ${bad}`).toBeNull();
+  });
+});
