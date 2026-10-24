@@ -9,6 +9,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { AgentsInfo, Workflow } from "../../api";
 import { Harmonograph } from "../../ui";
 import { isItemDrag, ITEM_DRAG, type Item } from "../map/pipeline";
+import { agentGradient } from "../../flow/agentMark";
 import { readCfg, AUTONOMY_LABEL } from "./agentConfig";
 
 export type ActorBandProps = {
@@ -132,11 +133,13 @@ export function ActorBand({ info, selected, onSelect, fencePaths, editFence, onE
 }
 
 /** The fence hull: a dashed frame around every fenced section's node on the
-    canvas, with the agent's label. Measured from the DOM so it tracks the
-    real layout; redraws when the selection, the fence or the layout moves. */
+    canvas, drawn in the agent's own gradient when picked, with the agent's
+    label. Measured from the DOM so it tracks the real layout; redraws when
+    the selection, the fence or the layout moves. */
 export function FenceHull({ canvas, fencedIds, agent }: { canvas: React.RefObject<HTMLElement | null>; fencedIds: string[]; agent: string | null }) {
   const ref = useRef<HTMLDivElement>(null);
   const [rect, setRect] = useState<{ l: number; t: number; r: number; b: number } | null>(null);
+  const g = agent ? agentGradient(agent) : null;
   useLayoutEffect(() => {
     if (!agent || !fencedIds.length || !canvas.current) { setRect(null); return; }
     const measure = () => {
@@ -163,8 +166,9 @@ export function FenceHull({ canvas, fencedIds, agent }: { canvas: React.RefObjec
   if (!rect || !agent) return null;
   return (
     <div className="at-hull" data-testid="fence-hull" ref={ref}
-      style={{ left: rect.l - 10, top: rect.t - 10, width: rect.r - rect.l + 20, height: rect.b - rect.t + 20 }}>
-      <span className="at-hull-label mono" data-testid="fence-hull-label">fence · {titleCase(agent)}</span>
+      style={{ left: rect.l - 10, top: rect.t - 10, width: rect.r - rect.l + 20, height: rect.b - rect.t + 20, ...(g ? { borderColor: g[0] } : {}) }}>
+      <span className="at-hull-label mono" data-testid="fence-hull-label"
+        style={g ? { color: g[0], borderColor: g[0] } : undefined}>fence · {titleCase(agent)}</span>
     </div>
   );
 }

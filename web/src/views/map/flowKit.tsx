@@ -460,9 +460,11 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   const nSecs = Object.values(sections).filter((b) => shown(b)).length;
   const perCol = Math.max(3, Math.ceil(Math.sqrt(nSecs / 2.2)));
   const ZONE_GAP = 112, ZONE_PAD = 28, ZONE_HEAD = 84, IN_GAP = 40;
-  // Agents live inside the map: a fenced agent sits in the zone that holds
-  // most of the code it may change, in a row along the zone's top, so its
-  // gradient wires drop straight into the squares it works on.
+  // Agents live in their own band ABOVE the zone row – never inside the zone
+  // frames or over a square. Each fenced agent sits over the zone that holds
+  // most of the code it may change, so its gradient wires drop straight into
+  // the squares it works on; an unfenced agent sits beside the whole-codebase
+  // square, also outside the zones.
   const AGENT_W = 208, AGENT_H = 112;
   const homeOf = new Map<string, string>();
   if (agentsOn) for (const a of agents) {
@@ -478,17 +480,8 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
     const members = z.members.filter((id) => sections[id] && shown(sections[id]));
     if (!members.length) return;
     const x0 = x;
-    const here = agents.filter((a) => homeOf.get(a.name) === z.id);
-    const top = ZONE_HEAD + ZONE_PAD + (here.length ? AGENT_H + GAP_Y : 0);
-    let agentRowW = 0;
-    here.forEach((a, i) => {
-      const [g0, g1] = agentGradient(a.name);
-      nodes.push({ id: `agent:${a.name}`, kind: "agent", title: a.name, subtitle: `${a.sections.length} fenced`,
-        color: g0, gradient: [g0, g1], size: { w: AGENT_W, h: AGENT_H },
-        pos: { x: x + ZONE_PAD + i * (AGENT_W + IN_GAP), y: ZONE_HEAD + ZONE_PAD } } as FlowNode);
-      agentRowW = (i + 1) * (AGENT_W + IN_GAP) - IN_GAP;
-    });
-    let cx = x + ZONE_PAD, y = top, colW = 0, inCol = 0, maxY = top + (here.length ? 0 : 0), sub = 0;
+    const top = ZONE_HEAD + ZONE_PAD;
+    let cx = x + ZONE_PAD, y = top, colW = 0, inCol = 0, maxY = top, sub = 0;
     for (const id of members) {
       const box = measure(sections[id], id, 0);
       if (inCol > 0 && (inCol >= perCol || isOpen(id))) { cx += colW + IN_GAP; y = top; colW = 0; inCol = 0; sub++; }
@@ -498,7 +491,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
       if (isOpen(id)) { inCol = perCol; }
     }
     // never narrower than its name (36px mono ≈ 22px a letter, plus tracking) – the name is the point
-    const w = Math.max(cx + colW, x0 + ZONE_PAD + agentRowW, x0 + z.name.length * 24 + ZONE_PAD) + ZONE_PAD - x0, h = maxY - GAP_Y + ZONE_PAD;
+    const w = Math.max(cx + colW, x0 + z.name.length * 24 + ZONE_PAD) + ZONE_PAD - x0, h = maxY - GAP_Y + ZONE_PAD;
     nodes.push({ id: z.id, kind: "group", title: z.name, subtitle: `${members.length} parts`, color: z.hue,
       size: { w, h }, pos: { x: x0, y: 0 }, z: -200, anchors: true } as FlowNode);
     zoneBox.set(z.id, { x: x0, w, h });
@@ -506,25 +499,50 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   });
   void layers; void band; void GAP_X;
 
-  // U6 – agents on the terrain. With the Agents layer on: a fenced agent is
-  // an agent square (harmonograph mark, its name, a dashed hue border)
-  // placed beside the squares it is fenced to – same row as its first
-  // visible fenced square, one grid step left – with dashed wires into each
-  // visible fenced square. An agent with access to the whole codebase sits
-  // left of one single "whole codebase" block: a solid square banded by the
-  // map's directory shares, wired into by every unfenced agent. Agents off
-  // → no agent marks anywhere (nothing below runs).
+  // U6 – agents on the terrain, in the band above the zone row. With the
+  // Agents layer on: a fenced agent is an agent square (harmonograph mark,
+  // its name, a dashed hue border) centred over the zone that holds most of
+  // its fenced code, with dashed gradient wires dropping into each visible
+  // fenced square. An agent with access to the whole codebase sits left of
+  // the whole-codebase square – also in the band, outside the zone frames –
+  // wired into by every unfenced agent. Agents off → no agent marks anywhere.
   if (agentsOn && agents.length) {
-    const GRID = 40;
-    // Absolute positions: squares inside an open frame carry frame-relative
-    // positions, so walk the parent chain (agent squares are top-level).
-    const byId = new Map(nodes.map((n) => [n.id, n]));
-    const absPos = (id: string) => {
-      let n = byId.get(id), x = 0, y = 0;
-      while (n?.pos) { x += n.pos.x; y += n.pos.y; n = n.parent ? byId.get(n.parent) : undefined; }
-      return { x, y };
-    };
-    const posOf = new Map(nodes.filter((n) => n.pos).map((n) => [n.id, absPos(n.id)]));
+    const GRID = 40, BAND_GAP = 48;
+    const BAND_Y = -(AGENT_H + GAP_Y); // above the zone row; the pipeline lane sits higher still
+    // Fenced agents over their home zones, left to right, deterministic
+    // (zone rank, then name) so a poll never shuffles them.
+    const fenced = [...agents].filter((a) => a.sections.length && homeOf.has(a.name))
+      .sort((p, q) => zoneRank(homeOf.get(p.name)!) - zoneRank(homeOf.get(q.name)!) || p.name.localeCompare(q.name));
+    const byZone = new Map<string, typeof fenced>();
+    for (const a of fenced) {
+      const z = homeOf.get(a.name)!;
+      if (!byZone.has(z)) byZone.set(z, []);
+      byZone.get(z)!.push(a);
+    }
+    // agents whose home zone has no visible squares go to the end of the band
+    const orphans: typeof fenced = [];
+    let prevRight = -Infinity;
+    for (const [zid, list] of byZone) {
+      const zb = zoneBox.get(zid);
+      if (!zb) { orphans.push(...list); continue; }
+      const rowW = list.length * AGENT_W + (list.length - 1) * BAND_GAP;
+      let ax = Math.max(zb.x + zb.w / 2 - rowW / 2, prevRight + BAND_GAP);
+      for (const a of list) {
+        const [g0, g1] = agentGradient(a.name);
+        nodes.push({ id: `agent:${a.name}`, kind: "agent", title: a.name, subtitle: `${a.sections.length} fenced`,
+          color: g0, gradient: [g0, g1], size: { w: AGENT_W, h: AGENT_H },
+          pos: { x: ax, y: BAND_Y } } as FlowNode);
+        ax += AGENT_W + BAND_GAP;
+      }
+      prevRight = ax - BAND_GAP;
+    }
+    for (const a of orphans) {
+      const [g0, g1] = agentGradient(a.name);
+      nodes.push({ id: `agent:${a.name}`, kind: "agent", title: a.name, subtitle: `${a.sections.length} fenced`,
+        color: g0, gradient: [g0, g1], size: { w: AGENT_W, h: AGENT_H },
+        pos: { x: Math.max(prevRight + BAND_GAP, 0), y: BAND_Y } } as FlowNode);
+      prevRight += AGENT_W + BAND_GAP;
+    }
     const unfenced = agents.filter((a) => !a.sections.length);
     if (unfenced.length) {
       // Directory shares across the whole map, as the square's colour bands
@@ -543,7 +561,9 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
       }
       const bands = [...share.values()].sort((a, b) => b.n - a.n).slice(0, 4)
         .map((s) => ({ color: s.color, pct: total ? Math.max(4, Math.round((s.n / total) * 100)) : 0 }));
-      const CB = { x: -240, y: 0 };
+      // the whole-codebase square rides just above the zone row, in the band,
+      // with the unfenced agents beside it on the left – outside everything
+      const CB = { x: -240, y: BAND_Y - 16 };
       nodes.push({
         id: "codebase", kind: "block", solid: true, title: "Whole codebase",
         subtitle: "deployed on everything",
@@ -558,7 +578,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
         nodes.push({
           id: `agent:${a.name}`, kind: "agent", title: a.name, subtitle: "whole codebase",
           color: g[0], gradient: g, size: { w: AGENT_W, h: AGENT_H },
-          pos: { x: CB.x - AGENT_W - GRID, y: CB.y + i * 120 },
+          pos: { x: CB.x - (i + 1) * (AGENT_W + GRID), y: BAND_Y },
         } as FlowNode);
         edges.push({ id: `agent:${a.name}>codebase`, source: `agent:${a.name}`, target: "codebase", main: true, weight: 2, dashed: true, gradient: g } as FlowEdge);
       });
