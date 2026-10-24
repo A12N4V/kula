@@ -569,9 +569,9 @@
 .ag-card:hover { border-color: var(--line-2); }
 .ag-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card__art { display: block; width: 100%; aspect-ratio: 4 / 3; border-bottom: 1px solid var(--line); background: var(--bg); overflow: hidden; }
-.ag-card-art-svg { display: block; width: 100%; height: 100%; padding: 6%; box-sizing: border-box; }
+.ag-card .card__art svg.ag-card-art-svg { display: block; width: 100%; height: 100%; padding: 6%; box-sizing: border-box; }
 /* the curve draws itself, slowly, once; reduced motion keeps it still */
-.ag-card-hg { stroke-dasharray: 1; stroke-dashoffset: 1; animation: ag-draw 7s var(--ease) forwards; }
+.ag-card-hg { vector-effect: non-scaling-stroke; stroke-width: 1.6px; stroke-dasharray: 1; stroke-dashoffset: 1; animation: ag-draw 7s var(--ease) forwards; }
 @keyframes ag-draw { to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { .ag-card-hg { animation: none; stroke-dashoffset: 0; } }
 .card__body { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 0; padding: 20px 22px 24px; }
