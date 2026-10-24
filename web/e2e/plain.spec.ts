@@ -47,6 +47,9 @@ async function opened(page: Page) {
  *  that is on screen – the fitted view pans the first blocks off the left
  *  edge, so the hover target is picked from the visible squares. */
 async function aBlock(page: Page) {
+  // the fitted view pans once after mount – the pick must measure the camera
+  // after it stops, or it lands on a square the pan then carries off screen
+  await page.waitForTimeout(1000);
   const id = await page.evaluate(() => {
     for (const el of document.querySelectorAll(".fc-node[data-block]")) {
       const r = el.getBoundingClientRect();
@@ -58,7 +61,10 @@ async function aBlock(page: Page) {
     }
     return null;
   });
-  return page.locator(`.fc-node[data-block="${id}"]`).first();
+  // the layout keeps earlier hydration stages in the DOM – an off-view stage
+  // copy of the same block sits out of the viewport, so hover only the
+  // currently visible one (the pick above measured the visible rect).
+  return page.locator(`.fc-node[data-block="${id}"]:visible`).first();
 }
 
 // §1 Reading layer (U9)
