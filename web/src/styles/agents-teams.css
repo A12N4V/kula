@@ -422,7 +422,8 @@ input.mi-title { font: 600 14px var(--mono); }
 .tc-node { display: flex; align-items: center; gap: 10px; width: 148px; height: 92px; padding: 10px 12px;
   border: 1px solid var(--line); background: var(--panel); box-sizing: border-box; }
 .tc-node:hover { border-color: var(--line-2); background: var(--panel-2); }
-.tc-node::before { content: ""; position: absolute; inset: 0; border-left: 3px solid var(--tc-a, var(--line-2)); pointer-events: none; }
+/* D1.4: no side stripes – the harmonograph's own gradient carries the accent,
+   so the node keeps only the flat 1px rule every card has. */
 .tc-node-mark { flex: none; }
 .tc-node-body { display: grid; gap: 3px; min-width: 0; }
 .tc-node-name { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -452,3 +453,6 @@ input.mi-title { font: 600 14px var(--mono); }
   .tc-with-side { grid-template-columns: 1fr; }
   .tc-main { min-height: 260px; }
 }
+
+/* The edge anchors are invisible: the square itself is the anchor. */
+.tc-node .react-flow__handle { opacity: 0; pointer-events: none; }

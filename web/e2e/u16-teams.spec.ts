@@ -93,10 +93,18 @@ test.describe("teams as a map canvas", () => {
     await expect(nodes.first().locator(".tc-node-name")).not.toBeEmpty();
     // edges from the lead: at least one edge in a team of teams
     await expect(canvas.locator(".react-flow__edge").first()).toBeVisible();
-    // the lead is on top: no reports_to, and drawn above the others (z-index)
-    const lead = canvas.locator(".tc-node").first();
-    await expect(canvas.locator(".tc-node-name").filter({ hasText: /.+/ }).first()).toBeVisible();
-    void lead;
+    // the lead is on top: the node marked "lead" is drawn above the members –
+    // its z-index (2) sits over theirs (0)
+    const lead = canvas.locator(".react-flow__node", { hasText: /lead/i }).first();
+    await expect(lead).toBeVisible();
+    const zLead = await lead.evaluate((el) => Number(getComputedStyle(el).zIndex || 0));
+    const zMember = await canvas.locator(".react-flow__node").nth(1).evaluate((el) => Number(getComputedStyle(el).zIndex || 0));
+    expect(zLead).toBeGreaterThan(zMember);
+    // switching tabs remounts the canvas: steer has no cursor, ship does
+    await page.getByTestId("team-tab-steer").click();
+    await expect(page.getByTestId("team-canvas")).not.toContainText("cursor");
+    await page.getByTestId("team-tab-ship").click();
+    await expect(page.getByTestId("team-canvas")).toContainText("cursor");
   });
 
   test("the + tab creates a team with an inline name; Enter saves via team_save", async ({ page, request }) => {
@@ -115,14 +123,14 @@ test.describe("teams as a map canvas", () => {
     await expect(tab).toBeVisible();
     await expect(tab).toHaveClass(/on/);
     await expect(page.getByTestId("team-canvas")).toBeVisible();
-    expect(await toml(request)).toContain(`name = "${name}"`);
+    await expect.poll(async () => toml(request)).toContain(`name = "${name}"`);
     // clean up: delete through the sidebar
     await page.getByTestId("team-side-toggle").click();
     const side = page.getByTestId("team-side");
     await expect(side).toBeVisible();
     await side.getByTestId("team-delete").click();
     await expect(tab).toHaveCount(0);
-    expect(await toml(request)).not.toContain(`name = "${name}"`);
+    await expect.poll(async () => toml(request)).not.toContain(`name = "${name}"`);
   });
 
   test("the sidebar lists agents with + / −, adds and removes members, edits settings", async ({ page, request }) => {
@@ -141,16 +149,18 @@ test.describe("teams as a map canvas", () => {
     const wf = (await candidate.getAttribute("data-testid"))!.replace("team-add-", "");
     await candidate.click();
     await expect(side.locator(`[data-testid=team-add-${wf}]`)).toHaveAttribute("aria-pressed", "true");
-    const body = await toml(request);
-    const block = body.slice(body.indexOf('name = "ship"'));
-    expect(block.slice(0, block.indexOf("[[team]]", 1) > 0 ? block.indexOf("[[team]]", 1) : undefined)).toContain(`workflow = "${wf}"`);
+    await expect.poll(async () => {
+      const body = await toml(request);
+      const block = body.slice(body.indexOf('name = "ship"'));
+      return block.slice(0, block.indexOf("[[team]]", 1) > 0 ? block.indexOf("[[team]]", 1) : undefined);
+    }).toContain(`workflow = "${wf}"`);
     await side.locator(`[data-testid=team-add-${wf}]`).click();
-    await expect(side.locator(`[data-testid=team-add-${wf}]`)).toHaveAttribute("aria-pressed", "false");
+    await expect(side.locator(`[data-testid=team-add-${wf}]`).first()).toHaveAttribute("aria-pressed", "false");
     // team settings: rename through the sidebar, the server sees it
     const renamed = `ship-${Date.now() % 100000}`;
     await side.getByLabel("Team name").fill(renamed);
     await expect(page.getByTestId(`team-tab-${renamed}`)).toBeVisible();
-    expect(await toml(request)).toContain(`name = "${renamed}"`);
+    await expect.poll(async () => toml(request)).toContain(`name = "${renamed}"`);
     // nesting: ship answers to steer by default
     await expect(side.getByLabel("Answers to team")).toHaveValue("steer");
   });

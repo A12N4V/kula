@@ -12,6 +12,8 @@ import { Icon } from "../../ui";
 import { Grip, PaneControls } from "../../resize";
 import { agentGradient, AgentHarmonograph } from "../../flow/agentMark";
 import { seatKey, titleFor } from "../../roster";
+import { AGENT_IDS, AGENT_NAME, MODELS } from "./data";
+import { keyName } from "./parts";
 import type { AgentsInfo, Team } from "../../api";
 import type { Act } from "./data";
 import type { Member } from "./TeamCanvas";
@@ -135,6 +137,7 @@ function MemberEdit({ team, m, info, act, onSet, onClose }: {
   const k = memberKey(m);
   const setM = (x: Partial<Member>) => onSet({ members: team.members.map((y) => (memberKey(y) === k ? { ...y, ...x } : y)) });
   const others = team.members.filter((y) => memberKey(y) !== k).map(memberKey).filter(Boolean);
+  const known = !m.agent || m.agent === "any" || AGENT_IDS.includes(m.agent);
   return (
     <section className="tc-member-edit" aria-label={`Edit ${m.name || m.agent}`}>
       <div className="mi-kind"><AgentHarmonograph name={k} size={16} /> {m.reports_to ? titleFor(m.role || "member") : "lead"}<span className="spacer" />
@@ -142,6 +145,17 @@ function MemberEdit({ team, m, info, act, onSet, onClose }: {
       </div>
       <label className="mi-field"><span>name</span>
         <input className="input mono" value={m.name ?? ""} placeholder={m.agent} onChange={(e) => setM({ name: e.target.value.replace(/[^\w -]/g, "") })} aria-label="Seat name" />
+      </label>
+      <div className="mi-row" title="which agent runs this seat – any connected agent unless you pin one">
+        <select className="input" value={known ? (m.agent === "any" ? "" : m.agent) : "other"} onChange={(e) => setM({ agent: e.target.value === "other" ? "aider" : e.target.value })} aria-label="Runs on">
+          <option value="">{info.default_agent ? `runs on the default – ${AGENT_NAME[info.default_agent] ?? info.default_agent}` : "runs on any connected agent"}</option>
+          {AGENT_IDS.map((a) => <option key={a} value={a}>runs on {AGENT_NAME[a]}</option>)}<option value="other">runs on another…</option>
+        </select>
+        {!known && <input className="input mono" value={m.agent} onChange={(e) => setM({ agent: e.target.value })} aria-label="Agent name" />}
+      </div>
+      <label className="mi-field" title="leave empty for the provider's own default model"><span>model</span>
+        <input className="input mono" list={`tc-models-${k}`} value={m.model ?? ""} placeholder="provider default" onChange={(e) => setM({ model: e.target.value.trim() })} aria-label="Model" />
+        <datalist id={`tc-models-${k}`}>{(MODELS[m.agent && m.agent !== "any" ? m.agent : info.default_agent ?? ""] ?? Object.values(MODELS).flat()).map((x) => <option key={x} value={x} />)}</datalist>
       </label>
       <label className="mi-field"><span>workflow</span>
         <select className="input" value={m.workflow ?? ""} onChange={(e) => setM({ workflow: e.target.value })} aria-label="Workflow">
@@ -154,6 +168,14 @@ function MemberEdit({ team, m, info, act, onSet, onClose }: {
           <option value="">nobody – leads</option>{others.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       </label>
+      <div className="mi-field"><span>hands off to</span>
+        <div className="team-hands">
+          {others.map((o) => {
+            const on = (m.hands_off ?? []).includes(o);
+            return <button key={o} className={`chip-toggle ${on ? "on" : ""}`} aria-pressed={on} onClick={() => setM({ hands_off: on ? (m.hands_off ?? []).filter((h) => h !== o) : [...(m.hands_off ?? []), o] })}><AgentHarmonograph name={o} size={12} /> {keyName(team.members, o)}</button>;
+          })}
+        </div>
+      </div>
       <label className="mi-field"><span>system prompt</span>
         <textarea className="input" rows={4} value={m.prompt ?? ""} onChange={(e) => setM({ prompt: e.target.value })} aria-label="System prompt" />
       </label>

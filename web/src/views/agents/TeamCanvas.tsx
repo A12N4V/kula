@@ -5,7 +5,7 @@
 // kula.toml (team_layout) 500 ms after the last drag stops – never per move.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Background, BackgroundVariant, Panel, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type Node, type NodeChange } from "@xyflow/react";
+import { Background, BackgroundVariant, Handle, Panel, Position, ReactFlow, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow, type Edge, type Node, type NodeChange } from "@xyflow/react";
 import { AgentHarmonograph, agentGradient } from "../../flow/agentMark";
 import { Icon } from "../../ui";
 import { seatKey, titleFor } from "../../roster";
@@ -36,6 +36,9 @@ function SquareNode({ data }: { data: { member: Member; live: boolean } }) {
   const [a, b] = agentGradient(key(m));
   return (
     <div className={`tc-node${data.live ? " live" : ""}`} style={{ ["--tc-a" as string]: a, ["--tc-b" as string]: b }}>
+      {/* the handles are what an edge anchors to – hidden, the square is the anchor */}
+      <Handle type="target" position={Position.Top} isConnectable={false} />
+      <Handle type="source" position={Position.Bottom} isConnectable={false} />
       <div className="tc-node-mark"><AgentHarmonograph name={key(m)} size={30} /></div>
       <div className="tc-node-body">
         <span className="tc-node-name mono">{m.name || m.agent || "any agent"}</span>
@@ -64,35 +67,50 @@ function Canvas({ team, info, live, onMove, onOpen }: {
         data: { member: m, live },
         draggable: true,
         style: { width: W, height: H },
-        sourcePosition: "bottom" as const,
-        targetPosition: "top" as const,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
       };
     });
   }, [team.members, team.positions, live]);
   const edges = useMemo<Edge[]>(() => {
-    const names = new Set(team.members.map(key));
-    return team.members.flatMap((m) => (!m.reports_to || !names.has(m.reports_to) ? [] : [{
-      id: `${m.reports_to}->${key(m)}`, source: m.reports_to, target: key(m),
-      style: { stroke: "var(--line-2)" }, animated: false,
-    }]));
+    // A seat's reports_to may name the lead by agent, name or seat key – the
+    // same fixture may hold any of them. Resolve it to the node id we drew.
+    const resolve = (rep: string): string | null => {
+      const target = team.members.find((x) => key(x) === rep || x.agent === rep || x.name === rep);
+      return target ? key(target) : null;
+    };
+    return team.members.flatMap((m) => {
+      const src = m.reports_to ? resolve(m.reports_to) : null;
+      return src && src !== key(m) ? [{
+        id: `${src}->${key(m)}`, source: src, target: key(m),
+        style: { stroke: "var(--line-2)" }, animated: false,
+      }] : [];
+    });
   }, [team.members]);
+  // Controlled flow state: the nodes and edges follow the team (the effects
+  // sync on every team change), so a tab switch redraws exactly its members.
+  const [rfNodes, setRfNodes, onNodesState] = useNodesState<Node>([]);
+  const [rfEdges, setRfEdges, onEdgesState] = useEdgesState<Edge>([]);
+  useEffect(() => { setRfNodes(nodes); }, [setRfNodes, nodes]);
+  useEffect(() => { setRfEdges(edges); }, [setRfEdges, edges]);
   // Drag-stop → save. One write per gesture, debounced 500 ms.
   const timer = useRef<number>(0);
   const pending = useRef<Record<string, [number, number]>>({});
   const onNodesChange = useCallback((changes: NodeChange[]) => {
+    onNodesState(changes);
     const pos = changes.filter((c) => c.type === "position" && c.dragging === false) as { id: string; position?: { x: number; y: number } }[];
     for (const c of pos) if (c.position) pending.current[c.id] = [Math.round(c.position.x), Math.round(c.position.y)];
     if (pos.length) {
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => { onMove({ ...(team.positions ?? {}), ...pending.current }); pending.current = {}; }, 500);
     }
-  }, [onMove, team.positions]);
+  }, [onNodesState, onMove, team.positions]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   return (
     <div className="tc-canvas" data-testid="team-canvas" tabIndex={0} aria-label={`Team ${team.name} canvas`}>
       <ReactFlow
-        defaultNodes={nodes} defaultEdges={edges} nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
+        nodes={rfNodes} edges={rfEdges} nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange} onEdgesChange={onEdgesState}
         onNodeClick={(_, n) => onOpen(n.id)}
         nodesConnectable={false} edgesFocusable={false} nodesFocusable={false}
         panOnDrag minZoom={0.4} maxZoom={2}

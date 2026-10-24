@@ -70,12 +70,20 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
     const was = teams[cur]?.name;
     setTeams(teams.map((y, j) => (j === cur ? { ...y, ...x } : x.name !== undefined && y.under === was ? { ...y, under: x.name } : y)));
   };
-  // Settings save on their own action the moment they change – the canvas and
-  // the sidebar are one source of truth, nothing waits for a Save button.
-  const saveTeam = (next: Team, ok = `${next.name} saved`) => {
-    setTeams(all => all.map((y) => (y.name === next.name ? next : y)));
-    act("team_save", { team: next }, ok).catch((e: Error) => toast(e.message, "err"));
-  };
+  // Settings and member fields save on their own: shortly after they stop
+  // changing, every touched team (found by index, so a rename still matches
+  // its row) goes through team_save – no Save button, the canvas and the
+  // sidebar are one source of truth.
+  useEffect(() => {
+    if (adding) return;
+    const touched = teams.filter((y, i) => norm(y) !== norm(info.teams[i]));
+    if (!touched.length) return;
+    const id = window.setTimeout(() => {
+      touched.forEach((y) => act("team_save", { team: y }, `${y.name} saved`).catch((e: Error) => toast(e.message, "err")));
+    }, 600);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teams, serverTeams, adding]);
   const create = (name: string) => {
     const team: Team = { name, members: [] };
     act("team_save", { team }, `${name} created`).then(() => {
@@ -83,7 +91,6 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
       setCur(teams.length);
       setAdding(false);
       setNewName("");
-      setSide(true);
     }).catch((e: Error) => toast(e.message, "err"));
   };
   const remove = (name: string) => {
@@ -145,7 +152,7 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
             <CanvasHead team={shown} live={info.team?.name === shown.name} sideOpen={side} onSide={() => setSide((v) => !v)}
               onWork={() => act("team_start", { name: shown.name }, `${shown.name} at work`).catch((e: Error) => toast(e.message, "err"))}
               onStop={() => act("team_stop", {}, `${shown.name} stood down`).catch(() => {})} />
-            <TeamCanvas team={shown} info={info} live={info.team?.name === shown.name} onMove={layout} onOpen={(k) => { setSide(true); setMember(k); }} />
+            <TeamCanvas key={shown.name} team={shown} info={info} live={info.team?.name === shown.name} onMove={layout} onOpen={(k) => { setSide(true); setMember(k); }} />
           </div>
           {side && <TeamSidebar team={shown} all={teams} info={info} member={member} act={act} onSet={set}
             onAdd={addMember} onRemove={removeMember} onPickMember={setMember}
