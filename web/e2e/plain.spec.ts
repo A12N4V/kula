@@ -50,8 +50,11 @@ async function aBlock(page: Page) {
   const id = await page.evaluate(() => {
     for (const el of document.querySelectorAll(".fc-node[data-block]")) {
       const r = el.getBoundingClientRect();
-      if (r.width > 40 && r.top > 0 && r.bottom < innerHeight && r.left > 0 && r.right < innerWidth)
-        return el.getAttribute("data-block");
+      if (r.width > 40 && r.top > 0 && r.bottom < innerHeight && r.left > 0 && r.right < innerWidth) {
+        // skip blocks a chip or sheet covers – the hover must reach the square
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (hit && (hit === el || el.contains(hit))) return el.getAttribute("data-block");
+      }
     }
     return null;
   });
@@ -73,6 +76,8 @@ test("T1 captions show plain names by default, never dir · code-name", async ({
 
 test("T2 the Show code names toggle swaps captions to technical names and back", async ({ page }) => {
   await opened(page);
+  // U11: the plain-words panel lives behind its chip – open it first.
+  await page.locator('[data-testid="u9-plain-chip"]').click();
   const toggle = page.locator('[data-testid="x5-plain-toggle"]');
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   const plain = (await page.locator('[data-testid="x5-plain-caption"]').first().textContent()) ?? "";
@@ -99,6 +104,8 @@ test("T3 hovering a square shows its one-sentence summary", async ({ page }) => 
 
 test("T4 the explain run shows named/total progress and renders the reason when it cannot start", async ({ page }) => {
   await opened(page);
+  // U11: open the plain-words chip first
+  await page.locator('[data-testid="u9-plain-chip"]').click();
   await page.locator('[data-testid="x5-plain-run"]').click();
   const progress = page.locator('[data-testid="x5-plain-progress"]');
   await expect(progress).toBeVisible();

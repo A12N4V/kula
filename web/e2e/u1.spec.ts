@@ -84,7 +84,9 @@ test("port count per kind: gates fork pass/fail, agents carry the four capabilit
     { id: "g1", kind: "gate", name: "Verify edits", ref: "verify", section: null, status: "idle" },
   ])));
   await page.reload();
-  await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+  // the map remounts its canvas and waits for the graph paths – give it the
+  // same 15 s the first open gets
+  await expect(page.locator("[data-testid=map-flow]")).toBeVisible({ timeout: 15_000 });
   // the lane sits above the focus viewport and only mounts when visible
   // (onlyRenderVisibleElements) – zoom out with the wheel until it mounts
   const pane = page.locator("[data-testid=map-flow-canvas] .react-flow__pane");

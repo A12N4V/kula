@@ -58,15 +58,33 @@ export function FrameSwitch({ frame, onFrame, counts }: {
   frame: Frame; onFrame: (f: Frame) => void;
   counts?: { runs?: string; evals?: string };
 }) {
+  // Arrow keys move the tab cursor and pick (a tablist's contract); the
+  // roving focus follows the selection so tab order stays one stop.
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    const at = FRAMES.findIndex((f) => f.id === frame);
+    const next = FRAMES[(at + (e.key === "ArrowRight" ? 1 : FRAMES.length - 1)) % FRAMES.length];
+    onFrame(next.id);
+    // React nulls synthetic currentTarget after dispatch – resolve the
+    // button from the document inside the frame.
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>(`[data-testid=u2-frame-${next.id}]`)?.focus();
+    });
+  };
   return (
-    <div className="u2-frames" role="tablist" aria-label="View" data-testid="u2-frames">
-      {FRAMES.map(({ id, label, I }) => (
-        <button key={id} role="tab" aria-selected={frame === id} aria-label={label} title={label}
-          className={`u2-frame${frame === id ? " on" : ""}`} data-testid={`u2-frame-${id}`} onClick={() => onFrame(id)}>
-          <I />
-          {id !== "map" && counts?.[id] ? <b className="u2-frame-n">{counts[id]}</b> : null}
-        </button>
-      ))}
+    <div className="u2-frames" role="tablist" aria-label="View" data-testid="u2-frames" onKeyDown={onKey}>
+      {FRAMES.map(({ id, label, I }) => {
+        const n = id !== "map" ? counts?.[id] : undefined;
+        return (
+          <button key={id} role="tab" aria-selected={frame === id} tabIndex={frame === id ? 0 : -1}
+            aria-label={n ? `${label} – ${n}` : label} title={n ? `${label} – ${n}` : label}
+            className={`u2-frame${frame === id ? " on" : ""}`} data-testid={`u2-frame-${id}`} onClick={() => onFrame(id)}>
+            <I />
+            {n ? <b className="u2-frame-n">{n}</b> : null}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -80,20 +98,57 @@ export function Explorer({ open, onOpen, search, panels, layers, verbs }: {
   search: React.ReactNode; panels: React.ReactNode; layers: React.ReactNode; verbs: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  // Closing hands focus back to the toggle whenever the close came from the
+  // keyboard (e, Escape) or from within the sheet – a pointer click away on
+  // the canvas never steals focus.
+  const close = (e?: Event) => {
+    const inside = e ? ref.current?.contains(e.target as Node) : true;
+    if (inside || e instanceof KeyboardEvent) btnRef.current?.focus();
+    onOpen(false);
+  };
+  useEffect(() => {
+    // `e` toggles the Explorer – ignored while typing, with modifiers, or
+    // inside another control's shortcut scope (inputs, selects, editors).
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "e" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as Element | null;
+      if (t?.closest?.("input, textarea, select, [contenteditable]")) return;
+      e.preventDefault();
+      if (open) close(e); else onOpen(true);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, onOpen]);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {
       const t = e.target as Element;
-      if (!ref.current?.contains(t) && !t.closest?.("#map-role-filter")) onOpen(false);
+      if (!ref.current?.contains(t) && !t.closest?.("#map-role-filter")) close(e);
     };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target as Element)?.closest?.("input")) onOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target as Element)?.closest?.("input")) close(e); };
     window.addEventListener("pointerdown", away);
     window.addEventListener("keydown", esc);
     return () => { window.removeEventListener("pointerdown", away); window.removeEventListener("keydown", esc); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, onOpen]);
+  // Arrow keys move through the sheet's controls (and wrap); Tab is left to
+  // the browser so the search input keeps its natural order.
+  const roam = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const items = ref.current?.querySelectorAll<HTMLElement>(
+      ".ex-sheet button:not(:disabled), .ex-sheet input, .ex-sheet select");
+    if (!items || !items.length) return;
+    e.preventDefault();
+    const list = Array.from(items);
+    const at = list.indexOf(document.activeElement as HTMLElement);
+    const next = list[(at + (e.key === "ArrowDown" ? 1 : list.length - 1)) % list.length];
+    next?.focus();
+  };
   return (
-    <div className="ex-wrap" ref={ref} data-testid="map-hud">
-      <button className={`ex-btn${open ? " on" : ""}`} data-testid="map-explorer-btn" aria-expanded={open} aria-controls="map-explorer"
+    <div className="ex-wrap" ref={ref} data-testid="map-hud" onKeyDown={roam}>
+      <button ref={btnRef} className={`ex-btn${open ? " on" : ""}`} data-testid="map-explorer-btn" aria-expanded={open} aria-controls="map-explorer"
         title="Explorer – panels, layers, search  e" onClick={() => onOpen(!open)}>
         <Icon.explore /><span>Explore</span>
       </button>

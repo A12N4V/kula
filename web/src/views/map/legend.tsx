@@ -1,10 +1,11 @@
-// U7 – the map's key (plain-map.md §2): one compact, always-available legend,
-// collapsible in the right column – never a modal (a modal hides the very
-// thing it explains). Collapsed: a single "Key" row. Open: five fixed rows,
-// one line each – colour = the area of the product (directory hues from
-// colors.ts, imported never copied), size = amount of code, glyph = the
-// language, ring = the picked journey's hue, dashed square = an agent works
-// here. Open on first visit, collapsed stays collapsed for the session.
+// U7 – the map's key (plain-map.md §2): a chip in the canvas's top-right
+// corner, below the Explorer toggle – collapsed by default (U11: it must
+// never cover squares), one click opens the five fixed rows, one line each –
+// colour = the area of the product (directory hues from colors.ts, imported
+// never copied), size = amount of code, glyph = the language, ring = the
+// picked journey's hue, dashed square = an agent works here. Never a modal
+// (a modal hides the very thing it explains); open or collapsed stays for
+// the session.
 
 import { useState } from "react";
 import { dirColor, groupDirs } from "../../colors";
@@ -23,7 +24,7 @@ function dirSwatches(data?: MapData | null): { dir: string; color: string }[] {
 }
 
 export function Legend({ data, ringHue }: { data?: MapData | null; ringHue?: string | null }) {
-  const [open, setOpen] = useState(() => sessionStorage.getItem("kula.map.legend") !== "closed");
+  const [open, setOpen] = useState(() => sessionStorage.getItem("kula.map.legend") === "open");
   const toggle = () => {
     setOpen((o) => {
       const next = !o;

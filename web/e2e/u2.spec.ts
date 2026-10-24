@@ -17,15 +17,18 @@ async function open(page: Page, hash = "map") {
 
 test("the layer toggle exists with the six layers and the contract defaults", async ({ page }) => {
   await open(page);
+  // U11: the layers live in the Explorer's sheet – open it first.
+  await explore(page);
   const layers = page.locator("[data-testid=u2-layers]");
   await expect(layers).toBeVisible();
   for (const id of ["blocks", "flows", "chains", "fences", "agents", "runs"])
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toBeVisible();
   // Defaults: Blocks + Flows + Agents + Runs on, the rest off (contract §5;
-  // Flows on since U5 routes wires through the gutters).
-  for (const id of ["blocks", "flows", "runs"])
+  // Flows on since U5 routes wires through the gutters; Agents on since the
+  // actor band dissolved – agents live on the map, U11 wave 1).
+  for (const id of ["blocks", "flows", "runs", "agents"])
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toHaveAttribute("aria-pressed", "true");
-  for (const id of ["chains", "fences", "agents"])
+  for (const id of ["chains", "fences"])
     await expect(layers.locator(`[data-testid=u2-layer-${id}]`)).toHaveAttribute("aria-pressed", "false");
 });
 
@@ -34,21 +37,40 @@ test("turning a layer off hides its marks and back on restores them", async ({ p
   // Flows is on by default (contract §5). Pick an edge with a non-empty
   // bounding box – U8's size scale can make the first DOM edge an exactly
   // horizontal wire, which has zero height and counts as hidden.
+  // react-flow measures edges after the nodes settle, and the meaning layout
+  // re-derives the zone roads while it does – wait until the wire set is
+  // stable before picking, so the held id survives the layer cycle.
   const edges = page.locator("[data-testid=map-flow] .react-flow__edge");
-  const id = await edges.evaluateAll((els) => {
+  const pickEdge = () => edges.evaluateAll((els) => {
     for (const el of els) {
+      // agent wires belong to the Agents layer and never hide with Flows
+      if (el.getAttribute("data-id")?.startsWith("agent:")) continue;
       const b = el.getBoundingClientRect();
       if (b.width > 0 && b.height > 0) return el.getAttribute("data-id");
     }
     return null;
   });
+  let id: string | null = null;
+  await expect.poll(async () => { id = await pickEdge(); return id; },
+    { timeout: 15_000, intervals: [250] }).not.toBeNull();
+  await expect.poll(async () => {
+    const again = await pickEdge();
+    const stable = again === id;
+    id = again;
+    return stable;
+  }, { timeout: 15_000, intervals: [700] }).toBe(true);
   expect(id).toBeTruthy();
+  // The zone roads re-derive when the map's async data lands, so a held id
+  // can vanish for reasons unrelated to the layer – assert by state instead:
+  // off hides every non-agent wire, on brings wires back (re-queried).
   const edge = page.locator(`[data-testid=map-flow] .react-flow__edge[data-id="${id}"]`);
   await expect(edge).toBeVisible();
   await explore(page); await page.locator("[data-testid=u2-layer-flows]").click();
   await expect(edge).not.toBeVisible();
+  await expect.poll(async () => (await pickEdge()) === null, { timeout: 5_000 }).toBe(true);
   await explore(page); await page.locator("[data-testid=u2-layer-flows]").click();
-  await expect(edge).toBeVisible();
+  await expect(page.locator("[data-testid=u2-layer-flows]")).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => (await pickEdge()) !== null, { timeout: 10_000 }).toBe(true);
   // Runs off hides the last-run dots, never navigates: the canvas stays.
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible();
   await explore(page); await page.locator("[data-testid=u2-layer-runs]").click();

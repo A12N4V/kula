@@ -108,14 +108,13 @@ test.describe("u7 journeys and the legend", () => {
 
   test("the legend is a collapsible key in the right column with the five rows", async ({ page }) => {
     await open(page);
-    // X5 §2 (critic blocking): the key is on the map at landing – visible
-    // before any click, docked at the right edge while the inspector is closed.
-    await expect(page.locator('[data-testid="x5-legend"]')).toBeVisible();
-    await expect(page.locator('[data-testid="x5-legend-panel"]')).toBeVisible();
-    await clickCard(page);
+    // U11: the key defaults to a collapsed chip (never covering squares);
+    // open it, then the five rows are all visible.
     const key = page.locator('[data-testid="x5-legend"]');
     await expect(key).toBeVisible();
-    await expect(key).toHaveAttribute("aria-expanded", "true"); // open on first visit
+    await expect(key).toHaveAttribute("aria-expanded", "false");
+    await key.click();
+    await expect(key).toHaveAttribute("aria-expanded", "true");
     const panel = page.locator('[data-testid="x5-legend-panel"]');
     await expect(panel).toBeVisible();
     for (const row of ["colour", "size", "glyph", "ring", "agent"])
