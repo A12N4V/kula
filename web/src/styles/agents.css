@@ -338,7 +338,7 @@
 .page { min-height: 0; }
 
 /* Workflows as tabs, like Research and Teams */
-.wf-tabs { display: grid; gap: 10px; min-width: 0; }
+.wf-tabs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
 .wf-tabs .need.sugg { padding: 10px 12px; border: 1px dashed var(--accent); background: var(--bg-2); }
 .wf-from { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; }
 
@@ -464,3 +464,18 @@
 @media (max-width: 480px) {
   .ag-control > .card:nth-child(2) { margin-top: 48px; }
 }
+
+/* Agents page: config tabs, then the record as icon-only tabs after a rule */
+.ag-tab-wrap { display: contents; }
+.ag-tabs-sep { flex: none; width: 1px; height: 16px; margin: 9px 6px 0; background: var(--line); }
+.ag-tabs button.compact { padding: 0 10px; }
+/* Settings tab */
+.set-grid .ag-wide { grid-column: 1 / -1; }
+.ags-row { display: flex; align-items: center; gap: 8px; min-height: 34px; border-bottom: 1px solid var(--line); }
+.ags-row:last-child { border-bottom: 0; }
+.ags-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.ags-row .seg button { display: inline-flex; align-items: center; gap: 6px; }
+.set-import .ag-body { display: grid; gap: 10px; }
+.set-import-text { width: 100%; resize: vertical; min-height: 96px; }
+.set-import-src label { cursor: pointer; }
+.agents .page-head { align-items: flex-start; gap: 12px; }

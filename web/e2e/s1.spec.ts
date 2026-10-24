@@ -14,26 +14,27 @@ async function open(page: Page, hash = "overview") {
 }
 
 test.describe("s1 agents split", () => {
-  test("the nine agents tabs all render after the split", async ({ page }) => {
+  test("the ten agents tabs all render: config first, the record as icons", async ({ page }) => {
     test.skip(test.info().project.name !== "desktop");
     await open(page);
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // Agents left the rail (it is the Workspace library now); `a` still opens it
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // `a` opens Agents (its rail item is back as the config home)
     await expect(page.locator(".page-head h1")).toHaveText("Agents");
     const tabs = page.locator(".ag-tabs [role=tab]");
-    await expect(tabs).toHaveCount(9);
-    for (const name of ["Overview", "Workflows", "Research", "Teams", "Skills", "Fences", "Memory", "Docs", "Connect"]) {
-      await expect(tabs.filter({ hasText: name })).toBeVisible();
+    await expect(tabs).toHaveCount(10);
+    for (const name of ["Agents", "Teams", "Skills", "Fences", "Connect", "Settings", "Overview", "Research", "Memory", "Docs"]) {
+      await expect(page.getByRole("tab", { name, exact: true })).toBeVisible();
     }
+    await expect(page.getByRole("tab", { name: "Agents", exact: true })).toHaveAttribute("aria-selected", "true");
   });
 
   test("workflows, memory and connect tabs compose their parts", async ({ page }) => {
     test.skip(test.info().project.name !== "desktop");
     await open(page, "agents");
-    await page.locator(".ag-tabs [role=tab]", { hasText: "Workflows" }).click();
+    await page.getByRole("tab", { name: "Agents", exact: true }).click();
     await expect(page.locator(".wf-tabs")).toBeVisible();
     await expect(page.locator(".wf-tabs [role=tab]").first()).toBeVisible();
     await expect(page.locator(".wf-edit")).toBeVisible();
-    await page.locator(".ag-tabs [role=tab]", { hasText: "Memory" }).click();
+    await page.getByRole("tab", { name: "Memory", exact: true }).click();
     await expect(page.locator(".ag-remember")).toBeVisible();
     await page.locator(".ag-tabs [role=tab]", { hasText: "Connect" }).click();
     await expect(page.locator(".conn-grid .conn").first()).toBeVisible();

@@ -113,12 +113,12 @@ test.describe("shell", () => {
     await search.click();
     await expect(page.locator(".palette")).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // Agents left the rail (it is the Workspace library now); `a` still opens it
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // `a` opens Agents (its rail item is back as the config home)
     await page.getByRole("tab", { name: /Memory/ }).click();
     await expect(page).toHaveURL(/#agents\/memory$/);
     await page.goBack();
     await expect(page).toHaveURL(/#agents$/);
-    await expect(page.getByRole("tab", { name: /Overview/ })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Agents", exact: true })).toHaveAttribute("aria-selected", "true");
     await page.goBack();
     await expect(page.locator(".ov-title h1")).toBeVisible();
     await page.keyboard.press("Alt+ArrowRight");
@@ -764,7 +764,7 @@ test.describe("agents", () => {
   const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
 
   test("@responsive the task, its workflow and the agent loop, and what needs a person", async ({ page }, info) => {
-    await open(page, "agents");
+    await open(page, "agents/overview");
     await expect(page.locator(".page-head h1")).toHaveText("Agents");
     await expect(page.locator(".ag-task-title")).toHaveText("harden the MCP server");
     await expect(page.locator(".ag-now .ag-chips .tag")).toHaveText(["fix", "src/mcp.rs", "src/agent.rs"]);
@@ -785,7 +785,7 @@ test.describe("agents", () => {
     await expect(page.locator(".fence-row select").first()).toHaveValue("locked");
     await page.getByRole("tab", { name: /Memory/ }).click();
     expect(await page.locator(".ag-mem").count()).toBeGreaterThanOrEqual(2);
-    for (const t of ["Docs", "Connect", "Workflows"]) {
+    for (const t of ["Docs", "Connect", "^Agents$"]) {
       await page.getByRole("tab", { name: new RegExp(t) }).click();
       await expect(page.locator(".ag-panel")).toBeVisible();
       const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -926,7 +926,7 @@ test.describe("agents", () => {
     for (const [w, h] of [[1440, 900], [390, 844]]) {
       await page.setViewportSize({ width: w, height: h });
       await page.waitForTimeout(300);
-      for (const tab of ["", "teams", "workflows"]) {
+      for (const tab of ["", "teams", "^agents$"]) {
         if (tab) await page.getByRole("tab", { name: new RegExp(tab, "i") }).click();
         const hits = await page.evaluate(() => {
           // Clip-aware overlap: an element's rect counts only inside the
@@ -1008,7 +1008,7 @@ test.describe("agents", () => {
     await page.keyboard.type("context_pack");
     await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
     await expect(page.locator(".inspector h2")).toHaveText("context_pack");
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // Agents left the rail (it is the Workspace library now); `a` still opens it
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // `a` opens Agents (its rail item is back as the config home)
     await page.getByRole("tab", { name: /Memory/ }).click();
     const hint = page.locator(".here-hint");
     await expect(hint).toContainText("context_pack");
@@ -1073,7 +1073,7 @@ test.describe("agents", () => {
     await insp.locator("textarea").fill(fact);
     await insp.getByRole("button", { name: "Remember" }).click();
     await expect(insp.locator(".note.mem").filter({ hasText: fact })).toBeVisible();
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // Agents left the rail (it is the Workspace library now); `a` still opens it
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // `a` opens Agents (its rail item is back as the config home)
     await page.getByRole("tab", { name: /Memory/ }).click();
     const row = page.locator(".ag-mem").filter({ hasText: fact });
     await expect(row.locator(".tag")).toHaveText("fresh");
@@ -1665,7 +1665,7 @@ test.describe("agents A2", () => {
   // Read-only tests: no fixture writes, so no serial coupling and all projects may run them.
 
   test("A2.1: the roster renders every fixture agent with its wiring, counts and seats", async ({ page }) => {
-    await open(page, "agents");
+    await open(page, "agents/overview");
     const rows = page.locator(".roster-row");
     await expect(rows).toHaveCount(4);
     // Claude Code is connected in the fixture (MCP and hook); the others are not wired.
@@ -1698,7 +1698,7 @@ test.describe("agents A2", () => {
   });
 
   test("A2.2: j/k/enter/esc walk the roster and / filters it", async ({ page }) => {
-    await open(page, "agents");
+    await open(page, "agents/overview");
     const roster = page.locator(".roster");
     await roster.focus();
     await page.keyboard.press("j");
@@ -1712,7 +1712,7 @@ test.describe("agents A2", () => {
     await page.keyboard.press("Enter"); // the roster row opens Connect
     await expect(page).toHaveURL(/#agents\/connect/);
     // Back to the roster: / opens the filter, typing narrows, esc clears it.
-    await open(page, "agents");
+    await open(page, "agents/overview");
     await roster.focus();
     await page.keyboard.press("/");
     await expect(page.getByLabel("Filter roster")).toBeFocused();
@@ -2964,8 +2964,8 @@ test.describe("map", () => {
     await expect(btn).toBeVisible();
     expect(await btn.locator("circle").count()).toBe(2);
     expect(await btn.locator("rect").count()).toBeGreaterThanOrEqual(2);
-    // Agents and Console are not rail items any more – the workspace and the dock hold them
-    await expect(page.locator(".rail button[aria-label=Agents]")).toHaveCount(0);
+    // Agents is back on the rail as the config home; Console stays in the dock
+    await expect(page.locator(".rail button[aria-label=Agents]")).toHaveCount(1);
     await expect(page.locator(".rail button[aria-label=Console]")).toHaveCount(0);
     const acc = await btn.locator("[stroke='var(--accent)']").count();
     expect(acc).toBeGreaterThanOrEqual(1);

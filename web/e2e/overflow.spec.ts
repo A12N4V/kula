@@ -28,6 +28,8 @@ async function overflowers(page: Page) {
       const s = getComputedStyle(el);
       if (s.display === "none" || s.visibility === "hidden") continue;
       if (clipped(s)) continue;
+      // a pan/zoom canvas lays its world out in flow coordinates, not in the page box
+      if (el.closest(".react-flow__renderer")) continue;
       // an intentional scroller is doing its job
       if (/(auto|scroll)/.test(s.overflowX + s.overflowY)) continue;
       // The brief's rule is horizontal: no element's scrollWidth exceeds its

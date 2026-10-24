@@ -19,7 +19,7 @@ import { AddForm } from "./AddForm";
 
 const BUILTIN = ["explore", "fix", "refactor", "tests", "docs", "autoresearch"];
 const NATIVE: [string, string, string][] = [["claude", "Claude Code subagent", ".claude/agents/kula-"], ["cursor", "Cursor rule", ".cursor/rules/kula-"], ["gemini", "Gemini CLI command", ".gemini/commands/kula/"]];
-export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; act: Act; onGraph: (wf?: string) => void; setTab?: (t: Tab) => void }) {
+export default function Workflows({ info, act, onGraph, onWorkspace }: { info: AgentsInfo; act: Act; onGraph: (wf?: string) => void; setTab?: (t: Tab) => void; onWorkspace?: (agent?: string) => void }) {
   const [sel, setSel] = useState<string>(info.workflow?.name ?? info.workflows[0]?.name ?? "");
   const [draft, setDraft] = useState<Workflow | null>(null);
   const [orig, setOrig] = useState<string | null>(null);
@@ -91,6 +91,7 @@ export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; ac
             {!isNew && (cur?.builtin ? <span className="tag">built in – saving overrides it in kula.toml</span> : BUILTIN.includes(orig!) ? <span className="tag accent">overrides the built-in</span> : <span className="tag">kula.toml</span>)}
             <span className="spacer" />
             {!isNew && <button className="btn sm ghost" onClick={() => onGraph(orig!)}><Icon.graph /> Preview fences</button>}
+            {!isNew && onWorkspace && <button className="btn sm" onClick={() => onWorkspace(orig!)} data-testid="wf-use-workspace"><Icon.workspace /> Use on Workspace</button>}
           </div>
           <div className="ag-body wf-form">
             <label><span>name</span><input className="input mono" value={draft.name} onChange={(e) => set("name", e.target.value.replace(/[^\w-]/g, ""))} placeholder="db-migrate" /></label>

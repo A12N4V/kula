@@ -222,6 +222,8 @@
     border-left: 1px solid var(--line); background: var(--bg);
   }
   .fc-side.fc-side-open { transform: none; visibility: visible; }
+  /* the parked drawer sits past the right edge: clip it to the canvas, not the page */
+  .fc-wrap.fc-with-side { position: relative; overflow-x: clip; }
   .fc-side-toggle {
     display: block; position: absolute; right: 8px; top: 8px; z-index: 31;
     width: 40px; height: 40px; border: 1px solid var(--line); border-radius: var(--radius-xs, 4px);
