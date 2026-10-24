@@ -124,6 +124,59 @@ test("a sticky note on the map opens in the editor and saves back", async ({ pag
   await expect(area).toHaveValue("sticky body from u14", { timeout: 10_000 });
 });
 
+test("a card's Edit button opens the same editor", async ({ page }) => {
+  const n = await seedOne(page);
+  // open from the card in the sidebar, not the list row
+  await page.getByTestId(`u14-edit-${n}`).click();
+  const panel = page.locator(".code-panel");
+  await expect(panel).toBeVisible({ timeout: 10_000 });
+  await expect(panel.getByTestId("cp-code")).toContainText("U14 seed");
+  const area = panel.getByTestId("cp-area");
+  await area.fill("## U14 seed – edited from the card");
+  await panel.getByTestId("cp-save").click();
+  await expect(panel.getByTestId("cp-modified")).toHaveCount(0, { timeout: 10_000 });
+  const [, meta] = await api(page, "GET", "/api/meta");
+  const stored = ((meta as { notes: { id: number; body: string }[] }).notes ?? []).find((x) => x.id === n);
+  expect(stored?.body).toContain("edited from the card");
+});
+
+test("a note node in the graph opens in the editor", async ({ page }) => {
+  const n = await seedOne(page);
+  // the graph is on by default; the Sigma instance is exposed for tests
+  const pos = await page.evaluate((id) => {
+    const s = (window as unknown as { __notesSigma?: { getNodeDisplayData: (k: string) => { x: number; y: number } | undefined; graphToViewport: (p: { x: number; y: number }) => { x: number; y: number } } }).__notesSigma;
+    if (!s) return null;
+    const d = s.getNodeDisplayData(`note:${id}`);
+    if (!d) return null;
+    return s.graphToViewport({ x: d.x, y: d.y });
+  }, n);
+  expect(pos, "the notes graph exposed the note node").not.toBeNull();
+  const box = page.locator(".notes-graph .mini-graph-canvas");
+  await box.click({ position: pos ?? undefined });
+  const panel = page.locator(".code-panel");
+  await expect(panel).toBeVisible({ timeout: 10_000 });
+  await expect(panel.getByTestId("cp-code")).toContainText("U14 seed");
+});
+
+test("saving a new note twice updates it instead of duplicating", async ({ page }) => {
+  await seedOne(page);
+  await page.getByTestId("u14-new-note").click();
+  const panel = page.locator(".code-panel");
+  const area = panel.getByTestId("cp-area");
+  await area.fill("u14 no-duplicate body");
+  await panel.getByTestId("cp-save").click();
+  await expect(panel.getByTestId("cp-modified")).toHaveCount(0, { timeout: 10_000 });
+  await area.fill("u14 no-duplicate body – second pass");
+  await panel.getByTestId("cp-save").click();
+  await expect(panel.getByTestId("cp-modified")).toHaveCount(0, { timeout: 10_000 });
+  const [, meta] = await api(page, "GET", "/api/meta");
+  const notes = (meta as { notes: { id: number; body: string }[] }).notes ?? [];
+  const mine = notes.filter((x) => x.body.includes("u14 no-duplicate body"));
+  expect(mine).toHaveLength(1);
+  expect(mine[0].body).toContain("second pass");
+  await api(page, "DELETE", `/api/meta/notes/${mine[0].id}`);
+});
+
 test("search narrows the list", async ({ page }) => {
   const n = await seedOne(page);
   const box = page.getByTestId("u14-search");

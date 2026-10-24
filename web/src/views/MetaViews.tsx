@@ -191,13 +191,23 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
       toast("Saved"); await afterWrite();
     },
   });
-  const newNote = () => code.open({
-    note: { target: sel || "repo", body: "" },
-    save: async (body, target) => {
-      await api.metaAction("notes", "new", { target, body });
-      toast("Saved"); await afterWrite();
-    },
-  });
+  const newNote = () => {
+    // The first Save creates the note and keeps its id; a second Save then
+    // updates that note instead of posting a duplicate.
+    let madeId: number | undefined;
+    code.open({
+      note: { target: sel || "repo", body: "" },
+      save: async (body, target) => {
+        // Once the note exists, save to its id; before that, create it.
+        const r = madeId != null
+          ? await api.metaAction<{ id?: number }>("notes", madeId, { body })
+          : await api.metaAction<{ id?: number } | null>("notes", "new", { target, body });
+        if (r && typeof r.id === "number") madeId = r.id;
+        toast("Saved"); await afterWrite();
+        return madeId;
+      },
+    });
+  };
 
   const TargetGlyph = ({ t }: { t: string }) => (
     <span style={{ color: "var(--text-3)", marginTop: 1 }}>

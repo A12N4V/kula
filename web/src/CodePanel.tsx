@@ -12,6 +12,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Grip, PaneControls } from "./resize";
 import { api, get, type Node, type Verdict } from "./api";
 import { Icon, Kind } from "./ui";
+import { HereHint, nav, OptList, useOptions } from "./Autofill";
 import { visit } from "./near";
 
 export type CodeTarget = {
@@ -138,6 +139,9 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
   const guard = useRef<Verdict | null | undefined>(undefined);
   const isNote = !!t.note;
   const [noteTarget, setNoteTarget] = useState(t.note?.target ?? "repo");
+  // The id a new note got from its first save: once adopted, later saves
+  // update that note instead of posting another "new".
+  const adoptedId = useRef<number | null | undefined>(undefined);
   const load = useCallback((path: string) => {
     setSrc(null); setErr(null); setNote(null); setFenced(false); setBusy(false);
     guard.current = undefined;
@@ -151,6 +155,7 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
       // editable for a brand-new note; an existing one keeps its anchor.
       setSrc(t.note.body); setText(t.note.body); setHash(""); setErr(null);
       setNote(null); setFenced(false); setBusy(false); guard.current = undefined;
+      adoptedId.current = undefined;
       setNoteTarget(t.note.target);
       return;
     }
@@ -165,9 +170,18 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
         // Notes never touch the filesystem: they version in git through the
         // notes API – or through the caller's own write (a sticky patches
         // its pipeline step). Either way the note is the new base afterwards.
-        if (t.save) await t.save(text, noteTarget);
-        else if (t.note?.id != null) await api.metaAction("notes", t.note.id, { body: text });
-        else await api.metaAction("notes", "new", { target: noteTarget, body: text });
+        // A brand-new note adopts the id the backend returns, so a second
+        // Save updates the same note instead of creating a duplicate.
+        const adopted = adoptedId.current ?? t.note?.id;
+        if (t.save) {
+          const r = await t.save(text, noteTarget);
+          if (typeof r === "number") adoptedId.current = r;
+        } else if (adopted != null) {
+          await api.metaAction<number>("notes", adopted, { body: text });
+        } else {
+          const created = await api.metaAction<{ id?: number } | null>("notes", "new", { target: noteTarget, body: text });
+          if (created && typeof created.id === "number") adoptedId.current = created.id;
+        }
         setSrc(text); setNote(null); setFenced(false); guard.current = undefined;
       } else {
         const r = await putFile(t.path ?? "", text, hash);
@@ -247,6 +261,25 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
   const lit = (n: number) => !!t.line && n >= t.line && n <= (t.end ?? t.line);
   const [dir, file] = t.path ? [t.path.slice(0, t.path.lastIndexOf("/") + 1), t.path.slice(t.path.lastIndexOf("/") + 1)] : ["", ""];
   const noteName = t.note ? (t.note.name ?? (t.note.id != null ? `Note #${t.note.id}` : "New note")) : "";
+  // [[ link autofill (notes only): while the caret follows an unclosed [[…,
+  // offer symbols and files – the same machinery the old note editor used.
+  // The hooks run unconditionally; the link state just stays closed for files.
+  const [caret, setCaret] = useState(0);
+  const [linkAt, setLinkAt] = useState(0);
+  const [linkClosed, setLinkClosed] = useState(false);
+  const linkM = isNote ? text.slice(0, caret).match(/\[\[([^\]\n]{0,60})$/) : null;
+  const linkOpen = !!linkM && !linkClosed;
+  const linkOpts = useOptions(linkM ? linkM[1] : "", "name", linkOpen);
+  useEffect(() => { setLinkAt(0); }, [linkM?.[1], linkOpts.length]);
+  const pickLink = (o: { value: string }) => {
+    if (!linkM) return;
+    const start = caret - linkM[0].length;
+    const after = text.slice(caret).replace(/^[^\]\s]*\]\]/, "");
+    const ins = `[[${o.value}]]`;
+    setText(text.slice(0, start) + ins + after);
+    const pos = start + ins.length;
+    requestAnimationFrame(() => { area.current?.setSelectionRange(pos, pos); area.current?.focus(); setCaret(pos); });
+  };
 
   return (
     <aside className="code-panel" aria-label={isNote ? `Note ${t.note?.name ?? noteName}` : `Source of ${t.name ?? t.path}`} data-pane>      <Grip id="code" edge="left" min={320} max={1600} label="Resize source panel" />
@@ -259,6 +292,7 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
               <input className="input cp-note-target" data-testid="cp-note-target" value={noteTarget} placeholder="repo · file:path · symbol:name · commit:sha"
                 onChange={(e) => setNoteTarget(e.target.value)} aria-label="Note target" />
             )}
+            {!t.note?.lock && <HereHint onUse={setNoteTarget} />}
           </div>
         ) : <div className="cp-path"><span className="muted">{dir}</span>{file}</div>}
         <div className="cp-actions">
@@ -329,8 +363,14 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
               wrap="off"
               aria-label={isNote ? `Edit ${noteName}` : `Edit source of ${t.name ?? t.path}`}
               onChange={(e) => { setText(e.target.value); if (note) setNote(null); }}
-              onKeyDown={(e) => { if (e.key === "Tab") onTab(e); }}
+              onKeyUp={(e) => { setCaret(e.currentTarget.selectionStart ?? 0); setLinkClosed(false); }}
+              onClick={(e) => { setCaret(e.currentTarget.selectionStart ?? 0); setLinkClosed(false); }}
+              onKeyDown={(e) => {
+                if (linkOpen && nav(e, linkOpts, linkAt, setLinkAt, pickLink, () => setLinkClosed(true))) return;
+                if (e.key === "Tab") onTab(e);
+              }}
             />
+            {linkOpen && linkOpts.length > 0 && <OptList opts={linkOpts} at={linkAt} pick={pickLink} setAt={setLinkAt} />}
           </div>
         )}
       </div>
