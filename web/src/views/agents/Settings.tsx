@@ -42,8 +42,8 @@ export function ImportSkill({ info, act }: { info: AgentsInfo; act: Act }) {
       {strays.length > 0 && <>
         <div className="section-title">Found in an agent's own folder <span className="count">{strays.length}</span></div>
         {strays.map((s) => (
-          <div key={`${s.agent}:${s.name}`} className="set-row">
-            <AgentMark id={s.agent} /><span className="mono">{s.name}</span><span className="muted set-desc" title={s.path}>{s.description || s.path}</span><span className="spacer" />
+          <div key={`${s.agent}:${s.name}`} className="ags-row">
+            <AgentMark id={s.agent} /><span className="mono">{s.name}</span><span className="muted ags-desc" title={s.path}>{s.description || s.path}</span><span className="spacer" />
             <button className="btn sm" onClick={() => act("skill_adopt", { agent: s.agent, name: s.name }, `${s.name} is shared now`).catch(() => {})}>Share</button>
           </div>
         ))}
@@ -59,11 +59,11 @@ export default function Settings({ info, act, setTab }: { info: AgentsInfo; act:
   return (
     <div className="ag-grid set-grid">
       <Card title="Policy" sub="[agents] in kula.toml">
-        <div className="set-row"><span>Agents may keep memories</span><span className="spacer" />
+        <div className="ags-row"><span>Agents may keep memories</span><span className="spacer" />
           <Toggle label="" checked={info.memory_enabled} onChange={(v) => save({ memory: v }, v ? "Agent memory on" : "Agent memory off")} hint="Let agents remember facts about the code" testId="set-memory" className="sm" /></div>
-        <div className="set-row"><span>Hide likely secrets</span><span className="muted set-desc">.env, keys, certificates</span><span className="spacer" />
+        <div className="ags-row"><span>Hide likely secrets</span><span className="muted ags-desc">.env, keys, certificates</span><span className="spacer" />
           <Toggle label="" checked={info.secrets_hidden} onChange={(v) => save({ hide_secrets: v }, v ? "Secrets hidden from agents" : "Secrets visible to agents")} hint="Keep secrets out of every agent answer" testId="set-secrets" className="sm" /></div>
-        <div className="set-row"><span>Default agent</span><span className="spacer" />
+        <div className="ags-row"><span>Default agent</span><span className="spacer" />
           {wired.length === 0 ? <button className="btn sm ghost" onClick={() => setTab("connect")}>Connect one first</button> : (
             <div className="seg sm" role="radiogroup" aria-label="Default agent">
               {wired.map((c) => (
@@ -77,7 +77,7 @@ export default function Settings({ info, act, setTab }: { info: AgentsInfo; act:
       </Card>
       <Card title="Wiring" sub="what each agent reads" right={<button className="btn sm ghost" onClick={() => setTab("connect")}><Icon.plug /> Connect</button>}>
         {info.connections.map((c) => (
-          <div key={c.id} className="set-row">
+          <div key={c.id} className="ags-row">
             <AgentMark id={c.id} /><span>{c.name}</span><span className="spacer" />
             <span className={`tag ${c.mcp ? "green" : ""}`}>{c.mcp ? "MCP" : "no MCP"}</span>
             <span className={`tag ${c.hook ? "green" : ""}`}>{c.hook ? "hook" : "no hook"}</span>

@@ -335,7 +335,7 @@ input.mi-title { font: 600 14px var(--mono); }
 .org .org-hint { display: none; }
 .org-tinker { display: flex; flex-direction: column; gap: 8px; }
 .org-rel { font-size: 11px; }
-.wf-graph { margin: 8px 0; border: 1px solid var(--line); }
+.wf-graph { margin: 8px 0; border: 1px solid var(--line); overflow: hidden; }
 .wf-graph .fc-canvas { height: 320px; }
 .wf-graph-hint { padding: 4px 10px; border-top: 1px solid var(--line); font-size: 11px; }
 .wf-rel { font-size: 11px; }
