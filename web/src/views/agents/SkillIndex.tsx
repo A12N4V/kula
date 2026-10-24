@@ -23,7 +23,8 @@ export function GhMark() {
   return <Icon.gh />;
 }
 
-/** Fetch a hit's SKILL.md raw text from its own url – only when the pane opens. */
+/** Fetch a hit's SKILL.md raw text – only when the pane opens. The row's url is the
+ *  github.com page, which a browser may not read cross-origin; the raw host can be. */
 function useRawText(hit: SkillHit | null) {
   const [text, setText] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -31,7 +32,7 @@ function useRawText(hit: SkillHit | null) {
     if (!hit) return;
     let alive = true;
     setText(null); setErr(null);
-    fetch(hit.url)
+    fetch(`https://raw.githubusercontent.com/${hit.repo}/HEAD/${hit.path}`)
       .then((r) => { if (!r.ok) throw new Error(r.status === 404 ? "SKILL.md not found at that path" : `fetch failed – ${r.status}`); return r.text(); })
       .then((t) => { if (alive) setText(t); })
       .catch((e) => { if (alive) setErr(e.message); });
