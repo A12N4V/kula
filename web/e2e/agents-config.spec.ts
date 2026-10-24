@@ -1,4 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
+
+/** The repo the test server indexes (playwright runs `kula -C ..` from web/). */
+const REPO = path.resolve(process.cwd(), "..");
 
 // The Agents tab as the config home: it is on the rail, opens on the agents
 // (workflows) editor, keeps every agent-wide switch on Settings, imports a
@@ -21,8 +26,9 @@ test.describe("agents config home", () => {
     await expect(page).toHaveURL(/#agents$/);
     await expect(page.getByRole("tab", { name: "Agents", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator(".wf-edit")).toBeVisible();
-    // the record tabs are icons with names, so the strip never overflows
-    await expect(page.getByRole("tab", { name: "Memory", exact: true })).not.toContainText("Memory");
+    // a menu, not a graph: the agents are a list, the editor opens under it
+    await expect(page.locator("[data-testid^=wf-row-]").first()).toBeVisible();
+    await expect(page.locator(".wf-graph")).toHaveCount(0);
     await page.getByTestId("wf-use-workspace").click();
     await expect(page).toHaveURL(/#map\b/);
   });
@@ -46,10 +52,22 @@ test.describe("agents config home", () => {
     await expect(page.locator(".set-import")).toContainText(name);
     await page.getByTestId("set-skill-import").click();
     await expect(page.getByTestId("set-skill-text")).toHaveValue("");
+    // the skills index lists it where Codex reads it, as a repo skill for every agent
     await page.getByRole("tab", { name: "Skills", exact: true }).click();
-    await expect(page.locator(".ag-panel")).toContainText(name);
-    // clean up the shared fixture
-    const res = await page.request.post("/api/agents/skill_delete", { data: { name }, headers: { "x-kula-token": "test" } }).catch(() => null);
-    expect(res === null || res.ok() || res.status() < 500).toBeTruthy();
+    await page.getByTestId("sx-q").fill(name);
+    const row = page.getByTestId(`sx-row-${name}`);
+    await expect(row).toContainText("Imported by the e2e suite");
+    await row.click();
+    await expect(page.locator(".sx-detail")).toContainText(`.agents/skills/${name}/SKILL.md`);
+    await expect(page.locator(".sx-detail")).toContainText("Every agent");
+    // the server runs on this repo: take the skill and any agent copies back out
+    for (const d of [".agents/skills", ".claude/skills", ".gemini/skills"]) fs.rmSync(path.join(REPO, d, name), { recursive: true, force: true });
+    fs.rmSync(path.join(REPO, ".cursor/rules", `${name}.mdc`), { force: true });
+  });
+
+  test("instructions list the files each agent reads first", async ({ page }) => {
+    await open(page, "agents/instructions");
+    // the repo's root AGENTS.md is what Codex reads before anything else
+    await expect(page.getByTestId("instructions")).toContainText("AGENTS.md");
   });
 });

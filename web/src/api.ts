@@ -216,6 +216,7 @@ export const api = {
 
   // K2 · unified agent config: skills, rules, MCP, memory layers
   configMatrix: () => get<ConfigMatrix>("/api/agent/config_matrix"),
+  skillIndex: () => get<SkillIndex>("/api/agent/skill_index"),
   skillDetail: (name: string) => get<SkillDetail>(`/api/agent/skill_detail?${q({ name })}`),
   skillDiff: (name: string, agent: string) => get<SkillDiff>(`/api/agent/skill_diff?${q({ name, agent })}`),
   memoryLayers: () => get<MemoryLayer[]>("/api/agent/memory_layers"),
@@ -260,3 +261,15 @@ export interface EmbedRun { running: boolean; phase: string; done: number; total
 export interface EmbedStatusFull { enabled: boolean; installed: boolean; feature: boolean; model_dir: string; run: EmbedRun }
 
 export type LangRow = { id: string; name: string; files: number; indexed: boolean; builtin: boolean; tier: string };
+
+/** The skills index (src/skill_index.rs): every skill and instruction file an
+ *  agent would load here, found where Claude Code, Codex, Gemini and Cursor look. */
+export interface IndexedSkill {
+  name: string; description: string;
+  agent: "claude" | "codex" | "gemini" | "cursor" | "shared";
+  scope: "repo" | "nested" | "plugin" | "user" | "admin";
+  kind: "skill" | "command" | "rule";
+  path: string; meta: Record<string, string>; body: string; plugin?: string;
+}
+export interface InstructionFile { path: string; agent: "claude" | "codex" | "gemini"; scope: "repo" | "nested" | "user"; bytes: number; headline: string }
+export interface SkillIndex { skills: IndexedSkill[]; instructions: InstructionFile[]; searched: string[] }

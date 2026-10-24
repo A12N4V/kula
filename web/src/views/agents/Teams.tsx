@@ -22,7 +22,7 @@ import { TeamOrg, teamProblems, workflowColor } from "./TeamOrg";
 export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Act; setTab?: (t: Tab) => void }) {
   const [picking, setPicking] = useState(info.teams.length === 0);
   const [teams, setTeams] = useState<Team[]>(info.teams);
-  const [view, setView] = useState<"boxes" | "graph">(() => { try { return localStorage.getItem("kula.teams.view") === "boxes" ? "boxes" : "graph"; } catch { return "graph"; } });
+  const [view, setView] = useState<"boxes" | "graph">(() => { try { return localStorage.getItem("kula.teams.view") === "graph" ? "graph" : "boxes"; } catch { return "boxes"; } }); // a listing by default; the graph is opt-in
   const pickView = (v: "boxes" | "graph") => { setView(v); try { localStorage.setItem("kula.teams.view", v); } catch { /* */ } };
   const [cur, setCur] = useState(() => Math.max(0, info.teams.findIndex((t) => t.name === info.team?.name)));
   // A team created from the map's Library rail lands here selected: the rail

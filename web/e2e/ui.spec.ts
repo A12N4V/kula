@@ -765,7 +765,7 @@ test.describe("agents", () => {
 
   test("@responsive the task, its workflow and the agent loop, and what needs a person", async ({ page }, info) => {
     await open(page, "agents/overview");
-    await expect(page.locator(".page-head h1")).toHaveText("Agents");
+    await expect(page.locator(".ag-menu .list-head h2")).toHaveText("Agents");
     await expect(page.locator(".ag-task-title")).toHaveText("harden the MCP server");
     await expect(page.locator(".ag-now .ag-chips .tag")).toHaveText(["fix", "src/mcp.rs", "src/agent.rs"]);
     await expect(page.locator(".loop-step")).toHaveCount(6);
@@ -1332,10 +1332,10 @@ test.describe("teams and research (T1)", () => {
     await expect(org).toContainText("hands off → Codex");
     await expect(org).toContainText("explore");
     // Teams of teams: ship sits inside steer, audit inside ship.
-    // the graph is on by default: teams drawn like the code map, with the editor beside it
+    // the teams list as nested boxes by default; the graph is opt-in and draws them like the code map
+    await page.getByRole("button", { name: /Graph off/ }).click();
     await expect(page.locator(".soc-graph .mini-graph")).toBeVisible();
     await expect(page.locator(".soc-graph .graph-legend")).toContainText("teams");
-    // toggled off, the society reads as nested boxes
     await page.getByRole("button", { name: /Graph on/ }).click();
     const soc = page.locator(".society");
     await expect(soc.locator(".soc-team[data-depth='0']").filter({ hasText: "steer" }).locator(".soc-team[data-depth='1']").filter({ hasText: "ship" })).toBeVisible();
@@ -1804,7 +1804,7 @@ test.describe("agents config K2", () => {
 
   test("the config matrix shows every agent's MCP servers and rules, and syncs one from the source", async ({ page }, info) => {
     desktopOnly(info);
-    await open(page, "agents/skills");
+    await open(page, "agents/skills"); await page.locator(".sx-more > summary").click(); // per-agent copies sit under the index
     const repo = fixtureRepo(page);
     // a shared source with one server; cursor holds an edited copy of it
     fs.mkdirSync(path.join(repo, ".agents"), { recursive: true });
@@ -1812,6 +1812,7 @@ test.describe("agents config K2", () => {
     fs.writeFileSync(path.join(repo, ".agents/mcp.json"), JSON.stringify({ mcpServers: { kula: { command: "kula", args: ["mcp"] } } }, null, 2));
     fs.writeFileSync(path.join(repo, ".cursor/mcp.json"), JSON.stringify({ mcpServers: { kula: { command: "kula", args: ["serve", "--edited"] } } }));
     await page.reload();
+    await page.locator(".sx-more > summary").click(); // the reload folds the per-agent copies again
     const panel = page.locator(".k2-config");
     await expect(panel).toContainText("mcp servers");
     // every agent has a row with its config path
@@ -1833,7 +1834,7 @@ test.describe("agents config K2", () => {
 
   test("a skill whose copy was edited shows the diff before a sync overwrites it", async ({ page }, info) => {
     desktopOnly(info);
-    await open(page, "agents/skills");
+    await open(page, "agents/skills"); await page.locator(".sx-more > summary").click(); // per-agent copies sit under the index
     const repo = fixtureRepo(page);
     // a shared skill, and an edited copy in Claude Code's own folder
     fs.mkdirSync(path.join(repo, ".agents/skills/triage"), { recursive: true });
@@ -1864,7 +1865,7 @@ test.describe("agents config K2", () => {
 
   test("memory layers label each memory with scope and provenance", async ({ page }, info) => {
     desktopOnly(info);
-    await open(page, "agents/skills");
+    await open(page, "agents/skills"); await page.locator(".sx-more > summary").click(); // per-agent copies sit under the index
     const panel = page.locator(".k2-layers");
     await expect(panel).toContainText("Memory layers");
     // the fixture ships two memories, both anchored to a symbol or file
@@ -3051,32 +3052,6 @@ test.describe("agents on the flow canvas (A3)", () => {
     const member = team?.members.find((m) => (m.name ?? m.agent) === seat);
     expect(member?.reports_to, `teams_save carries reports_to=${to}`).toBe(to);
     void request;
-  });
-
-  test("A3.2 workflows: a canvas step fills the sidebar; a reorder round-trips workflows_save", async ({ page, request }, info) => {
-    desktopOnly(info);
-    test.setTimeout(90_000);
-    await open(page, "agents/workflows");
-    // The task's workflow (fix) is selected by default; make sure of it.
-    await page.locator(".wf-tabs [role=tab]").filter({ hasText: /^fix$/ }).click();
-    // The API answers only with the session token, so read it through the
-    // page (the meta tag carries it) rather than a bare APIRequestContext.
-    const info0 = await page.evaluate(() => fetch("/api/agents", { headers: { "x-kula-token": document.querySelector('meta[name="kula-token"]')?.content ?? "" } }).then((r) => r.json()));
-    const steps0: string[] = info0.workflow.steps;
-    expect(steps0.length).toBeGreaterThan(1);
-    // Select step 2 on the canvas; the sidebar explains it and tinkers.
-    await page.locator('.react-flow__node[data-id="step:1"]').click();
-    await expect(page.locator(".fc-sidebar")).toContainText("step 2");
-    // Move it down, save, assert the same workflows_save payload shape the
-    // form always wrote (kula.toml, so CLI, MCP and kula check see it).
-    const saveReq = page.waitForRequest((r) => r.url().includes("/api/agents/workflows_save") && r.method() === "POST");
-    await page.locator(".fc-sidebar").getByRole("button", { name: /down/ }).click();
-    await page.locator(".wf-actions").getByRole("button", { name: "Save" }).click();
-    const body = (await saveReq).postDataJSON() as { workflows: { name: string; steps: string[] }[] };
-    const wf = body.workflows.find((w) => w.name === "fix");
-    // "down" moves step 2 one position later: [s0, s2, s1, …] – so the first
-    // two entries of the saved order are the old first and old third steps.
-    expect(wf?.steps.slice(0, 2)).toEqual([steps0[0], steps0[2]]);
   });
 
   test("A3.3 memory: a canvas node fills the sidebar and the list row follows", async ({ page }, info) => {

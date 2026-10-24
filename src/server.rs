@@ -1228,6 +1228,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         // sibling /api/agents/{action} MethodRouter, so a GET there answers 405
         .route("/api/agent/config_matrix", get(k2_config_matrix))
         .route("/api/agent/skill_detail", get(k2_skill_detail))
+        .route("/api/agent/skill_index", get(k2_skill_index))
         .route("/api/agent/skill_diff", get(k2_skill_diff))
         .route("/api/agent/memory_layers", get(k2_memory_layers))
         .route("/api/agent/mcp_sync", post(k2_mcp_sync))
@@ -1311,6 +1312,12 @@ pub fn serve(repo: Repo, port: u16, open_browser: bool) -> anyhow::Result<()> {
 /// rules files, against the shared source in .agents/mcp.json.
 async fn k2_config_matrix(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(crate::agent_config::matrix(&s.repo.root)?))).await
+}
+
+/// GET /api/agent/skill_index – every skill and instruction file an agent
+/// would load here, found where Claude Code, Codex, Gemini and Cursor look.
+async fn k2_skill_index(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!(crate::skill_index::index(&s.repo.root)))).await
 }
 
 /// GET /api/agents/skill_detail?name= – one skill: per-agent copy states, its

@@ -479,3 +479,85 @@
 .set-import-text { width: 100%; resize: vertical; min-height: 96px; }
 .set-import-src label { cursor: pointer; }
 .agents .page-head { align-items: flex-start; gap: 12px; }
+
+/* Agents as a menu + listing (Flows-style split): the menu on the left */
+.ag-split .ag-menu { display: flex; flex-direction: column; }
+.ag-menu .ag-tabs { display: flex; flex-direction: column; gap: 1px; border: 0; margin: 0; padding: 6px 8px 16px; overflow: visible; }
+.ag-group { padding: 14px 8px 6px; font: 600 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
+.ag-menu .ag-tabs button.ag-mi { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 10px; border: 0; margin: 0; background: none; color: var(--text-2); font-size: 13px; text-align: left; }
+.ag-menu .ag-tabs button.ag-mi:hover { background: var(--panel-2); color: var(--text); }
+.ag-menu .ag-tabs button.ag-mi.on { background: var(--accent-soft); color: var(--text); }
+.ag-menu .ag-tabs button.ag-mi.on svg { color: var(--accent); }
+.ag-mi svg { width: 15px; height: 15px; flex: none; }
+.ag-mi-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-mi-n { font: 11px var(--mono); color: var(--text-3); }
+.ag-detail { max-width: 1100px; }
+.ag-detail .page-head { margin-bottom: 16px; }
+@media (max-width: 760px) {
+  .ag-split { display: flex; flex-direction: column; overflow: auto; }
+  .ag-split > .list.ag-menu { flex: none; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+  .ag-split > .grip { display: none; }
+  .ag-menu .ag-tabs { flex-direction: row; overflow-x: auto; scrollbar-width: none; padding: 4px 8px 8px; gap: 4px; }
+  .ag-menu .ag-group { display: none; }
+  .ag-menu .ag-tabs button.ag-mi { width: auto; height: 40px; white-space: nowrap; }
+  .ag-split > .detail { display: block; overflow: visible; } /* the menu is a strip on phones, so the listing stays */
+}
+
+/* the agents (workflows) list */
+.wf-list { display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--panel); }
+.wf-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 14px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); text-align: left; cursor: pointer; }
+.wf-row:last-child { border-bottom: 0; }
+.wf-row:hover { background: var(--panel-2); }
+.wf-row.on { background: var(--accent-soft); }
+.wf-row.on .wf-row-name { color: var(--accent); }
+.wf-dot { width: 7px; height: 7px; flex: none; border: 1px solid var(--line-2); }
+.wf-dot.live { background: var(--accent); border-color: var(--accent); }
+.wf-row-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.wf-row-name { font-size: 13px; }
+.wf-row-about { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-row-tags { display: flex; align-items: center; gap: 6px; flex: none; }
+.wf-row-n { font: 11px var(--mono); }
+.wf-add { color: var(--text-3); min-height: 40px; }
+.wf-add svg { width: 14px; height: 14px; }
+@media (max-width: 760px) { .wf-row-tags .tag { display: none; } }
+
+/* skills index + instructions */
+.sx { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.sx-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sx-q { display: flex; align-items: center; gap: 6px; flex: 1 1 220px; min-width: 0; padding-left: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text-3); }
+.sx-q svg { width: 14px; height: 14px; flex: none; }
+.sx-q .input { flex: 1; min-width: 0; border: 0; background: none; }
+.sx-n { font: 11px var(--mono); color: var(--text-3); }
+.sx-agents { display: flex; gap: 2px; }
+.sx-agent { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--line); background: var(--panel); color: var(--text-2); cursor: pointer; }
+.sx-agent.on { border-color: var(--accent); background: var(--accent-soft); }
+.sx-agent svg { width: 14px; height: 14px; }
+.sx-list { display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--panel); }
+.sx-row { border-bottom: 1px solid var(--line); }
+.sx-row:last-child { border-bottom: 0; }
+.sx-row.on { background: var(--bg-2); }
+.sx-head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 8px 14px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.sx-head:hover:not(:disabled) { background: var(--panel-2); }
+.sx-head:disabled { cursor: default; }
+.sx-mark { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border: 1px solid var(--line); color: var(--text-2); }
+.sx-mark svg { width: 14px; height: 14px; }
+.sx-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.sx-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-desc { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-tags { display: flex; align-items: center; gap: 6px; flex: none; }
+.sx-caret { display: grid; place-items: center; color: var(--text-3); transition: transform var(--dur) var(--ease); }
+.sx-caret svg { width: 14px; height: 14px; }
+.sx-caret.on { transform: rotate(180deg); }
+.sx-detail { display: grid; gap: 10px; padding: 4px 14px 14px 52px; }
+.sx-facts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--text-2); }
+.sx-facts b { font-weight: 600; color: var(--text-3); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-right: 4px; }
+.sx-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.sx-body { margin: 0; max-height: 280px; overflow: auto; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg); font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.sx-where summary, .sx-more summary { cursor: pointer; color: var(--text-3); font-size: 12px; padding: 4px 0; }
+.sx-where ul { margin: 6px 0 0; padding-left: 18px; font-size: 11.5px; color: var(--text-3); }
+.sx-more { margin: 4px 0 12px; }
+.sx-more[open] > summary { margin-bottom: 10px; }
+.sx-lede { margin: 0; max-width: 72ch; font-size: 12.5px; }
+.sx-group { display: grid; gap: 6px; }
+.sx-group .section-title { display: flex; align-items: center; gap: 6px; }
+@media (max-width: 760px) { .sx-detail { padding-left: 14px; } .sx-tags .tag + .tag { display: none; } }

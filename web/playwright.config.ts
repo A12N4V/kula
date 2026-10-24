@@ -42,7 +42,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `KULA_NO_AGENT=1 KULA_TOKEN=test ../target/debug/kula -C .. view --no-open --port ${PORT}`,
+      command: `KULA_NO_AGENT=1 KULA_SKILL_HOME= KULA_TOKEN=test ../target/debug/kula -C .. view --no-open --port ${PORT}`,
       url: `http://localhost:${PORT}`,
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,

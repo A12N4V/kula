@@ -14,14 +14,14 @@ async function open(page: Page, hash = "overview") {
 }
 
 test.describe("s1 agents split", () => {
-  test("the ten agents tabs all render: config first, the record as icons", async ({ page }) => {
+  test("the agents menu lists every section: configure first, then activity", async ({ page }) => {
     test.skip(test.info().project.name !== "desktop");
     await open(page);
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // `a` opens Agents (its rail item is back as the config home)
-    await expect(page.locator(".page-head h1")).toHaveText("Agents");
+    await expect(page.locator(".ag-menu .list-head h2")).toHaveText("Agents");
     const tabs = page.locator(".ag-tabs [role=tab]");
-    await expect(tabs).toHaveCount(10);
-    for (const name of ["Agents", "Teams", "Skills", "Fences", "Connect", "Settings", "Overview", "Research", "Memory", "Docs"]) {
+    await expect(tabs).toHaveCount(11);
+    for (const name of ["Agents", "Teams", "Skills", "Instructions", "Fences", "Connect", "Settings", "Overview", "Research", "Memory", "Docs"]) {
       await expect(page.getByRole("tab", { name, exact: true })).toBeVisible();
     }
     await expect(page.getByRole("tab", { name: "Agents", exact: true })).toHaveAttribute("aria-selected", "true");
@@ -32,7 +32,7 @@ test.describe("s1 agents split", () => {
     await open(page, "agents");
     await page.getByRole("tab", { name: "Agents", exact: true }).click();
     await expect(page.locator(".wf-tabs")).toBeVisible();
-    await expect(page.locator(".wf-tabs [role=tab]").first()).toBeVisible();
+    await expect(page.locator(".wf-list [role=tab]").first()).toBeVisible();
     await expect(page.locator(".wf-edit")).toBeVisible();
     await page.getByRole("tab", { name: "Memory", exact: true }).click();
     await expect(page.locator(".ag-remember")).toBeVisible();
