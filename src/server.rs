@@ -1353,13 +1353,12 @@ fn cards_from(cfg: &config::Config, skill_names: &[String], connections: &[(Stri
                 .map(|(id, _)| id.clone())
                 .unwrap_or_else(|| "any".into());
             // the team seats that sit in this workflow carry role and model
-            let seat = cfg
-                .teams
-                .iter()
-                .flat_map(|t| t.members.iter().map(move |m| (t.name.clone(), m)))
-                .find(|(_, m)| m.workflow == w.name);
-            let (role, model) = seat.map_or_else(|| (String::new(), None), |(_, m)| (m.role.clone(), (!m.model.is_empty()).then(|| m.model.clone())));
-            let scope_kinds = w.scope.iter().map(|s| if s.starts_with('@') { s.trim_start_matches('@').to_string() } else { "paths".into() });
+            let seat =
+                cfg.teams.iter().flat_map(|t| t.members.iter().map(move |m| (t.name.clone(), m))).find(|(_, m)| m.workflow == w.name);
+            let (role, model) =
+                seat.map_or_else(|| (String::new(), None), |(_, m)| (m.role.clone(), (!m.model.is_empty()).then(|| m.model.clone())));
+            let scope_kinds =
+                w.scope.iter().map(|s| if s.starts_with('@') { s.trim_start_matches('@').to_string() } else { "paths".into() });
             let text = format!("{}\n{}", w.steps.join("\n"), w.prompt);
             let skills: Vec<String> = skill_names.iter().filter(|s| text.contains(s.as_str())).take(4).cloned().collect();
             let mut tags: Vec<String> = std::iter::once(agent.clone()).chain(scope_kinds).chain(skills.iter().cloned()).take(4).collect();
@@ -1560,10 +1559,19 @@ mod b1_tests {
             ..Default::default()
         };
         let cfg = config::Config {
-            workflows: vec![w("mapcard", "map the code", vec!["@src".into(), "src/**".into()], true), w("testcard", "write tests", vec![], false)],
+            workflows: vec![
+                w("mapcard", "map the code", vec!["@src".into(), "src/**".into()], true),
+                w("testcard", "write tests", vec![], false),
+            ],
             teams: vec![config::Team {
                 name: "ship".into(),
-                members: vec![config::Member { workflow: "testcard".into(), agent: "codex".into(), model: "gpt-5".into(), role: "review".into(), ..Default::default() }],
+                members: vec![config::Member {
+                    workflow: "testcard".into(),
+                    agent: "codex".into(),
+                    model: "gpt-5".into(),
+                    role: "review".into(),
+                    ..Default::default()
+                }],
                 ..Default::default()
             }],
             ..Default::default()

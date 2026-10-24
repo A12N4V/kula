@@ -132,7 +132,10 @@ pub fn search(q: &str) -> Found {
 /// The skill's folder a `SKILL.md` path lives in, and every file in it.
 /// Folder imports walk the git tree: SKILL.md plus `scripts/`, `references/`
 /// and `assets/` travel together, up to 1 MB, never a symlink, never `..`.
-pub fn folder_import(_root: &Path, repo: &str, path: &str) -> Result<(String, String, Vec<(String, Vec<u8>)>)> {
+/// Imported folder: (name, description, files).
+pub type FolderImport = (String, String, Vec<(String, Vec<u8>)>);
+
+pub fn folder_import(_root: &Path, repo: &str, path: &str) -> Result<FolderImport> {
     if offline() {
         bail!("GitHub is off (KULA_NO_NET)");
     }
@@ -165,12 +168,8 @@ pub fn folder_import(_root: &Path, repo: &str, path: &str) -> Result<(String, St
         out.push((rel, gh_bytes(&["api", &format!("repos/{repo}/contents/{p}"), "-H", "Accept: application/vnd.github.raw"])?));
     }
     // name and description come from SKILL.md's front matter
-    let (meta, _) = out
-        .iter()
-        .find(|(f, _)| f == "SKILL.md")
-        .and_then(|(_, b)| std::str::from_utf8(b).ok())
-        .map(split_front)
-        .unwrap_or(("", ""));
+    let (meta, _) =
+        out.iter().find(|(f, _)| f == "SKILL.md").and_then(|(_, b)| std::str::from_utf8(b).ok()).map(split_front).unwrap_or(("", ""));
     let field = |k: &str| {
         meta.lines()
             .find_map(|l| l.strip_prefix(&format!("{k}:")).map(|v| v.trim().trim_matches(['"', '\'']).to_string()))
@@ -230,7 +229,10 @@ pub fn adopt_mcp(root: &Path, server: &str) -> Result<Vec<String>> {
     let def = v["mcpServers"][server].clone();
     anyhow::ensure!(!def.is_null(), "no server {server:?} in {}", src.display());
     let shared_path = root.join(crate::agent_config::MCP_SOURCE);
-    let mut shared: Value = std::fs::read_to_string(&shared_path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_else(|| json!({ "mcpServers": {} }));
+    let mut shared: Value = std::fs::read_to_string(&shared_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| json!({ "mcpServers": {} }));
     let obj = shared.as_object_mut().ok_or_else(|| anyhow!("{} is not a json object", shared_path.display()))?;
     let servers = obj.entry("mcpServers").or_insert_with(|| json!({}));
     servers.as_object_mut().ok_or_else(|| anyhow!("mcpServers is not an object"))?.insert(server.to_string(), def);
