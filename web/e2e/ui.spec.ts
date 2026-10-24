@@ -3069,7 +3069,7 @@ test.describe("agents add from the map rail (U3)", () => {
     const teamTab = page.locator(".team-tabs [role=tab]").filter({ hasText: teamName });
     await expect(teamTab).toHaveClass(/on/);
     await expect(teamTab).toBeInViewport();
-    await expect(page.locator("[data-testid=team-canvas] .tc-head-name")).toHaveText(teamName);
+    await expect(page.locator(".tc-head .tc-head-name")).toHaveText(teamName);
     // add agent from the rail: the workflow editor opens on it, fence prefilled
     await open(page, "map");
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });

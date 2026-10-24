@@ -19,6 +19,10 @@ import type { Act } from "./data";
 import type { Member } from "./TeamCanvas";
 import { memberKey } from "./TeamCanvas";
 
+
+/** The lead is the first seat that answers to no one – the canvas draws it on top. */
+const leadSeat = (team: Team) => { const l = team.members.find((m) => !m.reports_to); return l ? memberKey(l) : null; };
+
 export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd, onRemove, onPickMember, onDelete, onClose }: {
   team: Team; all: Team[]; info: AgentsInfo; member: string | null; act: Act;
   onSet: (x: Partial<Team>) => void;
@@ -67,7 +71,7 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
                     style={{ ["--tc-a" as string]: a, ["--tc-b" as string]: b }}>
                     <AgentHarmonograph name={k} size={22} />
                     <span className="tc-mcard-name mono">{m.name || m.agent || "any agent"}</span>
-                    <span className="tc-mcard-sub">{m.reports_to ? titleFor(m.role || "member") : "lead"}{m.workflow ? ` · ${m.workflow}` : ""}</span>
+                    <span className="tc-mcard-sub">{memberKey(m) === leadSeat(team) ? "lead" : titleFor(m.role || "member")}{m.workflow ? ` · ${m.workflow}` : ""}</span>
                     <span className="spacer" />
                     <span className="tc-mcard-x" title={`Remove ${m.name || m.agent} from the team`} aria-label={`Remove ${m.name || m.agent}`}
                       onClick={(e) => { e.stopPropagation(); onRemove(m.workflow || k); }}><Icon.minus /></span>
@@ -140,7 +144,7 @@ function MemberEdit({ team, m, info, act, onSet, onClose }: {
   const known = !m.agent || m.agent === "any" || AGENT_IDS.includes(m.agent);
   return (
     <section className="tc-member-edit" aria-label={`Edit ${m.name || m.agent}`}>
-      <div className="mi-kind"><AgentHarmonograph name={k} size={16} /> {m.reports_to ? titleFor(m.role || "member") : "lead"}<span className="spacer" />
+      <div className="mi-kind"><AgentHarmonograph name={k} size={16} /> {k === leadSeat(team) ? "lead" : titleFor(m.role || "member")}<span className="spacer" />
         <button className="btn sm ghost icon-only" onClick={onClose} aria-label="Back to the team"><Icon.close /></button>
       </div>
       <label className="mi-field"><span>name</span>

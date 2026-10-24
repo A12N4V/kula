@@ -18,21 +18,22 @@ export type Member = Team["members"][number];
 
 /** Where a member sits when nothing is saved: the lead on top, members below. */
 function defaultLayout(members: Member[]): Record<string, [number, number]> {
-  const lead = members.findIndex((m) => !m.reports_to);
+  const lead = Math.max(0, members.findIndex((m) => !m.reports_to));
   const out: Record<string, [number, number]> = {};
-  let row = 0, col = 0;
+  const rest = members.length - 1;
+  let col = 0;
   members.forEach((m, i) => {
     if (i === lead) out[key(m)] = [0, 0];
-    else out[key(m)] = [col++ * (W + GAP) - ((members.length - 2) * (W + GAP)) / 2, H + GAP];
+    else out[key(m)] = [(col++ - (rest - 1) / 2) * (W + GAP), H + GAP * 1.5];
   });
   return out;
 }
 
 const key = (m: Member) => seatKey(m) || `seat-${m.workflow || "none"}-${m.agent || "any"}`;
 
-function SquareNode({ data }: { data: { member: Member; live: boolean } }) {
+function SquareNode({ data }: { data: { member: Member; live: boolean; lead: boolean } }) {
   const m = data.member;
-  const isLead = !m.reports_to;
+  const isLead = data.lead;
   const [a, b] = agentGradient(key(m));
   return (
     <div className={`tc-node${data.live ? " live" : ""}`} style={{ ["--tc-a" as string]: a, ["--tc-b" as string]: b }}>
@@ -56,43 +57,59 @@ function Canvas({ team, info, live, onMove, onOpen }: {
   const rf = useReactFlow();
   const reduced = useRef(false);
   useEffect(() => { reduced.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches; }, []);
+  // The team is refetched on every poll: key the drawing on its content, so
+  // an unchanged team never resets the flow state (and the squares stay put).
+  const sig = JSON.stringify([team.members, team.positions ?? null]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const members = useMemo(() => team.members, [sig]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const positions = useMemo(() => team.positions, [sig]);
   const nodes = useMemo<Node[]>(() => {
-    const saved = team.positions && Object.keys(team.positions).length ? team.positions : defaultLayout(team.members);
-    return team.members.map((m) => {
+    const saved = { ...defaultLayout(members), ...(positions ?? {}) };
+    const lead = members.find((m) => !m.reports_to);
+    return members.map((m) => {
       const k = key(m);
       const [x, y] = saved[k] ?? [0, H + GAP];
       return {
         id: k, type: "tc", position: { x, y },
-        zIndex: m.reports_to ? 0 : 2, // the lead on top
-        data: { member: m, live },
+        zIndex: m === lead ? 2 : 0, // the lead on top
+        data: { member: m, live, lead: m === lead },
         draggable: true,
         style: { width: W, height: H },
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
       };
     });
-  }, [team.members, team.positions, live]);
+  }, [members, positions, live]);
   const edges = useMemo<Edge[]>(() => {
     // A seat's reports_to may name the lead by agent, name or seat key – the
     // same fixture may hold any of them. Resolve it to the node id we drew.
     const resolve = (rep: string): string | null => {
-      const target = team.members.find((x) => key(x) === rep || x.agent === rep || x.name === rep);
+      const target = members.find((x) => key(x) === rep || x.agent === rep || x.name === rep);
       return target ? key(target) : null;
     };
-    return team.members.flatMap((m) => {
-      const src = m.reports_to ? resolve(m.reports_to) : null;
+    // A seat with no answers-to hangs off the lead (the first seat without
+    // one), so every team reads as lead → members.
+    const lead = members.find((m) => !m.reports_to);
+    return members.flatMap((m) => {
+      const src = m.reports_to ? resolve(m.reports_to) : lead && m !== lead ? key(lead) : null;
       return src && src !== key(m) ? [{
         id: `${src}->${key(m)}`, source: src, target: key(m),
         style: { stroke: "var(--line-2)" }, animated: false,
       }] : [];
     });
-  }, [team.members]);
+  }, [members]);
   // Controlled flow state: the nodes and edges follow the team (the effects
   // sync on every team change), so a tab switch redraws exactly its members.
   const [rfNodes, setRfNodes, onNodesState] = useNodesState<Node>([]);
   const [rfEdges, setRfEdges, onEdgesState] = useEdgesState<Edge>([]);
   useEffect(() => { setRfNodes(nodes); }, [setRfNodes, nodes]);
   useEffect(() => { setRfEdges(edges); }, [setRfEdges, edges]);
+  const count = members.length;
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => rf.fitView({ padding: 0.25, maxZoom: 1.1 }));
+    return () => window.cancelAnimationFrame(id);
+  }, [rf, team.name, count]);
   // Drag-stop → save. One write per gesture, debounced 500 ms.
   const timer = useRef<number>(0);
   const pending = useRef<Record<string, [number, number]>>({});
@@ -113,7 +130,7 @@ function Canvas({ team, info, live, onMove, onOpen }: {
         onNodesChange={onNodesChange} onEdgesChange={onEdgesState}
         onNodeClick={(_, n) => onOpen(n.id)}
         nodesConnectable={false} edgesFocusable={false} nodesFocusable={false}
-        panOnDrag minZoom={0.4} maxZoom={2}
+        fitView fitViewOptions={{ padding: 0.25, maxZoom: 1.1 }} panOnDrag minZoom={0.4} maxZoom={2}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={2} color="var(--line)" />
