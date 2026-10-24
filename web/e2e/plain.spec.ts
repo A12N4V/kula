@@ -80,15 +80,17 @@ test("T2 the Show code names toggle swaps captions to technical names and back",
   await page.locator('[data-testid="u9-plain-chip"]').click();
   const toggle = page.locator('[data-testid="x5-plain-toggle"]');
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
-  const plain = (await page.locator('[data-testid="x5-plain-caption"]').first().textContent()) ?? "";
+  // a code square's caption – the whole-codebase square has no code name
+  const cap = page.locator('[data-testid^="fc-node-"]:not([data-testid="fc-node-codebase"]) [data-testid="x5-plain-caption"]').first();
+  const plain = (await cap.textContent()) ?? "";
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  const code = (await page.locator('[data-testid="x5-plain-caption"]').first().textContent()) ?? "";
+  const code = (await cap.textContent()) ?? "";
   expect(code.trim()).not.toBe(plain.trim());
   // the technical name is a code identifier, not the plain words
   expect(code.trim()).toMatch(/[A-Za-z_]/);
   await toggle.click();
-  await expect(page.locator('[data-testid="x5-plain-caption"]').first()).toHaveText(plain);
+  await expect(cap).toHaveText(plain);
 });
 
 test("T3 hovering a square shows its one-sentence summary", async ({ page }) => {

@@ -1,9 +1,10 @@
 // U6 · Agents on the terrain – with the Agents layer on, a fenced agent is an
-// agent square (harmonograph mark, name, dashed hue border) beside the squares
-// it is fenced to with dashed wires into them; an agent with access to the
-// whole codebase sits left of one "whole codebase" block (colour bands =
-// directory shares); Agents off → no agent marks anywhere. The left actor
-// column stays as the phone-only list fallback. Assert by name, never counts.
+// agent square (harmonograph mark, name, dashed hue border) in the band above
+// the zone row, over the zone it covers, outside every zone frame, with
+// dashed gradient wires into its fenced squares; an agent with access to the
+// whole codebase sits beside the "whole codebase" block (colour bands =
+// directory shares), also outside the zones; Agents off → no agent marks
+// anywhere. Assert by name, never counts.
 import { expect, test, type Page } from "@playwright/test";
 import { FIXTURE } from "../playwright.config";
 import { explore } from "./explore";
@@ -57,25 +58,28 @@ test("agents layer off → no agent marks anywhere, on → the agent squares app
   await expect(page.locator('[data-testid="fc-node-agent:polish"]')).toBeVisible();
 });
 
-test("a fenced agent's square sits right above its first fenced square (≤ 1 grid cell)", async ({ page }) => {
+test("a fenced agent's square sits above its zone, outside the zone frame (U12 band)", async ({ page }) => {
   await opened(page);
-  const gap = await page.evaluate(() => {
-    const box = (el: Element) => el.getBoundingClientRect();
-    const a = box(document.querySelector('[data-testid="fc-node-agent:polish"]')!);
-    // lead: agents sit in a lane above the map, over their first fenced
-    // square – the nearest square below the agent that shares its x-range
-    let best: { gap: number } | null = null;
-    for (const s of document.querySelectorAll('[data-testid="map-flow"] .fc-solid')) {
-      const b = box(s);
-      const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-      const gap = b.top - a.bottom; // agent above the square
-      if (gap < -4 || overlapX <= 0) continue;
-      if (!best || gap < best.gap) best = { gap };
-    }
-    return best?.gap ?? null;
+  const geo = await page.evaluate(() => {
+    const box = (el: Element) => { const r = el.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; };
+    const hit = (a: ReturnType<typeof box>, b: ReturnType<typeof box>, pad = 2) =>
+      Math.min(a.r, b.r) - Math.max(a.l, b.l) - pad > 0 && Math.min(a.b, b.b) - Math.max(a.t, b.t) - pad > 0;
+    const a = document.querySelector('[data-testid="fc-node-agent:polish"]')!;
+    const ab = box(a);
+    // above the zone row: no zone frame or block square shares its band
+    const zones = [...document.querySelectorAll('[data-testid^="fc-node-zone"]')].map(box);
+    const blocks = [...document.querySelectorAll('[data-testid="map-flow"] .fc-solid')]
+      .filter((el) => { const t = el.getAttribute("data-testid") ?? ""; return !t.startsWith("fc-node-agent:") && t !== "fc-node-codebase" && !t.startsWith("fc-node-zone"); })
+      .map(box);
+    // and it sits over the zone its fenced squares live in (x-range overlap with that zone)
+    const over = zones.some((z) => Math.min(ab.r, z.r) - Math.max(ab.l, z.l) > 0);
+    return { over, onZone: zones.some((z) => hit(ab, z)), onBlock: blocks.some((s) => hit(ab, s)),
+      aboveEveryZone: zones.every((z) => ab.b <= z.t) };
   });
-  expect(gap, "agent square within one grid cell (80px screen) of its first fenced square").not.toBeNull();
-  expect(gap!).toBeLessThanOrEqual(80);
+  expect(geo.onZone, "agent square inside a zone frame").toBe(false);
+  expect(geo.onBlock, "agent square over a block square").toBe(false);
+  expect(geo.aboveEveryZone, "agent square above the zone row").toBe(true);
+  expect(geo.over, "agent square over the zone it covers").toBe(true);
   // and it carries the agent's harmonograph mark and its name
   await expect(page.locator('[data-testid="fc-node-agent:polish"]')).toContainText("polish");
   await expect(page.locator('[data-testid="fc-node-agent:polish"] [data-figure]').first()).toBeAttached();
