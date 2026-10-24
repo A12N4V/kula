@@ -11,11 +11,12 @@ fixes them. X9 re-runs this audit after wave 2 and signs off.
 | # | Finding | Where | Owner | Test |
 |---|---|---|---|---|
 | 1 | `sb-help` buttons ("panel", "? shortcuts") collide with in-page `btn sm` buttons ("Still true" memory confirm, "team") at 1440 and 390 | `App.tsx:308-309` vs `views/agents/Memory.tsx:82`, `Overview.tsx:170` | U13 | `overlap.spec.ts › x8/U13` |
-| 2 | Map legend (`div.graph-overlay.legend`) overflows its box (pinned by content) | `views/map/legend.tsx` | U11 | `overflow.spec.ts › x8/U11` |
+| 2 | Map legend (`div.graph-overlay.legend`) overflows its box (pinned by content) | `views/map/legend.tsx` | U11 | `overflow.spec.ts › x8/U11` (passes on base after the probe fix – kept as regression guard) |
 | 3 | Map colour key and "Map in plain words" dock render over block squares | `views/map/legend.tsx`, `views/map/plain.tsx` | U11 | `overlap.spec.ts › x8/U11` |
-| 4 | Transport `.tp` vs zoom row collision risk on map phone (390) | `views/MapView.tsx` transport rows | U11 | `overlap.spec.ts › x8/U11 transport` |
-| 5 | Undefined tokens `--bg-3` / `--shadow` referenced but never defined | `settings.css:3`, `dock.css:14,16,37`, `workspace.css`, `graph.css:27` | U10 | lint note (no runtime overlap) |
+| 4 | Transport `.tp` vs zoom row collision risk on map phone (390) | `views/MapView.tsx` transport rows | U11 | `overlap.spec.ts › x8/U11 transport` (passes on base – kept as regression guard) |
+| 5 | Undefined tokens `--bg-3` / `--shadow` referenced but never defined | `settings.css:3`, `dock.css:14,16,37`, `workspace.css`, `graph.css:27` | U10 | lint note (no runtime overlap) – fixed on U10's branch (25c1581) |
 | 6 | `sb-help` vs in-page buttons on #agents at 390 – same root cause as 1 | `App.tsx:308-309` | U13 | covered by finding 1 |
+| 7 | Workspace + inspector at 1100: `span "Explore"` × `span.fm-headline-v` headline collision | `views/map/chrome.tsx`, `views/MapView.tsx` headline | U11 | `overlap.spec.ts › no text overlap at 1100px` (fixed on U11's branch: icon-only Explore ≤1280) |
 
 ## Pane wiring (U10 scope, checked)
 

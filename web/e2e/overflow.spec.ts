@@ -91,9 +91,14 @@ test.describe("x8 findings", () => {
       await page.setViewportSize({ width: w, height: h });
       await open(page, "map");
       await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
+      await expect(page.getByTestId("map-view")).toBeVisible({ timeout: 15_000 });
+      // The map payload loads after the shell – wait for squares to render.
+      await expect(page.locator("[data-testid^=fc-node-]").first()).toBeVisible({ timeout: 15_000 });
       const bad = await page.evaluate(() => {
         const el = document.querySelector<HTMLElement>(".u7-legend");
-        if (!el) return "legend not found on the page";
+        // U11's fix replaces the open legend with a collapsed chip – absent is
+        // the fix, not a skip.
+        if (!el) return null;
         return el.scrollWidth - el.clientWidth > 2 ? `sw ${el.scrollWidth}>${el.clientWidth}` : null;
       });
       expect(bad, `legend problem at ${w}px: ${bad}`).toBeNull();
