@@ -19,7 +19,9 @@ const dirOf = (p: string) => p.slice(0, p.lastIndexOf("/") + 1);
 export function useHere(): Place | null {
   const code = useCode();
   const list = useSyncExternalStore(subscribe, recent);
-  if (code.target) return { path: code.target.path, name: code.target.name, kind: code.target.kind, id: code.target.id };
+  // A note editor parked in the code panel is not a place – fall back to
+  // where the user was (the last file or symbol they had open).
+  if (code.target?.path) return { path: code.target.path, name: code.target.name, kind: code.target.kind, id: code.target.id };
   return list[0] ?? null;
 }
 
@@ -44,7 +46,7 @@ const optOf = (n: Node, group: string, as: "target" | "pattern" | "name"): Opt =
 });
 
 /** Suggestions for `text`: near-you first when empty, ranked search hits otherwise. */
-function useOptions(text: string, as: "target" | "pattern" | "name", open: boolean) {
+export function useOptions(text: string, as: "target" | "pattern" | "name", open: boolean) {
   const here = useHere();
   const near = useNearby(open ? here : null);
   const places = useSyncExternalStore(subscribe, recent);
@@ -91,7 +93,7 @@ function useOptions(text: string, as: "target" | "pattern" | "name", open: boole
   }, [open, q, as, here, near, places, hits, text]);
 }
 
-function OptList({ opts, at, pick, setAt }: { opts: Opt[]; at: number; pick: (o: Opt) => void; setAt: (i: number) => void }) {
+export function OptList({ opts, at, pick, setAt }: { opts: Opt[]; at: number; pick: (o: Opt) => void; setAt: (i: number) => void }) {
   return (
     <div className="af-pop" role="listbox" onMouseDown={(e) => e.preventDefault()}>
       {opts.map((o, i) => (
@@ -109,7 +111,7 @@ function OptList({ opts, at, pick, setAt }: { opts: Opt[]; at: number; pick: (o:
 }
 
 /** Shared keyboard handling: returns true when the key was ours. */
-function nav(e: KeyboardEvent, opts: Opt[], at: number, setAt: (i: number) => void, pick: (o: Opt) => void, close: () => void, tab?: Opt) {
+export function nav(e: KeyboardEvent, opts: Opt[], at: number, setAt: (i: number) => void, pick: (o: Opt) => void, close: () => void, tab?: Opt) {
   if (e.key === "Tab" && !e.shiftKey && (tab || opts[at])) { e.preventDefault(); pick(tab ?? opts[at]); return true; }
   if (!opts.length) return false;
   if (e.key === "ArrowDown") { e.preventDefault(); setAt(Math.min(opts.length - 1, at + 1)); return true; }

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { api, colorFor, relTime, type Compare, type Flow, type Meta, type Node } from "../api";
-import { Empty, Icon, Kind, Md, Sym, useToast } from "../ui";
+import { api, colorFor, relTime, type Compare, type Flow, type Meta, type Node, type Note } from "../api";
+import { Empty, Icon, Kind, Md, Sym, Toggle, useToast } from "../ui";
 import { CompareReport } from "./GitViews";
 import type { Go, Target } from "../nav";
 import { Grip, listWidth } from "../resize";
 import { NotesGraph } from "./NotesGraph";
-import { CodeField, HereHint, LinkArea } from "../Autofill";
+import { useCode } from "../CodePanel";
 
 type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
 
@@ -164,70 +164,100 @@ export function Proposals({ version, onChanged, openSymbol, target }: Nav) {
 }
 
 // ============================================================ Notes
+// Notes open in the code panel (U14): the list and the graph are pickers, the
+// editor is CodePanel's note mode – same markdown, same Save/Revert, same pane
+// chrome as source. A new note opens an empty editor with an editable target.
 export function Notes({ version, onChanged, openSymbol }: Nav) {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [q, setQ] = useState("");
-  const [target, setTarget] = useState("repo");
-  const [body, setBody] = useState("");
-  const [editing, setEditing] = useState<number | null>(null);
   const [sel, setSel] = useState("");
   const [graphOn, setGraphOn] = useState(() => { try { return localStorage.getItem("kula.notes.graph") !== "off"; } catch { return true; } });
   const toggleGraph = () => { const v = !graphOn; setGraphOn(v); if (!v) setSel(""); try { localStorage.setItem("kula.notes.graph", v ? "on" : "off"); } catch { /* */ } };
   const toast = useToast();
+  const code = useCode();
   const load = () => api.meta().then(setMeta);
   useEffect(() => { load(); }, [version]);
-  const notes = (meta?.notes ?? []).filter((n) => !q || (n.body + n.target).toLowerCase().includes(q.toLowerCase())).sort((a, b) => b.updated - a.updated);
-  const groups = new Map<string, typeof notes>();
+  const all = meta?.notes ?? [];
+  const notes = all.filter((n) => !q || (n.body + n.target).toLowerCase().includes(q.toLowerCase())).sort((a, b) => b.updated - a.updated);
+  const groups = new Map<string, Note[]>();
   notes.forEach((n) => groups.set(n.target, [...(groups.get(n.target) ?? []), n]));
   const shown = sel ? notes.filter((n) => n.target === sel) : notes;
-  // picking a target in the graph points the editor at it
-  useEffect(() => { if (sel && !editing) setTarget(sel); }, [sel]);
-  const save = async () => {
-    try {
-      if (editing) await api.metaAction("notes", editing, { body });
-      else await api.metaAction("notes", "new", { target, body });
-      toast("Saved"); setBody(""); setEditing(null); await load(); onChanged();
-    } catch (e: any) { toast(e.message, "err"); }
+
+  const afterWrite = async () => { await load(); onChanged(); };
+  const openNote = (n: Note) => code.open({
+    note: { id: n.id, target: n.target, body: n.body, name: n.kind === "memory" ? `Memory #${n.id}` : `Note #${n.id}` },
+    save: async (body) => {
+      await api.metaAction("notes", n.id, { body });
+      toast("Saved"); await afterWrite();
+    },
+  });
+  const newNote = () => {
+    // The first Save creates the note and keeps its id; a second Save then
+    // updates that note instead of posting a duplicate.
+    let madeId: number | undefined;
+    code.open({
+      note: { target: sel || "repo", body: "" },
+      save: async (body, target) => {
+        // Once the note exists, save to its id; before that, create it.
+        const r = madeId != null
+          ? await api.metaAction<{ id?: number }>("notes", madeId, { body })
+          : await api.metaAction<{ id?: number } | null>("notes", "new", { target, body });
+        if (r && typeof r.id === "number") madeId = r.id;
+        toast("Saved"); await afterWrite();
+        return madeId;
+      },
+    });
   };
+
+  const TargetGlyph = ({ t }: { t: string }) => (
+    <span style={{ color: "var(--text-3)", marginTop: 1 }}>
+      {t.startsWith("file:") ? <Icon.doc /> : t.startsWith("symbol:") ? <b style={{ fontFamily: "var(--mono)" }}>ƒ</b> : t.startsWith("commit:") ? <Icon.history /> : t === "repo" ? <Icon.box /> : <Icon.graph />}
+    </span>
+  );
+
   return (
-    <div className="split" style={listWidth("notes", 380)}>
+    <div className="split" style={listWidth("notes", 340)}>
       <div className="list">
-        <div className="list-head" style={{ flexDirection: "column", alignItems: "stretch" }}>
-          <div className="row"><h2>{editing ? `Edit note #${editing}` : "New note"}</h2><span className="spacer" />{editing && <button className="btn sm ghost" onClick={() => { setEditing(null); setBody(""); }}>Cancel</button>}</div>
+        <div className="list-head">
+          <h2>Notes</h2><span className="muted">{notes.length}</span><span className="spacer" />
+          <button className="btn sm primary" data-testid="u14-new-note" onClick={newNote}><Icon.plus /> New</button>
         </div>
-        <div className="stack" style={{ padding: 14 }}>
-          {!editing && (
-            <div className="stack-tight">
-              <CodeField value={target} onChange={setTarget} placeholder="repo · file:path · symbol:name · commit:sha" label="Note target" />
-              <HereHint onUse={setTarget} />
+        <div style={{ padding: "8px 14px 0" }}>
+          <input className="input" style={{ width: "100%" }} placeholder="Search notes…" value={q} onChange={(e) => setQ(e.target.value)} data-testid="u14-search" />
+          {sel && <div className="row" style={{ marginTop: 8 }}><span className="tag accent">{sel}</span><span className="spacer" /><button className="btn sm ghost" onClick={() => setSel("")}>All</button></div>}
+        </div>
+        {shown.length === 0 && <Empty title={sel ? "No notes here" : "No notes yet"}>{sel ? "Nothing anchors here yet." : "Annotate the repo, any file, symbol, commit or cluster – notes open in the editor."}</Empty>}
+        {shown.map((n) => (
+          <div key={n.id} className={`item ${code.target && "note" in code.target && code.target.note?.id === n.id ? "on" : ""}`}
+            data-testid={`u14-note-${n.id}`} onClick={() => openNote(n)}>
+            <TargetGlyph t={n.target} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="title">{n.body.split("\n")[0].replace(/[#*`>\[\]]/g, "").slice(0, 64) || `#${n.id}`}</div>
+              <div className="sub">{n.target} · {n.author} · {relTime(n.updated)}{n.kind === "memory" && <span className="tag accent" style={{ height: 16 }}>memory</span>}</div>
             </div>
-          )}
-          <LinkArea minHeight={200} placeholder={"Write in markdown-ish text.\n`code`, **bold**, [[ links a symbol – it autofills.\n\nNotes are versioned in git and visible to AI agents via MCP."} value={body} onChange={setBody}
-            onSubmit={() => { if (body.trim()) save(); }} label="Note text" />
-          <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn primary" disabled={!body.trim()} onClick={save}>{editing ? "Update" : "Save note"}</button></div>
-        </div>
+          </div>
+        ))}
       </div>
       <Grip id="notes" edge="right" target="prev" min={220} max={900} label="Resize list" />
       <div className="detail" style={{ padding: 0 }}>
         <div className="notes-split" style={graphOn ? undefined : { gridTemplateColumns: "1fr" }}>
-          {graphOn && <NotesGraph notes={meta?.notes ?? []} sel={sel} onPick={setSel} />}
+          {graphOn && <NotesGraph notes={all} sel={sel} onPick={setSel} onOpenNote={openNote} />}
           <aside className="notes-side detail-pad" style={graphOn ? undefined : { borderLeft: 0, maxWidth: 980 }}>
-            <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{shown.length}</span><span className="spacer" />{sel && <button className="btn sm ghost" onClick={() => setSel("")}>All</button>}<button className={`btn sm graph-toggle ${graphOn ? "on" : ""}`} aria-pressed={graphOn} onClick={toggleGraph} title="Show notes as a graph beside the list"><Icon.graph /> Graph {graphOn ? "on" : "off"}</button></div>
-            <input className="input" style={{ width: "100%", marginBottom: 14 }} placeholder="Search notes…" value={q} onChange={(e) => setQ(e.target.value)} />
-            {shown.length === 0 && <Empty title={sel ? "No notes here" : "No notes yet"}>{sel ? "Write one on the left – the target is filled in." : "Annotate the repo, any file, symbol, commit or cluster."}</Empty>}
+            <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{shown.length}</span><span className="spacer" /><button className="btn sm" onClick={newNote}><Icon.plus /> New note</button><Toggle label="Graph" checked={graphOn} onChange={toggleGraph} hint="Show notes as a graph beside the list" testId="notes-graph-toggle" className="sm" /></div>
+            {shown.length === 0 && <Empty title={sel ? "No notes here" : "No notes yet"}>{sel ? "Write one – the target is filled in." : "Annotate the repo, any file, symbol, commit or cluster."}</Empty>}
             {[...groups.entries()].filter(([t]) => !sel || t === sel).map(([t, list]) => (
               <div key={t} style={{ marginBottom: 18 }}>
                 <div className="row" style={{ marginBottom: 6 }}>
-                  <button className="btn sm ghost mono" onClick={() => t !== "repo" && openByName(t, openSymbol)}>{t.startsWith("file:") ? <Icon.doc /> : t.startsWith("symbol:") ? "ƒ" : t.startsWith("commit:") ? <Icon.history /> : <Icon.box />} {t}</button>
+                  <button className="btn sm ghost mono" onClick={() => { setSel(t === sel ? "" : t); t !== "repo" && openByName(t, openSymbol); }}>{t.startsWith("file:") ? <Icon.doc /> : t.startsWith("symbol:") ? "ƒ" : t.startsWith("commit:") ? <Icon.history /> : <Icon.box />} {t}</button>
                 </div>
                 {list.map((n) => (
-                  <div key={n.id} className={`note ${n.kind === "memory" ? "mem" : ""}`}>
+                  <div key={n.id} className={`note ${n.kind === "memory" ? "mem" : ""}`} data-testid={`u14-card-${n.id}`}>
                     <Md text={n.body} onSymbol={(s) => openByName(s, openSymbol)} />
                     <div className="row" style={{ marginTop: 8, fontSize: 11.5 }}>
                       {n.kind === "memory" && <span className="tag accent" title="An agent memory – see Agents">memory</span>}
                       <span className="muted">#{n.id} · {n.author} · {relTime(n.updated)}</span><span className="spacer" />
-                      <button className="btn sm ghost" onClick={() => { setEditing(n.id); setBody(n.body); }}>Edit</button>
-                      <button className="btn sm ghost danger" onClick={async () => { if (confirm("Delete this note?")) { await api.metaAction("notes", n.id, { status: "deleted" }); load(); } }}>Delete</button>
+                      <button className="btn sm ghost" data-testid={`u14-edit-${n.id}`} onClick={() => openNote(n)}>Edit</button>
+                      <button className="btn sm ghost danger" onClick={async () => { if (confirm("Delete this note?")) { await api.metaAction("notes", n.id, { status: "deleted" }); await afterWrite(); } }}>Delete</button>
                     </div>
                   </div>
                 ))}
