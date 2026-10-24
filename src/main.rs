@@ -31,6 +31,7 @@ mod research;
 mod run;
 mod server;
 mod setup;
+mod skill_hub;
 mod skill_index;
 mod skills;
 mod store;

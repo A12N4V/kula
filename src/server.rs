@@ -1229,6 +1229,10 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/agent/config_matrix", get(k2_config_matrix))
         .route("/api/agent/skill_detail", get(k2_skill_detail))
         .route("/api/agent/skill_index", get(k2_skill_index))
+        .route("/api/agent/skill_search", get(k2_skill_search))
+        .route("/api/agent/skill_import", post(k2_skill_import))
+        .route("/api/agent/memory_sources", get(k2_memory_sources))
+        .route("/api/agent/memory_import", post(k2_memory_import))
         .route("/api/agent/skill_diff", get(k2_skill_diff))
         .route("/api/agent/memory_layers", get(k2_memory_layers))
         .route("/api/agent/mcp_sync", post(k2_mcp_sync))
@@ -1318,6 +1322,62 @@ async fn k2_config_matrix(State(s): State<AppState>) -> ApiResult {
 /// would load here, found where Claude Code, Codex, Gemini and Cursor look.
 async fn k2_skill_index(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(crate::skill_index::index(&s.repo.root)))).await
+}
+
+/// GET /api/agent/skill_search?q= – SKILL.md folders on GitHub: the
+/// anthropics/openai curated sets, then code search (the user's gh login).
+async fn k2_skill_search(Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    let q = q.get("q").cloned().unwrap_or_default();
+    blocking(move || Ok(json!(crate::skill_hub::search(&q)))).await
+}
+
+#[derive(Deserialize)]
+struct SkillImportReq {
+    repo: String,
+    path: String,
+}
+
+/// POST /api/agent/skill_import {repo, path} – fetch a GitHub SKILL.md and
+/// save it as a shared skill, copied to every agent.
+async fn k2_skill_import(State(s): State<AppState>, Json(a): Json<SkillImportReq>) -> ApiResult {
+    blocking(move || {
+        let (name, desc, body) = crate::skill_hub::fetch(&a.repo, &a.path)?;
+        crate::skills::save(&s.repo.root, &name, &desc, &body)?;
+        Ok(json!({ "name": name, "written": crate::skills::sync(&s.repo.root)? }))
+    })
+    .await
+}
+
+/// GET /api/agent/memory_sources – TencentDB Agent Memory stores in this repo.
+async fn k2_memory_sources(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!({ "sources": crate::skill_hub::sources(&s.repo.root) }))).await
+}
+
+#[derive(Deserialize)]
+struct MemoryImportReq {
+    dir: String,
+}
+
+/// POST /api/agent/memory_import {dir} – copy a TencentDB store's atomic
+/// memories and wiki pointers into kula's memory; ones already there are skipped.
+async fn k2_memory_import(State(s): State<AppState>, Json(a): Json<MemoryImportReq>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        let store = Store::open(r)?;
+        let have: std::collections::HashSet<String> =
+            crate::memory::recall(r, &store, None, None, 100_000)?.into_iter().map(|m| m.body).collect();
+        let (mut added, mut skipped) = (0, 0);
+        for (text, by) in crate::skill_hub::tencent_memories(&r.root, &a.dir)? {
+            if have.contains(&text) {
+                skipped += 1;
+            } else {
+                crate::memory::remember(r, &store, "repo", &text, &by)?;
+                added += 1;
+            }
+        }
+        Ok(json!({ "added": added, "skipped": skipped }))
+    })
+    .await
 }
 
 /// GET /api/agents/skill_detail?name= – one skill: per-agent copy states, its
