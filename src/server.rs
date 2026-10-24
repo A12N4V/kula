@@ -1441,7 +1441,7 @@ struct SkillImportReq {
 /// and save it as a shared skill, copied to every agent.
 async fn k2_skill_import(State(s): State<AppState>, Json(a): Json<SkillImportReq>) -> ApiResult {
     blocking(move || {
-        let (name, desc, files) = crate::skill_hub::folder_import(&s.repo.root, &a.repo, &a.path)?;
+        let (name, desc, files) = crate::skill_hub::folder_import(&a.repo, &a.path)?;
         let written = crate::skill_hub::save_folder(&s.repo.root, &name, &desc, &files)?;
         Ok(json!({ "name": name, "written": written }))
     })

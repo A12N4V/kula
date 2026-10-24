@@ -135,7 +135,7 @@ pub fn search(q: &str) -> Found {
 /// Imported folder: (name, description, files).
 pub type FolderImport = (String, String, Vec<(String, Vec<u8>)>);
 
-pub fn folder_import(_root: &Path, repo: &str, path: &str) -> Result<FolderImport> {
+pub fn folder_import(repo: &str, path: &str) -> Result<FolderImport> {
     if offline() {
         bail!("GitHub is off (KULA_NO_NET)");
     }
@@ -163,9 +163,14 @@ pub fn folder_import(_root: &Path, repo: &str, path: &str) -> Result<FolderImpor
     let total: u64 = files.iter().map(|(_, s)| *s).sum();
     anyhow::ensure!(total <= 1_000_000, "skill folder is {} bytes – the limit is 1 MB", total);
     let mut out: Vec<(String, Vec<u8>)> = vec![];
+    let mut downloaded: u64 = 0;
     for (p, _) in files {
+        let bytes = gh_bytes(&["api", &format!("repos/{repo}/contents/{p}"), "-H", "Accept: application/vnd.github.raw"])?;
+        downloaded += bytes.len() as u64;
+        // the tree entry's size can be missing – hold the cap against real bytes too
+        anyhow::ensure!(downloaded <= 1_000_000, "skill folder is {} bytes – the limit is 1 MB", downloaded);
         let rel = p.strip_prefix(&format!("{dir}/")).unwrap_or(&p).to_string();
-        out.push((rel, gh_bytes(&["api", &format!("repos/{repo}/contents/{p}"), "-H", "Accept: application/vnd.github.raw"])?));
+        out.push((rel, bytes));
     }
     // name and description come from SKILL.md's front matter
     let (meta, _) =
@@ -189,10 +194,10 @@ pub fn folder_import(_root: &Path, repo: &str, path: &str) -> Result<FolderImpor
 /// to every agent. The SKILL.md goes through the normal writer; the rest of
 /// the folder is written as-is beside it.
 pub fn save_folder(root: &Path, name: &str, desc: &str, files: &[(String, Vec<u8>)]) -> Result<Vec<String>> {
-    let (sk, body) = files
+    let body = files
         .iter()
         .find(|(f, _)| f == "SKILL.md")
-        .map(|(_, b)| (b.clone(), std::str::from_utf8(b).unwrap_or_default().to_string()))
+        .map(|(_, b)| std::str::from_utf8(b).unwrap_or_default().to_string())
         .ok_or_else(|| anyhow!("the folder has no SKILL.md"))?;
     let (fm, real_body) = split_front(&body);
     let meta = |k: &str| {
@@ -201,7 +206,6 @@ pub fn save_folder(root: &Path, name: &str, desc: &str, files: &[(String, Vec<u8
             .unwrap_or_default()
     };
     let desc = if desc.trim().is_empty() { meta("description") } else { desc.to_string() };
-    let _ = sk;
     crate::skills::save(root, name, &desc, real_body.trim())?;
     let base = root.join(crate::skills::SOURCE).join(name);
     for (rel, bytes) in files.iter().filter(|(f, _)| f != "SKILL.md") {
@@ -443,10 +447,10 @@ mod tests {
     fn folder_import_validates() {
         // offline and bad paths are refused without any network call
         std::env::set_var("KULA_NO_NET", "1");
-        assert!(folder_import(Path::new("/tmp"), "a/b", "x/SKILL.md").is_err());
+        assert!(folder_import("a/b", "x/SKILL.md").is_err());
         std::env::remove_var("KULA_NO_NET");
-        assert!(folder_import(Path::new("/tmp"), "a/b", "x/other.md").is_err());
-        assert!(folder_import(Path::new("/tmp"), "a/b", "x/../y/SKILL.md").is_err());
+        assert!(folder_import("a/b", "x/other.md").is_err());
+        assert!(folder_import("a/b", "x/../y/SKILL.md").is_err());
     }
 
     #[test]
