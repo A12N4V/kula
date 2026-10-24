@@ -25,10 +25,12 @@ test.describe("agents config home", () => {
     await page.locator(".rail button[aria-label=Agents]").click();
     await expect(page).toHaveURL(/#agents$/);
     await expect(page.getByRole("tab", { name: "Agents", exact: true })).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator(".wf-edit")).toBeVisible();
-    // a menu, not a graph: the agents are a list, the editor opens under it
-    await expect(page.locator("[data-testid^=wf-row-]").first()).toBeVisible();
+    // a portfolio, not a graph: the agents are cards; the editor opens in the
+    // sidebar when a card is clicked
+    await expect(page.locator("[data-testid^=ag-card-]").first()).toBeVisible();
     await expect(page.locator(".wf-graph")).toHaveCount(0);
+    await page.locator("[data-testid^=ag-card-]").first().click();
+    await expect(page.locator(".wf-edit")).toBeVisible();
     await page.getByTestId("wf-use-workspace").click();
     await expect(page).toHaveURL(/#map\b/);
   });

@@ -32,7 +32,8 @@ test.describe("s1 agents split", () => {
     await open(page, "agents");
     await page.getByRole("tab", { name: "Agents", exact: true }).click();
     await expect(page.locator(".wf-tabs")).toBeVisible();
-    await expect(page.locator(".wf-list [role=tab]").first()).toBeVisible();
+    await expect(page.locator(".ag-cards .ag-card").first()).toBeVisible();
+    await page.locator(".ag-cards .ag-card").first().click();
     await expect(page.locator(".wf-edit")).toBeVisible();
     await page.getByRole("tab", { name: "Memory", exact: true }).click();
     await expect(page.locator(".ag-remember")).toBeVisible();

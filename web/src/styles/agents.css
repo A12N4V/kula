@@ -561,3 +561,42 @@
 .sx-group { display: grid; gap: 6px; }
 .sx-group .section-title { display: flex; align-items: center; gap: 6px; }
 @media (max-width: 760px) { .sx-detail { padding-left: 14px; } .sx-tags .tag + .tag { display: none; } }
+
+/* ── U15: agents as portfolio cards + the agent sidebar ──────────────── */
+.ag-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: clamp(14px, 1.6vw, 22px); }
+.ag-card { display: flex; flex-direction: column; min-width: 0; padding: 0; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+  text-align: left; cursor: pointer; font: inherit; transition: border-color var(--dur) var(--ease); }
+.ag-card:hover { border-color: var(--line-2); }
+.ag-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card__art { display: block; width: 100%; aspect-ratio: 4 / 3; border-bottom: 1px solid var(--line); background: var(--bg); overflow: hidden; }
+.ag-card-art-svg { display: block; width: 100%; height: 100%; padding: 6%; box-sizing: border-box; }
+/* the curve draws itself, slowly, once; reduced motion keeps it still */
+.ag-card-hg { stroke-dasharray: 1; stroke-dashoffset: 1; animation: ag-draw 7s var(--ease) forwards; }
+@keyframes ag-draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .ag-card-hg { animation: none; stroke-dashoffset: 0; } }
+.card__body { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 0; padding: 20px 22px 24px; }
+.card__meta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font: 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.card__meta .mono { text-transform: none; letter-spacing: 0; }
+.ag-card-live { color: var(--accent); }
+.card__t { font-size: clamp(19px, 1.5vw, 26px); font-weight: 650; line-height: 1.05; text-transform: uppercase; letter-spacing: .04em; overflow: hidden; text-overflow: ellipsis; }
+.card__d { color: var(--text-2); flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.card__fmt { margin-top: 6px; color: var(--accent); font: 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; line-height: 1.6; }
+.ag-card-add .card__art { display: grid; place-items: center; color: var(--text-3); border-bottom-style: dashed; }
+.ag-card-add { border-style: dashed; color: var(--text-2); }
+.ag-card-add .card__art svg { width: 22px; height: 22px; }
+.ag-card-add .card__t { color: var(--text); }
+.ag-card-add:hover { color: var(--text); border-color: var(--text-3); }
+@media (max-width: 760px) { .card__body { padding: 18px 18px 20px; } }
+
+/* the sidebar – the code panel's pane, at the right edge */
+.ag-side { position: fixed; top: 49px; bottom: 27px; right: 0; width: min(560px, 58vw); z-index: 40;
+  display: flex; flex-direction: column; border: 1px solid var(--line-2); border-right: 0; background: var(--panel);
+  animation: ag-side-in .25s var(--ease) both; outline: none; }
+@keyframes ag-side-in { from { transform: translateX(16px); opacity: 0; } }
+.ag-side-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
+.ag-side-head h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+.ag-side-scroll { flex: 1; overflow: auto; padding: 14px; min-width: 0; }
+.ag-side .wf-actions, .ag-side .wf-native-row { flex-wrap: wrap; }
+.ag-side .wf-run { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.ag-side .wf-edit { min-width: 0; }
+.ag-side .wf-edit { padding: 0; border: 0; background: none; animation: none; }

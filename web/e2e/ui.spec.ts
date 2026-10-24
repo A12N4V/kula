@@ -816,7 +816,7 @@ test.describe("agents", () => {
     // Enter creates (the form submits): the full editor opens on the new agent
     await form.locator("[data-testid=ag-add-name]").press("Enter");
     const edit = page.locator(".wf-edit");
-    await expect(edit.locator(".card-head h2")).toHaveText("e2e-migrate");
+    await expect(page.locator(".ag-side-head h2")).toHaveText("e2e-migrate");
     // The compact form carried role and fence; the editor takes the rest
     // (lock, memory, steps) – every field editable inline from there.
     await expect(edit.locator(".ff-open")).toContainText("src/store");
@@ -827,13 +827,13 @@ test.describe("agents", () => {
     await edit.getByRole("button", { name: "Add step" }).click();
     await edit.getByLabel("Step 1").fill("Write a migration and its rollback");
     await edit.getByRole("button", { name: "Save" }).click();
-    // The editor card shows what was saved: name, kula.toml tag, locked chip
-    // and the memory segment. The saved workflow becomes a tab in the strip.
-    await expect(edit.locator(".card-head .tag")).toContainText("kula.toml");
+    // The sidebar shows what was saved: name, kula.toml tag, locked chip
+    // and the memory segment. The saved workflow keeps its card in the grid.
+    await expect(page.locator(".ag-side-head .mono")).toContainText("kula.toml");
     await expect(edit.locator(".ff-locked")).toContainText("Cargo.toml");
     await expect(edit.locator(".seg .on")).toContainText("recall only");
-    const tab = page.locator(".wf-tabs [role=tab]").filter({ hasText: "e2e-migrate" });
-    await expect(tab).toBeVisible();
+    const card = page.locator(`[data-testid=ag-card-e2e-migrate]`);
+    await expect(card).toBeVisible();
     await expect(edit.locator(".ff-locked .guard-tag")).toHaveText("lock");
     await expect(edit.locator(".ff-locked .chip-x", { hasText: "Cargo.toml" })).toBeVisible();
     await expect(edit.locator(".ff-open .chip-x", { hasText: "src/store" })).toBeVisible();
@@ -845,12 +845,13 @@ test.describe("agents", () => {
     await expect(page.locator(".fence-key select")).toHaveValue("e2e-migrate", { timeout: 10_000 });
     await expect(page.locator(".fence-key")).toContainText("editable");
     await page.goBack();
-    // Going back remounts the tab, which selects the first workflow again.
-    await tab.click();
-    await expect(page.locator(".wf-edit .card-head h2")).toHaveText("e2e-migrate");
+    // Going back remounts the tab, which closes the sidebar again: the card
+    // opens it once more.
+    await card.click();
+    await expect(page.locator(".ag-side-head h2")).toHaveText("e2e-migrate");
     page.once("dialog", (d) => d.accept());
     await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
-    await expect(page.locator(".wf-tabs [role=tab]").filter({ hasText: "e2e-migrate" })).toHaveCount(0);
+    await expect(page.locator(`[data-testid=ag-card-e2e-migrate]`)).toHaveCount(0);
   });
 
   test("a team: create it in the compact form, edit and delete it – asserted by name", async ({ page, request }, info) => {
@@ -912,13 +913,13 @@ test.describe("agents", () => {
     await page.keyboard.press("Enter");
     await page.keyboard.type(kbd); // the name input is autofocused
     await page.keyboard.press("Enter"); // enter creates
-    const tab = page.locator(".wf-tabs [role=tab]").filter({ hasText: kbd });
-    await expect(tab).toBeVisible();
-    await expect(page.locator(".wf-edit .card-head h2")).toHaveText(kbd);
+    const card = page.locator(`[data-testid=ag-card-${kbd}]`);
+    await expect(card).toBeVisible();
+    await expect(page.locator(".ag-side-head h2")).toHaveText(kbd);
     // and it is really in kula.toml – clean up after ourselves
     page.once("dialog", (d) => d.accept());
     await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
-    await expect(tab).toHaveCount(0);
+    await expect(card).toHaveCount(0);
   });
 
   test("@responsive no overlap on the agents view at 1440 and 390", async ({ page }, info) => {
@@ -3138,12 +3139,12 @@ test.describe("agents add from the map rail (U3)", () => {
     await form.locator("[data-testid=ag-add-name]").fill(wfName);
     await form.locator("[data-testid=ag-add-name]").press("Enter");
     await expect(page).toHaveURL(/#agents\/workflows/);
-    await expect(page.locator(".wf-edit .card-head h2")).toHaveText(wfName);
+    await expect(page.locator(".ag-side-head h2")).toHaveText(wfName);
     await expect(page.locator(".wf-edit")).toContainText("src/**");
     // clean up: delete both from their editors
     page.once("dialog", (d) => d.accept());
     await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
-    await expect(page.locator(".wf-tabs [role=tab]").filter({ hasText: wfName })).toHaveCount(0);
+    await expect(page.locator(`[data-testid=ag-card-${wfName}]`)).toHaveCount(0);
     await open(page, "agents/teams");
     await page.locator(".team-tabs [role=tab]").filter({ hasText: teamName }).click();
     await page.locator(".map-inspector").getByRole("button", { name: "Delete team" }).click();
