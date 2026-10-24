@@ -14,6 +14,12 @@ const SPOTS: Spot[] = [
   { name: "overview", hash: "overview" },
   { name: "changes", hash: "changes" },
   { name: "history", hash: "history" },
+  { name: "branches", hash: "branches" },
+  { name: "proposals", hash: "proposals" },
+  { name: "issues", hash: "issues" },
+  { name: "notes", hash: "notes" },
+  { name: "flows", hash: "flows" },
+  { name: "query", hash: "query" },
   { name: "workspace", hash: "map" },
   {
     name: "workspace + inspector", hash: "map", then: async (page) => {

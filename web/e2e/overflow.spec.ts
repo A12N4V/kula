@@ -80,7 +80,7 @@ async function overlaps(page: Page) {
   });
 }
 
-const VIEWS = ["graph", "overview", "changes", "agents", "map"] as const;
+const VIEWS = ["graph", "overview", "changes", "history", "branches", "proposals", "issues", "notes", "flows", "query", "agents", "map"] as const;
 
 test.describe("x8 findings", () => {
   // X8 finding 2 (docs/design/fuse3-audit.md): the map legend overflows its
