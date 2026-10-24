@@ -56,7 +56,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "live", label: "Agents" }, { id: "changes", label: "Changes" }, { id: "library", label: "Library" },
 ];
 
-export default function MapView({ block, go }: { openSymbol?: (id: number) => void; version?: number; block?: string; go?: Go }) {
+export default function MapView({ block, agent, go }: { openSymbol?: (id: number) => void; version?: number; block?: string; agent?: string; go?: Go }) {
   const [data, setData] = useState<MapData | null>(null);
   const [prog, setProg] = useState<MapProgress | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -117,7 +117,9 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   const ws = useLive(true);
   // U3 – actors on the terrain: the selected agent, its fence, and the R1
   // add form the band and the Fence port "+" both open.
-  const [selAgent, setSelAgent] = useState<string | null>(null);
+  const [selAgent, setSelAgent] = useState<string | null>(agent ?? null);
+  // "Use on Workspace" from the Agents page arrives as target.agent: select it once per arrival.
+  useEffect(() => { if (agent) setSelAgent(agent); }, [agent]);
   const [editFence, setEditFence] = useState(false);
   const [agentAdd, setAgentAdd] = useState(false);
   const fence = useAgentFence(ws.info, ws.reload);

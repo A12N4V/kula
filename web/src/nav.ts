@@ -13,10 +13,12 @@ export interface Target {
   contrast?: { base: string; head: string; mode?: ContrastMode };
   /** Open the graph with the fences overlay: "" for what is in force now, or a workflow to preview. */
   fences?: string;
-  /** A tab inside a view (Agents: workflows, fences, memory, docs, connect). */
+  /** A tab inside a view (Agents: workflows, teams, skills, fences, connect, settings, …). */
   tab?: string;
   /** MapView: the drilled block for a deep link (#map/<blockId>). */
   block?: string;
+  /** MapView: the agent to select on arrival (#map with an agent from the Agents page). */
+  agent?: string;
 }
 /** Contrast shows two revisions overlaid, side by side, or as a textual report. */
 export type ContrastMode = "overlay" | "split" | "report";

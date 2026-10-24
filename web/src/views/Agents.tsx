@@ -23,17 +23,22 @@ import MemoryTab from "./agents/Memory";
 import Docs from "./agents/Docs";
 import Connect from "./agents/Connect";
 import Skills from "./agents/Skills";
+import Settings, { ImportSkill } from "./agents/Settings";
 
+// Configure first – what an agent is, which team it sits in, the skills it
+// has, its fences, wiring and settings. What agents have done (overview,
+// research runs, memory, docs) follows as compact icon tabs.
 const TABS = [
-  { id: "overview", label: "Overview", icon: Icon.agents },
-  { id: "workflows", label: "Workflows", icon: Icon.workflow },
-  { id: "research", label: "Research", icon: Icon.flask },
+  { id: "workflows", label: "Agents", icon: Icon.workflow },
   { id: "teams", label: "Teams", icon: Icon.team },
   { id: "skills", label: "Skills", icon: Icon.box },
   { id: "fences", label: "Fences", icon: Icon.fence },
-  { id: "memory", label: "Memory", icon: Icon.memory },
-  { id: "docs", label: "Docs", icon: Icon.doc },
   { id: "connect", label: "Connect", icon: Icon.plug },
+  { id: "settings", label: "Settings", icon: Icon.gear },
+  { id: "overview", label: "Overview", icon: Icon.agents, compact: true },
+  { id: "research", label: "Research", icon: Icon.flask, compact: true },
+  { id: "memory", label: "Memory", icon: Icon.memory, compact: true },
+  { id: "docs", label: "Docs", icon: Icon.doc, compact: true },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -42,13 +47,13 @@ export { LEVEL_TEXT, LEVEL_MEANS, GuardTag, Snippet };
 export default function Agents({ version, onChanged, openSymbol, go, target }: Nav) {
   const [info, setInfo] = useState<AgentsInfo | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [tab, setTabState] = useState<Tab>(() => (TABS.some((t) => t.id === target?.tab) ? target!.tab : "overview") as Tab);
+  const [tab, setTabState] = useState<Tab>(() => (TABS.some((t) => t.id === target?.tab) ? target!.tab : "workflows") as Tab);
   const toast = useToast();
   const code = useCode();
   const load = () => api.agents().then((i) => { setInfo(i); setErr(null); }).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, [version]);
   // The URL is the tab: back and forward move between them.
-  useEffect(() => { setTabState((TABS.some((t) => t.id === target?.tab) ? target!.tab : "overview") as Tab); }, [target?.tab]);
+  useEffect(() => { setTabState((TABS.some((t) => t.id === target?.tab) ? target!.tab : "workflows") as Tab); }, [target?.tab]);
   const setTab = (t: Tab) => { setTabState(t); go?.("agents", { tab: t }); };
 
   const act = async (action: Parameters<typeof api.agentAction>[0], body: Record<string, unknown>, done: string) => {
@@ -65,6 +70,7 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
     if (hit) openSymbol(hit.id);
   };
   const onGraph = (wf = "") => go?.("graph", { fences: wf });
+  const onWorkspace = (agent?: string) => go?.("map", agent ? { agent } : {});
 
   if (err) return <div className="page"><Empty title="Agent state unavailable">{err}</Empty></div>;
   if (!info) return <div className="page"><div className="muted">Reading workflows, fences and memories…</div></div>;
@@ -77,23 +83,30 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
       <header className="page-head">
         <div>
           <h1>Agents</h1>
+          <div className="muted">Configure agents, teams and skills here – the Workspace puts them to work.</div>
         </div>
+        <button className="btn sm" onClick={() => onWorkspace()} data-testid="ag-to-workspace"><Icon.workspace /> Open Workspace</button>
       </header>
 
       <nav className="ag-tabs" role="tablist" aria-label="Agents">
-        {TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
-            <t.icon /> {t.label}{!!badge[t.id] && <span className="badge">{badge[t.id]}</span>}
-          </button>
-        ))}
+        {TABS.map((t, i) => {
+          const compact = "compact" in t;
+          return (<span key={t.id} className="ag-tab-wrap">
+            {compact && !("compact" in TABS[i - 1]) && <span className="ag-tabs-sep" aria-hidden="true" />}
+            <button role="tab" aria-selected={tab === t.id} aria-label={compact ? t.label : undefined} title={compact ? t.label : undefined} className={`${tab === t.id ? "on" : ""}${compact ? " compact" : ""}`} onClick={() => setTab(t.id)}>
+              <t.icon />{!compact && <> {t.label}</>}{!!badge[t.id] && <span className="badge">{badge[t.id]}</span>}
+            </button>
+          </span>);
+        })}
       </nav>
 
       <div className="ag-panel" key={tab}>
         {tab === "overview" && <Overview info={info} act={act} setTab={setTab} onGraph={onGraph} open={open} />}
-        {tab === "workflows" && <Workflows info={info} act={act} onGraph={onGraph} setTab={setTab} />}
+        {tab === "workflows" && <Workflows info={info} act={act} onGraph={onGraph} setTab={setTab} onWorkspace={onWorkspace} />}
         {tab === "research" && <ResearchTab info={info} act={act} open={open} go={go} />}
         {tab === "teams" && <Teams info={info} act={act} setTab={setTab} />}
-        {tab === "skills" && <Skills info={info} act={act} open={open} />}
+        {tab === "skills" && <><Skills info={info} act={act} open={open} /><ImportSkill info={info} act={act} /></>}
+        {tab === "settings" && <Settings info={info} act={act} setTab={setTab} />}
         {tab === "fences" && <Fences info={info} act={act} onGraph={onGraph} />}
         {tab === "memory" && <MemoryTab info={info} act={act} open={open} />}
         {tab === "docs" && <Docs info={info} act={act} />}

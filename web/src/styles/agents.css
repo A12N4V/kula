@@ -464,3 +464,18 @@
 @media (max-width: 480px) {
   .ag-control > .card:nth-child(2) { margin-top: 48px; }
 }
+
+/* Agents page: config tabs, then the record as icon-only tabs after a rule */
+.ag-tab-wrap { display: contents; }
+.ag-tabs-sep { flex: none; width: 1px; height: 16px; margin: 9px 6px 0; background: var(--line); }
+.ag-tabs button.compact { padding: 0 10px; }
+/* Settings tab */
+.set-grid .ag-wide { grid-column: 1 / -1; }
+.set-row { display: flex; align-items: center; gap: 8px; min-height: 34px; border-bottom: 1px solid var(--line); }
+.set-row:last-child { border-bottom: 0; }
+.set-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.set-row .seg button { display: inline-flex; align-items: center; gap: 6px; }
+.set-import .ag-body { display: grid; gap: 10px; }
+.set-import-text { width: 100%; resize: vertical; min-height: 96px; }
+.set-import-src label { cursor: pointer; }
+.agents .page-head { align-items: flex-start; gap: 12px; }

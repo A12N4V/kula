@@ -66,8 +66,8 @@ const GROUPS: Rail[][] = [
     { id: "notes", label: "Notes", icon: Icon.notes, key: "9" },
   ],
   [
-    // Agents live on the Workspace now; the old page stays reachable (palette, `a`) as its library.
-    { id: "agents", label: "Agents", icon: Icon.agents, key: "a", hidden: true },
+    // Agents: where agents, teams, skills and their settings are configured; the Workspace uses them.
+    { id: "agents", label: "Agents", icon: Icon.agents, key: "a" },
     { id: "query", label: "Query (SPARQL)", icon: Icon.query, key: "q" },
   ],
   // The console is the bottom dock under every view; #console just opens it.
@@ -154,7 +154,7 @@ export default function App() {
     else if (view === "graph" && target.fences !== undefined) h += `/fences${target.fences ? `/${enc(target.fences)}` : ""}`;
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
-    else if (view === "agents" && target.tab && target.tab !== "overview") h += `/${target.tab}`;
+    else if (view === "agents" && target.tab) h += `/${target.tab}`;
     else if (view === "map" && target.block) h += `/${target.block}`;
     if (`#${h}` === location.hash) return;
     if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
@@ -285,7 +285,7 @@ export default function App() {
             {view === "issues" && <Issues {...nav} />}
             {view === "notes" && <Notes {...nav} />}
             {view === "flows" && <Flows {...nav} />}
-            {view === "map" && <MapView openSymbol={(id) => go("graph", { symbol: id })} version={version} block={target.block} go={go} />}
+            {view === "map" && <MapView openSymbol={(id) => go("graph", { symbol: id })} version={version} block={target.block} agent={target.agent} go={go} />}
             {view === "flow-lab" && <FlowLab />}
             {view === "agents" && <Agents {...nav} />}
             {view === "query" && <Query {...nav} />}
@@ -374,7 +374,7 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
       { key: "reindex", label: "Reindex knowledge graph", hint: "", run: onReindex },
       { key: "fences", label: "Graph: show fences", hint: "f", run: () => go("graph", { fences: "" }) },
       ...(["explore", "fix", "refactor", "tests", "docs", "autoresearch"]).map((w) => ({ key: `fences:${w}`, label: `Graph: preview the ${w} workflow's fences`, hint: "", run: () => go("graph", { fences: w }) })),
-      ...(["workflows", "fences", "memory", "docs", "connect"]).map((t) => ({ key: `agents:${t}`, label: `Agents: ${t}`, hint: "", run: () => go("agents", { tab: t }) })),
+      ...(["workflows", "teams", "skills", "fences", "connect", "settings", "memory", "docs"]).map((t) => ({ key: `agents:${t}`, label: `Agents: ${t}`, hint: "", run: () => go("agents", { tab: t }) })),
       { key: "settings", label: "Open settings", hint: ",", run: onSettings },
       { key: "help", label: "Keyboard shortcuts", hint: "?", run: () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" })); } },
       ...(["directory", "cluster", "kind", "churn"] as const).map((c) => ({ key: `color:${c}`, label: `Colour graph by ${c}`, hint: "", run: () => { settings.set({ colorBy: c }); go("graph"); } })),
