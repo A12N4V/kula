@@ -19,7 +19,7 @@ use axum::{
 use rust_embed::RustEmbed;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 #[derive(RustEmbed)]
@@ -736,6 +736,10 @@ struct AgentReq {
     agents: Option<crate::config::Agents>,
     name: String,
     teams: Vec<crate::config::Team>,
+    /// One team for team_save (the Teams canvas edits one team at a time).
+    team: Option<crate::config::Team>,
+    /// Canvas positions for team_layout: workflow → [x, y].
+    positions: BTreeMap<String, Vec<f64>>,
     /// Which agents to install a workflow for.
     targets: Vec<String>,
 }
@@ -814,6 +818,30 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
                 crate::config::set_teams(&r.root, &a.teams)?;
                 json!({ "ok": true })
             }
+            // fuse4 · one-team-at-a-time edits from the Teams canvas
+            "team_save" => {
+                let t = a.team.as_ref().ok_or_else(|| anyhow!("send the team"))?;
+                crate::config::upsert_team(&r.root, t)?;
+                json!({ "ok": true })
+            }
+            "team_delete" => {
+                crate::config::remove_team(&r.root, &a.name)?;
+                json!({ "ok": true })
+            }
+            "team_add_member" => {
+                crate::config::team_add_member(&r.root, &a.name, &a.workflow, &a.agent)?;
+                json!({ "ok": true })
+            }
+            "team_remove_member" => {
+                crate::config::team_remove_member(&r.root, &a.name, &a.workflow)?;
+                json!({ "ok": true })
+            }
+            "team_layout" => {
+                crate::config::set_team_layout(&r.root, &a.name, &a.positions)?;
+                json!({ "ok": true })
+            }
+            // adopt an MCP server from .mcp.json into every connected agent
+            "mcp_adopt" => json!({ "written": crate::skill_hub::adopt_mcp(&r.root, &a.name)? }),
             "team_start" => json!(crate::guard::team_start(r, &a.name, &format!("user:{}", r.user()))?),
             "team_stop" => json!(crate::guard::team_stop(r)?),
             "team_prompt" => {
@@ -1229,6 +1257,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/agent/config_matrix", get(k2_config_matrix))
         .route("/api/agent/skill_detail", get(k2_skill_detail))
         .route("/api/agent/skill_index", get(k2_skill_index))
+        .route("/api/agent/cards", get(k2_agent_cards))
         .route("/api/agent/skill_search", get(k2_skill_search))
         .route("/api/agent/skill_import", post(k2_skill_import))
         .route("/api/agent/memory_sources", get(k2_memory_sources))
@@ -1307,6 +1336,76 @@ pub fn serve(repo: Repo, port: u16, open_browser: bool) -> anyhow::Result<()> {
     })
 }
 
+// ============================================================ fuse4 · agent
+// cards: one card per workflow/agent for the Agents tab's portfolio grid.
+
+/// One portfolio card per workflow: description from the workflow, tags from
+/// the agent id, scope kinds and skills (≤ 4), fences summarised, teams named.
+/// `cards_from` is pure so the unit test can drive it with a fixture config.
+fn cards_from(cfg: &config::Config, skill_names: &[String], connections: &[(String, Vec<String>)]) -> Vec<Value> {
+    crate::workflow::all(cfg)
+        .iter()
+        .map(|w| {
+            // which agent runs it: a connection installed for this workflow, else any
+            let agent = connections
+                .iter()
+                .find(|(_, wfs)| wfs.iter().any(|x| x == &w.name))
+                .map(|(id, _)| id.clone())
+                .unwrap_or_else(|| "any".into());
+            // the team seats that sit in this workflow carry role and model
+            let seat =
+                cfg.teams.iter().flat_map(|t| t.members.iter().map(move |m| (t.name.clone(), m))).find(|(_, m)| m.workflow == w.name);
+            let (role, model) =
+                seat.map_or_else(|| (String::new(), None), |(_, m)| (m.role.clone(), (!m.model.is_empty()).then(|| m.model.clone())));
+            let scope_kinds =
+                w.scope.iter().map(|s| if s.starts_with('@') { s.trim_start_matches('@').to_string() } else { "paths".into() });
+            let text = format!("{}\n{}", w.steps.join("\n"), w.prompt);
+            let skills: Vec<String> = skill_names.iter().filter(|s| text.contains(s.as_str())).take(4).cloned().collect();
+            let mut tags: Vec<String> = std::iter::once(agent.clone()).chain(scope_kinds).chain(skills.iter().cloned()).take(4).collect();
+            tags.dedup();
+            let fences: Vec<String> = [
+                (!w.lock.is_empty()).then(|| format!("{} locked", w.lock.len())),
+                (!w.hide.is_empty()).then(|| format!("{} hidden", w.hide.len())),
+                (!w.review.is_empty()).then(|| format!("{} review", w.review.len())),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            let teams: Vec<String> =
+                cfg.teams.iter().filter(|t| t.members.iter().any(|m| m.workflow == w.name)).map(|t| t.name.clone()).collect();
+            let mut card = json!({
+                "name": w.name,
+                "role": role,
+                "description": w.about,
+                "tags": tags,
+                "agent": agent,
+                "skills": skills,
+                "teams": teams,
+                "fences": fences,
+                "scope": w.scope,
+                "builtin": w.builtin,
+            });
+            if let Some(m) = model {
+                card["model"] = json!(m);
+            }
+            card
+        })
+        .collect()
+}
+
+/// GET /api/agent/cards – the portfolio cards the Agents grid renders.
+async fn k2_agent_cards(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        let cfg = config::Config::load(&r.root)?;
+        let skill_names: Vec<String> = crate::skills::list(&r.root).into_iter().map(|sk| sk.name).collect();
+        let connections: Vec<(String, Vec<String>)> =
+            crate::agents::connections(&r.root).into_iter().map(|c| (c.id.to_string(), c.workflows)).collect();
+        Ok(json!(cards_from(&cfg, &skill_names, &connections)))
+    })
+    .await
+}
+
 // ============================================================ K2 · unified agent
 // config: skills, rules, MCP, memory layers. Everything below this marker calls
 // into src/agent_config.rs and src/skills.rs; no caching changes here (P1 owns
@@ -1337,13 +1436,14 @@ struct SkillImportReq {
     path: String,
 }
 
-/// POST /api/agent/skill_import {repo, path} – fetch a GitHub SKILL.md and
-/// save it as a shared skill, copied to every agent.
+/// POST /api/agent/skill_import {repo, path} – fetch a whole skill folder
+/// (SKILL.md plus scripts/, references/, assets/, ≤ 1 MB, no symlinks, no `..`)
+/// and save it as a shared skill, copied to every agent.
 async fn k2_skill_import(State(s): State<AppState>, Json(a): Json<SkillImportReq>) -> ApiResult {
     blocking(move || {
-        let (name, desc, body) = crate::skill_hub::fetch(&a.repo, &a.path)?;
-        crate::skills::save(&s.repo.root, &name, &desc, &body)?;
-        Ok(json!({ "name": name, "written": crate::skills::sync(&s.repo.root)? }))
+        let (name, desc, files) = crate::skill_hub::folder_import(&a.repo, &a.path)?;
+        let written = crate::skill_hub::save_folder(&s.repo.root, &name, &desc, &files)?;
+        Ok(json!({ "name": name, "written": written }))
     })
     .await
 }
@@ -1407,9 +1507,26 @@ async fn k2_skill_diff(State(s): State<AppState>, Query(q): Query<HashMap<String
 
 /// GET /api/agents/memory_layers – every memory with its layer derived from
 /// what exists: scope (task / workflow / repo) and provenance (agent, commit,
-/// symbol). No new storage.
+/// symbol). Memories imported from a TencentDB store (author `tencentdb:…`)
+/// are their own layer.
 async fn k2_memory_layers(State(s): State<AppState>) -> ApiResult {
-    blocking(move || Ok(json!(crate::agent_config::memory_layers(&s.repo)?))).await
+    blocking(move || {
+        // The layer is derived here (agent_config owns the rest of the shape):
+        // memories imported from a TencentDB store (author `tencentdb:…`) are
+        // their own layer; everything else layers by its scope.
+        let mut layers: Vec<Value> = crate::agent_config::memory_layers(&s.repo)?
+            .into_iter()
+            .map(|l| {
+                let mut v = json!(l);
+                let tencent = l.agent.starts_with("tencentdb:");
+                v["layer"] = json!(if tencent { "tencentdb" } else { l.scope });
+                v
+            })
+            .collect();
+        layers.sort_by_key(|l| l["layer"] != json!("tencentdb"));
+        Ok(json!(layers))
+    })
+    .await
 }
 
 #[derive(Deserialize)]
@@ -1424,3 +1541,62 @@ async fn k2_mcp_sync(State(s): State<AppState>, Json(a): Json<McpSyncReq>) -> Ap
 }
 
 // K2 route lines live in `router`, marked with the same K2 comment.
+
+#[cfg(test)]
+mod b1_tests {
+    use super::*;
+
+    #[test]
+    fn cards_round_trip_a_fixture_kula_toml() {
+        // a fixture config: two workflows, one team, one connection, one skill
+        let w = |name: &str, about: &str, scope: Vec<String>, builtin: bool| crate::workflow::Workflow {
+            name: name.into(),
+            about: about.into(),
+            scope,
+            lock: vec!["secrets/**".into()],
+            builtin,
+            steps: vec![format!("use the {name} skill first")],
+            ..Default::default()
+        };
+        let cfg = config::Config {
+            workflows: vec![
+                w("mapcard", "map the code", vec!["@src".into(), "src/**".into()], true),
+                w("testcard", "write tests", vec![], false),
+            ],
+            teams: vec![config::Team {
+                name: "ship".into(),
+                members: vec![config::Member {
+                    workflow: "testcard".into(),
+                    agent: "codex".into(),
+                    model: "gpt-5".into(),
+                    role: "review".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let cards = cards_from(&cfg, &["mapcard".to_string()], &[("codex".to_string(), vec!["testcard".to_string()])]);
+        // builtins are cards too: one per workflow, found by name
+        assert_eq!(cards.len(), crate::workflow::all(&cfg).len());
+        assert_eq!(cards.iter().filter(|c| c["name"] == json!("fix")).count(), 1, "a builtin is a card");
+        assert_eq!(cards.iter().find(|c| c["name"] == json!("fix")).unwrap()["builtin"], json!(true));
+        let card = |n: &str| cards.iter().find(|c| c["name"] == json!(n)).unwrap().clone();
+        let map = &card("mapcard");
+        assert_eq!(map["description"], "map the code");
+        assert_eq!(map["builtin"], false, "an explicit kula.toml entry is not builtin");
+        // tags: agent id + scope kinds + skills, capped at 4
+        assert_eq!(map["tags"], json!(["any", "src", "paths", "mapcard"]), "agent id, scope kinds and skills, capped at 4");
+        assert_eq!(map["skills"], json!(["mapcard"]));
+        assert_eq!(map["fences"], json!(["1 locked"]));
+        assert_eq!(map["scope"], json!(["@src", "src/**"]));
+        assert!(map.get("model").is_none());
+        let tests = &card("testcard");
+        assert_eq!(tests["agent"], "codex");
+        assert_eq!(tests["role"], "review");
+        assert_eq!(tests["model"], "gpt-5");
+        assert_eq!(tests["teams"], json!(["ship"]));
+        assert_eq!(tests["builtin"], false);
+        assert!(tests["scope"].as_array().unwrap().is_empty());
+    }
+}

@@ -2428,7 +2428,7 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
             let mut teams = cfg.teams.clone();
             let prompt = prompt.unwrap_or_else(|| cfg.teams.iter().find(|t| t.name == name).map(|t| t.prompt.clone()).unwrap_or_default());
             let under = under.unwrap_or_else(|| cfg.teams.iter().find(|t| t.name == name).map(|t| t.under.clone()).unwrap_or_default());
-            let t = config::Team { name: name.clone(), about, prompt, under, members };
+            let t = config::Team { name: name.clone(), about, prompt, under, members, ..Default::default() };
             match teams.iter_mut().find(|x| x.name == name) {
                 Some(x) => *x = t,
                 None => teams.push(t),

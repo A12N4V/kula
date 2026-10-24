@@ -12,9 +12,9 @@
 //!
 //! `KULA_NO_NET=1` (set by the tests) turns every GitHub call off.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::path::Path;
 use std::process::Command;
 
@@ -42,11 +42,15 @@ fn offline() -> bool {
 }
 
 fn gh(args: &[&str]) -> Result<String> {
+    String::from_utf8(gh_bytes(args)?).map_err(|e| anyhow!("gh output is not utf-8: {e}"))
+}
+
+fn gh_bytes(args: &[&str]) -> Result<Vec<u8>> {
     let out = Command::new("gh").args(args).output().context("gh is not installed – brew install gh, then gh auth login")?;
     if !out.status.success() {
         bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
     }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    Ok(out.stdout)
 }
 
 /// The skill's folder name from a `…/<name>/SKILL.md` path.
@@ -125,8 +129,13 @@ pub fn search(q: &str) -> Found {
     Found { hits, note }
 }
 
-/// Fetch `repo`'s SKILL.md at `path`: (name, description, body).
-pub fn fetch(repo: &str, path: &str) -> Result<(String, String, String)> {
+/// The skill's folder a `SKILL.md` path lives in, and every file in it.
+/// Folder imports walk the git tree: SKILL.md plus `scripts/`, `references/`
+/// and `assets/` travel together, up to 1 MB, never a symlink, never `..`.
+/// Imported folder: (name, description, files).
+pub type FolderImport = (String, String, Vec<(String, Vec<u8>)>);
+
+pub fn folder_import(repo: &str, path: &str) -> Result<FolderImport> {
     if offline() {
         bail!("GitHub is off (KULA_NO_NET)");
     }
@@ -134,8 +143,38 @@ pub fn fetch(repo: &str, path: &str) -> Result<(String, String, String)> {
     if !ok(repo) || !ok(path) || !path.ends_with("SKILL.md") {
         bail!("not a GitHub SKILL.md: {repo} {path}");
     }
-    let src = gh(&["api", &format!("repos/{repo}/contents/{path}"), "-H", "Accept: application/vnd.github.raw"])?;
-    let (meta, body) = split_front(&src);
+    let dir = path.strip_suffix("SKILL.md").unwrap_or(path).trim_end_matches('/');
+    let tree: Value = serde_json::from_slice(&gh_bytes(&["api", &format!("repos/{repo}/git/trees/HEAD?recursive=1")])?)?;
+    let mut files: Vec<(String, u64)> = vec![];
+    for e in tree["tree"].as_array().into_iter().flatten() {
+        let p = e["path"].as_str().unwrap_or_default();
+        if e["type"].as_str() != Some("blob") || !p.starts_with(&format!("{dir}/")) {
+            continue;
+        }
+        if e["mode"].as_str() == Some("120000") {
+            bail!("refusing symlinked file {repo}/{p}");
+        }
+        if p.split('/').any(|c| c == "..") {
+            bail!("refusing .. in {repo}/{p}");
+        }
+        files.push((p.to_string(), e["size"].as_u64().unwrap_or(0)));
+    }
+    anyhow::ensure!(!files.is_empty(), "no files under {repo}/{dir}");
+    let total: u64 = files.iter().map(|(_, s)| *s).sum();
+    anyhow::ensure!(total <= 1_000_000, "skill folder is {} bytes – the limit is 1 MB", total);
+    let mut out: Vec<(String, Vec<u8>)> = vec![];
+    let mut downloaded: u64 = 0;
+    for (p, _) in files {
+        let bytes = gh_bytes(&["api", &format!("repos/{repo}/contents/{p}"), "-H", "Accept: application/vnd.github.raw"])?;
+        downloaded += bytes.len() as u64;
+        // the tree entry's size can be missing – hold the cap against real bytes too
+        anyhow::ensure!(downloaded <= 1_000_000, "skill folder is {} bytes – the limit is 1 MB", downloaded);
+        let rel = p.strip_prefix(&format!("{dir}/")).unwrap_or(&p).to_string();
+        out.push((rel, bytes));
+    }
+    // name and description come from SKILL.md's front matter
+    let (meta, _) =
+        out.iter().find(|(f, _)| f == "SKILL.md").and_then(|(_, b)| std::str::from_utf8(b).ok()).map(split_front).unwrap_or(("", ""));
     let field = |k: &str| {
         meta.lines()
             .find_map(|l| l.strip_prefix(&format!("{k}:")).map(|v| v.trim().trim_matches(['"', '\'']).to_string()))
@@ -148,7 +187,62 @@ pub fn fetch(repo: &str, path: &str) -> Result<(String, String, String)> {
     if desc.is_empty() {
         desc = format!("Imported from {repo}");
     }
-    Ok((name, desc, body.trim().to_string()))
+    Ok((name, desc, out))
+}
+
+/// Save a whole imported skill folder under `.agents/skills/<name>` and copy it
+/// to every agent. The SKILL.md goes through the normal writer; the rest of
+/// the folder is written as-is beside it.
+pub fn save_folder(root: &Path, name: &str, desc: &str, files: &[(String, Vec<u8>)]) -> Result<Vec<String>> {
+    let body = files
+        .iter()
+        .find(|(f, _)| f == "SKILL.md")
+        .map(|(_, b)| std::str::from_utf8(b).unwrap_or_default().to_string())
+        .ok_or_else(|| anyhow!("the folder has no SKILL.md"))?;
+    let (fm, real_body) = split_front(&body);
+    let meta = |k: &str| {
+        fm.lines()
+            .find_map(|l| l.strip_prefix(&format!("{k}:")).map(|v| v.trim().trim_matches(['"', '\'']).to_string()))
+            .unwrap_or_default()
+    };
+    let desc = if desc.trim().is_empty() { meta("description") } else { desc.to_string() };
+    crate::skills::save(root, name, &desc, real_body.trim())?;
+    let base = root.join(crate::skills::SOURCE).join(name);
+    for (rel, bytes) in files.iter().filter(|(f, _)| f != "SKILL.md") {
+        if rel.split('/').any(|c| c == "..") || rel.starts_with('/') {
+            bail!("refusing odd path in the skill folder: {rel:?}");
+        }
+        let p = base.join(rel);
+        if let Some(dir) = p.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(&p, bytes)?;
+    }
+    crate::skills::sync(root)
+}
+
+/// Adopt an MCP server from the repo's `.mcp.json` as a shared one: merge its
+/// definition into `.agents/mcp.json` (the shared source of truth), then let
+/// the same writer the Connect tab uses copy it into every agent's own config.
+/// Returns the config files written.
+pub fn adopt_mcp(root: &Path, server: &str) -> Result<Vec<String>> {
+    anyhow::ensure!(!server.is_empty(), "name the MCP server to adopt");
+    let src = root.join(".mcp.json");
+    let text = std::fs::read_to_string(&src).with_context(|| format!("no {} to adopt from", src.display()))?;
+    let v: Value = serde_json::from_str(&text).with_context(|| format!("{} is not json", src.display()))?;
+    let def = v["mcpServers"][server].clone();
+    anyhow::ensure!(!def.is_null(), "no server {server:?} in {}", src.display());
+    let shared_path = root.join(crate::agent_config::MCP_SOURCE);
+    let mut shared: Value = std::fs::read_to_string(&shared_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| json!({ "mcpServers": {} }));
+    let obj = shared.as_object_mut().ok_or_else(|| anyhow!("{} is not a json object", shared_path.display()))?;
+    let servers = obj.entry("mcpServers").or_insert_with(|| json!({}));
+    servers.as_object_mut().ok_or_else(|| anyhow!("mcpServers is not an object"))?.insert(server.to_string(), def);
+    std::fs::create_dir_all(root.join(".agents"))?;
+    std::fs::write(&shared_path, serde_json::to_string_pretty(&shared)?)?;
+    crate::agent_config::mcp_sync(root, server)
 }
 
 fn split_front(src: &str) -> (&str, &str) {
@@ -185,11 +279,42 @@ fn tencent_dirs(root: &Path) -> Vec<String> {
             continue;
         }
         let d = if top == "." { root.to_path_buf() } else { root.join(&top) };
-        if d.join(".memory/memories.json").is_file() {
+        if d.join(".memory/memories.json").is_file() || tencent_sqlite(&d).is_some() {
             out.push(top);
         }
     }
     out
+}
+
+/// A TencentDB sqlite store under `.memory/`, when there is no `memories.json`.
+fn tencent_sqlite(dir: &Path) -> Option<std::path::PathBuf> {
+    [".memory/data/memory.sqlite", ".memory/memory.sqlite"].iter().map(|p| dir.join(p)).find(|p| p.is_file())
+}
+
+/// Rows of `atomic_memories` as JSON objects (column name → value), so the
+/// same field extraction works for the json and the sqlite store.
+fn atomic_sqlite(dir: &Path) -> Vec<Value> {
+    let Some(db) = tencent_sqlite(dir) else { return vec![] };
+    let Ok(conn) = rusqlite::Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY) else { return vec![] };
+    let mut st = match conn.prepare("SELECT * FROM atomic_memories") {
+        Ok(st) => st,
+        Err(_) => return vec![],
+    };
+    let cols: Vec<String> = st.column_names().into_iter().map(String::from).collect();
+    let rows = st.query_map([], |r| {
+        let mut o = serde_json::Map::new();
+        for (i, c) in cols.iter().enumerate() {
+            let v = match r.get_ref(i) {
+                Ok(rusqlite::types::ValueRef::Text(t)) => Value::String(String::from_utf8_lossy(t).into_owned()),
+                Ok(rusqlite::types::ValueRef::Integer(n)) => Value::from(n),
+                Ok(rusqlite::types::ValueRef::Real(f)) => Value::from(f),
+                _ => Value::Null,
+            };
+            o.insert(c.clone(), v);
+        }
+        Ok(Value::Object(o))
+    });
+    rows.into_iter().flatten().flatten().collect()
 }
 
 fn mcp_named(root: &Path) -> bool {
@@ -197,10 +322,11 @@ fn mcp_named(root: &Path) -> bool {
 }
 
 fn atomic(dir: &Path) -> Vec<Value> {
-    std::fs::read_to_string(dir.join(".memory/memories.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str::<Vec<Value>>(&s).ok())
-        .unwrap_or_default()
+    match std::fs::read_to_string(dir.join(".memory/memories.json")) {
+        Ok(s) => serde_json::from_str::<Vec<Value>>(&s).unwrap_or_default(),
+        // no memories.json: the store may keep its atomic memories in sqlite
+        Err(_) => atomic_sqlite(dir),
+    }
 }
 
 fn wiki(dir: &Path) -> Vec<(String, String)> {
@@ -275,6 +401,56 @@ mod tests {
         assert_eq!(skill_name("skills/pdf/README.md"), None);
         let (m, b) = split_front("---\nname: x\n---\nbody\n");
         assert_eq!((m.trim(), b), ("name: x", "body\n"));
+    }
+
+    #[test]
+    fn reads_sqlite_when_json_is_missing() {
+        let t = std::env::temp_dir().join(format!("kula-tdb-sql-{}", std::process::id()));
+        let m = t.join("AGENTS/.memory/data");
+        std::fs::create_dir_all(&m).unwrap();
+        let conn = rusqlite::Connection::open(m.join("memory.sqlite")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE atomic_memories (id INTEGER PRIMARY KEY, type TEXT, category TEXT, content TEXT, source_agent TEXT);
+             INSERT INTO atomic_memories (type, category, content, source_agent) VALUES
+               ('constraint', 'scope', 'No service endpoint.', 'team'),
+               ('fact', '', 'Rust 1.90 toolchain.', 'codex');",
+        )
+        .unwrap();
+        let s = sources(&t);
+        assert_eq!((s.len(), s[0].dir.as_str(), s[0].memories, s[0].mcp), (1, "AGENTS", 2, false));
+        let got = tencent_memories(&t, "AGENTS").unwrap();
+        assert_eq!(got[0], ("[constraint/scope] No service endpoint.".into(), "tencentdb:team".into()));
+        assert_eq!(got[1], ("[fact] Rust 1.90 toolchain.".into(), "tencentdb:codex".into()));
+        std::fs::remove_dir_all(&t).ok();
+    }
+
+    #[test]
+    fn adopts_an_mcp_server_from_mcp_json() {
+        let t = std::env::temp_dir().join(format!("kula-adopt-{}", std::process::id()));
+        std::fs::create_dir_all(t.join(".agents")).unwrap();
+        std::fs::write(
+            t.join(".mcp.json"),
+            r#"{"mcpServers":{"tencentdb-memory":{"command":"npx","args":["-y","tencentdb-agent-memory"]}}}"#,
+        )
+        .unwrap();
+        // a claude-shaped agent config so mcp_sync has somewhere to write
+        std::fs::write(t.join("CLAUDE.md"), "# claude\n").unwrap();
+        let w = adopt_mcp(&t, "tencentdb-memory").unwrap();
+        assert!(w.iter().any(|f| f.contains("mcp.json")), "wrote {w:?}");
+        let shared: Value = serde_json::from_str(&std::fs::read_to_string(t.join(".agents/mcp.json")).unwrap()).unwrap();
+        assert_eq!(shared["mcpServers"]["tencentdb-memory"]["command"], "npx");
+        assert!(adopt_mcp(&t, "nope").is_err());
+        std::fs::remove_dir_all(&t).ok();
+    }
+
+    #[test]
+    fn folder_import_validates() {
+        // offline and bad paths are refused without any network call
+        std::env::set_var("KULA_NO_NET", "1");
+        assert!(folder_import("a/b", "x/SKILL.md").is_err());
+        std::env::remove_var("KULA_NO_NET");
+        assert!(folder_import("a/b", "x/other.md").is_err());
+        assert!(folder_import("a/b", "x/../y/SKILL.md").is_err());
     }
 
     #[test]

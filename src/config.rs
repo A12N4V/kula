@@ -4,8 +4,9 @@
 //! before; `kula init` writes one so a team shares the same graph, hooks and
 //! CI gate.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 pub const FILE: &str = "kula.toml";
@@ -170,6 +171,10 @@ pub struct Team {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub under: String,
     pub members: Vec<Member>,
+    /// Where each member sits on the team canvas: workflow → [x, y]. Kept in
+    /// kula.toml so the canvas remembers its arrangement.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub positions: BTreeMap<String, Vec<f64>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -539,6 +544,76 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
     edit(root, |d| set_tables(d, "team", teams))
 }
 
+// ---------------------------------------------------------------- team edits
+// Single-team actions for the Teams canvas (fuse4): each loads the config,
+// mutates one team and saves through set_teams, so every rule (names, member
+// keys, nesting, no loops) keeps holding.
+
+/// Load the teams, hand them to `f` and save; `f` may error to refuse.
+fn edit_teams<F>(root: &Path, f: F) -> Result<Config>
+where
+    F: FnOnce(&mut Vec<Team>) -> Result<()>,
+{
+    let cfg = Config::load(root)?;
+    let mut teams = cfg.teams.clone();
+    f(&mut teams)?;
+    set_teams(root, &teams)
+}
+
+/// Create or replace one team by name.
+pub fn upsert_team(root: &Path, team: &Team) -> Result<Config> {
+    anyhow::ensure!(!team.name.trim().is_empty(), "a team needs a name");
+    edit_teams(root, |teams| {
+        teams.retain(|t| t.name != team.name);
+        teams.push(team.clone());
+        Ok(())
+    })
+}
+
+/// Remove one team by name; removing a name that is not there is fine.
+pub fn remove_team(root: &Path, name: &str) -> Result<Config> {
+    edit_teams(root, |teams| {
+        teams.retain(|t| t.name != name);
+        Ok(())
+    })
+}
+
+/// Add a seat working in `workflow`. With an `agent` it is that agent's seat;
+/// without one the seat is named after the workflow (a seat must have a name
+/// or an agent, and `any` twice would collide).
+pub fn team_add_member(root: &Path, team: &str, workflow: &str, agent: &str) -> Result<Config> {
+    anyhow::ensure!(!workflow.trim().is_empty(), "name the workflow the seat works in");
+    let m = if agent.trim().is_empty() {
+        crate::config::Member { name: workflow.trim().to_string(), workflow: workflow.trim().to_string(), ..Default::default() }
+    } else {
+        crate::config::Member { agent: agent.trim().to_string(), workflow: workflow.trim().to_string(), ..Default::default() }
+    };
+    edit_teams(root, |teams| {
+        let t = teams.iter_mut().find(|t| t.name == team).ok_or_else(|| anyhow!("no team {team:?}"))?;
+        t.members.push(m);
+        Ok(())
+    })
+}
+
+/// Remove every seat of `team` that works in `workflow`; none is fine.
+pub fn team_remove_member(root: &Path, team: &str, workflow: &str) -> Result<Config> {
+    edit_teams(root, |teams| {
+        let t = teams.iter_mut().find(|t| t.name == team).ok_or_else(|| anyhow!("no team {team:?}"))?;
+        t.members.retain(|m| m.workflow != workflow);
+        Ok(())
+    })
+}
+
+/// Remember where the canvas dragged each member: workflow → [x, y].
+pub fn set_team_layout(root: &Path, team: &str, positions: &BTreeMap<String, Vec<f64>>) -> Result<Config> {
+    anyhow::ensure!(!team.trim().is_empty(), "name the team");
+    edit_teams(root, |teams| {
+        let t = teams.iter_mut().find(|t| t.name == team).ok_or_else(|| anyhow!("no team {team:?}"))?;
+        t.positions = positions.clone();
+        Ok(())
+    })
+}
+
 pub fn set_agents(root: &Path, a: &Agents) -> Result<Config> {
     edit(root, |d| {
         let t = d.entry("agents").or_insert(toml_edit::table()).as_table_mut().context("[agents] must be a table")?;
@@ -597,6 +672,40 @@ mod tests {
         let pinned = Member { agent: "gemini".into(), ..Default::default() };
         assert_eq!(any.provider("codex"), "codex");
         assert_eq!(pinned.provider("codex"), "gemini");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn team_edits_round_trip_and_keep_positions() {
+        let dir = std::env::temp_dir().join(format!("kula-team-edit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("kula.toml"), "[agents]\nmemory = true\n").unwrap();
+        let team = |name: &str| Team {
+            name: name.into(),
+            members: vec![Member { name: "Atlas".into(), workflow: "explore".into(), ..Default::default() }],
+            ..Default::default()
+        };
+        upsert_team(&dir, &team("ship")).unwrap();
+        team_add_member(&dir, "ship", "tests", "cursor").unwrap();
+        let mut pos = BTreeMap::new();
+        pos.insert("explore".to_string(), vec![120.0, 240.5]);
+        pos.insert("tests".to_string(), vec![400.0, 80.0]);
+        set_team_layout(&dir, "ship", &pos).unwrap();
+        let cfg = Config::load(&dir).unwrap();
+        let t = cfg.teams.iter().find(|t| t.name == "ship").unwrap();
+        assert_eq!(t.members.len(), 2);
+        assert_eq!(t.positions.get("explore").unwrap(), &vec![120.0, 240.5]);
+        // the toml text keeps the positions so a hand-written file round-trips
+        let text = std::fs::read_to_string(dir.join("kula.toml")).unwrap();
+        assert!(text.contains("positions"), "{text}");
+        team_remove_member(&dir, "ship", "tests").unwrap();
+        assert_eq!(Config::load(&dir).unwrap().teams[0].members.len(), 1);
+        // removing a team twice is fine
+        remove_team(&dir, "ship").unwrap();
+        remove_team(&dir, "ship").unwrap();
+        assert!(Config::load(&dir).unwrap().teams.is_empty());
+        assert!(team_add_member(&dir, "ship", "tests", "cursor").is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
