@@ -214,4 +214,9 @@ JSON
 # An uncommitted edit, so Changes has something to show.
 printf '\n// TODO: cache the RDF store per indexed head\n' >> src/kg.rs
 fi
-exec env KULA_TOKEN=test "$K" view --no-open --port "$1"
+# Not exec: stay alive to delete the copy when Playwright stops the server
+# (each run leaves ~110 MB in /tmp otherwise).
+env KULA_NO_AGENT=1 KULA_TOKEN=test "$K" view --no-open --port "$1" &
+pid=$!
+trap 'kill "$pid" 2>/dev/null; rm -rf "${D%/kula}"' EXIT INT TERM HUP
+wait "$pid"

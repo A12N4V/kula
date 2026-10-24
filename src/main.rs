@@ -3,9 +3,15 @@
 mod agent;
 mod agent_config;
 mod agents;
+mod bench;
 mod cache;
 mod clean;
 mod config;
+mod embed;
+#[cfg(feature = "embed")]
+mod embed_ort;
+mod explain;
+mod file_write;
 mod git;
 mod graph;
 mod guard;
@@ -13,6 +19,10 @@ mod index;
 mod isolate;
 mod kg;
 mod lang_cmd;
+mod map;
+mod map_api;
+mod map_cmd;
+mod map_run;
 mod mcp;
 mod memory;
 mod meta;
@@ -23,6 +33,7 @@ mod server;
 mod setup;
 mod skills;
 mod store;
+mod syntagm;
 mod term;
 mod workflow;
 
@@ -139,6 +150,9 @@ enum Cmd {
         /// Print nothing.
         #[arg(short, long)]
         quiet: bool,
+        /// Skip the map (blocks and chains) after the graph builds.
+        #[arg(long)]
+        no_map: bool,
     },
     /// External packages: who imports them, and whether manifests declare them.
     #[command(after_help = "Examples:\n  kula deps --undeclared   ·  kula deps --unused")]
@@ -149,6 +163,15 @@ enum Cmd {
         /// Only packages declared but never imported by indexed code.
         #[arg(long)]
         unused: bool,
+    },
+    /// Optional EmbeddingGemma embeddings for Syntagm: status | check | install | run | remove.
+    #[command(after_help = "Examples:\n  kula embed check\n  kula embed install --force\n  kula embed run")]
+    Embed {
+        #[command(subcommand)]
+        cmd: Option<EmbedCmd>,
+        /// Install even when the check refuses (low RAM or disk).
+        #[arg(long)]
+        force: bool,
     },
     /// Agent context: the code a task needs, ranked by graph distance and fitted to a token budget.
     #[command(after_help = "Examples:\n  kula pack \"how does login validate a token\" --budget 6000")]
@@ -230,6 +253,33 @@ enum Cmd {
     Flows {
         #[arg(short, long, default_value_t = 10)]
         limit: usize,
+    },
+    /// Hierarchical code blocks built from the graph.
+    #[command(hide = true)]
+    #[command(after_help = "Examples:\n  kula blocks   ·  kula blocks --depth 1 --json")]
+    Blocks {
+        /// Show only blocks up to this depth.
+        #[arg(long)]
+        depth: Option<usize>,
+    },
+    /// Maximal call chains from entry points.
+    #[command(after_help = "Examples:\n  kula chains   ·  kula chains --from pay")]
+    #[command(hide = true)]
+    Chains {
+        /// Chains starting at this symbol.
+        #[arg(long)]
+        from: Option<String>,
+    },
+    /// The map: sections, blocks, chain families, roles – summary by default.
+    #[command(
+        after_help = "Examples:\n  kula map   ·  kula map blocks --depth 1\n  kula map chains --from pay --to log_payment --all\n  kula map roles --role utility"
+    )]
+    Map {
+        #[command(subcommand)]
+        sub: Option<MapSub>,
+        /// Run the mapping benchmark: three gold repos, metrics as JSON.
+        #[arg(long)]
+        bench: bool,
     },
     /// Functional clusters (communities) in the codebase.
     #[command(after_help = "Examples:\n  kula clusters")]
@@ -379,6 +429,98 @@ enum Cmd {
     },
     #[command(external_subcommand)]
     External(Vec<String>),
+}
+
+/// Subcommands of `kula map` – the map command family.
+#[derive(Subcommand)]
+enum MapSub {
+    /// The summary table: sections, blocks, roles, families, chains, loops, ms.
+    Summary,
+    /// The block tree, optionally as JSON.
+    Blocks {
+        /// Show only blocks up to this depth.
+        #[arg(long)]
+        depth: Option<usize>,
+    },
+    /// Chain families and their chains – `--all` streams every chain as NDJSON.
+    Chains {
+        /// Chains starting at this symbol.
+        #[arg(long)]
+        from: Option<String>,
+        /// Chains ending at this symbol.
+        #[arg(long)]
+        to: Option<String>,
+        /// Stream every chain, not just the sampled surface.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Every symbol grouped by role, with each role's one-line rule.
+    Roles {
+        /// Only this role.
+        #[arg(long)]
+        role: Option<String>,
+    },
+    /// Plain words for the map – named by your own agent's model (the
+    /// kula-map skill), stored in git on refs/kula/map, shared by `kula share`.
+    #[command(subcommand)]
+    Explain(ExplainCmd),
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ExplainCmd {
+    /// The blocks that still need plain words, with their context (JSON).
+    Todo {
+        /// Every block – to re-map with another model.
+        #[arg(long)]
+        all: bool,
+        #[arg(long, default_value_t = 25)]
+        limit: usize,
+    },
+    /// Store words from a JSON file (or - for stdin): { "<id>": { "plain", "sentence" } }.
+    Apply {
+        /// The model that wrote them, e.g. claude-opus-5-5.
+        #[arg(long)]
+        model: String,
+        file: String,
+    },
+    /// How much of the map has plain words, and by which models.
+    Status,
+    /// Ask your default agent (or --agent) to run the kula-map skill now.
+    Run {
+        #[arg(long)]
+        agent: Option<String>,
+        /// Re-map every block, not only the unnamed ones.
+        #[arg(long)]
+        all: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum EmbedCmd {
+    /// Where the model lives, whether it is installed, the last run.
+    Status,
+    /// System stats and a verdict (ok / warn / refuse) – no model needed.
+    Check,
+    /// Run the check, then download the model unless it refuses.
+    Install {
+        /// Install even when the check refuses (low RAM or disk).
+        #[arg(long)]
+        force: bool,
+    },
+    /// Embed every symbol in the graph (batched, low priority, resumable).
+    /// Ctrl-C stops between batches; the cache keeps what was done.
+    Run {
+        /// Full speed: no pauses, 64-text batches, every core.
+        #[arg(long)]
+        fast: bool,
+        /// Use the deterministic mock provider instead of the model – for
+        /// tests and caches without a download. Real embedding needs
+        /// `[embed]` enabled and the model installed.
+        #[arg(long)]
+        mock: bool,
+    },
+    /// Delete the model and this repo's embedding cache.
+    Remove,
 }
 
 #[derive(Subcommand)]
@@ -923,7 +1065,7 @@ fn run(cli: Cli) -> Result<()> {
     let out = |v: &dyn erased::Json| println!("{}", v.to_json());
 
     match cmd {
-        Cmd::Index { if_stale, quiet } => {
+        Cmd::Index { if_stale, quiet, no_map } => {
             if if_stale && Store::freshness(&repo) == "current" {
                 return Ok(());
             }
@@ -931,6 +1073,27 @@ fn run(cli: Cli) -> Result<()> {
                 eprint!("{} indexing {} …", accent("◯"), bold(&repo.name()));
             }
             let s = index::run(&repo, quiet)?;
+            // Map by default: blocks and chains after the graph builds. The
+            // CLI runs it on this thread (run_now) – the process ends when
+            // main returns, so a detached thread would be killed mid-run and
+            // the stored map would never land. The server spawns instead.
+            if !no_map {
+                map_run::run_now(repo.clone(), quiet);
+            }
+            // Embeddings on by default: a fresh repo (no recorded decision)
+            // gets the hardware check exactly once. Ok installs and embeds
+            // inline – the process would otherwise exit before the download
+            // lands – then remaps thematically. Warn or refuse stays off and
+            // says why; the decision is recorded either way.
+            let auto_store = Store::open(&repo)?;
+            let rep = embed::auto(&repo, &auto_store, true);
+            if !quiet {
+                match rep.verdict.as_str() {
+                    "ok" => eprintln!("  {} embeddings on – {}", crate::term::dim("◇"), rep.reasons.join("; ")),
+                    "decided" | "busy" | "spawned" => {}
+                    v => eprintln!("  {} embeddings off – {}: {}", crate::term::dim("◆"), v, rep.reasons.join("; ")),
+                }
+            }
             if quiet {
             } else if json {
                 out(&s);
@@ -978,6 +1141,93 @@ fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Cmd::Embed { cmd, force } => match cmd.unwrap_or(EmbedCmd::Status) {
+            EmbedCmd::Status => {
+                let v = embed::api_status(&repo)?;
+                if json {
+                    out(&v);
+                } else {
+                    header("embeddings");
+                    let o = v.as_object().unwrap();
+                    for (k, val) in o {
+                        println!("  {:<28} {}", k, val);
+                    }
+                }
+            }
+            EmbedCmd::Check => {
+                let st = open_or_index(&repo)?;
+                let cfg = crate::config::Config::load(&repo.root)?.embed;
+                let s = embed::check(&repo, &st, &cfg)?;
+                if json {
+                    out(&serde_json::to_value(&s)?);
+                } else {
+                    header("embed check");
+                    print!("{}", embed::render_check(&s));
+                    println!();
+                }
+            }
+            EmbedCmd::Install { force: install_force } => {
+                let force = force || install_force;
+                let st = open_or_index(&repo)?;
+                let cfg = crate::config::Config::load(&repo.root)?.embed;
+                let s = embed::check(&repo, &st, &cfg)?;
+                embed::install_gate(&s, force)?;
+                if json {
+                    out(&serde_json::json!({ "installed": embed::install(&repo)? }));
+                } else {
+                    eprint!("{} downloading EmbeddingGemma 300M (Q4 ONNX) …", crate::term::accent("◯"));
+                    embed::install(&repo)?;
+                    eprintln!(" {}", crate::term::green("✓"));
+                    println!("  model in {}", embed::model_dir().display());
+                }
+            }
+            EmbedCmd::Run { mock, fast } => {
+                let st = open_or_index(&repo)?;
+                let mut cfg = crate::config::Config::load(&repo.root)?.embed;
+                if fast {
+                    cfg.fast = true;
+                }
+                let prov = embed::provider_for(&cfg, mock)?;
+                // Ctrl-C asks the run to stop between batches; the cache
+                // already written stays resumable.
+                let cancel_task = tokio::runtime::Builder::new_current_thread().build().map(|rt| {
+                    std::thread::spawn(move || {
+                        rt.block_on(async {
+                            let _ = tokio::signal::ctrl_c().await;
+                            embed::cancel();
+                            eprintln!("\n{} stopping after this batch – cache is resumable", crate::term::yellow("!"));
+                        });
+                    })
+                });
+                let (idx, fresh) = embed::run(&repo, &st, &cfg, &prov, embed::cancel_requested)?;
+                if json {
+                    out(&serde_json::json!({ "symbols": idx.vectors.len(), "fresh": fresh, "dim": idx.dim, "provider": idx.provider }));
+                } else {
+                    println!(
+                        "{} {} symbols embedded ({fresh} fresh, {} cached) · {} dims · {}",
+                        crate::term::green("✓"),
+                        idx.vectors.len(),
+                        idx.vectors.len() - fresh,
+                        idx.dim,
+                        idx.provider
+                    );
+                }
+                if let Ok(t) = cancel_task {
+                    t.join().ok();
+                }
+                if embed::status().cancelled {
+                    std::process::exit(130);
+                }
+            }
+            EmbedCmd::Remove => {
+                let freed = embed::remove(&repo)?;
+                if json {
+                    out(&serde_json::json!({ "freed_mb": freed / (1024 * 1024) }));
+                } else {
+                    println!("{} removed {} MB", crate::term::green("✓"), freed / (1024 * 1024));
+                }
+            }
+        },
         Cmd::Pack { targets, budget } => {
             let st = open_or_index(&repo)?;
             let p = agent::context_pack(&repo, &st, &targets, budget)?;
@@ -1314,6 +1564,35 @@ fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Cmd::Map { sub, bench } => {
+            if bench {
+                bench::mapping::run()?;
+            } else {
+                map_cmd::run(sub, &repo, json)?
+            }
+        }
+        Cmd::Blocks { depth } => {
+            let st = Store::open(&repo)?;
+            let (idx, state) = embed::similarity_for(&repo, &st);
+            let sim = idx.as_ref().map(|i| i as &dyn syntagm::Similarity);
+            let s = syntagm::build_with(&repo, &st, sim, state)?;
+            if json {
+                out(&s);
+                return Ok(());
+            }
+            syntagm::print_blocks(&s, depth);
+        }
+        Cmd::Chains { from } => {
+            let st = Store::open(&repo)?;
+            let (idx, state) = embed::similarity_for(&repo, &st);
+            let sim = idx.as_ref().map(|i| i as &dyn syntagm::Similarity);
+            let s = syntagm::build_with(&repo, &st, sim, state)?;
+            if json {
+                out(&s.chains);
+                return Ok(());
+            }
+            syntagm::print_chains(&st, &s, from.as_deref())?;
+        }
         Cmd::Clusters => {
             let st = Store::open(&repo)?;
             let c = st.communities()?;
@@ -1379,6 +1658,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Kg(kc) => kg_cmd(&repo, kc, json)?,
         Cmd::Sync { remote, overwrite } => {
             print!("{}", meta::sync(&repo, &remote, false)?);
+            print!("{}", explain::sync(&repo, &remote, false)?);
             match setup::pull(&repo, &remote, overwrite)? {
                 None => println!("remote has no shared agent setup"),
                 Some(r) => {
@@ -1402,6 +1682,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Share { remote } => {
             let shared = setup::snapshot(&repo)?;
             print!("{}", meta::sync(&repo, &remote, true)?);
+            print!("{}", explain::sync(&repo, &remote, true)?);
             setup::push(&repo, &remote)?;
             println!("shared the agent setup ({} files) on {}", shared.len(), setup::REF);
             println!("{}", dim("anyone who clones gets it with `kula sync` (a fork: `kula sync upstream`)"));

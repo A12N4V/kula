@@ -57,7 +57,7 @@
 /* Shared editor chrome: tabs, inspector, chips, preview */
 .team-card .ag-body { gap: 0; }
 .team-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 10px; overflow-x: auto; }
-.team-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.team-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
 .team-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
 .team-tabs .team-tab-add { margin-left: 4px; }
 .team-stage { display: grid; grid-template-columns: minmax(0, 1fr) 320px; border: 1px solid var(--line); min-height: 420px; }
@@ -134,8 +134,8 @@ input.mi-title { font: 600 14px var(--mono); }
 .team-side { min-width: 0; }
 @media (max-width: 1400px) { .team-split { grid-template-columns: 1fr; } .soc-graph { height: 520px; } }
 
-.notes-split { display: grid; grid-template-columns: minmax(0, 1fr) var(--size-notes-side, 400px); height: 100%; min-height: 0; }
-.notes-split > .notes-side { border-left: 1px solid var(--line); overflow: auto; min-height: 0; }
+.notes-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, var(--size-notes-side, 400px)); height: 100%; min-height: 0; }
+.notes-split > .notes-side { border-left: 1px solid var(--line); overflow: auto; min-height: 0; min-width: 0; margin: 0; }
 .notes-graph { position: relative; height: 100%; min-height: 420px; background: var(--bg); }
 @media (max-width: 1100px) { .notes-split { grid-template-columns: 1fr; height: auto; } .notes-graph { height: 460px; } }
 /* the team graph takes the whole width; the other Agents tabs keep their measure */
@@ -162,9 +162,9 @@ input.mi-title { font: 600 14px var(--mono); }
 .rf-back { stroke: var(--accent); stroke-dasharray: 2 4; opacity: .55; }
 .rf-col { position: absolute; top: 4px; display: grid; align-content: start; min-width: 0; }
 .rf-solvers { left: 0; }
-.rf-solver, .rf-try, .rf-rec { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0 8px; background: none; border: 0; border-left: 2px solid transparent; color: var(--text-2); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; transition: opacity .15s, background .15s; }
+.rf-solver, .rf-try, .rf-rec { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0 8px; background: none; border: 0; color: var(--text-2); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; transition: opacity .15s, background .15s; }
 .rf-solver:hover, .rf-try:hover, .rf-rec:hover { background: var(--panel-2); color: var(--text); }
-.rf-solver.sel, .rf-try.sel { border-left-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.rf-solver.sel, .rf-try.sel { background: var(--bg-3); color: var(--text); }
 .rf-sname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .rf-share { flex: none; width: 34px; height: 4px; background: var(--line); overflow: hidden; }
 .rf-share i { display: block; height: 100%; }
@@ -175,7 +175,7 @@ input.mi-title { font: 600 14px var(--mono); }
 .rf-files { flex: none; max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--text-3); }
 .rf-try.kept .rf-hyp { color: var(--text); }
 .rf-try.fenced .rf-hyp { color: var(--text-3); text-decoration: line-through; text-decoration-color: color-mix(in oklab, var(--red) 70%, transparent); }
-.rf-try.kept { border-left-color: var(--accent); }
+.rf-try.kept { background: var(--bg-3); }
 .rf .dim { opacity: .28; }
 .rf-gate { position: absolute; top: 0; bottom: 0; width: 2%; border-left: 1px solid var(--line-2); border-right: 1px solid var(--line-2); background: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in oklab, var(--line-2) 55%, transparent) 4px 5px); }
 .rf-pin { position: absolute; left: 50%; width: 10px; height: 10px; margin-left: -5px; border: 1px solid var(--text-3); background: var(--bg); transition: opacity .15s; }
@@ -325,3 +325,66 @@ input.mi-title { font: 600 14px var(--mono); }
 @keyframes hg-draw { from { stroke-dashoffset: 1; } }
 @keyframes hg-swing { 0% { stroke-dashoffset: 0; } 50% { stroke-dashoffset: -1; } 50.01% { stroke-dashoffset: 1; } 100% { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { .hgraph path, .hgraph.live path { animation: none; } }
+
+/* A3 · the org as flow-canvas nodes: the card rides inside the kit's tile box */
+.org .fc-canvas { min-height: 380px; }
+.org .fc-tile-box { width: 100%; height: calc(100% - 40px); place-items: stretch; padding: 8px; }
+.org .fc-tile { height: 100%; }
+.org .fc-title { margin-top: 4px; }
+.org .org-card { flex: 1; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px 10px; padding: 6px 8px; cursor: pointer; border: none; background: none; }
+.org .org-hint { display: none; }
+.org-tinker { display: flex; flex-direction: column; gap: 8px; }
+.org-rel { font-size: 11px; }
+.wf-graph { margin: 8px 0; border: 1px solid var(--line); overflow: hidden; }
+.wf-graph .fc-canvas { height: 320px; }
+.wf-graph-hint { padding: 4px 10px; border-top: 1px solid var(--line); font-size: 11px; }
+.wf-rel { font-size: 11px; }
+.m1-a11y { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.m1-node-glyph { font: 600 12px var(--mono); color: var(--text); }
+.m1-graph { position: relative; }
+.rf-canvas { margin: 8px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.rf-canvas .fc-canvas { height: 360px; }
+.rf-list { display: grid; grid-template-columns: minmax(0, 1fr); padding: 4px 0; }
+.rf-list .rf-tries { position: static; display: grid; align-content: start; }
+/* A3 · the org canvas needs real width: the editor column widens, the canvas
+   spans the stage above the inspector, and the kit sidebar takes the right.
+   Wide only while there is room for both (≥ 901 px); below, the editor stacks
+   above the canvas and the base single-column rule stands. */
+@media (min-width: 1401px) { .team-split { grid-template-columns: minmax(0, 1fr) minmax(860px, 62%); } }
+@media (min-width: 901px) and (max-width: 1400px) { .team-split { grid-template-columns: minmax(0, 1fr) minmax(720px, 70%); } }
+.team-stage > .team-graph { grid-column: 1 / -1; }
+.team-stage { grid-template-columns: minmax(0, 1fr); }
+.rf-canvas .fc-canvas, .wf-graph .fc-canvas, .org .fc-canvas, .m1-graph .fc-canvas { flex: 1 1 0; min-width: 0; }
+.m1-graph .fc-canvas { height: 340px; }
+.rf-canvas .fc-canvas { height: 360px; }
+.wf-graph .fc-canvas { height: 300px; }
+.org .fc-canvas { height: 440px; }
+/* keep my views' wide inputs clear of the floating shortcuts button */
+.team-stage .map-inspector { max-width: 760px; }
+.wf-form { max-width: 1160px; }
+@media (min-width: 1200px) { .ag-memory .ag-body { padding-right: 104px; } }
+/* A3 · phone: grid min-content must not overflow, kit min-height yields */
+.team-stage > *, .org, .m1-graph, .wf-graph, .rf { min-width: 0; }
+@media (max-width: 600px) {
+  .org .fc-canvas { height: 288px; min-height: 0; }
+  .m1-graph .fc-canvas { height: 228px; min-height: 0; }
+  .wf-graph .fc-canvas { height: 150px; min-height: 0; }
+  .rf-canvas .fc-canvas { height: 240px; min-height: 0; }
+  /* keep the panel's last row clear of the statusbar's shortcuts button */
+  .ag-panel { padding-bottom: 48px; }
+  /* these canvases are small and dense: the control cluster and the drawer
+     toggle would sit on top of nodes – zoom and pan stay available by touch,
+     fit and tidy remain on the desktop controls */
+  .org .fc-controls, .m1-graph .fc-controls, .wf-graph .fc-controls, .rf-canvas .fc-controls { display: none; }
+  .org .fc-side-toggle, .m1-graph .fc-side-toggle, .wf-graph .fc-side-toggle, .rf-canvas .fc-side-toggle {
+    top: auto; bottom: 8px; right: 8px;
+  }
+  /* the org's fitted cards reach the bottom-right corner: the toggle goes to
+     the free bottom-left instead */
+  .org .fc-side-toggle { right: auto; left: 8px; }
+  /* the kit's controls column is taller than these short canvases: lay it out
+     as one row along the bottom edge – full-size buttons, the 40 px floor */
+  .org .fc-controls, .m1-graph .fc-controls, .wf-graph .fc-controls, .rf-canvas .fc-controls {
+    flex-direction: row; gap: 0; padding: 0 2px;
+  }
+}
