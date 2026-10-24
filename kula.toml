@@ -19,19 +19,6 @@ max_risk = "medium"   # CI gate: none | low | medium | high
 hide_secrets = true
 memory = true
 
-# Fence code off from AI agents. locked: read, never edit · hidden: never shown ·
-# review: editable, flagged in `kula check`. Paths are globs; symbols are names.
-# [[guard]]
-# paths = ["migrations/**"]
-# level = "locked"
-# reason = "schema changes go through the DBA"
-
-[[workflow]]
-name = "polish"
-about = "Small cleanups"
-scope = ["src/**"]
-steps = ["Tidy", "verify"]
-
 [[team]]
 name = "ship"
 about = "demo team"
@@ -47,3 +34,9 @@ budget = 5
 [embed]
 decided = true
 enabled = false
+
+[[workflow]]
+name = "polish"
+about = "Small cleanups"
+scope = ["src/**"]
+steps = ["Tidy", "verify"]

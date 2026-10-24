@@ -75,7 +75,7 @@ export default function AgentCard({ card, live, onOpen }: { card: CardData; live
           {live && <span className="ag-card-live">in use now</span>}
         </span>
         <span className="card__t">{card.name}</span>
-        <span className="card__d">{card.role || <span className="muted">no role yet</span>}</span>
+        <span className="card__d">{card.description || card.role || <span className="muted">no role yet</span>}</span>
         <span className="card__fmt">{card.tags.join(" · ") || "–"}</span>
       </span>
     </button>
