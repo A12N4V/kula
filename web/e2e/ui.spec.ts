@@ -1844,6 +1844,7 @@ test.describe("agents config K2", () => {
     fs.writeFileSync(path.join(repo, ".claude/skills/triage/SKILL.md"),
       "---\nname: triage\ndescription: Sort a new issue: reproduce, label, find the owning code\n---\n\n1. Reproduce with the smallest input.\n2. Label the severity first.\n");
     await page.reload();
+    await page.locator(".sx-more > summary").click(); // the reload folds the per-agent copies again
     const matrix = page.locator(".sk-matrix");
     await expect(matrix).toContainText("triage");
     // the matrix marks Claude Code's copy as edited
