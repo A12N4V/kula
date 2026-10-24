@@ -46,7 +46,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 /* trailing counts line up on one aligned column edge, whatever the label does */
 .item .sub { font-variant-numeric: tabular-nums; }
 .item:hover { background: var(--panel); }
-.item.on { background: var(--bg-3); }
+.item.on { background: var(--bg-2); }
 .item .title { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .sub { color: var(--text-3); font-size: 11.5px; }
 .detail-pad { padding: 22px 28px; max-width: 1100px; }
@@ -108,7 +108,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 @keyframes pop-in { from { opacity: 0; transform: scale(.97) translateY(-4px); } to { opacity: 1; transform: none; } }
 .item, .sym, .ov-row, .kpi, .cp-stat, .hot-row { transition: background var(--dur), border-color var(--dur), color var(--dur), opacity var(--dur); }
 .detail-pad { margin: 0 auto; }
-.sym.on { background: var(--bg-3); }
+.sym.on { background: var(--bg-2); }
 .pal-ico { width: 18px; display: inline-grid; place-items: center; flex: none; }
 .pal-ico svg { width: 15px; height: 15px; }
 .palette .grp:first-child { padding-top: 4px; }
