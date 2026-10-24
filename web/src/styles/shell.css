@@ -1,5 +1,5 @@
 /* ---------- shell ---------- */
-.shell { display: grid; grid-template-columns: 56px 1fr; grid-template-rows: 48px 1fr 28px; height: 100%; }
+.shell { display: grid; grid-template-columns: 56px 1fr; grid-template-rows: 48px 1fr 26px; height: 100%; }
 .topbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 10px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: 0.02em; }
 .brand svg { width: 26px; height: 26px; }
@@ -97,7 +97,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .rail-group:last-child { margin-top: auto; }
 .dot.pulse { animation: dotpulse 1.2s ease-in-out infinite; }
 @keyframes dotpulse { 50% { opacity: .35; } }
-.sb-help { border: 0; background: none; color: var(--text-3); font: inherit; height: 27px; padding: 0 6px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.sb-help { border: 0; background: none; color: var(--text-3); font: inherit; height: 28px; padding: 0 6px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
 .sb-help:hover { color: var(--text); }
 .logo { display: block; }
 
