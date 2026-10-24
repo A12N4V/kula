@@ -15,7 +15,7 @@ import { LinkArea } from "../Autofill";
 import { useCode } from "../CodePanel";
 import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLYPH, makeColorer } from "../colors";
 import { knownDirs, settings, useSettings, type Settings } from "../settings";
-import { Empty, Icon, Kind, Logo, Md, ShowOutput, StatTable, Sym, useToast } from "../ui";
+import { Empty, Icon, Kind, Logo, Md, ShowOutput, StatTable, Sym, Toggle, useToast } from "../ui";
 import { GraphLoader, type LoadStep } from "../AsciiMark";
 import { PreEditPanel } from "../AgentChecks";
 import type { IndexProgress } from "../api";
@@ -637,16 +637,16 @@ function MapView(props: Props) {
           <button className={level === "symbol" ? "on" : ""} onClick={() => setLevel("symbol")} title="Symbols" aria-label="Symbols" data-testid="graph-level-symbol"><span className="ico-fn" aria-hidden="true">ƒ</span><span className="hud-lbl">Symbols</span></button>
           <button className={level === "file" ? "on" : ""} onClick={() => setLevel("file")} title="Files" aria-label="Files" data-testid="graph-level-file"><Icon.doc /><span className="hud-lbl">Files</span></button>
         </div>
-        <button className={`btn sm hud-btn ${s.packages ? "on" : ""}`} aria-pressed={s.packages} onClick={() => settings.set({ packages: !s.packages })} title="Show external packages on the rim">
-          <Icon.box /> Packages{pkgCount ? <span className="muted"> {pkgCount}</span> : null}
+        <Toggle className="hud-tgl" label={<><Icon.box /> <span className="hud-lbl">Packages</span></>} checked={s.packages}
+          onChange={(v) => settings.set({ packages: v })} hint="Show external packages on the rim"
+          count={pkgCount || undefined} testId="graph-packages" />
+        <button className="btn sm hud-btn" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs" aria-label="Contrast: overlay two revisions' graphs"><Icon.compare /> <span className="hud-lbl">Contrast</span></button>
+        <button className={`btn sm hud-btn ${iso || isoAsk != null ? "on" : ""}`} aria-pressed={!!iso} onClick={() => setIsoAsk(isoAsk == null ? (iso ? iso.slice.selectors.join(" ") : "") : null)} title="Show only part of the codebase, with its boundary  (i)" aria-label="Isolate: show only part of the codebase, with its boundary  (i)">
+          <Icon.isolate /> <span className="hud-lbl">Isolate</span>{iso ? <span className="muted hud-n"> {iso.slice.counts.nodes}</span> : null}
         </button>
-        <button className="btn sm hud-btn" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs"><Icon.compare /> Contrast</button>
-        <button className={`btn sm hud-btn ${iso || isoAsk != null ? "on" : ""}`} aria-pressed={!!iso} onClick={() => setIsoAsk(isoAsk == null ? (iso ? iso.slice.selectors.join(" ") : "") : null)} title="Show only part of the codebase, with its boundary  (i)">
-          <Icon.isolate /> Isolate{iso ? <span className="muted"> {iso.slice.counts.nodes}</span> : null}
-        </button>
-        <button className={`btn sm hud-btn ${fencesOn ? "on" : ""}`} aria-pressed={fencesOn} onClick={() => setFencesOn(!fencesOn)} title="Show what agents may not touch  (f)">
-          <Icon.lock /> Fences{fences ? <span className="muted"> {[...fences.values()].filter((v) => v !== "scope").length}</span> : null}
-        </button>
+        <Toggle className="hud-tgl" label={<><Icon.lock /> <span className="hud-lbl">Fences</span></>} checked={fencesOn}
+          onChange={(v) => setFencesOn(v)} hint="Show what agents may not touch  (f)"
+          count={fences ? [...fences.values()].filter((v) => v !== "scope").length || undefined : undefined} testId="graph-fences" />
         {data && (
           <span className="hud-stats hide-sm">
             {settling ? <><span className="dot warn pulse" /> settling</> : <>

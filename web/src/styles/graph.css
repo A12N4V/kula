@@ -276,8 +276,24 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 .graph-overlay.hud .seg-ico button { display: inline-flex; align-items: center; gap: 6px; }
 .graph-overlay.hud .seg-ico svg { width: 13px; height: 13px; }
 .ico-fn { font: italic 600 14px/1 Georgia, "Times New Roman", serif; width: 13px; text-align: center; }
+/* Packages/Fences are Toggle switches in the bar (role="switch" from ui.tsx);
+   the track sits at the same 30px bar height as the icon buttons beside it. */
+.graph-overlay.hud .hud-tgl { height: 30px; font-size: 12px; }
+.graph-overlay.hud .hud-tgl .hud-lbl { display: inline; }
+.graph-overlay.hud .hud-n { font-size: 11px; }
+@media (max-width: 1280px) {
+  /* between 720 and 1280 the bar can still clip: words drop, icons stay */
+  .graph-overlay.hud .hud-lbl { display: none; }
+  .graph-overlay.hud .hud-tgl { padding: 0 7px; gap: 6px; }
+}
+@media (max-width: 720px) {
+  .graph-overlay.hud .hud-lbl { display: none; }
+}
 .graph-files .strip-menu-btn { height: 28px; border-color: var(--line-2); background: var(--panel); color: var(--text-2); font-size: 12px; }
 .graph-files .strip-menu-btn svg { width: 13px; height: 13px; }
 @media (max-width: 720px) {
+  /* phone: the switches go icon + track only – no words, no counts */
   .graph-overlay.hud .hud-lbl { display: none; }
+  .graph-overlay.hud .hud-tgl { padding: 0 7px; gap: 5px; }
+  .graph-overlay.hud .hud-tgl .tgl-count { display: none; }
 }
