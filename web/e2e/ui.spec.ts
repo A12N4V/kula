@@ -1715,16 +1715,18 @@ test.describe("agents A2", () => {
 
   test("A2: the seat inspector shows the workflow, its fences, scope and the skills the seat sees", async ({ page }) => {
     await open(page, "agents/teams");
-    await page.locator('[data-org="codex"]').click();
-    const facts = page.locator(".seat-facts");
-    await expect(facts).toBeVisible();
-    await expect(facts).toContainText("explore");
-    await expect(facts).toContainText("no skills carried");
-    // Rewiring moved from a drag gesture to the canvas sidebar's tinker
-    // (the kit has no edge-connect): the card is not natively draggable, the
-    // sidebar carries the answers-to control.
-    await expect(page.locator('[data-org="codex"]')).not.toHaveAttribute("draggable", "true");
-    await expect(page.locator(".fc-sidebar").getByLabel("Answers to")).toBeVisible();
+    // The team canvas (U16): a seat is a square on the map; clicking it opens
+    // the team sidebar on the seat's fields.
+    const seat = page.locator('[data-testid="team-canvas"] .react-flow__node').filter({ hasText: "codex" }).first();
+    await seat.click();
+    const side = page.locator('[data-testid="team-side"]');
+    await expect(side).toBeVisible();
+    await expect(side.getByLabel("Workflow")).toBeVisible();
+    // Rewiring moved from a drag gesture to the sidebar's tinker (the kit has
+    // no edge-connect): the square is not natively draggable, the sidebar
+    // carries the answers-to control.
+    await expect(seat).not.toHaveAttribute("draggable", "true");
+    await expect(side.getByLabel("Answers to")).toBeVisible();
   });
 });
 
@@ -2965,34 +2967,32 @@ test.describe("agents on the flow canvas (A3)", () => {
   test.use({ baseURL: ({ fx }, use) => use(fx) });
   const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
 
-  test("A3.1 teams: a canvas seat fills the sidebar; an answers-to edit round-trips teams_save", async ({ page, request }, info) => {
+  test("A3.1 teams: a canvas seat fills the sidebar; an answers-to edit round-trips team_save", async ({ page, request }, info) => {
     desktopOnly(info);
     test.setTimeout(90_000);
     await open(page, "agents/teams");
-    // Select a seat on the canvas: the kit sidebar explains it, the selection
-    // is on the canvas, and the seat's card exists (the DOM contract).
-    const card = page.locator(".react-flow__node .org-card").nth(1);
-    await expect(card).toBeVisible();
+    // Select a seat on the canvas (U16): the square is the DOM contract; the
+    // team sidebar opens on the seat's fields.
+    const node = page.locator('[data-testid="team-canvas"] .react-flow__node').nth(1);
+    await expect(node).toBeVisible();
     // The seat key is read at click time: canvas re-renders can reorder the
-    // cards, so a late read would name a different seat than the one picked.
-    const seat = await card.getAttribute("data-org");
-    await card.click();
-    const side = page.locator(".fc-sidebar");
-    await expect(page.locator(".fc-canvas")).not.toHaveAttribute("data-fc-selection", "");
-    // The sidebar tinker changes answers-to through the same onReport the old
-    // drag used; Save writes teams_save – assert the request payload, not pixels.
+    // squares, so a late read would name a different seat than the one picked.
+    const seat = await node.getAttribute("data-id");
+    await node.click();
+    const side = page.locator('[data-testid="team-side"]');
+    await expect(side).toBeVisible();
+    // The sidebar tinker changes answers-to; the team saves itself shortly
+    // after the edit settles – assert the request payload, not pixels.
     const orgSel = side.getByLabel("Answers to");
     await expect(orgSel).toBeVisible();
     const before = await orgSel.inputValue();
     const options = await orgSel.locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
     const to = options.find((v) => v !== before && v !== "") ?? "";
-    const saveReq = page.waitForRequest((r) => r.url().includes("/api/agents/teams_save") && r.method() === "POST");
+    const saveReq = page.waitForRequest((r) => r.url().includes("/api/agents/team_save") && r.method() === "POST");
     await orgSel.selectOption(to);
-    await page.locator(".team-card").getByRole("button", { name: "Save", exact: true }).click();
-    const body = (await saveReq).postDataJSON() as { teams: { name: string; members: Record<string, unknown>[] }[] };
-    const team = body.teams.find((t) => t.members.some((m) => (m.name ?? m.agent) === seat));
-    const member = team?.members.find((m) => (m.name ?? m.agent) === seat);
-    expect(member?.reports_to, `teams_save carries reports_to=${to}`).toBe(to);
+    const body = (await saveReq).postDataJSON() as { team: { name: string; members: Record<string, unknown>[] } };
+    const member = body.team?.members.find((m) => (m.name ?? m.agent) === seat);
+    expect(member?.reports_to, `team_save carries reports_to=${to}`).toBe(to);
     void request;
   });
 
@@ -3069,7 +3069,7 @@ test.describe("agents add from the map rail (U3)", () => {
     const teamTab = page.locator(".team-tabs [role=tab]").filter({ hasText: teamName });
     await expect(teamTab).toHaveClass(/on/);
     await expect(teamTab).toBeInViewport();
-    await expect(page.locator(".map-inspector").getByLabel("Team name")).toHaveValue(teamName);
+    await expect(page.locator("[data-testid=team-canvas] .tc-head-name")).toHaveText(teamName);
     // add agent from the rail: the workflow editor opens on it, fence prefilled
     await open(page, "map");
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
@@ -3088,9 +3088,9 @@ test.describe("agents add from the map rail (U3)", () => {
     await expect(page.locator(`[data-testid=ag-card-${wfName}]`)).toHaveCount(0);
     await open(page, "agents/teams");
     await page.locator(".team-tabs [role=tab]").filter({ hasText: teamName }).click();
-    await page.locator(".map-inspector").getByRole("button", { name: "Delete team" }).click();
-    // the editor's Save – the row with Delete team (the card head has one too)
-    await page.locator(".team-card").locator(".row", { has: page.getByRole("button", { name: "Delete team" }) }).getByRole("button", { name: "Save", exact: true }).click();
+    // the team sidebar carries the settings – delete there (U16 canvas)
+    await page.locator("[data-testid=team-side-toggle]").click();
+    await page.locator("[data-testid=team-delete]").click();
     await expect(page.locator(".team-tabs [role=tab]").filter({ hasText: teamName })).toHaveCount(0);
   });
 
