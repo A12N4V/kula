@@ -206,10 +206,10 @@ test.describe("graph", () => {
 // Laying out the graph takes a while when the machine is busy; wait for it.
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
     await expect(page.locator(".graph-wrap canvas").first()).toBeVisible({ timeout: 30_000 });
-    const btn = page.getByRole("button", { name: /Packages/ });
-    await expect(btn).toHaveAttribute("aria-pressed", "false");
+    const btn = page.getByRole("switch", { name: /Packages/ });
+    await expect(btn).toHaveAttribute("aria-checked", "false");
     await btn.click();
-    await expect(btn).toHaveAttribute("aria-pressed", "true");
+    await expect(btn).toHaveAttribute("aria-checked", "true");
     await expect(btn).toContainText(/\d+/);
     await page.waitForTimeout(5000); // let the layout settle before the snapshot
     await page.screenshot({ path: "test-results/graph-packages.png" });
@@ -1092,7 +1092,7 @@ test.describe("agents", () => {
     await expect(key.locator(".guard-tag.locked")).toBeVisible();
     await expect(key).toContainText("harden the MCP server");
     await expect(key.locator("select")).toHaveValue("");
-    await expect(page.getByRole("button", { name: /Fences/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("switch", { name: /Fences/ })).toHaveAttribute("aria-checked", "true");
     await page.screenshot({ path: "test-results/graph-fences.png" });
     await key.locator("select").selectOption("refactor");
     await expect(key).toContainText("preview");

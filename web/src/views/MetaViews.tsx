@@ -243,7 +243,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
         <div className="notes-split" style={graphOn ? undefined : { gridTemplateColumns: "1fr" }}>
           {graphOn && <NotesGraph notes={all} sel={sel} onPick={setSel} onOpenNote={openNote} />}
           <aside className="notes-side detail-pad" style={graphOn ? undefined : { borderLeft: 0, maxWidth: 980 }}>
-            <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{shown.length}</span><span className="spacer" /><button className="btn sm" onClick={newNote}><Icon.plus /> New note</button><Toggle label="Graph" checked={graphOn} onChange={toggleGraph} hint="Show notes as a graph beside the list" testId="notes-graph-toggle" className="sm" /></div>
+            <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{shown.length}</span><span className="spacer" />{sel && <button className="btn sm ghost" onClick={() => setSel("")}>All</button>}<Toggle label="Graph" checked={graphOn} onChange={toggleGraph} hint="Show notes as a graph beside the list" testId="notes-graph-toggle" className="sm" /></div>
             {shown.length === 0 && <Empty title={sel ? "No notes here" : "No notes yet"}>{sel ? "Write one – the target is filled in." : "Annotate the repo, any file, symbol, commit or cluster."}</Empty>}
             {[...groups.entries()].filter(([t]) => !sel || t === sel).map(([t, list]) => (
               <div key={t} style={{ marginBottom: 18 }}>
