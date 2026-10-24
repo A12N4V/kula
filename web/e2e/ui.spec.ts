@@ -854,48 +854,32 @@ test.describe("agents", () => {
     await expect(page.locator(`[data-testid=ag-card-e2e-migrate]`)).toHaveCount(0);
   });
 
-  test("a team: create it in the compact form, edit and delete it – asserted by name", async ({ page, request }, info) => {
+  test("a team: create it from the + tab, edit it in the sidebar and delete it – asserted by name", async ({ page, request }, info) => {
     desktopOnly(info);
     await open(page, "agents/teams");
-    // One add flow for teams: the strip's + opens the compact form with the
-    // default shape prefilled (a lead seat from the first template).
-    await page.getByRole("button", { name: "New team from a template" }).click();
-    const form = page.locator("[data-testid=ag-add-form]");
-    await expect(form).toBeVisible();
-    await expect(form.locator("[data-testid=ag-add-name]")).toHaveValue(/new-team/);
-    await expect(form.locator("[data-testid=ag-add-seats] .ag-add-seat")).toHaveCount(3);
-    // inline validation: a name that already exists is refused, and the empty
-    // name too – nothing saves until the name is required-unique.
-    await form.locator("[data-testid=ag-add-name]").fill("steer");
-    await expect(form.locator(".ag-add-err")).toContainText("already exists");
-    await expect(form.locator("[data-testid=ag-add-create]")).toBeDisabled();
-    await form.locator("[data-testid=ag-add-name]").fill("");
-    await expect(form.locator(".ag-add-err")).toContainText("name");
-    await form.locator("[data-testid=ag-add-name]").fill("e2e-crew");
-    await form.getByLabel("Team about").fill("an e2e crew");
-    await form.getByLabel("Seat 1 name").fill("crew-lead");
-    // Enter creates; the new team is selected and visible in the strip.
-    await form.locator("[data-testid=ag-add-name]").press("Enter");
-    const tab = page.locator(".team-tabs [role=tab]").filter({ hasText: "e2e-crew" });
+    // One add flow for teams: the + tab opens the inline name form and Enter
+    // saves through team_save.
+    await page.getByTestId("team-tab-add").click();
+    const input = page.getByTestId("team-add-name");
+    await expect(input).toBeFocused();
+    await input.fill("e2e-crew");
+    await input.press("Enter");
+    const tab = page.getByTestId("team-tab-e2e-crew");
     await expect(tab).toBeVisible();
     await expect(tab).toHaveClass(/on/);
-    await expect(tab).toBeInViewport();
-    await expect(page.locator(".map-inspector").getByLabel("Team name")).toHaveValue("e2e-crew");
-    // Edit: rename through the strip's rename-in-place; the server sees it.
-    await tab.dblclick();
-    await page.locator(".tab-rename").fill("e2e-crew-2");
-    await page.keyboard.press("Enter");
-    await expect(page.locator(".team-tabs [role=tab]").filter({ hasText: "e2e-crew-2" })).toBeVisible();
-    const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
-    expect(toml.content).toContain('name = "e2e-crew-2"');
-    expect(toml.content).not.toContain('name = "e2e-crew"');
-    // the editor's Save – the one in the row with Delete team (the card head
-    // also has a Save, so scope it)
-    await page.locator(".map-inspector").getByRole("button", { name: "Delete team" }).click();
-    await page.locator(".team-card").locator(".row", { has: page.getByRole("button", { name: "Delete team" }) }).getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.locator(".team-tabs [role=tab]").filter({ hasText: "e2e-crew-2" })).toHaveCount(0);
-    const toml2 = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
-    expect(toml2.content).not.toContain('name = "e2e-crew-2"');
+    await expect(page.getByTestId("team-canvas")).toBeVisible();
+    // Edit: rename through the sidebar's Team name field; the server sees it.
+    await page.getByTestId("team-side-toggle").click();
+    const side = page.getByTestId("team-side");
+    await expect(side).toBeVisible();
+    await side.getByLabel("Team name").fill("e2e-crew-2");
+    await expect(page.getByTestId("team-tab-e2e-crew-2")).toBeVisible();
+    const readToml = async () => (await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json()).content as string;
+    await expect.poll(readToml).toContain('name = "e2e-crew-2"');
+    // Delete through the sidebar – the tab and the kula.toml block both go.
+    await side.getByTestId("team-delete").click();
+    await expect(page.getByTestId("team-tab-e2e-crew-2")).toHaveCount(0);
+    await expect.poll(readToml).not.toContain('name = "e2e-crew-2"');
   });
 
   test("the add flow works by keyboard alone: esc cancels, enter creates", async ({ page }, info) => {
@@ -1321,98 +1305,54 @@ test.describe("teams and research (T1)", () => {
   test.use({ baseURL: ({ fx }, use) => use(fx) });
   const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
 
-  test("T1.2/T1.3: the fixture team reads as an org chart, and a team is created, edited, saved, started and stopped", async ({ page, request }, info) => {
+  test("T1.2/T1.3: the fixture team reads as a canvas, and a team is created, edited, started and stopped", async ({ page, request }, info) => {
     desktopOnly(info);
-    // The edit-and-save retries below race the 5 s agents poll; give them room.
     test.setTimeout(90_000);
     await open(page, "agents/teams");
-    // T1.2: lead, workflow and hand-offs readable in the DOM text, no hovering.
-    const org = page.locator(".org");
-    await expect(org).toContainText(/lead/i);
-    await expect(org).toContainText("tests");
-    await expect(org).toContainText("hands off → Codex");
-    await expect(org).toContainText("explore");
-    // Teams of teams: ship sits inside steer, audit inside ship.
-    // the teams list as nested boxes by default; the graph is opt-in and draws them like the code map
-    await page.getByRole("button", { name: /Graph off/ }).click();
-    await expect(page.locator(".soc-graph .mini-graph")).toBeVisible();
-    await expect(page.locator(".soc-graph .graph-legend")).toContainText("teams");
-    await page.getByRole("button", { name: /Graph on/ }).click();
-    const soc = page.locator(".society");
-    await expect(soc.locator(".soc-team[data-depth='0']").filter({ hasText: "steer" }).locator(".soc-team[data-depth='1']").filter({ hasText: "ship" })).toBeVisible();
-    await expect(soc.locator(".soc-team[data-depth='2']")).toContainText("audit");
-    await soc.getByRole("button", { name: /^research/ }).click();
-    await expect(org).toContainText("bench");
-    await soc.getByRole("button", { name: /^ship/ }).click();
-    await expect(page.locator(".map-inspector").getByLabel("Answers to team")).toHaveValue("steer");
-    // Create a team: the strip's + opens the one compact add form (name,
-    // shape, seats); Enter or the Create button saves it at once.
-    await page.getByRole("button", { name: "New team from a template" }).click();
-    const add = page.locator("[data-testid=ag-add-form]");
-    await expect(add).toBeVisible();
-    await expect(add.locator("[data-testid=ag-add-name]")).toHaveValue(/new-team/);
-    await add.getByLabel("Team name").fill("e2e-crew");
-    await add.locator("[data-testid=ag-add-create]").click();
-    const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
-    expect(toml.content).toContain('name = "e2e-crew"');
-    // A template team is named generic agents run by any connected agent:
-    // no vendor names on the seats, and no seat pinned to one in kula.toml.
-    const crew = toml.content.slice(toml.content.indexOf('name = "e2e-crew"'));
-    const crewMembers = crew.slice(0, crew.indexOf("[[team]]", 1) > 0 ? crew.indexOf("[[team]]", 1) : undefined);
-    expect(crewMembers).not.toMatch(/agent = "(claude|cursor|codex|gemini)"/);
-    await expect(page.locator(".org .org-name")).toHaveCount(3);
-    const names = await page.locator(".org .org-name").allInnerTexts();
-    for (const n of names) expect(n).not.toMatch(/Claude|Cursor|Codex|Gemini/);
-    // Select a member and edit in place: role, then a hand-off to the third seat.
-    const inspector = page.locator(".map-inspector");
-    const card = page.locator(".org-card").nth(1);
-    const third = names[2].trim();
-    // The 5 s agents poll can refetch mid-edit and reset unsaved inspector
-    // state, and the first click after the member editor mounts can race its
-    // own render, so the edit-and-save sequence retries until kula.toml has it.
-    const hand = inspector.locator(".chip-toggle").filter({ hasText: third });
-    const flipHand = async (to: "true" | "false") => {
-      for (let i = 0; i < 4; i++) {
-        await hand.click({ timeout: 2000 });
-        try {
-          await expect(hand).toHaveAttribute("aria-pressed", to, { timeout: 1000 });
-          return;
-        } catch { /* the click can race the editor's own re-render – click again */ }
-      }
-      await expect(hand).toHaveAttribute("aria-pressed", to, { timeout: 1000 });
-    };
-    for (let i = 0; i < 5; i++) {
-      try {
-        // Click the card only if the member editor is not already open: a
-        // second click on the selected card closes the editor again.
-        if (!(await inspector.getByLabel("Role").isVisible({ timeout: 1000 }))) await card.click({ timeout: 2000 });
-        await inspector.getByLabel("Role").fill("welder");
-        // Toggle the hand-off to the third seat away from how it starts, then back.
-        const was = (await hand.getAttribute("aria-pressed", { timeout: 2000 })) === "true";
-        await flipHand(was ? "false" : "true");
-        await flipHand(was ? "true" : "false");
-        // Back to the team, save, and check kula.toml really got the edit.
-        await page.getByRole("button", { name: "Back to the team" }).click({ timeout: 2000 });
-        const save = page.getByRole("button", { name: "Save", exact: true }).first();
-        await expect(save).toBeEnabled({ timeout: 2000 });
-        await save.click({ timeout: 2000 });
-        const t = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
-        if (t.content.includes("welder")) break;
-      } catch { /* a poll reset the unsaved edits mid-edit – try again */ }
-      if (i === 4) {
-        const t = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json();
-        expect(t.content, "saved edit after retries").toContain("welder");
-      }
-    }
+    // T1.2: every team is a tab; the ship canvas shows its members by name.
+    await expect(page.getByTestId("team-tab-ship")).toBeVisible();
+    await expect(page.getByTestId("team-tab-steer")).toBeVisible();
+    await page.getByTestId("team-tab-ship").click();
+    const canvas = page.getByTestId("team-canvas");
+    await expect(canvas).toContainText("claude");
+    await expect(canvas).toContainText("cursor");
+    // The sidebar reads the hand-offs: cursor hands off to codex – no hovering.
+    await page.getByTestId("team-side-toggle").click();
+    const side = page.getByTestId("team-side");
+    await expect(side).toBeVisible();
+    await side.getByTestId("tc-member-cursor").click();
+    await expect(side.locator(".chip-toggle").filter({ hasText: "codex" })).toHaveAttribute("aria-pressed", "true");
+    // Back to the team: ship answers to steer (teams of teams).
+    await side.getByRole("button", { name: "Back to the team" }).click();
+    await expect(side.getByLabel("Answers to team")).toHaveValue("steer");
+    // T1.3: create a team from the + tab, add an agent to it and edit the seat.
+    await side.getByTestId("team-side-close").click(); // close the pane first
+    await page.getByTestId("team-tab-add").click();
+    await page.getByTestId("team-add-name").fill("e2e-crew");
+    await page.getByTestId("team-add-name").press("Enter");
+    await expect(page.getByTestId("team-tab-e2e-crew")).toHaveClass(/on/);
+    const readToml = async () => (await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json()).content as string;
+    await expect.poll(readToml).toContain('name = "e2e-crew"');
+    // A team made from the + tab starts empty: no vendor names on any seat.
+    const body = await readToml();
+    const crew = body.slice(body.indexOf('name = "e2e-crew"'));
+    expect(crew.slice(0, crew.indexOf("[[team]]", 1) > 0 ? crew.indexOf("[[team]]", 1) : undefined)).not.toMatch(/agent = "(claude|cursor|codex|gemini)"/);
+    // Add the explore agent through the sidebar, then edit its seat: a role.
+    await page.getByTestId("team-side-toggle").click();
+    const crewSide = page.getByTestId("team-side");
+    await expect(crewSide).toBeVisible();
+    await crewSide.getByTestId("team-add-explore").click();
+    await expect(crewSide.locator(".tc-mcard").filter({ hasText: "explore" })).toBeVisible();
+    await crewSide.locator(".tc-mcard").filter({ hasText: "explore" }).click();
+    await crewSide.getByLabel("Role").fill("welder");
+    await expect.poll(readToml).toContain("welder");
     // Start (needs a saved team), confirm it is at work, then stand down.
-    await page.getByRole("button", { name: "Put to work" }).click();
-    await expect(page.locator(".team-tabs .dot.ok")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Stand down" })).toBeVisible();
+    await crewSide.getByRole("button", { name: "Back to the team" }).click();
+    await page.getByTestId("team-work").click();
+    await expect(page.locator(".tc-live")).toBeVisible();
     await page.getByRole("button", { name: "Stand down" }).click();
     await page.getByRole("button", { name: "Confirm stand down" }).click();
-    await expect(page.getByRole("button", { name: "Put to work" })).toBeVisible();
-    // Remove member reference check: the org shows the report tree, not lanes.
-    await expect(page.locator(".org .org-card")).toHaveCount(3);
+    await expect(page.getByTestId("team-work")).toBeVisible();
   });
 
   test("T1.3b: research loop – create it, start it with confirmation, stop it with confirmation", async ({ page, request }, info) => {
@@ -1775,16 +1715,18 @@ test.describe("agents A2", () => {
 
   test("A2: the seat inspector shows the workflow, its fences, scope and the skills the seat sees", async ({ page }) => {
     await open(page, "agents/teams");
-    await page.locator('[data-org="codex"]').click();
-    const facts = page.locator(".seat-facts");
-    await expect(facts).toBeVisible();
-    await expect(facts).toContainText("explore");
-    await expect(facts).toContainText("no skills carried");
-    // Rewiring moved from a drag gesture to the canvas sidebar's tinker
-    // (the kit has no edge-connect): the card is not natively draggable, the
-    // sidebar carries the answers-to control.
-    await expect(page.locator('[data-org="codex"]')).not.toHaveAttribute("draggable", "true");
-    await expect(page.locator(".fc-sidebar").getByLabel("Answers to")).toBeVisible();
+    // The team canvas (U16): a seat is a square on the map; clicking it opens
+    // the team sidebar on the seat's fields.
+    const seat = page.locator('[data-testid="team-canvas"] .react-flow__node').filter({ hasText: "codex" }).first();
+    await seat.click();
+    const side = page.locator('[data-testid="team-side"]');
+    await expect(side).toBeVisible();
+    await expect(side.getByLabel("Workflow")).toBeVisible();
+    // Rewiring moved from a drag gesture to the sidebar's tinker (the kit has
+    // no edge-connect): the square is not natively draggable, the sidebar
+    // carries the answers-to control.
+    await expect(seat).not.toHaveAttribute("draggable", "true");
+    await expect(side.getByLabel("Answers to")).toBeVisible();
   });
 });
 
@@ -3025,34 +2967,32 @@ test.describe("agents on the flow canvas (A3)", () => {
   test.use({ baseURL: ({ fx }, use) => use(fx) });
   const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
 
-  test("A3.1 teams: a canvas seat fills the sidebar; an answers-to edit round-trips teams_save", async ({ page, request }, info) => {
+  test("A3.1 teams: a canvas seat fills the sidebar; an answers-to edit round-trips team_save", async ({ page, request }, info) => {
     desktopOnly(info);
     test.setTimeout(90_000);
     await open(page, "agents/teams");
-    // Select a seat on the canvas: the kit sidebar explains it, the selection
-    // is on the canvas, and the seat's card exists (the DOM contract).
-    const card = page.locator(".react-flow__node .org-card").nth(1);
-    await expect(card).toBeVisible();
+    // Select a seat on the canvas (U16): the square is the DOM contract; the
+    // team sidebar opens on the seat's fields.
+    const node = page.locator('[data-testid="team-canvas"] .react-flow__node').nth(1);
+    await expect(node).toBeVisible();
     // The seat key is read at click time: canvas re-renders can reorder the
-    // cards, so a late read would name a different seat than the one picked.
-    const seat = await card.getAttribute("data-org");
-    await card.click();
-    const side = page.locator(".fc-sidebar");
-    await expect(page.locator(".fc-canvas")).not.toHaveAttribute("data-fc-selection", "");
-    // The sidebar tinker changes answers-to through the same onReport the old
-    // drag used; Save writes teams_save – assert the request payload, not pixels.
+    // squares, so a late read would name a different seat than the one picked.
+    const seat = await node.getAttribute("data-id");
+    await node.click();
+    const side = page.locator('[data-testid="team-side"]');
+    await expect(side).toBeVisible();
+    // The sidebar tinker changes answers-to; the team saves itself shortly
+    // after the edit settles – assert the request payload, not pixels.
     const orgSel = side.getByLabel("Answers to");
     await expect(orgSel).toBeVisible();
     const before = await orgSel.inputValue();
     const options = await orgSel.locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
     const to = options.find((v) => v !== before && v !== "") ?? "";
-    const saveReq = page.waitForRequest((r) => r.url().includes("/api/agents/teams_save") && r.method() === "POST");
+    const saveReq = page.waitForRequest((r) => r.url().includes("/api/agents/team_save") && r.method() === "POST");
     await orgSel.selectOption(to);
-    await page.locator(".team-card").getByRole("button", { name: "Save", exact: true }).click();
-    const body = (await saveReq).postDataJSON() as { teams: { name: string; members: Record<string, unknown>[] }[] };
-    const team = body.teams.find((t) => t.members.some((m) => (m.name ?? m.agent) === seat));
-    const member = team?.members.find((m) => (m.name ?? m.agent) === seat);
-    expect(member?.reports_to, `teams_save carries reports_to=${to}`).toBe(to);
+    const body = (await saveReq).postDataJSON() as { team: { name: string; members: Record<string, unknown>[] } };
+    const member = body.team?.members.find((m) => (m.name ?? m.agent) === seat);
+    expect(member?.reports_to, `team_save carries reports_to=${to}`).toBe(to);
     void request;
   });
 
@@ -3129,7 +3069,7 @@ test.describe("agents add from the map rail (U3)", () => {
     const teamTab = page.locator(".team-tabs [role=tab]").filter({ hasText: teamName });
     await expect(teamTab).toHaveClass(/on/);
     await expect(teamTab).toBeInViewport();
-    await expect(page.locator(".map-inspector").getByLabel("Team name")).toHaveValue(teamName);
+    await expect(page.locator("[data-testid=team-canvas] .tc-head-name")).toHaveText(teamName);
     // add agent from the rail: the workflow editor opens on it, fence prefilled
     await open(page, "map");
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
@@ -3148,9 +3088,9 @@ test.describe("agents add from the map rail (U3)", () => {
     await expect(page.locator(`[data-testid=ag-card-${wfName}]`)).toHaveCount(0);
     await open(page, "agents/teams");
     await page.locator(".team-tabs [role=tab]").filter({ hasText: teamName }).click();
-    await page.locator(".map-inspector").getByRole("button", { name: "Delete team" }).click();
-    // the editor's Save – the row with Delete team (the card head has one too)
-    await page.locator(".team-card").locator(".row", { has: page.getByRole("button", { name: "Delete team" }) }).getByRole("button", { name: "Save", exact: true }).click();
+    // the team sidebar carries the settings – delete there (U16 canvas)
+    await page.locator("[data-testid=team-side-toggle]").click();
+    await page.locator("[data-testid=team-delete]").click();
     await expect(page.locator(".team-tabs [role=tab]").filter({ hasText: teamName })).toHaveCount(0);
   });
 

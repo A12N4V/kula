@@ -388,3 +388,71 @@ input.mi-title { font: 600 14px var(--mono); }
     flex-direction: row; gap: 0; padding: 0 2px;
   }
 }
+
+/* U16 · the team as a map canvas: tab strip add flow, React Flow stage, the
+   agent squares and the team sidebar pane. Reuses hg-draw/hg-swing (above)
+   through the harmonograph itself; the fc-* controls come from flow.css. */
+
+/* the + tab's inline create form */
+.tc-tabrow { display: flex; align-items: flex-end; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.tc-tabrow .team-tabs { border-bottom: 0; margin-bottom: 0; flex: 1; }
+.tc-add { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); background: var(--panel); }
+.tc-add .input { max-width: 260px; }
+.tc-add-hint { font-size: 11px; }
+
+/* the canvas stage: canvas + the sidebar pane beside it */
+.tc-stage { display: grid; min-height: 0; }
+.tc-with-side { grid-template-columns: minmax(0, 1fr) 560px; }
+.tc-main { display: grid; grid-template-rows: auto minmax(320px, 1fr); min-width: 0; border: 1px solid var(--line); background: var(--bg); }
+.tc-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.tc-head-name { font-weight: 600; font-size: 13px; color: var(--text); }
+.tc-head-about { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px; }
+.tc-head .btn.on { border-color: var(--accent); color: var(--accent); }
+
+/* the React Flow ground: the map's dotted canvas, pan and zoom */
+.tc-canvas { position: relative; min-height: 320px; height: 100%; }
+.tc-canvas .react-flow__attribution { display: none; }
+.tc-canvas .react-flow__node { cursor: grab; }
+.tc-canvas .react-flow__node.dragging { cursor: grabbing; }
+.tc-canvas .react-flow__edge-path { stroke-width: 1.5; }
+.tc-empty { position: absolute; inset: 0; display: grid; place-content: center; pointer-events: none; font-size: 12.5px; }
+.tc-live { position: absolute; top: 10px; right: 10px; z-index: 5; pointer-events: none; }
+
+/* the agent square: harmonograph mark, name, role/workflow line */
+.tc-node { display: flex; align-items: center; gap: 10px; width: 148px; height: 92px; padding: 10px 12px;
+  border: 1px solid var(--line); background: var(--panel); box-sizing: border-box; }
+.tc-node:hover { border-color: var(--line-2); background: var(--panel-2); }
+/* D1.4: no side stripes – the harmonograph's own gradient carries the accent,
+   so the node keeps only the flat 1px rule every card has. */
+.tc-node-mark { flex: none; }
+.tc-node-body { display: grid; gap: 3px; min-width: 0; }
+.tc-node-name { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-node-sub { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-node.live { border-color: var(--accent); }
+.tc-node .hgraph path { animation: hg-draw 1.4s ease-out both; }
+.tc-node.live .hgraph path { animation: hg-draw 1.4s ease-out both, hg-swing 6s linear 1.4s infinite; }
+@media (prefers-reduced-motion: reduce) { .tc-node .hgraph path { animation: none; } }
+
+/* the sidebar pane content: members, the agents from the Agents tab, settings */
+.tc-side { z-index: 40; }
+.tc-side-scroll { display: grid; gap: 14px; padding: 12px; align-content: start; }
+.tc-side-h { margin: 0; font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.tc-side section { display: grid; gap: 6px; }
+.tc-mcard, .tc-acard { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border: 1px solid var(--line); background: var(--panel);
+  color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.tc-mcard:hover, .tc-acard:hover { border-color: var(--line-2); background: var(--panel-2); }
+.tc-mcard-name { font-weight: 600; font-size: 12px; color: var(--text); }
+.tc-mcard-sub { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-mcard-x { display: inline-flex; padding: 3px; border: 1px solid var(--line); color: var(--text-3); }
+.tc-mcard-x:hover { border-color: var(--red); color: var(--red); }
+.tc-acard { cursor: default; }
+.tc-side-settings { border-top: 1px solid var(--line); padding-top: 10px; }
+.tc-side-empty { font-size: 12px; }
+.tc-member-edit { display: grid; gap: 10px; }
+@media (max-width: 760px) {
+  .tc-with-side { grid-template-columns: 1fr; }
+  .tc-main { min-height: 260px; }
+}
+
+/* The edge anchors are invisible: the square itself is the anchor. */
+.tc-node .react-flow__handle { opacity: 0; pointer-events: none; }
