@@ -117,3 +117,27 @@ test("the key and the plain-words dock never cover block squares", async ({ page
   await expect(page.locator("[data-testid=x5-plain-run]")).toBeVisible();
   await expect(page.locator("[data-testid=x5-plain-toggle]")).toBeVisible();
 });
+
+test("chips step aside of the open Explorer sheet without overlapping each other", async ({ page }) => {
+  await open(page);
+  await page.keyboard.press("e");
+  const sheet = page.locator("[data-testid=map-explorer]");
+  await expect(sheet).toBeVisible();
+  const key = page.locator("[data-testid=u7-legend]");
+  const plain = page.locator("[data-testid=u9-plain-chip]");
+  const k = await key.boundingBox();
+  const p = await plain.boundingBox();
+  const s = await sheet.boundingBox();
+  expect(k && p && s).toBeTruthy();
+  // the two chips sit side by side, never stacked on the same anchor
+  const chipHit = !(k!.x + k!.width < p!.x || p!.x + p!.width < k!.x || k!.y + k!.height < p!.y || p!.y + p!.height < k!.y);
+  expect(chipHit, "key chip and plain chip overlap each other").toBe(false);
+  // both chips clear of the open sheet
+  for (const [name, b] of [["key", k], ["plain", p]] as const) {
+    const hit = !(s!.x + s!.width < b!.x || b!.x + b!.width < s!.x || s!.y + s!.height < b!.y || b!.y + b!.height < s!.y);
+    expect(hit, `${name} chip is covered by the open Explorer sheet`).toBe(false);
+  }
+  // the key chip is clickable while the sheet is open (was covered before)
+  await key.click();
+  await expect(page.locator("[data-testid=x5-legend]")).toHaveAttribute("aria-expanded", "true");
+});

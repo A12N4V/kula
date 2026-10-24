@@ -67,7 +67,7 @@
 [data-pane][data-max] {
   position: fixed !important; inset: 10px !important; width: auto !important; height: auto !important;
   max-width: none !important; max-height: none !important; min-width: 0 !important; transform: none !important;
-  z-index: 400 !important; border-radius: 10px; box-shadow: 0 0 0 100vmax rgb(0 0 0 / .55), 0 20px 60px rgb(0 0 0 / .5);
+  z-index: 400 !important; border-radius: var(--radius); box-shadow: 0 0 0 100vmax rgb(0 0 0 / .55), 0 20px 60px rgb(0 0 0 / .5);
 }
 [data-pane][data-max] > .grip { display: none; }
 html[data-resizing] { user-select: none; -webkit-user-select: none; }

@@ -66,10 +66,14 @@
    canvas like any other chrome. */
 .u9-dock .u9-panel { width: auto; }
 .u9-dock .u9-panel.u9-open { width: 280px; }
-/* the plain panel expands left-down of the key chip (280 px at right:208
-   reaches x≈938), so the two never cover each other – no step-aside needed */
-body:has([data-testid=map-explorer-btn].on) .u9-dock,
-body:has([data-testid=map-explorer-btn].on) .u7-key-dock { right: 388px; }
+/* While the Explorer sheet is open both chips step left of it. The sheet is
+   288px wide at right:12px, so its edge is at right:300px; the chips sit 8px
+   beyond it. When the plain panel is open (280px wide, growing leftward from
+   its dock edge) the key chip steps past the panel too, so the two never
+   overlap whatever combination of sheet and panels is showing. */
+body:has([data-testid=map-explorer-btn].on) .u9-dock { right: 308px; }
+body:has([data-testid=map-explorer-btn].on) .u7-key-dock { right: 516px; }
+body:has([data-testid=map-explorer-btn].on):has(.u9-dock .u9-panel.u9-open) .u7-key-dock { right: 596px; }
 
 /* The chip: one row, the named-count as a small badge. */
 .u9-chip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px;
@@ -81,7 +85,7 @@ body:has([data-testid=map-explorer-btn].on) .u7-key-dock { right: 388px; }
 .u9-chip-n { font-size: 10px; color: var(--text-3); font-weight: 600; }
 .u9-chip.on .u9-chip-n { color: inherit; }
 .u9-dock .u9-panel { flex-direction: column; align-items: stretch; padding: 0; gap: 6px;
-  background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; }
+  background: var(--panel); border: 1px solid var(--line-2); }
 .u9-dock .u9-panel.u9-open { padding: 6px 8px; }
 .u9-body { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
 .u9-dock .u9-panel { border-bottom: 1px solid var(--line-2); }
