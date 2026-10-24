@@ -137,7 +137,11 @@ test("chips step aside of the open Explorer sheet without overlapping each other
     const hit = !(s!.x + s!.width < b!.x || b!.x + b!.width < s!.x || s!.y + s!.height < b!.y || b!.y + b!.height < s!.y);
     expect(hit, `${name} chip is covered by the open Explorer sheet`).toBe(false);
   }
-  // the key chip is clickable while the sheet is open (was covered before)
+  // the key chip is clickable while the sheet is open (was covered before).
+  // The first click is spent closing the sheet – pointerdown away closes it
+  // and the chips reposition before mouseup – so click again to open the key.
+  await key.click();
+  await expect(sheet).toHaveCount(0);
   await key.click();
   await expect(page.locator("[data-testid=x5-legend]")).toHaveAttribute("aria-expanded", "true");
 });

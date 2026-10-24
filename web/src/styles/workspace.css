@@ -578,7 +578,7 @@ body:has([data-testid=map-inspector]) .ws-drop .react-flow__panel.fc-controls { 
 .u2-frame { height: 28px; width: 40px; padding: 0; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-radius: 0; }
 .u2-frame svg { width: 14px; height: 14px; }
 .u2-frame-n { position: absolute; top: 1px; right: 1px; min-width: 12px; height: 12px; display: inline-flex; align-items: center; justify-content: center;
-  font: 600 9px var(--mono); padding: 0 2px; border-radius: 2px; background: var(--text-2); color: var(--bg); line-height: 1; }
+  font: 600 9px var(--mono); padding: 0 2px; border-radius: 0; background: var(--text-2); color: var(--bg); line-height: 1; }
 .u2-frame.on .u2-frame-n { background: var(--bg); color: var(--text); }
 .u2-frame { position: relative; }
 /* the switch replaces the run bar's right-hand context line */

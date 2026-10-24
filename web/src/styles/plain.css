@@ -53,27 +53,23 @@
 }
 .u9-toggle-row[aria-pressed="true"] { border-color: var(--accent, #f80); color: var(--accent, #f80); }
 
-/* U11 placement – the reading layer and the key never cover squares: both
-   collapse to chips fixed in the chrome strip beside the Explorer toggle
-   (y 60–90, left of it). Squares on the default camera start at y≈107
-   there, and the canvas column at x≈1176 stays clear. Expanding a chip is
-   user-initiated – its panel then rides the canvas like any other chrome.
-   While the Explorer's sheet is open the chips step left of it. */
-.u9-dock { position: fixed; left: auto; right: 180px; top: 60px; bottom: auto; width: auto; max-width: min(560px, 50%); z-index: 27; }
-.u7-key-dock { position: fixed; left: auto; right: 116px; top: 60px; bottom: auto; width: auto; z-index: 27; }
+/* U11 placement – see the band comment below the dock rules. */
+.u9-dock { position: fixed; left: 12px; right: auto; top: 12px; bottom: auto; width: auto; max-width: min(560px, 50%); z-index: 27; }
+.u7-key-dock { position: fixed; left: 180px; right: auto; top: 12px; bottom: auto; width: auto; z-index: 27; }
 /* Collapsed, each dock is chip-sized – the top-right corner square (b106-class)
    stays clear. Expanding is user-initiated; the panel may then ride the
    canvas like any other chrome. */
 .u9-dock .u9-panel { width: auto; }
 .u9-dock .u9-panel.u9-open { width: 280px; }
-/* While the Explorer sheet is open both chips step left of it. The sheet is
-   288px wide at right:12px, so its edge is at right:300px; the chips sit 8px
-   beyond it. When the plain panel is open (280px wide, growing leftward from
-   its dock edge) the key chip steps past the panel too, so the two never
-   overlap whatever combination of sheet and panels is showing. */
-body:has([data-testid=map-explorer-btn].on) .u9-dock { right: 308px; }
-body:has([data-testid=map-explorer-btn].on) .u7-key-dock { right: 516px; }
-body:has([data-testid=map-explorer-btn].on):has(.u9-dock .u9-panel.u9-open) .u7-key-dock { right: 596px; }
+/* Both chips live in the canvas's top-left corner band (y 12–44), left of
+   the first square (x≈190) – the top-right corner holds the Explorer toggle
+   and, below it, squares reach y≈56, so nothing anchors there. The Explorer
+   sheet opens top-right (288 px at right:12), so the chips never need to
+   step aside for it; when the plain panel expands it rides the canvas like
+   any other user-opened chrome. */
+body:has([data-testid=map-explorer-btn].on) .u9-dock { left: 12px; }
+body:has([data-testid=map-explorer-btn].on) .u7-key-dock { left: 180px; }
+body:has(.u9-dock .u9-panel.u9-open) .u7-key-dock { left: 304px; }
 
 /* The chip: one row, the named-count as a small badge. */
 .u9-chip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px;
