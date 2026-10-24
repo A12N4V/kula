@@ -277,12 +277,13 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 .graph-overlay.hud .seg-ico svg { width: 13px; height: 13px; }
 .ico-fn { font: italic 600 14px/1 Georgia, "Times New Roman", serif; width: 13px; text-align: center; }
 /* Packages/Fences are Toggle switches in the bar (role="switch" from ui.tsx);
-   the track sits at the same 30px bar height as the icon buttons beside it. */
+   the track sits at the same 30px bar height as the icon buttons beside it.
+   Words stay visible down to 760 – they are the controls' accessible names –
+   and the stats readout is the one piece that cannot fit, so it returns
+   above 1100 only. */
 .graph-overlay.hud .hud-tgl { height: 30px; font-size: 12px; }
 .graph-overlay.hud .hud-n { font-size: 11px; }
-@media (max-width: 1280px) {
-  /* between 720 and 1280 the bar can still clip: words drop, icons stay;
-     the stats readout is the one piece that cannot fit – it returns above 1280 */
+@media (max-width: 760px) {
   .graph-overlay.hud .hud-lbl { display: none; }
   .graph-overlay.hud .hud-tgl { padding: 0 7px; gap: 6px; }
 }

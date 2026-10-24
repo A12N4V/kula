@@ -640,8 +640,8 @@ function MapView(props: Props) {
         <Toggle className="hud-tgl" label={<><Icon.box /> <span className="hud-lbl">Packages</span></>} checked={s.packages}
           onChange={(v) => settings.set({ packages: v })} hint="Packages – show external packages on the rim"
           count={pkgCount || undefined} testId="graph-packages" />
-        <button className="btn sm hud-btn" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs" aria-label="Contrast: overlay two revisions' graphs"><Icon.compare /> <span className="hud-lbl">Contrast</span></button>
-        <button className={`btn sm hud-btn ${iso || isoAsk != null ? "on" : ""}`} aria-pressed={!!iso} onClick={() => setIsoAsk(isoAsk == null ? (iso ? iso.slice.selectors.join(" ") : "") : null)} title="Show only part of the codebase, with its boundary  (i)" aria-label="Isolate: show only part of the codebase, with its boundary  (i)">
+        <button className="btn sm hud-btn" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs"><Icon.compare /> <span className="hud-lbl">Contrast</span></button>
+        <button className={`btn sm hud-btn ${iso || isoAsk != null ? "on" : ""}`} aria-pressed={!!iso} onClick={() => setIsoAsk(isoAsk == null ? (iso ? iso.slice.selectors.join(" ") : "") : null)} title="Show only part of the codebase, with its boundary  (i)">
           <Icon.isolate /> <span className="hud-lbl">Isolate</span>{iso ? <span className="muted hud-n"> {iso.slice.counts.nodes}</span> : null}
         </button>
         <Toggle className="hud-tgl" label={<><Icon.lock /> <span className="hud-lbl">Fences</span></>} checked={fencesOn}
