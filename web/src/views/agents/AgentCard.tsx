@@ -34,6 +34,17 @@ export function toCard(w: Workflow): CardData {
   };
 }
 
+/** The card data the backend serves (/api/agent/cards, module B1). Until it
+ *  lands, `fetchCards` falls back to the same fields derived from AgentsInfo. */
+export async function fetchCards(): Promise<CardData[] | null> {
+  try {
+    const r = await fetch("/api/agent/cards", { headers: { "x-kula-token": sessionStorage.getItem("kula.token") ?? "" } });
+    if (!r.ok) return null;
+    const cards = await r.json();
+    return Array.isArray(cards) && cards.length ? cards : null;
+  } catch { return null; }
+}
+
 /** The card's art: the harmonograph at card scale, drawing itself once, slowly
  *  (pathLength 1 + a long dashoffset run). Reduced motion keeps it still –
  *  the full curve, already drawn. */

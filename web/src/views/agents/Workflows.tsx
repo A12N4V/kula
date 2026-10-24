@@ -17,7 +17,7 @@ import { Empty } from "../../ui";
 import { blank, takeStashedAdd, type Act, type Tab } from "./data";
 import { SuggestionRow } from "./parts";
 import { AddForm } from "./AddForm";
-import AgentCard, { AddCard, toCard, type CardData } from "./AgentCard";
+import AgentCard, { AddCard, fetchCards, toCard, type CardData } from "./AgentCard";
 import AgentSidebar from "./AgentSidebar";
 
 const BUILTIN = ["explore", "fix", "refactor", "tests", "docs", "autoresearch"];
@@ -81,9 +81,11 @@ export default function Workflows({ info, act, onGraph, onWorkspace }: { info: A
   const set = (k: keyof Workflow, v: unknown) => setDraft((d) => (d ? { ...d, [k]: v } : d));
   const sugg = info.suggestions.filter((s) => s.kind === "workflow");
 
-  // The grid: one card per agent (builtin ones too – they read like a
-  // portfolio of what kula ships), the + card last.
-  const cards: (CardData | null)[] = info.workflows.map(toCard);
+  // Card data: the backend route (module B1) when it answers, otherwise the
+  // same shape derived from AgentsInfo – one view, one shape, either way.
+  const [remote, setRemote] = useState<CardData[] | null>(null);
+  useEffect(() => { fetchCards().then(setRemote); }, [info]);
+  const cards: (CardData | null)[] = (remote ?? info.workflows.map(toCard));
   return (
     <div className="wf-tabs">
       {sugg.map((s) => <SuggestionRow key={s.id} s={s} act={act} />)}
