@@ -341,16 +341,14 @@ pub fn apply(repo: &Repo, model: &str, answers: &Value) -> Result<usize> {
             // optional: the product area, so the map can group by intent
             let area: String = a["area"].as_str().unwrap_or("").split_whitespace().take(3).collect::<Vec<_>>().join(" ");
             // the words describe the code as it is now – re-hash, never trust a stale hash
-            blocks.insert(
-                id.clone(),
-                {
-                    let mut e = json!({ "hash": block_hash(&c, id), "plain": plain, "sentence": sentence.replace('—', "–"), "model": model, "at": at });
-                    if !area.is_empty() {
-                        e["area"] = json!(area);
-                    }
-                    e
-                },
-            );
+            blocks.insert(id.clone(), {
+                let mut e =
+                    json!({ "hash": block_hash(&c, id), "plain": plain, "sentence": sentence.replace('—', "–"), "model": model, "at": at });
+                if !area.is_empty() {
+                    e["area"] = json!(area);
+                }
+                e
+            });
             n += 1;
         }
     }
