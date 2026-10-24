@@ -600,7 +600,6 @@
 .ag-side .wf-run { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .ag-side .wf-edit { min-width: 0; }
 .ag-side .wf-edit { padding: 0; border: 0; background: none; animation: none; }
-||||||| 5b77bc7
 
 /* ============================== X10 · skills: local + GitHub search ============================== */
 /* The two-way switch in the search bar reuses .seg; the GitHub side adds its
