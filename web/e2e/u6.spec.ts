@@ -108,5 +108,3 @@ test("no actor band; clicking an agent square picks the agent", async ({ page })
   await expect(page.locator('[data-testid="ag-bar"]')).toBeVisible();
   await expect(page.locator('[data-testid="at-edit-fence"]')).toBeVisible();
 });
-  await expect(page.locator('[data-testid="actor-band"]')).toBeVisible();
-});
