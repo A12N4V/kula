@@ -3,7 +3,8 @@
 // one line of role, and the tags line at the bottom. The whole card is the
 // button: clicking it opens the agent sidebar (AgentSidebar).
 
-import { agentGradient, harmonographPath, svgId } from "../../flow/agentMark";
+import { useMemo } from "react";
+import { harmonographPath, harmonographSegments, svgId } from "../../flow/agentMark";
 import { Icon } from "../../ui";
 import type { Workflow } from "../../api";
 
@@ -45,21 +46,24 @@ export async function fetchCards(): Promise<CardData[] | null> {
   } catch { return null; }
 }
 
-/** The card's art: the harmonograph at card scale, drawing itself once, slowly
- *  (pathLength 1 + a long dashoffset run). Reduced motion keeps it still –
+/** The card's art: the 3D harmonograph seen from its one angle, a fine line
+ *  whose colour flows along the trace. It draws itself once, slowly: a mask
+ *  path runs its dashoffset (pathLength 1). Reduced motion keeps it still –
  *  the full curve, already drawn. */
 export function CardArt({ name }: { name: string }) {
-  const [a, b] = agentGradient(name);
-  const id = `hgc-${svgId(name)}`;
+  const id = `hgm-${svgId(name)}`;
+  const segs = useMemo(() => harmonographSegments(name), [name]);
+  const whole = useMemo(() => harmonographPath(name, 2400), [name]);
   return (
     <svg className="ag-card-art-svg" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" aria-hidden="true" data-figure data-testid={`ag-art-${name}`}>
       <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={a} />
-          <stop offset="1" stopColor={b} />
-        </linearGradient>
+        <mask id={id} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+          <path className="ag-card-hg" d={whole} pathLength={1} fill="none" stroke="#fff" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+        </mask>
       </defs>
-      <path className="ag-card-hg" d={harmonographPath(name)} pathLength={1} fill="none" stroke={`url(#${id})`} strokeWidth="0.55" strokeLinecap="round" strokeLinejoin="round" />
+      <g mask={`url(#${id})`}>
+        {segs.map((g, i) => <path key={i} d={g.d} fill="none" stroke={g.stroke} strokeOpacity={g.opacity} className="ag-card-seg" strokeLinecap="round" strokeLinejoin="round" />)}
+      </g>
     </svg>
   );
 }

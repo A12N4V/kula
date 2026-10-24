@@ -28,7 +28,7 @@ test.describe("agent cards and the agent sidebar", () => {
     await expect(first.locator(".card__meta")).toContainText(/built in|kula\.toml/);
     await expect(first.locator(".card__fmt")).toBeVisible();
     // the art: the agent's own harmonograph, drawn (fully drawn once motion settles)
-    await expect(first.locator(".ag-card-art-svg path")).toBeVisible();
+    await expect(first.locator(".ag-card-art-svg path.ag-card-seg").first()).toBeVisible();
     // and the + card is last
     await expect(page.getByTestId("ag-card-add")).toBeVisible();
   });

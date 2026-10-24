@@ -23,8 +23,8 @@ async function opened(page: Page, hash: string) {
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
 }
 
-const HIT = { name: "code-review", repo: "anthropics/skills", path: "skills/code-review/SKILL.md", url: "https://raw.githubusercontent.com/anthropics/skills/main/skills/code-review/SKILL.md", source: "curated" as const };
-const HIT2 = { name: "issue-triage", repo: "acme/skills", path: "triage/SKILL.md", url: "https://raw.githubusercontent.com/acme/skills/main/triage/SKILL.md", source: "search" as const };
+const HIT = { name: "code-review", repo: "anthropics/skills", path: "skills/code-review/SKILL.md", url: "https://github.com/anthropics/skills/blob/HEAD/skills/code-review/SKILL.md", source: "curated" as const };
+const HIT2 = { name: "issue-triage", repo: "acme/skills", path: "triage/SKILL.md", url: "https://github.com/acme/skills/blob/HEAD/triage/SKILL.md", source: "search" as const };
 const SKILL_MD = "---\nname: code-review\ndescription: Review a change before it merges\n---\n1. Read the diff.\n";
 const importedRow = { name: "code-review", description: "Review a change before it merges", agent: "shared" as const, scope: "repo" as const, kind: "skill" as const, path: ".agents/skills/code-review/SKILL.md", meta: {}, body: "1. Read the diff." };
 
@@ -57,7 +57,7 @@ test("GitHub search: debounced hits, curated badge, preview pane, import", async
   // repo, curated badge, and a link that is a real anchor
   await expect(page.getByTestId("sx-gh-code-review").locator(".sx-desc")).toHaveText(/anthropics\/skills/);
   await expect(page.getByTestId("sx-gh-code-review").locator(".tag.accent")).toHaveText("curated");
-  await expect(page.getByTestId("sx-gh-code-review").locator('a[href*="raw.githubusercontent.com"]')).toBeAttached();
+  await expect(page.getByTestId("sx-gh-code-review").locator('a[href*="github.com"]')).toBeAttached();
   await expect(page.getByTestId("sx-gh-issue-triage")).toBeVisible();
 
   // the preview fetches the row's url only on open, and Import installs
@@ -67,7 +67,8 @@ test("GitHub search: debounced hits, curated badge, preview pane, import", async
   const pane = page.getByTestId("sx-hit-pane");
   await expect(pane).toBeVisible();
   await expect(pane.locator(".sx-pane-body")).toContainText("Read the diff");
-  expect(fetches).toEqual([HIT.url]);
+  // the preview reads the raw host – the github.com page is blocked cross-origin
+  expect(fetches).toEqual([`https://raw.githubusercontent.com/${HIT.repo}/HEAD/${HIT.path}`]);
 
   await page.getByTestId("sx-import").click();
   await expect(page.getByTestId("sx-gh-code-review").getByTestId("sx-installed")).toHaveText("installed");
