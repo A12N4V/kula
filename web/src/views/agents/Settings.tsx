@@ -42,7 +42,7 @@ export function ImportSkill({ info, act, setTab }: { info: AgentsInfo; act: Act;
       <details className="set-import-more" data-testid="set-import-more">
         <summary><Icon.plus /> Paste or upload a SKILL.md <span className="muted">– or search GitHub in Skills</span></summary>
         <div className="row set-import-src">
-          {setTab && <button className="btn sm ghost" onClick={() => setTab("skills")} data-testid="set-import-github"><GhMark /> Search GitHub</button>}
+          {setTab && <button className="btn sm ghost" onClick={() => { try { sessionStorage.setItem("kula.x10.gh", "1"); } catch { /* private mode */ } setTab("skills"); }} data-testid="set-import-github"><GhMark /> Search GitHub</button>}
           <label className="btn sm" data-testid="set-skill-file"><Icon.doc /> From file
             <input type="file" accept=".md,.mdc,text/markdown,text/plain" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) { setFile(f.name); setText(await f.text()); } e.target.value = ""; }} />
           </label>

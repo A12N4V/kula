@@ -120,7 +120,12 @@ export default function SkillIndex({ ix, err, act, shared }: { ix: Ix | null; er
   const [scope, setScope] = useState<Scope>("all");
   const [agent, setAgent] = useState<string>("");
   const [sel, setSel] = useState<string | null>(null);
-  const [gh, setGh] = useState(false);
+  // One-shot: the Settings disclosure's "Search GitHub" lands here with the
+  // GitHub side already up, then the flag is gone.
+  const [gh, setGh] = useState(() => {
+    try { if (sessionStorage.getItem("kula.x10.gh")) { sessionStorage.removeItem("kula.x10.gh"); return true; } } catch { /* private mode */ }
+    return false;
+  });
   const search = useSkillSearch(q, gh);
   const [openHit, setOpenHit] = useState<SkillHit | null>(null);
   const [installed, setInstalled] = useState<Record<string, true>>({});

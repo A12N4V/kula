@@ -53,7 +53,7 @@ function TencentBanner() {
   return (
     <div className="mem-x10" data-testid="mem-tencent">
       <span className="mem-x10-badge">TencentDB Agent Memory in AGENTS</span>
-      <span className="muted mem-x10-counts">{src.memories} memories · {wikiN} wiki pages</span>
+      <span className="muted mem-x10-counts">{src.memories} memories · {wikiN} wiki page{wikiN === 1 ? "" : "s"}</span>
       <span className="spacer" />
       {done
         ? <span className="tag green" data-testid="mem-import-done">added {done.added} · skipped {done.skipped}</span>
