@@ -151,7 +151,19 @@ for (const width of [1440, 1100, 390] as const) {
 /** True when two page boxes visibly intersect. */
 async function collide(page: Page, a: string, b: string) {
   return page.evaluate(([sa, sb]) => {
-    const rect = (sel: string) => Array.from(document.querySelectorAll(sel)).map((el) => { const r = el.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
+    // judge only what shows: each box is cut to its clipping ancestors, so a
+    // button scrolled out of its pane never "collides" with the status bar
+    const rect = (sel: string) => Array.from(document.querySelectorAll(sel)).map((el) => {
+      const r = el.getBoundingClientRect();
+      const box = { l: r.left, t: r.top, r: r.right, b: r.bottom };
+      for (let p = el.parentElement; p; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        if (cs.overflow === "visible" && cs.overflowX === "visible" && cs.overflowY === "visible") continue;
+        const c = p.getBoundingClientRect();
+        box.l = Math.max(box.l, c.left); box.t = Math.max(box.t, c.top); box.r = Math.min(box.r, c.right); box.b = Math.min(box.b, c.bottom);
+      }
+      return box;
+    });
     for (const ra of rect(sa!)) for (const rb of rect(sb!)) {
       const ix = Math.min(ra.r, rb.r) - Math.max(ra.l, rb.l);
       const iy = Math.min(ra.b, rb.b) - Math.max(ra.t, rb.t);
@@ -190,8 +202,10 @@ test.describe("x8 findings", () => {
         const bad = await page.evaluate(([sel]) => {
           const r = (el: Element) => el.getBoundingClientRect();
           const chipRect = r(document.querySelector(sel!));
+          // squares are clipped by the canvas – judge only their visible part
+          const clip = document.querySelector("[data-testid=map-flow] .react-flow")?.getBoundingClientRect();
           return [...document.querySelectorAll("[data-testid^=fc-node-]")]
-            .filter((sq) => { const s = r(sq); return s.left < chipRect.right && s.right > chipRect.left && s.top < chipRect.bottom && s.bottom > chipRect.top; })
+            .filter((sq) => { const s0 = r(sq); const s = clip ? { left: Math.max(s0.left, clip.left), top: Math.max(s0.top, clip.top), right: Math.min(s0.right, clip.right), bottom: Math.min(s0.bottom, clip.bottom) } : s0; return s.right > s.left && s.bottom > s.top && s.left < chipRect.right && s.right > chipRect.left && s.top < chipRect.bottom && s.bottom > chipRect.top; })
             .map((sq) => (sq as HTMLElement).dataset.block);
         }, [chip]);
         expect(bad, `${chip} covers squares at ${w}px: ${bad.join(", ")}`).toEqual([]);
