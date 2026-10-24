@@ -146,8 +146,10 @@ export function FenceHull({ canvas, fencedIds, agent }: { canvas: React.RefObjec
       const c = canvas.current!.getBoundingClientRect();
       let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
       for (const id of fencedIds) {
-        const el = canvas.current!.querySelector(`[data-testid="fc-node-${CSS.escape(id)}"]`) as HTMLElement | null
-          ?? canvas.current!.querySelector(`[data-testid="fc-node-${CSS.escape("sec:" + id)}"]`) as HTMLElement | null;
+        // a section renders as its frame, its `sec:` card or, when the picked
+        // block opened it, an `open:` frame – any of the three hosts the hull
+        const el = canvas.current!.querySelector(
+          `[data-testid="fc-node-${CSS.escape(id)}"], [data-testid="fc-node-sec:${CSS.escape(id)}"], [data-testid="fc-node-open:${CSS.escape(id)}"]`) as HTMLElement | null;
         if (!el) continue;
         const n = el.getBoundingClientRect();
         l = Math.min(l, n.left - c.left); t = Math.min(t, n.top - c.top);

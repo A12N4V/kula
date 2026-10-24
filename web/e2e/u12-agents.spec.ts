@@ -13,6 +13,26 @@ test.use({ baseURL: FIXTURE });
 
 test.describe.configure({ mode: "serial" });
 
+/** The fixture's agent list is shared by every suite: (re)seed the fenced
+    agent ("polish", scoped to src/**) and the unfenced one ("everywhere")
+    right before each test, keeping the rest. */
+async function seedAgents(request: import("@playwright/test").APIRequestContext) {
+  const h = { "x-kula-token": "test" };
+  const info = await (await request.get(`${FIXTURE}/api/agents`, { headers: h })).json();
+  const all = (info.workflows ?? []) as { name: string; builtin?: boolean }[];
+  const own = all.filter((w) => !w.builtin);
+  const want = [
+    { name: "polish", about: "Small cleanups", scope: ["src/**"], steps: ["Tidy", "verify"] },
+    { name: "everywhere", about: "Runs anywhere", steps: ["Tidy"] },
+  ];
+  const merged = [...own];
+  for (const w of want) if (!own.some((x) => x.name === w.name)) merged.push(w);
+  if (merged.length === own.length) return;
+  const r = await request.post(`${FIXTURE}/api/agents/workflows_save`, { headers: h, data: { workflows: merged } });
+  expect(r.ok(), await r.text()).toBeTruthy();
+}
+test.beforeEach(async ({ request }) => { await seedAgents(request); });
+
 async function opened(page: Page) {
   await page.addInitScript(() => {
     try { sessionStorage.setItem("kula.opened", "1"); localStorage.setItem("kula.settings.v1", JSON.stringify({ opening: false })); } catch { /* */ }
@@ -77,10 +97,11 @@ test("a fenced agent sits over the zone it covers; an unfenced agent sits beside
 
 test("a fenced agent's gradient wires drop into its fenced squares", async ({ page }) => {
   await opened(page);
-  // assert by name: the dashed wires out of the polish agent's square
+  // assert by name: the dashed wires out of the polish agent's square –
+  // react-flow renders each edge as an svg path whose id is the edge id
   const n = await page.evaluate(() =>
-    [...document.querySelectorAll('[data-testid="map-flow"] [data-edge-id]')]
-      .filter((el) => (el.getAttribute("data-edge-id") ?? "").startsWith("agent:polish>")).length);
+    [...document.querySelectorAll('[data-testid="map-flow"] path[id]')]
+      .filter((el) => (el.getAttribute("id") ?? "").startsWith("agent:polish>")).length);
   expect(n, "a wire from agent:polish into its fenced square").toBeGreaterThan(0);
 });
 
@@ -96,14 +117,16 @@ test("dropping a block on an agent square fences it – the square lights as the
   const square = page.locator(`[data-testid=at-agent-${NAME}]`);
   await expect(square).toBeAttached({ timeout: 10_000 });
   await page.locator("[data-testid=fc-fit]").click();
-  // the drop highlight: dragover lights the square
+  // the drop highlight: dragover lights the agent's square (the .fc-agent
+  // node carries the class; the inner at-agent div is the pick target)
   await square.evaluate((el) => {
     const dt = new DataTransfer();
     dt.setData("application/x-kula-block", JSON.stringify({ kind: "note", ref: "b0", name: "b0", about: "" }));
     el.dispatchEvent(new DragEvent("dragenter", { bubbles: true, dataTransfer: dt }));
     el.dispatchEvent(new DragEvent("dragover", { bubbles: true, dataTransfer: dt }));
   });
-  await expect(square).toHaveClass(/over/);
+  const node = page.locator(`[data-testid="fc-node-agent:${NAME}"]`);
+  await expect(node).toHaveClass(/over/);
   const before = await page.evaluate(async (name) => {
     const t = (document.querySelector('meta[name="kula-token"]') as HTMLMetaElement)?.content ?? "probe";
     const d = await (await fetch("/api/agents", { headers: { "x-kula-token": t } })).json();
