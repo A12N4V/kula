@@ -7,6 +7,7 @@
 // (a modal hides the very thing it explains); open or collapsed stays for
 // the session.
 
+import { Icon } from "../../ui";
 import { useState } from "react";
 import { dirColor, groupDirs } from "../../colors";
 import { LANG_GLYPH } from "../../colors";
@@ -35,8 +36,8 @@ export function Legend({ data, ringHue }: { data?: MapData | null; ringHue?: str
   const swatches = dirSwatches(data);
   return (
     <div className="u7-legend" data-testid="u7-legend">
-      <button className="u7-legend-head" data-testid="x5-legend" aria-expanded={open} aria-controls="u7-legend-panel" onClick={toggle}>
-        Key
+      <button className="u7-legend-head" data-testid="x5-legend" aria-expanded={open} aria-controls="u7-legend-panel" onClick={toggle} title="What the colours, sizes and marks mean">
+        <Icon.types /><span className="u7-legend-word">Key</span>
         <span className="u7-legend-chev" aria-hidden="true">·</span>
       </button>
       {open && (

@@ -11,6 +11,8 @@ import type { Block, Chain, Leaf, LeafKind, Loop, Role } from "./types";
 import { KindIcon, RoleMark } from "./icons";
 
 type Props = {
+  /** The map's strip tools (key, plain words, Explorer), docked at the crumb row's end. */
+  tools?: React.ReactNode;
   blocks: Record<string, Block>;
   leaves: Record<number, Leaf>;
   loops: Loop[];
@@ -144,6 +146,7 @@ export function BlockCanvas(p: Props) {
           );
         })}
         {p.chain && <span className="sy-bread-chain mono" data-testid="map-chain-label">{p.leaves[p.chain.source]?.name ?? p.chain.source} · {p.chain.len} steps</span>}
+        {p.tools && <div className="fm-strip-tools" data-testid="map-strip-tools">{p.tools}</div>}
       </div>
       <div className="sy-canvas-scroll" ref={wrap} style={{ position: "relative" }}>
         {seg.length > 0 && (

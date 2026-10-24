@@ -599,13 +599,77 @@ body:has([data-testid=map-inspector]) .ws-drop .react-flow__panel.fc-controls { 
   .ex-sheet { width: 100%; max-height: calc(100vh - 200px); }
   .sy-roles { top: auto; bottom: 96px; left: 8px; right: 8px; max-width: none; }
   .ws-drop .react-flow__panel.fc-controls { display: none; }
-  body:has([data-testid=map-inspector]) .ex-wrap,
-  body:has([data-testid=map-inspector]) .u2-frames { display: none; }
-  /* the fixed view switch clears the shell's 40 px statusbar row (probe: it
-     overlapped sb-help at 390) and meets the 40 px control floor */
-  .u2-frames { bottom: 52px; }
+  body:has([data-testid=map-inspector]) .ex-wrap { display: none; }
   .u2-frame { height: 40px; width: 44px; }
   .ex-btn { width: 100%; min-height: 40px; padding: 0 10px; justify-content: center; }
   /* the sheet rises from the toggle, above the run bar's two rows */
   .ex-wrap { bottom: 84px; }
+}
+
+/* The map's top strip: the route dropdown on the left, the key, plain words
+   and Explorer docked on the right. Nothing floats over the canvas corners;
+   each control opens a sheet that hangs below the strip. */
+.fm-flow .fm-headline { position: relative; z-index: 30; display: flex; align-items: center; gap: 8px; padding: 6px 10px; overflow: visible; min-height: 44px; box-sizing: border-box; }
+.fm-strip-tools { margin-left: auto; flex: none; display: flex; align-items: center; gap: 6px; }
+.fm-strip-tools .u9-dock, .fm-strip-tools .u7-key-dock { position: relative; inset: auto; top: auto; left: auto; max-width: none; z-index: auto; }
+.fm-strip-tools .u9-dock .u9-panel, .fm-strip-tools .u9-dock .u9-panel.u9-open { position: relative; width: auto; padding: 0; border: 0; background: none; }
+.fm-strip-tools .u9-chip, .fm-strip-tools .u7-legend-head { height: 30px; }
+.fm-strip-tools .u7-legend-head { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; color: var(--text-2); font: 500 12px var(--mono); cursor: pointer; }
+.fm-strip-tools .u7-legend-head svg { width: 13px; height: 13px; }
+.fm-strip-tools .u9-body { position: absolute; top: calc(100% + 6px); right: 0; width: 300px; padding: 10px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow-pop, 0 12px 32px rgb(0 0 0 / .35)); }
+.fm-strip-tools .u7-key-dock .u7-legend-panel { position: absolute; top: calc(100% + 6px); right: 0; width: 240px; padding: 8px; margin: 0; background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: var(--shadow-pop, 0 12px 32px rgb(0 0 0 / .35)); }
+.fm-strip-tools .ex-wrap { position: relative; inset: auto; top: auto; right: auto; bottom: auto; left: auto; display: block; }
+.fm-strip-tools .ex-btn { width: auto; min-height: 0; height: 30px; padding: 0 10px; }
+.fm-strip-tools .ex-sheet { position: absolute; top: calc(100% + 6px); right: 0; width: 300px; max-height: calc(100vh - 220px); }
+body:has([data-testid=map-inspector]) .fm-strip-tools .ex-wrap { right: auto; }
+/* the route dropdown: the headline is its label; the sheet reads it whole */
+.strip-menu { position: relative; min-width: 0; }
+.fm-route { flex: 1 1 auto; }
+.strip-menu-btn { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; height: 30px; padding: 0 8px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--text); font: inherit; cursor: pointer; }
+.strip-menu-btn:hover, .strip-menu-btn.on { border-color: var(--line-2); background: var(--panel); }
+.strip-caret { flex: none; display: inline-flex; color: var(--text-3); transition: transform .12s; } /* the chevron icon points down */
+.strip-caret svg { width: 12px; height: 12px; }
+.strip-menu-btn.on .strip-caret { transform: rotate(180deg); }
+.strip-sheet { position: fixed; z-index: 450; width: min(420px, calc(100vw - 24px)); max-height: min(70vh, 560px); overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: var(--shadow-pop, 0 12px 32px rgb(0 0 0 / .35)); }
+.strip-sec { font: 500 10.5px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); padding: 2px 2px 0; }
+.fm-route-steps { margin: 0; padding: 0 0 0 22px; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--text); overflow-wrap: anywhere; }
+.fm-route-steps li::marker { color: var(--text-3); }
+/* the file tree */
+.ft { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.ft-q { height: 30px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--bg); color: var(--text); font: 12.5px var(--mono); }
+.ft-list { display: flex; flex-direction: column; max-height: 360px; overflow: auto; }
+.ft-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 26px; padding-right: 8px; border: 0; border-radius: 5px; background: none; color: var(--text-2); font: 12.5px var(--mono); text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ft-row:hover, .ft-row.on { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text); }
+.ft-row svg { flex: none; width: 13px; height: 13px; color: var(--text-3); }
+.ft-dir { color: var(--text); }
+.ft-caret { display: inline-flex; transform: rotate(-90deg); transition: transform .12s; }
+.ft-caret.on { transform: none; }
+.ft-empty { padding: 8px; color: var(--text-3); font-size: 12px; }
+@media (max-width: 720px) {
+  .fm-flow .fm-headline { padding: 6px 8px; }
+  .fm-strip-tools .ex-btn span, .fm-strip-tools .u7-legend-word, .fm-strip-tools .u7-legend-chev, .fm-strip-tools .u9-chip > span, .fm-strip-tools .u9-chip-n { display: none; }
+  .fm-strip-tools .u9-chip, .fm-strip-tools .u7-legend-head, .fm-strip-tools .ex-btn { width: 34px; padding: 0; justify-content: center; }
+  .fm-strip-tools .u9-body, .fm-strip-tools .u7-key-dock .u7-legend-panel { position: fixed; top: 100px; left: 8px; right: 8px; width: auto; }
+  .fm-strip-tools .ex-sheet { position: fixed; top: 100px; left: 8px; right: 8px; width: auto; max-height: calc(100vh - 220px); }
+  .strip-sheet { left: 8px !important; right: 8px; width: auto; }
+}
+.u2-evals-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.u2-evals-card[data-pane] { position: relative; }
+
+/* The view switch lives in the run strip, after the pipeline context – part
+   of the bar, never floating over the canvas. */
+.tp-row .u2-frames { position: static; inset: auto; transform: none; margin-left: 8px; flex: none; z-index: auto; }
+@media (max-width: 720px) { .tp-row .u2-frames .u2-frame { height: 32px; width: 36px; } .tp-row .tp-ctx { display: none; } .tp-row .u2-frames { margin-left: auto; } }
+/* With the inspector open the run strip stops at its edge, so the view
+   switch at the strip's end stays in reach. */
+@media (min-width: 721px) { body:has([data-testid=map-inspector]) .tp { right: calc(var(--size-inspector, 400px) + 24px); } }
+/* In the drilled-in block view the same tools end the breadcrumb row. */
+.sy-bread { align-items: center; flex-wrap: nowrap; }
+.sy-bread .fm-strip-tools { margin-left: auto; }
+/* The inspector floats over the canvas's right side: the strip's tools stop
+   at its edge, so the Explorer and its sheet are never under it. */
+@media (min-width: 721px) {
+  body:has([data-testid=map-inspector]) .fm-flow .fm-headline { padding-right: calc(var(--size-inspector, 400px) + 24px); }
+  body:has([data-testid=map-inspector]) .sy-bread { padding-right: calc(var(--size-inspector, 400px) + 24px); }
 }

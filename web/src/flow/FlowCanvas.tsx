@@ -441,11 +441,12 @@ function FlowCanvasInner(props: FlowCanvasProps) {
     if (key === "ArrowRight" || key === "ArrowLeft" || key === "ArrowUp" || key === "ArrowDown") {
       if (!cur) { go(all.find((n) => !n.parentId)?.id); return; }
       if (key === "ArrowRight") {
-        const outs = mainEdges.filter((e) => e.source === cur.id);
+        // arrows walk the code's flow – an agent's fence wires show reach, not flow
+        const outs = mainEdges.filter((e) => e.source === cur.id && !e.target.startsWith("agent:"));
         const sub = outs.find((e) => (byId.get(e.target)?.data as FlowNode)?.sub);
         go((outs.sort((a, b) => (byId.get(b.target)?.position.x ?? 0) - (byId.get(a.target)?.position.x ?? 0))[0] ?? sub)?.target);
       } else if (key === "ArrowLeft") {
-        const ins = mainEdges.filter((e) => e.target === cur.id);
+        const ins = mainEdges.filter((e) => e.target === cur.id && !e.source.startsWith("agent:"));
         go(ins.sort((a, b) => (byId.get(b.source)?.position.x ?? 0) - (byId.get(a.source)?.position.x ?? 0))[0]?.source);
       } else if (key === "ArrowDown") {
         go(all.find((n) => n.parentId === cur.id && (n.data as FlowNode).sub)?.id);

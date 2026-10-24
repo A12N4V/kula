@@ -103,6 +103,7 @@ test("an unfenced agent wires into the whole-codebase block (colour-banded)", as
 test("no actor band; clicking an agent square picks the agent", async ({ page }) => {
   await opened(page);
   await expect(page.locator('[data-testid="actor-band"]')).toHaveCount(0);
+  await page.locator("[data-testid=fc-fit]").click();
   await page.locator('[data-testid="at-agent-polish"]').click();
   await expect(page.locator('[data-testid="at-agent-polish"]')).toHaveClass(/sel/);
   await expect(page.locator('[data-testid="ag-bar"]')).toBeVisible();

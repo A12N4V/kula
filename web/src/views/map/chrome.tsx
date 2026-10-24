@@ -6,6 +6,7 @@
 // summarised in handoff-x3. All pieces live here so MapView.tsx stays a
 // wiring file – it is the most-merged file in the repo.
 
+import { PaneControls } from "../../resize";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../ui";
 
@@ -179,11 +180,11 @@ export function TidyStrip({ onTidy, canUndo, onUndo }: { onTidy: () => void; can
 
 /** The Evals frame: no eval backend yet, so the frame teaches (contract §7) –
     what will land here, and the nearest real surface today. */
-export function EvalsBoard({ onRuns }: { onRuns: () => void }) {
+export function EvalsBoard({ onRuns, onClose }: { onRuns: () => void; onClose: () => void }) {
   return (
     <div className="u2-evals" data-testid="u2-evals" role="region" aria-label="Evals">
-      <div className="u2-evals-card">
-        <span className="sy-section-label">evals</span>
+      <div className="u2-evals-card" data-pane>
+        <div className="u2-evals-head"><span className="sy-section-label">evals</span><PaneControls onClose={onClose} closeTitle="Close evals  esc" testId="evals" /></div>
         <h2>No eval runs yet</h2>
         <p className="ws-hint">Run a task with an eval gate and its scores land here – pass rate, cost and time per agent, per run.</p>
         <button className="btn sm" data-testid="u2-evals-open-runs" onClick={onRuns}><Icon.flows /> Open Runs</button>

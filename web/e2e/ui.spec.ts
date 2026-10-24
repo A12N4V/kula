@@ -2848,6 +2848,8 @@ test.describe("map", () => {
   });
 
   test("keyboard traversal works on the flow canvas: arrows walk edges, Enter opens, Esc clears", async ({ page }) => {
+    // the walk follows the code's flow edges – agents (fence wires only) off
+    await page.addInitScript(() => { try { localStorage.setItem("kula.map.layers", JSON.stringify({ agents: false })); } catch { /* */ } });
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
     const canvas = page.locator("[data-testid=map-flow-canvas] .fc-canvas");
@@ -2889,7 +2891,7 @@ test.describe("map", () => {
     expect(moved).toBeTruthy();
     // ArrowLeft walks back along a main edge to a predecessor
     await page.keyboard.press("ArrowLeft");
-    await expect.poll(selOf).not.toBe(moved);
+    await expect.poll(selOf, `left from ${moved} (start ${start})`).not.toBe(moved);
     // ArrowRight again, then Enter opens the selection (a block drills in)
     await page.keyboard.press("ArrowRight");
     await expect.poll(selOf).not.toBe(start);
@@ -2925,10 +2927,15 @@ test.describe("map", () => {
     // nested-squares map: drag a square that sits well inside the viewport
     const squares = page.locator(".fc-solid .fc-solid-sq");
     let wide = squares.first();
+    const vp = page.viewportSize()!;
+    let inView: typeof wide | null = null;
     for (let i = 0; i < await squares.count(); i++) {
       const bb = await squares.nth(i).boundingBox();
-      if (bb && bb.x > 300 && bb.y > 300 && bb.x < 1100 && bb.y < 650) { wide = squares.nth(i); break; }
+      if (bb && bb.x > 300 && bb.y > 300 && bb.x < 1100 && bb.y < 650) { wide = squares.nth(i); inView = null; break; }
+      // fallback: any square wholly on screen, clear of the strip and run bar
+      if (!inView && bb && bb.x > 80 && bb.y > 140 && bb.x + bb.width < vp.width - 80 && bb.y + bb.height < vp.height - 120) inView = squares.nth(i);
     }
+    if (inView && !(await wide.boundingBox().then((b) => b && b.y > 140 && b.y < vp.height - 120))) wide = inView;
     await wide.hover({ timeout: 10_000 });
     const before = await wide.boundingBox();
     await page.mouse.down();

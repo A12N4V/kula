@@ -90,12 +90,12 @@ test("port count per kind: gates fork pass/fail, agents carry the four capabilit
   // the lane sits above the focus viewport and only mounts when visible
   // (onlyRenderVisibleElements) – zoom out with the wheel until it mounts
   const pane = page.locator("[data-testid=map-flow-canvas] .react-flow__pane");
-  for (let i = 0; i < 10 && (await page.locator("[data-testid=map-flow] .fc-agent").count()) === 0; i++) {
+  for (let i = 0; i < 10 && (await page.locator("[data-testid=map-flow] .fc-agent:not([data-agent])").count()) === 0; i++) {
     await pane.hover({ position: { x: 400, y: 300 } });
     await page.mouse.wheel(0, 240);
     await page.waitForTimeout(280);
   }
-  const agent = page.locator("[data-testid=map-flow] .fc-agent").first();
+  const agent = page.locator("[data-testid=map-flow] .fc-agent:not([data-agent])").first();
   await expect(agent).toBeVisible({ timeout: 5_000 });
   await expect(agent.locator(".fc-port")).toHaveCount(4); // Model, Tools, Fence, Memory
   for (const p of ["Model", "Tools", "Fence", "Memory"])
@@ -264,20 +264,27 @@ test("text overlap probe: the map canvas is clean at 1440, 1100 and 390", async 
       // not with the nodes beneath them.
       const nodes = [...document.querySelectorAll("[data-testid=map-flow] .fc-node:not(.fc-group), [data-testid=map-flow] .fm-headline-v, [data-testid=map-flow] .fc-edge-label, .map-hud .btn")] as HTMLElement[];
       const hud = (el: Element) => el.classList.contains("btn") && !!el.closest(".ex-wrap");
+      // canvas items are clipped by the canvas: judge only their visible part
+      const clip = document.querySelector("[data-testid=map-flow] .react-flow")?.getBoundingClientRect();
       const rect = (el: HTMLElement) => {
-        const r = el.getBoundingClientRect();
+        let r = el.getBoundingClientRect();
+        if (clip && el.closest(".react-flow")) {
+          const l = Math.max(r.left, clip.left), t = Math.max(r.top, clip.top);
+          r = new DOMRect(l, t, Math.min(r.right, clip.right) - l, Math.min(r.bottom, clip.bottom) - t);
+        }
         if (r.width < 2 || r.height < 2) return null;
         const s = getComputedStyle(el);
         if (s.visibility === "hidden" || s.display === "none" || parseFloat(s.opacity) < 0.1) return null;
         return r;
       };
-      let n = 0;
+      const n: string[] = [];
+      const nm = (el: HTMLElement) => el.dataset.testid || el.textContent?.slice(0, 24) || el.className;
       for (let i = 0; i < nodes.length; i++) {
         const a = rect(nodes[i]);
         if (!a) continue;
         const cut = nodes[i].scrollWidth > nodes[i].clientWidth + 2 &&
           !/(ellipsis|hidden|auto)/.test(getComputedStyle(nodes[i]).textOverflow + getComputedStyle(nodes[i]).overflow);
-        if (cut) n++;
+        if (cut) n.push(`cut ${nm(nodes[i])}`);
         for (let j = i + 1; j < nodes.length; j++) {
           const b = rect(nodes[j]);
           if (!b) continue;
@@ -287,11 +294,11 @@ test("text overlap probe: the map canvas is clean at 1440, 1100 and 390", async 
           if (hud(nodes[i]) !== hud(nodes[j]) && !nodes[i].classList.contains("fm-headline-v") && !nodes[j].classList.contains("fm-headline-v")) continue;
           const x = Math.max(a.left, b.left), y = Math.max(a.top, b.top);
           const r = Math.min(a.right, b.right), d = Math.min(a.bottom, b.bottom);
-          if (r - x > 2 && d - y > 2) n++;
+          if (r - x > 2 && d - y > 2) n.push(`${nm(nodes[i])} × ${nm(nodes[j])}`);
         }
       }
       return n;
     });
-    expect(hits, `text overlaps or cut text on the map at ${w}x${h}`).toBe(0);
+    expect(hits, `text overlaps or cut text on the map at ${w}x${h}`).toEqual([]);
   }
 });

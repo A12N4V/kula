@@ -153,9 +153,12 @@ export function FenceHull({ canvas, fencedIds, agent }: { canvas: React.RefObjec
       setRect(Number.isFinite(l) && r > l ? { l, t, r, b } : null);
     };
     measure();
+    // the canvas may re-lay out after the pick (a square opens, the camera
+    // moves) – measure again once it settles
+    const late = window.setTimeout(measure, 450);
     const ro = new ResizeObserver(measure);
     ro.observe(canvas.current!);
-    return () => ro.disconnect();
+    return () => { ro.disconnect(); window.clearTimeout(late); };
   }, [canvas, fencedIds.join("|"), agent]);
   if (!rect || !agent) return null;
   return (

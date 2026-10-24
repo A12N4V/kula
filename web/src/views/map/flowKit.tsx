@@ -7,7 +7,8 @@
 // not cross through the kit's `dim` flag. The capabilities lens renders one
 // swimlane group per entry family from the same pure lens as before.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { FileTree, StripMenu } from "../../FileTree";
 import { api } from "../../api";
 import { FlowCanvas, type FlowEdge, type FlowGroup, type FlowNode } from "../../flow";
 import { dirColor, groupDirs } from "../../colors";
@@ -37,6 +38,10 @@ export const FN_CAP = 40;
 
 type Flow = { from: string; to: string; weight: number };
 type Props = {
+  /** Controls docked at the right of the top strip (key, plain words, Explorer). */
+  headTools?: ReactNode;
+  /** A file picked in the route menu's file tree. */
+  onPickFile?: (path: string) => void;
   data: MapData & { flows?: Flow[] };
   roles: Set<Role>;
   focus?: Focus | null;
@@ -205,7 +210,7 @@ function fnIcon(kind: string) {
     degree, the flows and chains it belongs to); sections render as frames
     holding their cards. Selection is single-writer (the kit); a focused
     chain dims everything it does not cross through the kit's `dim` flag. */
-export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal, agents = [], agentsOn = false }: Props) {
+export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal, agents = [], agentsOn = false, headTools, onPickFile }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   // The meaning layout (meaning.ts): sections grouped into intent zones by
   // what they do and how work flows between them – not by directory or
@@ -802,6 +807,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
     setTimeout(() => onDrill(bid), 0);
   };
 
+  const files = useMemo(() => [...new Set(Object.values(data.leaves).map((l) => l.path).filter((p) => p && !p.startsWith("pkg:")))], [data]);
   const dense = edges.length > 120;
   const denser = edges.length > 400;
   return (
@@ -809,7 +815,18 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
       {/* U4 (X2 list): the "executes" crumb leaves landing – the workflow
           name already reads in the header, the label only duplicated it. */}
       <div className="fm-headline" data-testid="map-headline">
-        <span className="fm-headline-v">{headline || "–"}</span>
+        {/* The route reads in full from its dropdown, with the file tree under
+            it – a cut-off route is one click from whole. */}
+        <StripMenu testId="map-route" className="fm-route" title="The whole route and the file tree"
+          label={<span className="fm-headline-v">{headline || "–"}</span>}>
+          {(close) => (<>
+            <div className="strip-sec">route</div>
+            <ol className="fm-route-steps">{(headline ? headline.split(" → ") : []).map((st, i) => <li key={i} className="mono">{st}</li>)}</ol>
+            <div className="strip-sec">files</div>
+            <FileTree paths={files} onPick={(p) => { close(); onPickFile?.(p); }} />
+          </>)}
+        </StripMenu>
+        {headTools && <div className="fm-strip-tools" data-testid="map-strip-tools">{headTools}</div>}
       </div>
       <FlowCanvas
         {...canvas}

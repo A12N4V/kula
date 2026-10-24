@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FileTree, StripMenu } from "../FileTree";
 import Graph from "graphology";
 import Sigma from "sigma";
 import { EdgeRectangleProgram } from "sigma/rendering";
@@ -613,6 +614,7 @@ function MapView(props: Props) {
     const t = window.setTimeout(() => setCardOn(true), 260);
     return () => window.clearTimeout(t);
   }, [hover]);
+  const graphFiles = useMemo(() => (data ? [...new Set(data.nodes.filter((n) => n.kind !== "package" && n.path && !n.path.startsWith("pkg:")).map((n) => n.path))] : []), [data]);
   const pkgCount = data ? data.nodes.filter((n) => n.kind === "package").length : 0;
   const hubCount = graph ? graph.filterNodes((_id, a) => isHub(a)).length : 0;
 
@@ -623,9 +625,17 @@ function MapView(props: Props) {
       {err && <div className="loading"><Empty title={err.includes("WebGL") ? "Graph unavailable" : "No graph yet"}>{err}{!err.includes("WebGL") && <div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => api.reindex().then(onChanged)}>Build graph</button></div>}</Empty></div>}
 
       <div className="graph-overlay hud">
-        <div className="seg">
-          <button className={level === "symbol" ? "on" : ""} onClick={() => setLevel("symbol")}>Symbols</button>
-          <button className={level === "file" ? "on" : ""} onClick={() => setLevel("file")}>Files</button>
+        {/* the file tree opens only from this dropdown – pick a file to focus it */}
+        {data && <StripMenu testId="graph-files" className="graph-files" title="Browse the files" label={<><Icon.sidebar /><span className="hud-lbl">Files</span></>}>
+          {(close) => <FileTree paths={graphFiles} onPick={(p) => {
+            close();
+            const hit = data.nodes.find((n) => n.path === p && n.kind === "file") ?? data.nodes.find((n) => n.path === p);
+            if (hit) setFocus(hit.id);
+          }} />}
+        </StripMenu>}
+        <div className="seg seg-ico">
+          <button className={level === "symbol" ? "on" : ""} onClick={() => setLevel("symbol")} title="Symbols" aria-label="Symbols" data-testid="graph-level-symbol"><span className="ico-fn" aria-hidden="true">ƒ</span><span className="hud-lbl">Symbols</span></button>
+          <button className={level === "file" ? "on" : ""} onClick={() => setLevel("file")} title="Files" aria-label="Files" data-testid="graph-level-file"><Icon.doc /><span className="hud-lbl">Files</span></button>
         </div>
         <button className={`btn sm hud-btn ${s.packages ? "on" : ""}`} aria-pressed={s.packages} onClick={() => settings.set({ packages: !s.packages })} title="Show external packages on the rim">
           <Icon.box /> Packages{pkgCount ? <span className="muted"> {pkgCount}</span> : null}

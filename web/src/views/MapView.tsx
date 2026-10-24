@@ -365,11 +365,17 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     if (id?.startsWith("agent:")) {
       const name = id.slice(6);
       setEditFence(false);
+      // picking an agent hands the selection to it – a code selection would
+      // otherwise keep the canvas focus on the block
+      setSelBlock(null);
       setSelAgent((cur) => { const next = cur === name ? null : name; if (next) setInspForced(true); return next; });
       return;
     }
+    // while the fence is being edited a block click toggles it in the
+    // agent's fence, so the agent stays picked
+    if (!editFence) setSelAgent(null);
     setSelBlock(id);
-  }, []);
+  }, [editFence]);
   const createAgent = useCallback((wf: Workflow) => {
     api.agentAction("workflows_save", { workflows: [...(ws.info?.workflows ?? []).filter((w) => !w.builtin), wf] })
       .catch(() => { /* the editor shows the server's state */ })
@@ -677,6 +683,32 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
   // Chains-off toggle simply stops showing focus, not a navigation.
   const layerCls = (["blocks", "flows", "chains", "fences", "agents", "runs"] as LayerId[])
     .filter((l) => !layers[l]).map((l) => `u2-l-${l}-off`).join(" ");
+  // the key, plain words and Explorer: docked in the map's top strip
+  const headTools = <>
+              {!insp && <div className="u7-key-dock" data-testid="map-key-dock"><Legend data={data} ringHue={flowPick != null ? flowHue(flowPick) : null} /></div>}
+              <div className="u9-dock" data-testid="map-plain-dock"><PlainPanel agents={ws.info?.workflows.filter((w) => !w.builtin).map((w) => w.name)} /></div>
+<Explorer open={exOpen} onOpen={setExOpen}
+                search={(<>
+                  {!searchOpen && <button className="ex-verb ex-find" data-testid="u2-rail-search" title="Search  /" onClick={() => setSearchOpen(true)}><Icon.search /> Search code</button>}
+                  <RailSearch open={searchOpen} value={q} onChange={setQ} onSubmit={() => void searchGo()}
+                    onPick={(id) => { setSelBlock(id); setReveal(id); setSearchOpen(false); setQ(""); }} />
+                </>)}
+                panels={<>
+                  <button className="ex-row" onClick={() => { setExOpen(false); openInsp("pipeline"); }} data-testid="hud-pipeline"><Icon.flows /> Pipeline{pipe.steps.length ? <b>{runnable(pipe.steps).length}</b> : null}</button>
+                  <button className="ex-row" onClick={() => { setExOpen(false); openInsp("live"); }} data-testid="hud-live"><Icon.agents /> Agents{ws.info ? <b>{ws.info.workflows.filter((w) => !w.research && !w.builtin).length + ws.info.teams.length}</b> : null}{(ws.info?.task || ws.info?.team) && <i className="hud-dot" />}</button>
+                  <button className="ex-row" onClick={() => { setExOpen(false); openInsp("changes"); }} data-testid="hud-changes"><Icon.changes /> Changes{ws.files.length ? <b>{ws.files.length}</b> : null}</button>
+                  <button className="ex-row" onClick={() => { setExOpen(false); openInsp("structure"); }} data-testid="map-side-toggle"><Icon.sidebar /> Structure</button>
+                  <button className={`ex-row${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
+                    onClick={() => setRolesOpen((o) => !o)}><Icon.types /> Roles</button>
+                </>}
+                layers={<LayerBar layers={layers} onToggle={toggleLayer} />}
+                verbs={<>
+                  <button className="ex-verb" data-testid="u2-rail-add" title="Add agent  n" onClick={() => { setExOpen(false); openAgentAdd(); }}><Icon.plus /> Agent</button>
+                  <button className="ex-verb" data-testid="u2-rail-note" title="Add sticky note  ⇧S" onClick={() => { setExOpen(false); addSticky(); }}><Icon.doc /> Note</button>
+                  <button className="ex-verb" data-testid="u2-tidy" title="Tidy – re-run the layout (T)" onClick={tidy}><Icon.sweep /> Tidy</button>
+                  {tidyUndo && <button className="ex-verb ex-undo" data-testid="u2-tidy-undo" title="Undo tidy  ⌘Z" onClick={undoTidy}><Icon.rerun /> Undo</button>}
+                </>} />
+            </>;
   return (
     <div className={`sy-root${layerCls ? ` ${layerCls}` : ""}`} ref={rootRef} data-testid="map-view">
       {/* One canvas (R0): no lens switcher, no View menu, no Add block button.
@@ -685,33 +717,12 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
           in the inspector, roles opens from the canvas HUD. */}
       {/* U2: centred Map · Runs · Evals switch – the segments re-frame the
           same canvas, they are not new views. */}
-      <FrameSwitch frame={frame} onFrame={(f) => { setFrame(f); if (f === "runs") openInsp("pipeline"); }}
-        counts={{ runs: runner.runs.length ? `${runner.runs.length}` : undefined }} />
-      {frame === "evals" && <EvalsBoard onRuns={() => { setFrame("runs"); openInsp("pipeline"); }} />}
+      {/* The Map · Runs · Evals switch sits in the run strip (Transport's tail). */}
+      {frame === "evals" && <EvalsBoard onRuns={() => { setFrame("runs"); openInsp("pipeline"); }} onClose={() => setFrame("map")} />}
       {/* The Explorer: one toggle in the canvas's top-right corner holds the
           search, the panels, the layers and the canvas verbs – the right edge
           carries nothing else. With the inspector open it steps left of it. */}
-      <Explorer open={exOpen} onOpen={setExOpen}
-        search={(<>
-          {!searchOpen && <button className="ex-verb ex-find" data-testid="u2-rail-search" title="Search  /" onClick={() => setSearchOpen(true)}><Icon.search /> Search code</button>}
-          <RailSearch open={searchOpen} value={q} onChange={setQ} onSubmit={() => void searchGo()}
-            onPick={(id) => { setSelBlock(id); setReveal(id); setSearchOpen(false); setQ(""); }} />
-        </>)}
-        panels={<>
-          <button className="ex-row" onClick={() => { setExOpen(false); openInsp("pipeline"); }} data-testid="hud-pipeline"><Icon.flows /> Pipeline{pipe.steps.length ? <b>{runnable(pipe.steps).length}</b> : null}</button>
-          <button className="ex-row" onClick={() => { setExOpen(false); openInsp("live"); }} data-testid="hud-live"><Icon.agents /> Agents{ws.info ? <b>{ws.info.workflows.filter((w) => !w.research && !w.builtin).length + ws.info.teams.length}</b> : null}{(ws.info?.task || ws.info?.team) && <i className="hud-dot" />}</button>
-          <button className="ex-row" onClick={() => { setExOpen(false); openInsp("changes"); }} data-testid="hud-changes"><Icon.changes /> Changes{ws.files.length ? <b>{ws.files.length}</b> : null}</button>
-          <button className="ex-row" onClick={() => { setExOpen(false); openInsp("structure"); }} data-testid="map-side-toggle"><Icon.sidebar /> Structure</button>
-          <button className={`ex-row${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
-            onClick={() => setRolesOpen((o) => !o)}><Icon.types /> Roles</button>
-        </>}
-        layers={<LayerBar layers={layers} onToggle={toggleLayer} />}
-        verbs={<>
-          <button className="ex-verb" data-testid="u2-rail-add" title="Add agent  n" onClick={() => { setExOpen(false); openAgentAdd(); }}><Icon.plus /> Agent</button>
-          <button className="ex-verb" data-testid="u2-rail-note" title="Add sticky note  ⇧S" onClick={() => { setExOpen(false); addSticky(); }}><Icon.doc /> Note</button>
-          <button className="ex-verb" data-testid="u2-tidy" title="Tidy – re-run the layout (T)" onClick={tidy}><Icon.sweep /> Tidy</button>
-          {tidyUndo && <button className="ex-verb ex-undo" data-testid="u2-tidy-undo" title="Undo tidy  ⌘Z" onClick={undoTidy}><Icon.rerun /> Undo</button>}
-        </>} />
+      {/* The Explorer, key and plain words dock in the map's top strip (headTools below). */}
       {live?.running && <ProgressStrip p={live} />}
       {rolesOpen && (
         <div className="sy-roles" id="map-role-filter" data-testid="map-role-filter" role="group" aria-label="Role filter">
@@ -733,8 +744,10 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       )}
       <div className="sy-split" style={listWidth("map", 360)}>
         {path.length
-          ? <BlockCanvas blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
-          : <div className="ws-drop" ref={canvasWrapRef} onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView agents={terrainAgents} agentsOn={layers.agents} flowTint={flowTint} marks={fenceMarks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={fenceFocus ?? (layers.chains && chain ? focusOf(data, chain) : null)} selection={selBlock ?? (selAgent ? `agent:${selAgent}` : null)} onSelect={pickOnCanvas} onDrill={(id) => { setSelBlock(id); setInspForced(true); }} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
+          ? <BlockCanvas tools={headTools} blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
+          : <div className="ws-drop" ref={canvasWrapRef} onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView headTools={headTools}
+            onPickFile={(path) => { const hit = Object.entries(data.leaves).find(([, l]) => l.path === path); if (hit) selectLeaf(Number(hit[0])); }}
+            agents={terrainAgents} agentsOn={layers.agents} flowTint={flowTint} marks={fenceMarks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={fenceFocus ?? (layers.chains && chain ? focusOf(data, chain) : null)} selection={selBlock ?? (selAgent ? `agent:${selAgent}` : null)} onSelect={pickOnCanvas} onDrill={(id) => { setSelBlock(id); setInspForced(true); }} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
             reveal={reveal}
             pinned={pinned && !selStep ? pinned : null}
             onNodeTool={(id, action) => {
@@ -746,7 +759,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
               hint={insert?.after ? `Insert after ${pipe.steps.find((x) => x.id === insert.after)?.name ?? "block"}` : lastSec ? `Add on ${data.blocks[lastSec]?.theme || data.blocks[lastSec]?.name}` : "Add a block"} />
             {menu && <ContextMenu at={menu.at} items={menuItems(menu)} onClose={() => setMenu(null)} />}
             {ndvStep && <StepDetails data={data} s={ndvStep} pipe={pipe} runner={runner} sections={sections} prev={ndvPrev} onClose={() => setNdv(null)} sup={sup} />}
-            <Transport runner={runner} steps={runnable(pipe.steps)} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} sel={selStep} onPick={(id) => (sup.planActive ? sup.toggleStrike(id) : setSelBlock(`step:${id}`))} onOpen={(id) => { setSelBlock(`step:${id}`); setNdv(id); }} sup={sup} />
+            <Transport tail={<FrameSwitch frame={frame} onFrame={(f) => { setFrame(f); if (f === "runs") openInsp("pipeline"); }}
+        counts={{ runs: runner.runs.length ? `${runner.runs.length}` : undefined }} />} runner={runner} steps={runnable(pipe.steps)} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} sel={selStep} onPick={(id) => (sup.planActive ? sup.toggleStrike(id) : setSelBlock(`step:${id}`))} onOpen={(id) => { setSelBlock(`step:${id}`); setNdv(id); }} sup={sup} />
             {/* U3 – the fence hull around the selected agent's sections (§8.5). */}
             <FenceHull canvas={canvasWrapRef} fencedIds={fenced} agent={selAgent} />
             {/* U7 – journey steps over the map; onPickStep pans the camera via the kit's reveal. */}
@@ -765,18 +779,6 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
         {/* U7 – the key is always on the map (X5 §2, critic blocking): with
             the inspector closed it docks at the right edge so landing #map
             still shows it – no click to know the key exists. */}
-        {!insp && (
-          <div className="u7-key-dock" data-testid="map-key-dock">
-            <Legend data={data} ringHue={flowPick != null ? flowHue(flowPick) : null} />
-          </div>
-        )}
-        {/* U9 – the reading-layer controls (run, progress, code-names toggle)
-            dock on the map when the inspector is closed, so they are
-            reachable with no click (the critic's T2/T4 finding). With the
-            inspector open the same panel rides its top, as before. */}
-        <div className="u9-dock" data-testid="map-plain-dock">
-          <PlainPanel agents={ws.info?.workflows.filter((w) => !w.builtin).map((w) => w.name)} />
-        </div>
         {/* The add-block palette shares the inspector's corner – while it is
             open it rides above (n8n slides its panel over the canvas), so the
             inspector steps aside until the pick lands. */}
@@ -863,7 +865,7 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     time and filled by its state; the block in flight is the lit region, the
     way sema shades the window on its recording strip. Click a segment to open
     that block. */
-function Transport({ runner, steps, waiting, last, sel, onPick, onOpen, sup }: { runner: ReturnType<typeof useRunner>; steps: Step[]; waiting: { id: string; name: string } | null; last: { status: string; ms: number } | null; sel: string | null; onPick: (id: string) => void; onOpen: (id: string) => void; sup: ReturnType<typeof useSupervision> }) {
+function Transport({ runner, steps, waiting, last, sel, onPick, onOpen, sup, tail }: { tail?: React.ReactNode; runner: ReturnType<typeof useRunner>; steps: Step[]; waiting: { id: string; name: string } | null; last: { status: string; ms: number } | null; sel: string | null; onPick: (id: string) => void; onOpen: (id: string) => void; sup: ReturnType<typeof useSupervision> }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { if (!runner.running) return; const t = window.setInterval(() => setNow(Date.now()), 250); return () => window.clearInterval(t); }, [runner.running]);
   const blocks = steps.length;
@@ -895,6 +897,7 @@ function Transport({ runner, steps, waiting, last, sel, onPick, onOpen, sup }: {
         <span className="tp-state" data-testid="ws-run-state">{label}</span>
         {runner.running && waiting && <button className="tp-done" onClick={() => runner.markDone(waiting.id)} data-testid="ws-done" title="The agent finished – hand on to the next block">{waiting.name}: done</button>}
         <span className="tp-ctx mono">Pipeline · {blocks} {blocks === 1 ? "block" : "blocks"}{runner.runs.length ? ` · ${runner.runs.length} ${runner.runs.length === 1 ? "run" : "runs"}` : ""}</span>
+        {tail}
       </div>
       {blocks > 0 && (
         <div className="tp-strip" role="list" aria-label="Run timeline" data-testid="ws-timeline">

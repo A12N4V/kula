@@ -234,10 +234,14 @@ test("selecting an agent draws its fence hull and dims non-fenced blocks to 35%"
   await expect(page.locator('[data-testid^="at-agent-"]').first()).toBeVisible({ timeout: 30_000 });
   const agent = page.locator('[data-testid="at-agent-polish"]');
   await expect(agent).toBeVisible({ timeout: 30_000 });
+  await page.locator("[data-testid=fc-fit]").click(); // the agent may sit off screen
   await agent.click();
   await expect(page.locator('[data-testid="fence-hull"]')).toBeVisible();
   await expect(page.locator('[data-testid="fence-hull-label"]')).toHaveText(/fence · polish/i);
-  const opacities = await page.evaluate(() => [...document.querySelectorAll(".fc-node")].map((n) => +getComputedStyle(n).opacity));
+  const read = () => page.evaluate(() => [...document.querySelectorAll(".fc-node")].map((n) => +getComputedStyle(n).opacity));
+  // the dim fades in – read once it has settled
+  await expect.poll(async () => (await read()).every((o) => o === 1 || o <= DIM_NON_FENCED), { timeout: 5_000 }).toBe(true);
+  const opacities = await read();
   const fenced = opacities.filter((o) => o > DIM_NON_FENCED);
   expect(fenced.length, `${fenced.length} of ${opacities.length} nodes above ${DIM_NON_FENCED} – fenced stay bright, the rest dim`).toBeGreaterThan(0);
   for (const o of opacities) expect(o === 1 || o <= DIM_NON_FENCED, `opacity ${o} is in the dead zone between fenced and dim`).toBeTruthy();

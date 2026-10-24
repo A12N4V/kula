@@ -296,11 +296,9 @@
 .fm-headline-tools { margin-left: auto; display: flex; gap: 8px; }
 /* The flow canvas has no scrollbar to reserve, so the headline clears the
    structure panel's grip strip (28 px, reaching 26 px into the canvas). */
-.fm-flow .fm-headline { padding-right: 484px; }
 @media (max-width: 640px) {
   /* the wrapped headline fills the canvas top on phones – the HUD drops below it */
   .sy-split .map-hud { top: 72px; }
-  .fm-flow .fm-headline { padding-right: 258px; }
 }
 /* The kit sizes its canvas with flex: 1 only when it renders its own
    sidebar; the map keeps its own structure panel, so stretch it here. */
@@ -491,4 +489,4 @@ span.fm-lane-stop { cursor: default; }
 }
 /* Phone: no room for a floating key beside the layer column – the key lives
    in the panel's legend instead. */
-@media (max-width: 720px) { .u7-key-dock { display: none; } }
+/* phones keep the key in the top strip, icon-only (workspace.css) */

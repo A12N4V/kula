@@ -11,6 +11,9 @@ test.use({ baseURL: FIXTURE });
 async function opened(page: Page) {
   await page.addInitScript(() => {
     try { sessionStorage.setItem("kula.opened", "1"); localStorage.setItem("kula.settings.v1", JSON.stringify({ opening: false })); } catch { /* */ }
+    // these contracts are about the code squares and their wires; agents
+    // other specs leave on the shared server would add their own squares
+    try { localStorage.setItem("kula.map.layers", JSON.stringify({ agents: false })); } catch { /* */ }
   });
   await page.goto("about:blank");
   await page.goto(`/#map`);
@@ -116,7 +119,7 @@ test("square sizes sit on a 3-step scale", async ({ page }) => {
   });
   // Three distinct sizes on screen at the landing zoom – the scale, not a
   // continuum (screen px vary with zoom; the count of steps is the contract).
-  expect(widths.length).toBe(3);
+  expect(widths.length, `square widths on screen: ${widths.join(", ")}`).toBe(3);
 });
 
 test("hovering a square lifts its wires to 100% and dims the rest to 15%", async ({ page }) => {
@@ -143,7 +146,7 @@ test("hovering a square lifts its wires to 100% and dims the rest to 15%", async
   }
   expect(ops, "some square with wires was hovered").toBeTruthy();
   expect(ops!.nLit).toBeGreaterThan(0);
-  expect(ops!.lit.every((o) => parseFloat(o) === 1)).toBe(true);
+  expect(ops!.lit.every((o) => parseFloat(o) === 1), `lit opacities: ${ops!.lit.join(", ")}`).toBe(true);
   expect(ops!.nFaint).toBeGreaterThan(0);
   expect(ops!.faint.every((o) => Math.abs(parseFloat(o) - 0.15) < 0.01)).toBe(true);
 });

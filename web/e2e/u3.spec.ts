@@ -49,6 +49,7 @@ const FENCE_DROP = `fence-drop-${Date.now()}`;
 const DIM_MAX = 0.35; // contract §8.5
 
 async function selectAgent(page: Page, name: string) {
+  await page.locator("[data-testid=fc-fit]").click(); // the agent may sit off screen
   await page.locator(`[data-testid="at-agent-${name}"]`).click();
   await expect(page.locator(`[data-testid="at-agent-${name}"]`)).toHaveClass(/sel/);
 }
@@ -76,6 +77,7 @@ test("selecting an agent draws its fence hull and dims non-fenced blocks to at m
   const bright = ops.filter((o) => o > DIM_MAX).length;
   expect(bright, "some blocks stay bright (the fenced ones)").toBeGreaterThan(0);
   for (const o of ops) expect(o === 1 || o <= DIM_MAX, `opacity ${o} is in the dead zone`).toBeTruthy();
+  await page.locator("[data-testid=fc-fit]").click();
   await page.locator('[data-testid="at-agent-polish"]').click(); // deselect clears the hull
   await expect(page.locator('[data-testid="fence-hull"]')).toHaveCount(0);
 });
