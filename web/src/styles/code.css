@@ -210,3 +210,6 @@
 .cp-fence .cp-tick { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); cursor: pointer; }
 .cp-fence .cp-tick input { accent-color: var(--accent); }
 .cp-note button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* U14 · notes open in the editor: the target row doubles as the anchor input */
+.cp-note-target { width: 100%; max-width: 460px; font-size: 12px; padding: 3px 8px; }

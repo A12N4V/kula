@@ -1194,23 +1194,20 @@ test.describe("notes autofill", () => {
     await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
     await expect(page.locator(".inspector h2")).toHaveText("context_pack");
     await page.locator(".rail").getByRole("button", { name: "Notes" }).click();
+    // U14: a new note opens in the code panel, not a sidebar composer
+    await page.getByTestId("u14-new-note").click();
+    const panel = page.locator(".code-panel");
+    await expect(panel).toBeVisible({ timeout: 10_000 });
     const target = page.getByLabel("Note target");
-    await target.fill("");
-    await target.focus();
-    const pop = page.locator(".af-pop");
-    await expect(pop.locator(".af-grp").first()).toBeVisible();
-    await expect(pop).toContainText("You are here");
-    await expect(pop).toContainText("context_pack");
-    await pop.locator(".af-opt").filter({ hasText: "context_pack" }).first().click();
+    // the here-hint offers the symbol just inspected – one click fills the target
+    await expect(panel.locator(".here-hint")).toContainText("context_pack");
+    await panel.locator(".here-hint").click();
     await expect(target).toHaveValue("symbol:src/agent.rs:context_pack");
-    await target.fill("file:src/gua");
-    await expect(page.locator(".af-ghost")).toContainText("rd.rs");
-    await target.press("Tab");
-    await expect(target).toHaveValue("file:src/guard.rs");
-    const body = page.getByLabel("Note text");
+    await target.fill("file:src/guard.rs");
+    const body = panel.getByTestId("cp-area");
     await body.click();
     await body.pressSequentially("see [[resolve_tar");
-    await expect(page.locator(".af-area .af-pop")).toContainText("resolve_target");
+    await expect(page.locator(".cp-edit .af-pop")).toContainText("resolve_target");
     await body.press("Enter");
     await expect(body).toHaveValue("see [[resolve_target]]");
   });

@@ -139,13 +139,15 @@ test("edit fence on canvas: clicking a block toggles its section in the fence", 
   // Click a block that is actually on screen – the canvas pans, so scan.
   // U6 puts agent squares and the whole-codebase block on the terrain with
   // Agents on; selecting those is the agent gesture, not a fence toggle, so
-  // the scan takes a real code block only.
+  // the scan takes a real code block only. After fc-fit the whole 13-zone
+  // fixture map fits the viewport, so a block square is small (17–36 px) –
+  // any on-screen block-sized node will do (mechanical update, U12).
   const id = await page.evaluate(() => {
     for (const el of document.querySelectorAll(".fc-node")) {
       const tid = el.getAttribute("data-testid") ?? "";
       if (tid.startsWith("fc-node-agent:") || tid === "fc-node-codebase" || tid.startsWith("fc-node-zone-")) continue;
       const r = el.getBoundingClientRect();
-      if (r.width > 40 && r.top > 0 && r.bottom < innerHeight && r.left > 0 && r.right < innerWidth && el.closest("[data-testid^='fc-node-step']") === null) {
+      if (r.width > 16 && r.height > 16 && r.top > 0 && r.bottom < innerHeight && r.left > 0 && r.right < innerWidth && el.closest("[data-testid^='fc-node-step']") === null) {
         el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         return tid;
       }
