@@ -37,8 +37,11 @@ test("turning a layer off hides its marks and back on restores them", async ({ p
   // Flows is on by default (contract §5). Pick an edge with a non-empty
   // bounding box – U8's size scale can make the first DOM edge an exactly
   // horizontal wire, which has zero height and counts as hidden.
+  // react-flow measures edges after the nodes settle, and the meaning layout
+  // re-derives the zone roads while it does – wait until the wire set is
+  // stable before picking, so the held id survives the layer cycle.
   const edges = page.locator("[data-testid=map-flow] .react-flow__edge");
-  const id = await edges.evaluateAll((els) => {
+  const pickEdge = () => edges.evaluateAll((els) => {
     for (const el of els) {
       // agent wires belong to the Agents layer and never hide with Flows
       if (el.getAttribute("data-id")?.startsWith("agent:")) continue;
@@ -47,13 +50,27 @@ test("turning a layer off hides its marks and back on restores them", async ({ p
     }
     return null;
   });
+  let id: string | null = null;
+  await expect.poll(async () => { id = await pickEdge(); return id; },
+    { timeout: 15_000, intervals: [250] }).not.toBeNull();
+  await expect.poll(async () => {
+    const again = await pickEdge();
+    const stable = again === id;
+    id = again;
+    return stable;
+  }, { timeout: 15_000, intervals: [700] }).toBe(true);
   expect(id).toBeTruthy();
+  // The zone roads re-derive when the map's async data lands, so a held id
+  // can vanish for reasons unrelated to the layer – assert by state instead:
+  // off hides every non-agent wire, on brings wires back (re-queried).
   const edge = page.locator(`[data-testid=map-flow] .react-flow__edge[data-id="${id}"]`);
   await expect(edge).toBeVisible();
   await explore(page); await page.locator("[data-testid=u2-layer-flows]").click();
   await expect(edge).not.toBeVisible();
+  await expect.poll(async () => (await pickEdge()) === null, { timeout: 5_000 }).toBe(true);
   await explore(page); await page.locator("[data-testid=u2-layer-flows]").click();
-  await expect(edge).toBeVisible();
+  await expect(page.locator("[data-testid=u2-layer-flows]")).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => (await pickEdge()) !== null, { timeout: 10_000 }).toBe(true);
   // Runs off hides the last-run dots, never navigates: the canvas stays.
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible();
   await explore(page); await page.locator("[data-testid=u2-layer-runs]").click();
