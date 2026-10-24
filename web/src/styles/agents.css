@@ -556,6 +556,10 @@
 .sx-where summary, .sx-more summary { cursor: pointer; color: var(--text-3); font-size: 12px; padding: 4px 0; }
 .sx-where ul { margin: 6px 0 0; padding-left: 18px; font-size: 11.5px; color: var(--text-3); }
 .sx-more { margin: 4px 0 12px; }
+/* a closed disclosure must lay out nothing: the view-enter animation on the
+   Skills card leaks it past the summary into the Import card (view-in with
+   fill:both keeps the box painted) – hide closed content explicitly */
+.sx-more:not([open]) > :not(summary) { display: none; }
 .sx-more[open] > summary { margin-bottom: 10px; }
 .sx-lede { margin: 0; max-width: 72ch; font-size: 12.5px; }
 .sx-group { display: grid; gap: 6px; }
