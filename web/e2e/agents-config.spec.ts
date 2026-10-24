@@ -50,6 +50,8 @@ test.describe("agents config home", () => {
   test("a pasted SKILL.md imports as a shared skill", async ({ page }) => {
     const name = `e2e-import-${Date.now()}`;
     await open(page, "agents/settings");
+    // the paste importer lives behind the X10 disclosure – open it first
+    await page.getByTestId("set-import-more").locator("summary").click();
     await page.getByTestId("set-skill-text").fill(`---\nname: ${name}\ndescription: Imported by the e2e suite\n---\n1. Do the thing.`);
     await expect(page.locator(".set-import")).toContainText(name);
     await page.getByTestId("set-skill-import").click();

@@ -7,6 +7,7 @@
 import { useState } from "react";
 import type { AgentsInfo } from "../../api";
 import { Icon, Toggle } from "../../ui";
+import { GhMark } from "./SkillIndex";
 import { AGENT_NAME, type Act } from "./data";
 import { AgentMark, Card } from "./parts";
 
@@ -19,7 +20,7 @@ export function parseSkill(src: string, fallback = ""): { name: string; descript
   return { name, description: field("description"), body: (m ? m[2] : src).trim() };
 }
 
-export function ImportSkill({ info, act }: { info: AgentsInfo; act: Act }) {
+export function ImportSkill({ info, act, setTab }: { info: AgentsInfo; act: Act; setTab?: (t: "connect" | "skills") => void }) {
   const [text, setText] = useState("");
   const [file, setFile] = useState("");
   const strays = info.skill_strays ?? [];
@@ -27,18 +28,6 @@ export function ImportSkill({ info, act }: { info: AgentsInfo; act: Act }) {
   const save = () => act("skill_save", { name: parsed.name, description: parsed.description, text: parsed.body }, `Imported ${parsed.name}`).then(() => { setText(""); setFile(""); }).catch(() => {});
   return (
     <Card title="Import a skill" sub="SKILL.md → .agents/skills, copied to every agent" className="ag-wide set-import">
-      <div className="row set-import-src">
-        <label className="btn sm" data-testid="set-skill-file"><Icon.doc /> From file
-          <input type="file" accept=".md,.mdc,text/markdown,text/plain" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) { setFile(f.name); setText(await f.text()); } e.target.value = ""; }} />
-        </label>
-        <span className="muted">or paste it below</span>
-      </div>
-      <textarea className="input mono set-import-text" rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder={"---\nname: code-review\ndescription: Review a change before it merges\n---\n1. Read the diff…"} aria-label="Skill source" data-testid="set-skill-text" />
-      <div className="row">
-        {text.trim() && <span className="muted">{parsed.name ? <>as <b className="mono">{parsed.name}</b>{parsed.description && <> – {parsed.description}</>}</> : "add a name: line to the front matter"}</span>}
-        <span className="spacer" />
-        <button className="btn sm primary" disabled={!parsed.name || !parsed.body} onClick={save} data-testid="set-skill-import"><Icon.plus /> Import</button>
-      </div>
       {strays.length > 0 && <>
         <div className="section-title">Found in an agent's own folder <span className="count">{strays.length}</span></div>
         {strays.map((s) => (
@@ -48,6 +37,23 @@ export function ImportSkill({ info, act }: { info: AgentsInfo; act: Act }) {
           </div>
         ))}
       </>}
+      {/* Masked: the paste/file importer is one disclosure away; the first
+          answer for a new skill is the Skills tab's GitHub search. */}
+      <details className="set-import-more" data-testid="set-import-more">
+        <summary><Icon.plus /> Paste or upload a SKILL.md <span className="muted">– or search GitHub in Skills</span></summary>
+        <div className="row set-import-src">
+          {setTab && <button className="btn sm ghost" onClick={() => { try { sessionStorage.setItem("kula.x10.gh", "1"); } catch { /* private mode */ } setTab("skills"); }} data-testid="set-import-github"><GhMark /> Search GitHub</button>}
+          <label className="btn sm" data-testid="set-skill-file"><Icon.doc /> From file
+            <input type="file" accept=".md,.mdc,text/markdown,text/plain" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) { setFile(f.name); setText(await f.text()); } e.target.value = ""; }} />
+          </label>
+        </div>
+        <textarea className="input mono set-import-text" rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder={"---\nname: code-review\ndescription: Review a change before it merges\n---\n1. Read the diff…"} aria-label="Skill source" data-testid="set-skill-text" />
+        <div className="row">
+          {text.trim() && <span className="muted">{parsed.name ? <>as <b className="mono">{parsed.name}</b>{parsed.description && <> – {parsed.description}</>}</> : "add a name: line to the front matter"}</span>}
+          <span className="spacer" />
+          <button className="btn sm primary" disabled={!parsed.name || !parsed.body} onClick={save} data-testid="set-skill-import"><Icon.plus /> Import</button>
+        </div>
+      </details>
     </Card>
   );
 }
@@ -85,7 +91,7 @@ export default function Settings({ info, act, setTab }: { info: AgentsInfo; act:
           </div>
         ))}
       </Card>
-      <ImportSkill info={info} act={act} />
+      <ImportSkill info={info} act={act} setTab={setTab} />
     </div>
   );
 }
