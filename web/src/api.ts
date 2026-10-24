@@ -79,6 +79,8 @@ export interface ResearchRun {
 export interface Team {
   name: string; about?: string; prompt?: string; under?: string;
   members: { name?: string; agent: string; model?: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
+  /** Canvas arrangement, workflow → [x, y] (B1: kept in kula.toml under the team). */
+  positions?: Record<string, [number, number]>;
 }
 /** A work mode (src/workflow.rs): its own fences, scope, steps, docs and memory policy. */
 export interface Workflow {
@@ -93,7 +95,16 @@ export interface Suggestion { id: number; kind: "guard" | "workflow"; guard?: Ra
 export type AgentAction = "task_start" | "task_done" | "remember" | "confirm" | "forget" | "memory_edit" | "memory_stale" | "guards_save" | "workflows_save"
   | "settings_save" | "doc_read" | "doc_save" | "docs_sync" | "brief" | "connect" | "suggestion_accept" | "suggestion_dismiss" | "preview"
   | "teams_save" | "team_prompt" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install"
-  | "workflow_rename" | "skill_save" | "skill_delete" | "skills_sync" | "skill_adopt";
+  | "workflow_rename" | "skill_save" | "skill_delete" | "skills_sync" | "skill_adopt"
+  | "team_save" | "team_delete" | "team_add_member" | "team_remove_member" | "team_layout" | "mcp_adopt";
+
+/** B1 · one portfolio card in the Agents grid (GET /api/agent/cards):
+ *  one per workflow/agent, description from the workflow. */
+export interface AgentCard {
+  name: string; role: string; description: string; tags: string[];
+  agent: string; model?: string; skills: string[]; teams: string[];
+  fences: string[]; scope: string[]; builtin: boolean;
+}
 /** A shared skill (src/skills.rs): one source in .agents/skills, a copy per agent. */
 export type SkillState = "synced" | "differs" | "missing" | "native";
 export interface Skill { name: string; description: string; body: string; files: string[]; targets: Record<string, SkillState> }
@@ -221,6 +232,9 @@ export const api = {
   skillDiff: (name: string, agent: string) => get<SkillDiff>(`/api/agent/skill_diff?${q({ name, agent })}`),
   memoryLayers: () => get<MemoryLayer[]>("/api/agent/memory_layers"),
   mcpSync: (name: string) => post<{ written: string[] }>("/api/agent/mcp_sync", { name }),
+
+  // B1 · cards, team edits, folder import
+  agentCards: () => get<AgentCard[]>("/api/agent/cards"),
 };
 
 // K2 types, derived from what each agent already reads (src/agent_config.rs).
@@ -234,7 +248,7 @@ export interface SkillUsage { workflows: string[]; teams: string[]; seats: strin
 export interface SkillDetail { skill: Skill; usage: SkillUsage }
 export interface SkillDiff { name: string; agent: string; diff: string | null }
 /** A memory with its layer derived at read time: scope and provenance. */
-export interface MemoryLayer extends Memory { scope: "task" | "workflow" | "repo"; scope_name: string; agent: string; commit: string; symbol: string | null }
+export interface MemoryLayer extends Memory { scope: "task" | "workflow" | "repo"; scope_name: string; agent: string; commit: string; symbol: string | null; /** B1: memories imported from a TencentDB store are their own layer. */ layer: "tencentdb" | "task" | "workflow" | "repo" }
 
 export function relTime(ts: number) {
   const d = Math.max(0, Date.now() / 1000 - ts);
