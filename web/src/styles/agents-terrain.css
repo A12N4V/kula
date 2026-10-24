@@ -1,0 +1,162 @@
+/* U3 · Actors on the terrain – the actor band, actor cards, the fence hull
+   and the agent inspector. Flat square tabs, selection is a fill, 1px warm
+   lines, one orange accent; the harmonograph mark identifies agents. */
+
+.at-band {
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  flex: none;
+}
+.at-band-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px 2px;
+  min-height: 26px;
+}
+.at-band-row {
+  display: flex; gap: 10px;
+  /* content height, capped: teams read as one line of members, so a fixed
+     144px row left two thirds of the band empty above the map (U5). */
+  max-height: 144px;
+  padding: 6px 12px 10px;
+  overflow-x: auto; overflow-y: hidden;
+  align-items: stretch;
+}
+.at-team {
+  border: 1px dashed var(--line-2);
+  border-radius: var(--radius);
+  padding: 4px 8px 8px;
+  flex: none;
+}
+.at-team-head { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); display: flex; gap: 6px; align-items: center; }
+.at-team-glyph { color: var(--accent); }
+.at-team-n { color: var(--text-3); }
+.at-team-members { display: flex; gap: 8px; height: calc(100% - 22px); }
+.at-team-mono { align-self: center; color: var(--text-3); font-size: 11px; }
+
+.at-card {
+  position: relative;
+  width: 220px; flex: none;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--bg-raised, var(--bg));
+  padding: 8px 10px 6px;
+  cursor: pointer;
+  display: flex; flex-direction: column; gap: 3px;
+  transition: none;
+}
+.at-card:hover { border-color: var(--text-3); }
+.at-card.sel { border-color: var(--accent); background: var(--accent-soft, var(--bg-raised)); }
+.at-card.over { border-color: var(--accent); border-style: dashed; }
+.at-card.missing { border-color: var(--red); }
+.at-card-head { display: flex; align-items: center; gap: 6px; }
+.at-mark { color: var(--accent); display: grid; place-items: center; flex: none; }
+.at-name { font-size: 12px; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-sel-dot { margin-left: auto; width: 6px; height: 6px; background: var(--accent); }
+.at-missing {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--red);
+  flex: none;
+  box-shadow: none;
+}
+.at-missing.lg { width: 10px; height: 10px; }
+.at-role { font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-meta { display: flex; gap: 10px; font-size: 10.5px; color: var(--text-3); }
+.at-run { color: var(--accent); }
+.at-run::before, .at-team-glyph {
+  content: ""; display: inline-block; width: 6px; height: 6px;
+  margin-right: 5px; background: var(--accent); vertical-align: 1px;
+}
+.at-team-glyph { border: 1px solid var(--accent); background: none; margin-right: 6px; }
+.at-ports { display: flex; gap: 6px; margin-top: auto; padding-top: 2px; }
+.at-port { position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; }
+/* flow.css positions .fc-port absolutely for canvas nodes – the band's ports
+   are a flex row on the card's bottom edge, evenly spread, never overlapping. */
+.at-ports .at-port { position: static; flex: 1 1 0; display: flex; justify-content: center; }
+.at-port .fc-port-label { font-size: 9px; letter-spacing: .04em; }
+.at-port.err .fc-dot { border-color: var(--red); }
+.at-port-add { align-self: center; min-width: 16px; height: 16px; padding: 0; margin-top: 2px; font-size: 11px; line-height: 1; }
+/* flow.css's .fc-stub is an absolute stub off the node edge – the band's +
+   button sits in the port column, inside the card. */
+.at-ports .at-port-add { position: static; transform: none; }
+
+/* Fence hull (contract §8.5) – dashed frame, warm line, label at top-left. */
+.at-hull {
+  position: absolute;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  pointer-events: none;
+  z-index: 4;
+}
+.at-hull-label {
+  position: absolute; top: -18px; left: 0;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--accent); background: var(--bg);
+  padding: 1px 6px; border: 1px solid var(--accent); border-radius: var(--radius);
+  white-space: nowrap;
+}
+
+/* U6 – agents as squares on the terrain. The agent square keeps the pipeline
+   agent node's body but reads as a fence mark: dashed hue border (the hue is
+   the node's --fc-role, set per agent from its name), no status chrome. */
+.fc-agent[data-testid^="fc-node-agent:"] {
+  border: 1px dashed var(--fc-role, var(--accent));
+  border-radius: var(--radius);
+  background: var(--bg-raised, var(--bg));
+}
+/* The whole-codebase square: solid in the dominant directory hue with the
+   map's directory shares as colour bands along its bottom edge. */
+.fc-solid .u6-bands {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 10px;
+  display: flex;
+}
+.u6-bands i { display: block; height: 100%; }
+
+/* Agent inspector – the four flat tabs, selection is a fill. */
+.at-insp { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; }
+.at-insp-summary { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--text-2); line-height: 1.45; }
+.at-tabs { display: flex; gap: 2px; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 0; }
+.at-tabs .tab-btn.on { background: var(--bg-raised, var(--bg)); color: var(--text); border-bottom-color: transparent; }
+.at-pane { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
+.at-field { display: flex; flex-direction: column; gap: 4px; }
+.at-field input, .at-field textarea { background: var(--bg-raised, var(--bg)); border: 1px solid var(--line-2); border-radius: 4px; padding: 5px 8px; color: var(--text); font-size: 12px; }
+.at-field input.at-req { border-color: var(--red); }
+.at-req:focus { outline: 1px solid var(--red); }
+.at-seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 4px; overflow: hidden; width: fit-content; }
+.at-seg-btn { padding: 4px 10px; font-size: 11.5px; color: var(--text-2); background: transparent; border: none; cursor: pointer; }
+.at-seg-btn + .at-seg-btn { border-left: 1px solid var(--line-2); }
+.at-seg-btn.on { background: var(--accent-soft, var(--bg-raised)); color: var(--text); }
+.at-caps { display: flex; gap: 8px; }
+.at-cap { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-3); }
+.at-cap input { width: 70px; }
+.at-hint { font-size: 11px; color: var(--text-3); line-height: 1.4; }
+.at-paths { font-size: 11px; color: var(--text-2); margin: 0; padding-left: 16px; }
+.at-prompt, .at-raw { resize: vertical; line-height: 1.5; }
+.at-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.at-chip { font-size: 11px; }
+.at-steps { font-size: 12px; color: var(--text-2); margin: 0; padding-left: 18px; }
+.at-run-row { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--text-2); }
+.at-err { color: var(--red); font-size: 11.5px; }
+.at-ok { color: var(--accent); font-size: 11.5px; }
+.at-actions { align-items: center; gap: 10px; }
+.at-edit.on { border-color: var(--accent); color: var(--accent); }
+
+/* Fence focus: fenced blocks stay bright, everything else is dimmed to at
+   most 35% (contract §8.5) – the canvas root carries the flag, the flow kit
+   dims the non-members via .fc-dim and the fence ring marks the members. */
+.map-main.at-fencing .fc-node:not(.fc-dim):not([data-fenced]) { opacity: .35; }
+/* The actor band shares the view's height with the canvas: without an
+   explicit row constraint the split's auto row keeps its min-content height
+   and the canvas (with the docked transport) overflows past the bottom dock,
+   which then covers the transport's buttons. Let the row shrink. */
+.sy-root .sy-split { grid-template-rows: minmax(0, 1fr); }
+.sy-root .ws-drop { min-height: 0; }
+@media (max-width: 720px) {
+  .sy-root .sy-split { grid-template-rows: minmax(0, 1fr) auto; }
+}
+
+/* An agent on the map: its own harmonograph, large, in its own gradient. */
+.fc-agent[data-testid^="fc-node-agent:"] .fc-agent-in { gap: 12px; }
+.fc-agent[data-testid^="fc-node-agent:"] .fc-agent-hg svg { width: 56px; height: 56px; }
+.fc-agent[data-testid^="fc-node-agent:"] .fc-wide-title { font-size: 15px; }

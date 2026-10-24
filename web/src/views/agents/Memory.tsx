@@ -11,12 +11,60 @@
 // scrolling the list row, and the exact numbers under the graph.
 
 import { useEffect, useMemo, useState } from "react";
-import { relTime, type AgentsInfo, type Memory } from "../../api";
+import { get, post, relTime, type AgentsInfo, type Memory } from "../../api";
 import { Chips, CodeField, HereHint, LinkArea } from "../../Autofill";
-import { Icon } from "../../ui";
+import { Icon, useToast } from "../../ui";
 import type { Act } from "./data";
 import { Card, ListFilter, useFilterList } from "./parts";
 import MemoryGraph from "./MemoryGraph";
+
+/** One store memory_sources found: a TencentDB Agent Memory directory. */
+interface MemorySource { dir: string; kind: string; memories: number; wiki: string[] | number; mcp?: string }
+
+/** Compact import banner for a TencentDB Agent Memory store: counts, one
+    Import button (idempotent, toast with added/skipped), and the MCP adopt
+    button – disabled with a tooltip until mcp_adopt answers on this build. */
+function TencentBanner() {
+  const toast = useToast();
+  const [src, setSrc] = useState<MemorySource | null | undefined>(undefined);
+  const [done, setDone] = useState<{ added: number; skipped: number } | null>(null);
+  const [adopted, setAdopted] = useState<"idle" | "ok" | "no">("idle");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    get<{ sources: MemorySource[] }>("/api/agent/memory_sources")
+      .then((r) => setSrc(r.sources?.find((s) => s.kind === "tencentdb") ?? null))
+      .catch(() => setSrc(null));
+  }, []);
+  if (!src) return null;
+  const wikiN = Array.isArray(src.wiki) ? src.wiki.length : Number(src.wiki ?? 0);
+  const importAll = () => {
+    if (busy) return;
+    setBusy(true);
+    post<{ added: number; skipped: number }>("/api/agent/memory_import", { dir: src.dir })
+      .then((r) => { setDone(r); toast(`${r.added} added · ${r.skipped} skipped`); })
+      .catch((e) => toast(e.message, "err"))
+      .then(() => setBusy(false));
+  };
+  const adopt = () => {
+    // B1's contract is { name } – the server key in .mcp.json to adopt.
+    post<{ written?: string[] }>("/api/agents/mcp_adopt", { name: src.mcp || "tencentdb-memory" })
+      .then(() => { setAdopted("ok"); toast("TencentDB MCP adopted by every agent"); })
+      .catch((e) => { setAdopted("no"); toast(e.message || "mcp_adopt failed", "err"); });
+  };
+  return (
+    <div className="mem-x10" data-testid="mem-tencent">
+      <span className="mem-x10-badge">TencentDB Agent Memory in AGENTS</span>
+      <span className="muted mem-x10-counts">{src.memories} memories · {wikiN} wiki page{wikiN === 1 ? "" : "s"}</span>
+      <span className="spacer" />
+      {done
+        ? <span className="tag green" data-testid="mem-import-done">added {done.added} · skipped {done.skipped}</span>
+        : <button className="btn sm primary" disabled={busy} onClick={importAll} data-testid="mem-import">Import</button>}
+      <button className="btn sm ghost" onClick={adopt} disabled={adopted === "ok"}
+        title={adopted === "no" ? "mcp_adopt is not on this build yet" : adopted === "ok" ? "Adopted" : "Copy its MCP server into every agent's config"}
+        data-testid="mem-adopt">Use its MCP for every agent</button>
+    </div>
+  );
+}
 
 export default function MemoryTab({ info, act, open }: { info: AgentsInfo; act: Act; open: (t: string) => void }) {
   const [filter, setFilter] = useState<"all" | "stale" | "agents" | "people">("all");
@@ -43,6 +91,7 @@ export default function MemoryTab({ info, act, open }: { info: AgentsInfo; act: 
         </div>
         <div className="seg">{(["all", "stale", "agents", "people"] as const).map((f) => <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>{f} {n(f)}</button>)}</div>
       </>}>
+      <TencentBanner />
       <form className="ag-remember" onSubmit={(e) => { e.preventDefault(); remember(); }}>
         <div className="stack-tight">
           <CodeField value={target} onChange={setTarget} placeholder="repo · file:path · symbol" label="Memory target" />

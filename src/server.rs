@@ -5,7 +5,7 @@
 //! served page, so other websites cannot drive your repository.
 
 use crate::git::{validate_rev, Repo};
-use crate::{graph, index, meta, store::Store};
+use crate::{config, embed, graph, index, map_api, map_run, meta, store::Store, syntagm};
 use anyhow::anyhow;
 use axum::{
     body::Body,
@@ -19,7 +19,7 @@ use axum::{
 use rust_embed::RustEmbed;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 #[derive(RustEmbed)]
@@ -27,8 +27,8 @@ use std::sync::Arc;
 struct Assets;
 
 #[derive(Clone)]
-struct AppState {
-    repo: Repo,
+pub(crate) struct AppState {
+    pub(crate) repo: Repo,
     token: Arc<String>,
     /// Revision graphs by commit sha, for fast repeated branch contrasts.
     snapshots: Arc<std::sync::Mutex<HashMap<String, Arc<index::Built>>>>,
@@ -64,7 +64,7 @@ impl AppState {
     }
 }
 
-struct ApiErr(anyhow::Error);
+pub(crate) struct ApiErr(anyhow::Error);
 impl IntoResponse for ApiErr {
     fn into_response(self) -> Response {
         (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("{:#}", self.0) }))).into_response()
@@ -75,10 +75,10 @@ impl<E: Into<anyhow::Error>> From<E> for ApiErr {
         ApiErr(e.into())
     }
 }
-type ApiResult = Result<Json<Value>, ApiErr>;
+pub(crate) type ApiResult = Result<Json<Value>, ApiErr>;
 
 /// Run blocking repository work off the async executor.
-async fn blocking<F>(f: F) -> ApiResult
+pub(crate) async fn blocking<F>(f: F) -> ApiResult
 where
     F: FnOnce() -> anyhow::Result<Value> + Send + 'static,
 {
@@ -172,7 +172,24 @@ async fn repo_info(State(s): State<AppState>) -> ApiResult {
 }
 
 async fn reindex(State(s): State<AppState>) -> ApiResult {
-    blocking(move || Ok(json!(index::run(&s.repo, true)?))).await
+    blocking(move || {
+        let v = json!(index::run(&s.repo, true)?);
+        // Map by default: a reindex (commit landed) remaps in the background.
+        // The engine's own incremental gate reuses the stored map when the
+        // graph is unchanged; singleflight keeps this from double-mapping
+        // with the auto-reindex loop.
+        map_run::spawn(s.repo.clone(), true);
+        // A fresh repo's first index may have happened here rather than via
+        // the CLI: settle the embeddings decision once if it is still open.
+        embed::auto(&s.repo, &Store::open(&s.repo)?, false);
+        Ok(v)
+    })
+    .await
+}
+
+/// GET /api/map/progress – where the background map run is.
+async fn map_progress() -> Json<Value> {
+    Json(serde_json::json!(map_run::state()))
 }
 
 /// Before editing a symbol: dependents, direct callers, tests that reach it, files that change with it, advice.
@@ -313,6 +330,29 @@ async fn flows(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(graph::flows(&Store::open(&s.repo)?, 25)?))).await
 }
 
+/// GET /api/syntagm – blocks, chains, leaves and stats.
+async fn syntagm_all(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let store = Store::open(&s.repo)?;
+        // Wave-2 wiring: E1's embedding cache refines B1's blocks when it
+        // exists; full coverage reports "on", partial "stale".
+        let (idx, state) = embed::similarity_for(&s.repo, &store);
+        let sim = idx.as_ref().map(|i| i as &dyn syntagm::Similarity);
+        Ok(json!(syntagm::all_json_with(&s.repo, &store, sim, state).unwrap_or_else(|e| json!({ "error": e.to_string() }))))
+    })
+    .await
+}
+
+/// GET /api/syntagm/block/:id – a block, its children and its leaves.
+async fn syntagm_block(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || Ok(json!(syntagm::block_json(&s.repo, &Store::open(&s.repo)?, &id)?))).await
+}
+
+/// GET /api/syntagm/chain/:id – a chain and its resolved steps.
+async fn syntagm_chain(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || Ok(json!(syntagm::chain_json(&s.repo, &Store::open(&s.repo)?, &id)?))).await
+}
+
 async fn file(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let p = q.get("path").cloned().unwrap_or_default();
@@ -320,7 +360,7 @@ async fn file(State(s): State<AppState>, Query(q): Query<HashMap<String, String>
             return Err(anyhow!("path must be relative to the repository root, got {p}"));
         }
         let content = std::fs::read_to_string(s.repo.root.join(&p)).map_err(|e| anyhow!("cannot read {p}: {e}"))?;
-        Ok(json!({ "path": p, "content": content }))
+        Ok(json!({ "path": p, "content": content, "base_hash": crate::file_write::hash(&content) }))
     })
     .await
 }
@@ -696,6 +736,10 @@ struct AgentReq {
     agents: Option<crate::config::Agents>,
     name: String,
     teams: Vec<crate::config::Team>,
+    /// One team for team_save (the Teams canvas edits one team at a time).
+    team: Option<crate::config::Team>,
+    /// Canvas positions for team_layout: workflow → [x, y].
+    positions: BTreeMap<String, Vec<f64>>,
     /// Which agents to install a workflow for.
     targets: Vec<String>,
 }
@@ -774,6 +818,30 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
                 crate::config::set_teams(&r.root, &a.teams)?;
                 json!({ "ok": true })
             }
+            // fuse4 · one-team-at-a-time edits from the Teams canvas
+            "team_save" => {
+                let t = a.team.as_ref().ok_or_else(|| anyhow!("send the team"))?;
+                crate::config::upsert_team(&r.root, t)?;
+                json!({ "ok": true })
+            }
+            "team_delete" => {
+                crate::config::remove_team(&r.root, &a.name)?;
+                json!({ "ok": true })
+            }
+            "team_add_member" => {
+                crate::config::team_add_member(&r.root, &a.name, &a.workflow, &a.agent)?;
+                json!({ "ok": true })
+            }
+            "team_remove_member" => {
+                crate::config::team_remove_member(&r.root, &a.name, &a.workflow)?;
+                json!({ "ok": true })
+            }
+            "team_layout" => {
+                crate::config::set_team_layout(&r.root, &a.name, &a.positions)?;
+                json!({ "ok": true })
+            }
+            // adopt an MCP server from .mcp.json into every connected agent
+            "mcp_adopt" => json!({ "written": crate::skill_hub::adopt_mcp(&r.root, &a.name)? }),
             "team_start" => json!(crate::guard::team_start(r, &a.name, &format!("user:{}", r.user()))?),
             "team_stop" => json!(crate::guard::team_stop(r)?),
             "team_prompt" => {
@@ -834,6 +902,101 @@ async fn kg_sparql(State(s): State<AppState>, Json(q): Json<SparqlReq>) -> ApiRe
         Ok(v)
     })
     .await
+}
+
+async fn embed_status(State(s): State<AppState>) -> ApiResult {
+    Ok(Json(embed::api_status(&s.repo)?))
+}
+
+/// POST /api/embed/enable – flip `[embed] enabled` in kula.toml (the Settings
+/// switch's persistence) and return the new status. Gated server-side: a
+/// `refuse` verdict never flips the flag, so kula.toml only ever says
+/// enabled = true when the pipeline may actually run.
+async fn embed_enable(State(s): State<AppState>, Json(v): Json<Value>) -> ApiResult {
+    let on = v.get("enabled").and_then(|b| b.as_bool()).ok_or_else(|| anyhow!("enabled boolean required"))?;
+    blocking(move || {
+        if on {
+            // Run the check against the config the switch would produce
+            // (enabled = true): the file only flips when the verdict allows.
+            let mut cfg = config::Config::load(&s.repo.root)?.embed;
+            cfg.enabled = true;
+            let st = Store::open(&s.repo)?;
+            let verdict = embed::check(&s.repo, &st, &cfg)?;
+            if verdict.verdict == "refuse" {
+                anyhow::bail!("embed check says refuse – {}", verdict.reasons.join("; "));
+            }
+        }
+        embed::set_enabled(&s.repo, on)?;
+        if on {
+            // The switch turned on: map again so the engine picks the
+            // embedding cache up when the model finishes embedding.
+            map_run::spawn(s.repo.clone(), true);
+        }
+        Ok(json!(embed::api_status(&s.repo)?))
+    })
+    .await
+}
+
+async fn embed_check(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        embed::api_check(&s.repo, &st)
+    })
+    .await
+}
+
+async fn embed_install(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let st = Store::open(&s.repo)?;
+        let cfg = config::Config::load(&s.repo.root)?.embed;
+        let verdict = embed::check(&s.repo, &st, &cfg)?;
+        embed::install_gate(&verdict, false)?;
+        Ok(serde_json::json!({ "installed": embed::install(&s.repo)? }))
+    })
+    .await
+}
+
+async fn embed_remove(State(s): State<AppState>) -> ApiResult {
+    Ok(Json(serde_json::json!({ "freed_mb": embed::remove(&s.repo)? / (1024 * 1024) })))
+}
+
+/// POST /api/embed/run – start an embedding run in the background (mock or
+/// real model per config); returns immediately, progress on /api/embed/status.
+async fn embed_run(State(s): State<AppState>) -> ApiResult {
+    if embed::status().running {
+        return Ok(Json(serde_json::json!({ "started": false, "reason": "already running" })));
+    }
+    let repo = s.repo.clone();
+    tokio::spawn(async move {
+        let st = Store::open(&repo).ok();
+        let cfg = config::Config::load(&repo.root).map(|c| c.embed).ok();
+        match (st, cfg) {
+            (Some(st), Some(cfg)) => {
+                let prov = match embed::provider_for(&cfg, false) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        embed::run_error(format!("{e:#}"));
+                        return;
+                    }
+                };
+                match embed::run(&repo, &st, &cfg, &prov, embed::cancel_requested) {
+                    // Embeddings changed – remap so blocks re-form thematically.
+                    Ok(_) => {
+                        map_run::spawn(repo.clone(), true);
+                    }
+                    Err(e) => embed::run_error(format!("{e:#}")),
+                }
+            }
+            _ => embed::run_error("cannot open store or config".into()),
+        }
+    });
+    Ok(Json(serde_json::json!({ "started": true })))
+}
+
+/// POST /api/embed/cancel – ask the running job to stop between batches.
+async fn embed_cancel() -> ApiResult {
+    embed::cancel();
+    Ok(Json(serde_json::json!({ "cancelled": true })))
 }
 
 async fn kg_export(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
@@ -1027,12 +1190,22 @@ fn spawn_idle_clean(state: AppState) {
 
 pub fn router(repo: Repo, token: String) -> Router {
     let state = AppState {
-        repo,
+        repo: repo.clone(),
         token: Arc::new(token),
         snapshots: Default::default(),
         used: Arc::new(meta::now().max(0).try_into().unwrap_or(0).into()),
     };
     spawn_idle_clean(state.clone());
+    // Map by default at start-up: after the first index the map runs on its
+    // own thread, never blocking graph serving.
+    map_run::spawn(repo.clone(), true);
+    // Embeddings on by default, decided once: a fresh repo (no `[embed]
+    // decided`) gets the hardware check in the background at low priority –
+    // ok installs and embeds, warn or refuse stays off. Never on the request
+    // path.
+    if let Ok(st) = Store::open(&repo) {
+        embed::auto(&repo, &st, false);
+    }
     Router::new()
         .route("/api/clean", get(clean_get).post(clean_set))
         .route("/api/langs", get(langs_get))
@@ -1040,6 +1213,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/clean/now", post(clean_now))
         .route("/api/repo", get(repo_info))
         .route("/api/index", post(reindex))
+        .route("/api/map/progress", get(map_progress))
         .route("/api/index/progress", get(index_progress))
         .route("/api/agent/pre_edit/{id}", get(agent_pre_edit))
         // A1: fence-path verdict endpoint (see the A1 block above).
@@ -1054,10 +1228,19 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/symbol/{id}", get(symbol))
         .route("/api/impact/{id}", get(impact))
         .route("/api/flows", get(flows))
+        .route("/api/map", get(map_api::map_all))
+        .route("/api/map/chains", get(map_api::map_chains))
+        .route("/api/map/explain", get(crate::explain::explain))
+        .route("/api/map/explain/run", axum::routing::post(crate::explain::explain_run))
+        .route("/api/search/semantic", get(crate::explain::semantic))
+        .route("/api/map/block/{id}", get(map_api::map_block))
+        .route("/api/syntagm", get(syntagm_all))
+        .route("/api/syntagm/block/{id}", get(syntagm_block))
+        .route("/api/syntagm/chain/{id}", get(syntagm_chain))
         .route("/api/isolate", post(isolate))
         .route("/api/scopes", get(scopes))
         .route("/api/scopes/{action}", post(scopes_action))
-        .route("/api/file", get(file))
+        .route("/api/file", get(file).put(crate::file_write::put))
         .route("/api/compare", get(compare))
         .route("/api/git/status", get(git_status))
         .route("/api/git/log", get(git_log))
@@ -1073,12 +1256,25 @@ pub fn router(repo: Repo, token: String) -> Router {
         // sibling /api/agents/{action} MethodRouter, so a GET there answers 405
         .route("/api/agent/config_matrix", get(k2_config_matrix))
         .route("/api/agent/skill_detail", get(k2_skill_detail))
+        .route("/api/agent/skill_index", get(k2_skill_index))
+        .route("/api/agent/cards", get(k2_agent_cards))
+        .route("/api/agent/skill_search", get(k2_skill_search))
+        .route("/api/agent/skill_import", post(k2_skill_import))
+        .route("/api/agent/memory_sources", get(k2_memory_sources))
+        .route("/api/agent/memory_import", post(k2_memory_import))
         .route("/api/agent/skill_diff", get(k2_skill_diff))
         .route("/api/agent/memory_layers", get(k2_memory_layers))
         .route("/api/agent/mcp_sync", post(k2_mcp_sync))
         .route("/api/kg/sparql", post(kg_sparql))
         .route("/api/kg/export", get(kg_export))
         .route("/api/kg/examples", get(kg_examples))
+        .route("/api/embed/status", get(embed_status))
+        .route("/api/embed/enable", post(embed_enable))
+        .route("/api/embed/check", get(embed_check))
+        .route("/api/embed/install", post(embed_install))
+        .route("/api/embed/remove", post(embed_remove))
+        .route("/api/embed/run", post(embed_run))
+        .route("/api/embed/cancel", post(embed_cancel))
         .route("/api/meta/{kind}/{action}", post(meta_action))
         .fallback(static_file)
         .layer(middleware::from_fn_with_state(state.clone(), guard))
@@ -1099,6 +1295,8 @@ fn spawn_auto_reindex(repo: Repo) {
             let _ = tokio::task::spawn_blocking(move || {
                 if Store::freshness(&r) != "current" {
                     let _ = index::run(&r, true);
+                    // Head moved – remap incrementally in the background.
+                    map_run::spawn(r.clone(), true);
                 }
             })
             .await;
@@ -1138,6 +1336,76 @@ pub fn serve(repo: Repo, port: u16, open_browser: bool) -> anyhow::Result<()> {
     })
 }
 
+// ============================================================ fuse4 · agent
+// cards: one card per workflow/agent for the Agents tab's portfolio grid.
+
+/// One portfolio card per workflow: description from the workflow, tags from
+/// the agent id, scope kinds and skills (≤ 4), fences summarised, teams named.
+/// `cards_from` is pure so the unit test can drive it with a fixture config.
+fn cards_from(cfg: &config::Config, skill_names: &[String], connections: &[(String, Vec<String>)]) -> Vec<Value> {
+    crate::workflow::all(cfg)
+        .iter()
+        .map(|w| {
+            // which agent runs it: a connection installed for this workflow, else any
+            let agent = connections
+                .iter()
+                .find(|(_, wfs)| wfs.iter().any(|x| x == &w.name))
+                .map(|(id, _)| id.clone())
+                .unwrap_or_else(|| "any".into());
+            // the team seats that sit in this workflow carry role and model
+            let seat =
+                cfg.teams.iter().flat_map(|t| t.members.iter().map(move |m| (t.name.clone(), m))).find(|(_, m)| m.workflow == w.name);
+            let (role, model) =
+                seat.map_or_else(|| (String::new(), None), |(_, m)| (m.role.clone(), (!m.model.is_empty()).then(|| m.model.clone())));
+            let scope_kinds =
+                w.scope.iter().map(|s| if s.starts_with('@') { s.trim_start_matches('@').to_string() } else { "paths".into() });
+            let text = format!("{}\n{}", w.steps.join("\n"), w.prompt);
+            let skills: Vec<String> = skill_names.iter().filter(|s| text.contains(s.as_str())).take(4).cloned().collect();
+            let mut tags: Vec<String> = std::iter::once(agent.clone()).chain(scope_kinds).chain(skills.iter().cloned()).take(4).collect();
+            tags.dedup();
+            let fences: Vec<String> = [
+                (!w.lock.is_empty()).then(|| format!("{} locked", w.lock.len())),
+                (!w.hide.is_empty()).then(|| format!("{} hidden", w.hide.len())),
+                (!w.review.is_empty()).then(|| format!("{} review", w.review.len())),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            let teams: Vec<String> =
+                cfg.teams.iter().filter(|t| t.members.iter().any(|m| m.workflow == w.name)).map(|t| t.name.clone()).collect();
+            let mut card = json!({
+                "name": w.name,
+                "role": role,
+                "description": w.about,
+                "tags": tags,
+                "agent": agent,
+                "skills": skills,
+                "teams": teams,
+                "fences": fences,
+                "scope": w.scope,
+                "builtin": w.builtin,
+            });
+            if let Some(m) = model {
+                card["model"] = json!(m);
+            }
+            card
+        })
+        .collect()
+}
+
+/// GET /api/agent/cards – the portfolio cards the Agents grid renders.
+async fn k2_agent_cards(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        let cfg = config::Config::load(&r.root)?;
+        let skill_names: Vec<String> = crate::skills::list(&r.root).into_iter().map(|sk| sk.name).collect();
+        let connections: Vec<(String, Vec<String>)> =
+            crate::agents::connections(&r.root).into_iter().map(|c| (c.id.to_string(), c.workflows)).collect();
+        Ok(json!(cards_from(&cfg, &skill_names, &connections)))
+    })
+    .await
+}
+
 // ============================================================ K2 · unified agent
 // config: skills, rules, MCP, memory layers. Everything below this marker calls
 // into src/agent_config.rs and src/skills.rs; no caching changes here (P1 owns
@@ -1147,6 +1415,69 @@ pub fn serve(repo: Repo, port: u16, open_browser: bool) -> anyhow::Result<()> {
 /// rules files, against the shared source in .agents/mcp.json.
 async fn k2_config_matrix(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(crate::agent_config::matrix(&s.repo.root)?))).await
+}
+
+/// GET /api/agent/skill_index – every skill and instruction file an agent
+/// would load here, found where Claude Code, Codex, Gemini and Cursor look.
+async fn k2_skill_index(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!(crate::skill_index::index(&s.repo.root)))).await
+}
+
+/// GET /api/agent/skill_search?q= – SKILL.md folders on GitHub: the
+/// anthropics/openai curated sets, then code search (the user's gh login).
+async fn k2_skill_search(Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    let q = q.get("q").cloned().unwrap_or_default();
+    blocking(move || Ok(json!(crate::skill_hub::search(&q)))).await
+}
+
+#[derive(Deserialize)]
+struct SkillImportReq {
+    repo: String,
+    path: String,
+}
+
+/// POST /api/agent/skill_import {repo, path} – fetch a whole skill folder
+/// (SKILL.md plus scripts/, references/, assets/, ≤ 1 MB, no symlinks, no `..`)
+/// and save it as a shared skill, copied to every agent.
+async fn k2_skill_import(State(s): State<AppState>, Json(a): Json<SkillImportReq>) -> ApiResult {
+    blocking(move || {
+        let (name, desc, files) = crate::skill_hub::folder_import(&a.repo, &a.path)?;
+        let written = crate::skill_hub::save_folder(&s.repo.root, &name, &desc, &files)?;
+        Ok(json!({ "name": name, "written": written }))
+    })
+    .await
+}
+
+/// GET /api/agent/memory_sources – TencentDB Agent Memory stores in this repo.
+async fn k2_memory_sources(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!({ "sources": crate::skill_hub::sources(&s.repo.root) }))).await
+}
+
+#[derive(Deserialize)]
+struct MemoryImportReq {
+    dir: String,
+}
+
+/// POST /api/agent/memory_import {dir} – copy a TencentDB store's atomic
+/// memories and wiki pointers into kula's memory; ones already there are skipped.
+async fn k2_memory_import(State(s): State<AppState>, Json(a): Json<MemoryImportReq>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        let store = Store::open(r)?;
+        let have: std::collections::HashSet<String> =
+            crate::memory::recall(r, &store, None, None, 100_000)?.into_iter().map(|m| m.body).collect();
+        let (mut added, mut skipped) = (0, 0);
+        for (text, by) in crate::skill_hub::tencent_memories(&r.root, &a.dir)? {
+            if have.contains(&text) {
+                skipped += 1;
+            } else {
+                crate::memory::remember(r, &store, "repo", &text, &by)?;
+                added += 1;
+            }
+        }
+        Ok(json!({ "added": added, "skipped": skipped }))
+    })
+    .await
 }
 
 /// GET /api/agents/skill_detail?name= – one skill: per-agent copy states, its
@@ -1176,9 +1507,26 @@ async fn k2_skill_diff(State(s): State<AppState>, Query(q): Query<HashMap<String
 
 /// GET /api/agents/memory_layers – every memory with its layer derived from
 /// what exists: scope (task / workflow / repo) and provenance (agent, commit,
-/// symbol). No new storage.
+/// symbol). Memories imported from a TencentDB store (author `tencentdb:…`)
+/// are their own layer.
 async fn k2_memory_layers(State(s): State<AppState>) -> ApiResult {
-    blocking(move || Ok(json!(crate::agent_config::memory_layers(&s.repo)?))).await
+    blocking(move || {
+        // The layer is derived here (agent_config owns the rest of the shape):
+        // memories imported from a TencentDB store (author `tencentdb:…`) are
+        // their own layer; everything else layers by its scope.
+        let mut layers: Vec<Value> = crate::agent_config::memory_layers(&s.repo)?
+            .into_iter()
+            .map(|l| {
+                let mut v = json!(l);
+                let tencent = l.agent.starts_with("tencentdb:");
+                v["layer"] = json!(if tencent { "tencentdb" } else { l.scope });
+                v
+            })
+            .collect();
+        layers.sort_by_key(|l| l["layer"] != json!("tencentdb"));
+        Ok(json!(layers))
+    })
+    .await
 }
 
 #[derive(Deserialize)]
@@ -1193,3 +1541,62 @@ async fn k2_mcp_sync(State(s): State<AppState>, Json(a): Json<McpSyncReq>) -> Ap
 }
 
 // K2 route lines live in `router`, marked with the same K2 comment.
+
+#[cfg(test)]
+mod b1_tests {
+    use super::*;
+
+    #[test]
+    fn cards_round_trip_a_fixture_kula_toml() {
+        // a fixture config: two workflows, one team, one connection, one skill
+        let w = |name: &str, about: &str, scope: Vec<String>, builtin: bool| crate::workflow::Workflow {
+            name: name.into(),
+            about: about.into(),
+            scope,
+            lock: vec!["secrets/**".into()],
+            builtin,
+            steps: vec![format!("use the {name} skill first")],
+            ..Default::default()
+        };
+        let cfg = config::Config {
+            workflows: vec![
+                w("mapcard", "map the code", vec!["@src".into(), "src/**".into()], true),
+                w("testcard", "write tests", vec![], false),
+            ],
+            teams: vec![config::Team {
+                name: "ship".into(),
+                members: vec![config::Member {
+                    workflow: "testcard".into(),
+                    agent: "codex".into(),
+                    model: "gpt-5".into(),
+                    role: "review".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let cards = cards_from(&cfg, &["mapcard".to_string()], &[("codex".to_string(), vec!["testcard".to_string()])]);
+        // builtins are cards too: one per workflow, found by name
+        assert_eq!(cards.len(), crate::workflow::all(&cfg).len());
+        assert_eq!(cards.iter().filter(|c| c["name"] == json!("fix")).count(), 1, "a builtin is a card");
+        assert_eq!(cards.iter().find(|c| c["name"] == json!("fix")).unwrap()["builtin"], json!(true));
+        let card = |n: &str| cards.iter().find(|c| c["name"] == json!(n)).unwrap().clone();
+        let map = &card("mapcard");
+        assert_eq!(map["description"], "map the code");
+        assert_eq!(map["builtin"], false, "an explicit kula.toml entry is not builtin");
+        // tags: agent id + scope kinds + skills, capped at 4
+        assert_eq!(map["tags"], json!(["any", "src", "paths", "mapcard"]), "agent id, scope kinds and skills, capped at 4");
+        assert_eq!(map["skills"], json!(["mapcard"]));
+        assert_eq!(map["fences"], json!(["1 locked"]));
+        assert_eq!(map["scope"], json!(["@src", "src/**"]));
+        assert!(map.get("model").is_none());
+        let tests = &card("testcard");
+        assert_eq!(tests["agent"], "codex");
+        assert_eq!(tests["role"], "review");
+        assert_eq!(tests["model"], "gpt-5");
+        assert_eq!(tests["teams"], json!(["ship"]));
+        assert_eq!(tests["builtin"], false);
+        assert!(tests["scope"].as_array().unwrap().is_empty());
+    }
+}

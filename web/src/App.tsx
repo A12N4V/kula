@@ -1,24 +1,29 @@
 import { CodeProvider } from "./CodePanel";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { PaneControls } from "./resize";
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
 import type { ContrastMode, Go, Target, View } from "./nav";
 import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, fuzzyScore } from "./nav";
 // Heavy views load on demand: the first paint ships the shell + Overview only,
 // the rest arrive as their own chunks (prefetched on idle – see PREFETCH below).
+import { useMapProgress } from "./views/map/progress";
 const GraphView = lazy(() => import("./views/GraphView"));
 const Agents = lazy(() => import("./views/Agents"));
 const Query = lazy(() => import("./views/Query"));
 const Changes = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Changes })));
 const History = lazy(() => import("./views/GitViews").then((m) => ({ default: m.History })));
 const Branches = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Branches })));
-const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
 const Flows = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Flows })));
+const MapView = lazy(() => import("./views/MapView"));
+const FlowLab = lazy(() => import("./flow/FlowLab")); // F1 · dev-only #flow-lab
 const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
 const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
 const Proposals = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Proposals })));
 import Overview from "./views/Overview";
 import SettingsPanel from "./SettingsPanel";
+import { Dock } from "./dock/Dock";
+import type { DockTab } from "./dock/bus";
 
 // Warm the lazy chunks once the shell is up, so the first click on a rail item
 // does not wait on the network (local disk, but still a visible flash).
@@ -40,13 +45,15 @@ function prefetchViews() {
 import { settings } from "./settings";
 import Opening from "./Opening";
 
-type Rail = { id: View; label: string; icon: () => React.ReactElement; key: string };
+type Rail = { id: View; label: string; icon: () => React.ReactElement; key: string; hidden?: boolean };
 // Grouped by intent: understand · change · collaborate · agents and the graph as data · escape hatch.
 const GROUPS: Rail[][] = [
   [
     { id: "overview", label: "Overview", icon: Icon.home, key: "1" },
     { id: "graph", label: "Graph", icon: Icon.graph, key: "2" },
     { id: "flows", label: "Flows", icon: Icon.flows, key: "3" },
+    // `s` stages files in Changes, so map takes `y` instead.
+    { id: "map", label: "Workspace", icon: Icon.workspace, key: "y" },
   ],
   [
     { id: "changes", label: "Changes", icon: Icon.changes, key: "4" },
@@ -59,10 +66,12 @@ const GROUPS: Rail[][] = [
     { id: "notes", label: "Notes", icon: Icon.notes, key: "9" },
   ],
   [
+    // Agents: where agents, teams, skills and their settings are configured; the Workspace uses them.
     { id: "agents", label: "Agents", icon: Icon.agents, key: "a" },
     { id: "query", label: "Query (SPARQL)", icon: Icon.query, key: "q" },
   ],
-  [{ id: "console", label: "Console", icon: Icon.console, key: "0" }],
+  // The console is the bottom dock under every view; #console just opens it.
+  [{ id: "console", label: "Console", icon: Icon.console, key: "0", hidden: true }],
 ];
 const VIEWS = GROUPS.flat();
 
@@ -70,8 +79,11 @@ type Contrast = { base: string; head: string; mode?: ContrastMode } | null;
 
 /** URL ⇄ state: #overview · #graph/<id>/<tab> · #graph/contrast/<base>/<head> · #issues/<id> … */
 function parseHash() {
-  const [v, a, b, c, d] = location.hash.slice(1).split("/").map(decodeURIComponent);
-  const view = (VIEWS.some((x) => x.id === v) ? v : "overview") as View;
+  const parts = location.hash.slice(1).split("/").map(decodeURIComponent);
+  while (parts.length > 1 && parts[0] === "") parts.shift(); // tolerate a leading slash (#/map/x ≡ #map/x)
+  if (parts[0] === "syntagm" || parts[0] === "fmap") parts[0] = "map"; // the tab's old names
+  const [v, a, b, c, d] = parts;
+  const view = (v === "flow-lab" ? v : VIEWS.some((x) => x.id === v) ? v : "overview") as View; // F1 · dev-only #flow-lab, not in the nav
   const contrast: Contrast = view === "graph" && a === "contrast" && b && c ? { base: b, head: c, mode: (["overlay", "split", "report"].includes(d) ? d : undefined) as ContrastMode | undefined } : null;
   const focus = view === "graph" && !contrast && Number(a) > 0 ? Number(a) : null;
   const target: Target = {};
@@ -79,11 +91,13 @@ function parseHash() {
   if (view === "proposals" && Number(a)) target.proposal = Number(a);
   if (view === "history" && a) target.sha = a;
   if (view === "agents" && a) target.tab = a;
+  if (view === "map" && a) target.block = a;
   if (view === "graph" && a === "fences") target.fences = b ?? "";
   return { view, contrast, focus, target };
 }
 
 export default function App() {
+  const mapBusy = !!useMapProgress()?.running;
   const initial = useRef(parseHash()).current;
   const [view, setView] = useState<View>(initial.view);
   const [target, setTarget] = useState<Target>(initial.target);
@@ -97,6 +111,8 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const [indexing, setIndexing] = useState(false);
   const [prefs, setPrefs] = useState(false);
+  const [dock, setDock] = useState(initial.view === "console");
+  const [dockTab, setDockTab] = useState<DockTab>("terminal");
   // The server's last error: when set, the shell shows it with a retry instead of a blank page.
   const [serverError, setServerError] = useState<string | null>(null);
   // The opening plays once per session (or on demand with ?opening), never under reduced motion.
@@ -138,7 +154,8 @@ export default function App() {
     else if (view === "graph" && target.fences !== undefined) h += `/fences${target.fences ? `/${enc(target.fences)}` : ""}`;
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
-    else if (view === "agents" && target.tab && target.tab !== "overview") h += `/${target.tab}`;
+    else if (view === "agents" && target.tab) h += `/${target.tab}`;
+    else if (view === "map" && target.block) h += `/${target.block}`;
     if (`#${h}` === location.hash) return;
     if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
     else history.pushState(null, "", `#${h}`);
@@ -157,6 +174,7 @@ export default function App() {
   // Phones: the sidebar is a drawer, summoned from the top bar.
   const [rail, setRail] = useState(false);
   const go: Go = useCallback((v, t = {}) => {
+    if (v === "console") { setDock(true); setDockTab("terminal"); }
     setView(v);
     setTarget(t);
     if (v === "graph") {
@@ -168,7 +186,10 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // A view that handled the key (the canvas: 1 fits, arrows walk) owns it.
+      if (e.defaultPrevented) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
+      if (e.ctrlKey && e.key === "`") { e.preventDefault(); setDock((d) => !d); return; }
       if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") history.back(); else history.forward(); return; }
       const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -194,7 +215,7 @@ export default function App() {
   const openPrs = meta?.proposals.filter((p) => p.status === "open").length ?? 0;
   const badge: Partial<Record<View, number>> = { changes, issues: openIssues, proposals: openPrs };
   const nav = { onChanged, openSymbol: (id: number) => go("graph", { symbol: id }), version, go, target };
-  const current = VIEWS.find((v) => v.id === view)!;
+  const current = VIEWS.find((v) => v.id === view) ?? { id: view, label: "Flow lab", icon: Icon.flows, key: "" }; // F1 · the dev-only lab is not in VIEWS
 
   return (
     <CodeProvider onLocate={(id) => go("graph", { symbol: id })}>
@@ -217,11 +238,12 @@ export default function App() {
 
       <nav className="rail" id="rail" aria-label="Views">
         {GROUPS.map((g, gi) => (
-          <div key={gi} className="rail-group">
-            {g.map((v) => (
+          g.some((v) => !v.hidden) && <div key={gi} className="rail-group">
+            {g.filter((v) => !v.hidden).map((v) => (
               <button key={v.id} className={view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
                 <v.icon />
                 <span className="rail-label">{v.label}</span>
+                {v.id === "map" && mapBusy && <span className="rail-busy" data-testid="map-nav-busy" title="mapping in progress" aria-label="mapping in progress" />}
                 {!!badge[v.id] && <span className="badge">{badge[v.id]}</span>}
               </button>
             ))}
@@ -263,13 +285,16 @@ export default function App() {
             {view === "issues" && <Issues {...nav} />}
             {view === "notes" && <Notes {...nav} />}
             {view === "flows" && <Flows {...nav} />}
+            {view === "map" && <MapView openSymbol={(id) => go("graph", { symbol: id })} version={version} block={target.block} agent={target.agent} go={go} />}
+            {view === "flow-lab" && <FlowLab />}
             {view === "agents" && <Agents {...nav} />}
             {view === "query" && <Query {...nav} />}
-            {view === "console" && <Console {...nav} />}
+            {view === "console" && <Overview repo={repo} version={version} go={go} />}
           </Suspense>
         </div>
         </>
         )}
+        <Dock open={dock} setOpen={setDock} tab={dockTab} setTab={setDockTab} nav={nav} />
       </main>
 
       <footer className="statusbar">
@@ -279,7 +304,8 @@ export default function App() {
         <span className="spacer" />
         <span>{changes ? `${changes} changed` : "clean"}</span>
         <span className="mono">{repo?.head?.slice(0, 8)}</span>
-        <span>{repo?.user}</span>
+        <span className="sb-user">{repo?.user}</span>
+        <button className="sb-help" data-testid="sb-dock" onClick={() => setDock((d) => !d)} title="Terminal and run log  ctrl+`"><Icon.console /> panel</button>
         <button className="sb-help" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
       </footer>
 
@@ -348,7 +374,7 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
       { key: "reindex", label: "Reindex knowledge graph", hint: "", run: onReindex },
       { key: "fences", label: "Graph: show fences", hint: "f", run: () => go("graph", { fences: "" }) },
       ...(["explore", "fix", "refactor", "tests", "docs", "autoresearch"]).map((w) => ({ key: `fences:${w}`, label: `Graph: preview the ${w} workflow's fences`, hint: "", run: () => go("graph", { fences: w }) })),
-      ...(["workflows", "fences", "memory", "docs", "connect"]).map((t) => ({ key: `agents:${t}`, label: `Agents: ${t}`, hint: "", run: () => go("agents", { tab: t }) })),
+      ...(["workflows", "teams", "skills", "fences", "connect", "settings", "memory", "docs"]).map((t) => ({ key: `agents:${t}`, label: `Agents: ${t}`, hint: "", run: () => go("agents", { tab: t }) })),
       { key: "settings", label: "Open settings", hint: ",", run: onSettings },
       { key: "help", label: "Keyboard shortcuts", hint: "?", run: () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" })); } },
       ...(["directory", "cluster", "kind", "churn"] as const).map((c) => ({ key: `color:${c}`, label: `Colour graph by ${c}`, hint: "", run: () => { settings.set({ colorBy: c }); go("graph"); } })),
@@ -398,8 +424,8 @@ function Help({ onClose }: { onClose: () => void }) {
   // One registry, one sheet: the list cannot drift from what the shell does.
   return (
     <div className="scrim" onMouseDown={onClose}>
-      <div className="palette help" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Keyboard shortcuts">
-        <div className="help-head"><Logo /><h2>Keyboard shortcuts</h2><span className="spacer" /><button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button></div>
+      <div className="palette help" data-pane onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Keyboard shortcuts">
+        <div className="help-head"><Logo /><h2>Keyboard shortcuts</h2><span className="spacer" /><PaneControls onClose={onClose} testId="help" /></div>
         <div className="help-grid" data-testid="help-grid">
           {GLOBAL_SHORTCUTS.map((k) => (<div key={k.keys} className="help-row" data-keys={k.keys}><kbd>{k.keys}</kbd><span>{k.label}</span></div>))}
           <div className="help-sep">Views</div>

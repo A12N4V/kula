@@ -3,6 +3,9 @@ import type { Node } from "./api";
 import { GLYPH, kindColor } from "./colors";
 import { nodeTarget, useCode } from "./CodePanel";
 import { markPath, N } from "./mark";
+// Agent and team marks are harmonographs – one component, shared by the
+// Workspace rail, the agents library, the dock and the inspector.
+export { Harmonograph, harmonograph } from "./harmonograph";
 
 // ---------- icons ----------
 // One grammar on a 24 grid, 1.5 stroke: rounded squares are structure (files,
@@ -22,6 +25,11 @@ export const Icon = {
   box: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="7" width="17" height="10" /><path d="M7 7v10" /></svg>),
   home: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="4" y="4" width="7" height="7" fill="currentColor" /><rect x="13" y="4" width="7" height="7" /><rect x="4" y="13" width="7" height="7" /><rect x="13" y="13" width="7" height="7" /></svg>),
   graph: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 12 5.5 6.5M12 12l6.5-5.5M12 12v7" /><rect x="9.5" y="9.5" width="5" height="5" fill="currentColor" /><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="20" r="2" /></svg>),
+  // map – the flow canvas: three nodes and two edges, left to right; the
+  // entry node carries the accent
+  /** The Workspace: the map with an agent riding on it. */
+  workspace: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="4" cy="17" r="2" /><rect x="10" y="15" width="4.5" height="4.5" rx="1" /><circle cx="20" cy="17" r="2" /><path d="M6 17h4M14.5 17.2H18" /><rect x="7" y="3.5" width="10" height="7" rx="1.5" stroke="var(--accent)" /><path d="M12 10.5v4" stroke="var(--accent)" /><rect x="9.5" y="6" width="1.6" height="1.6" fill="var(--accent)" stroke="none" /><rect x="12.9" y="6" width="1.6" height="1.6" fill="var(--accent)" stroke="none" /></svg>),
+  flowMap: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="4.5" cy="7" r="2.5" stroke="var(--accent)" /><circle cx="19" cy="12" r="2.5" /><rect x="9" y="14.5" width="5" height="5" rx="1" /><path d="M7 7.7c2.6.8 4 2.3 4.6 4.5M16.6 11.6c-1.3-1-2.6-1.4-4.1-1.2" /></svg>),
   changes: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="4" y="4" width="16" height="16" /><path d="M12 7.5v6M9 10.5h6M9 16.5h6" /></svg>),
   history: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 3v5.5M12 10.5v3M12 15.5V21" /><circle cx="12" cy="9.5" r="1.1" fill="currentColor" /><circle cx="12" cy="14.5" r="1.1" fill="currentColor" /><circle cx="12" cy="9.5" r="2.5" /><circle cx="12" cy="14.5" r="2.5" /></svg>),
   branches: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="7" cy="5" r="2" /><circle cx="7" cy="19" r="2" /><rect x="15" y="6" width="4" height="4" /><path d="M7 7v10M17 10c0 4-3 5-10 7" /></svg>),
@@ -56,11 +64,25 @@ export const Icon = {
   query: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M8 4H6.5A1.5 1.5 0 0 0 5 5.5v4L3.5 12 5 14.5v4A1.5 1.5 0 0 0 6.5 20H8M16 4h1.5A1.5 1.5 0 0 1 19 5.5v4l1.5 2.5-1.5 2.5v4a1.5 1.5 0 0 1-1.5 1.5H16" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /></svg>),
   copy: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="8.5" y="8.5" width="11" height="11" /><path d="M15.5 8.5V5.5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3" /></svg>),
   play: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M7 5v14l11-7z" fill="currentColor" /></svg>),
+  pause: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="6.5" y="5" width="3.5" height="14" fill="currentColor" stroke="none" /><rect x="14" y="5" width="3.5" height="14" fill="currentColor" stroke="none" /></svg>),
+  stop: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" stroke="none" /></svg>),
+  /** Step: run the next block, then pause (a debugger's step over). */
+  stepOver: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M5 5v14l8-7z" fill="currentColor" /><path d="M17 5v14" strokeWidth="2.2" /></svg>),
+  // GitHub: the octocat silhouette only reads filled, so it is the set's one
+  // solid brand mark rather than a stroke drawing.
+  gh: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16" fill="currentColor" stroke="none"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2z" /></svg>),
+  /** Re-run from the first failed block (CI's "re-run failed jobs"). */
+  rerun: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 12a8 8 0 1 0 2.3-5.6" /><path d="M4 4v4.5h4.5" /><path d="M10.5 9v6l4.5-3z" fill="currentColor" stroke="none" /></svg>),
   lock: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="5" y="11" width="14" height="9" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>),
   sidebar: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="4.5" width="17" height="15" /><path d="M9.5 4.5v15" /><path d="M5.8 8.5h1.6M5.8 11h1.6M5.8 13.5h1.6" /></svg>),
   chevron: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m6 9 6 6 6-6" /></svg>),
   sun: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>),
   check: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>),
+  expand: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5" /></svg>),
+  shrink: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M20 10h-6V4M4 14h6v6M14 10l6.5-6.5M10 14l-6.5 6.5" /></svg>),
+  layers: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m12 4 8 4-8 4-8-4 8-4Z" /><path d="m4 12 8 4 8-4M4 16l8 4 8-4" /></svg>),
+  explore: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="4" y="4" width="16" height="16" rx="2.5" /><path d="M15 4v16M17.5 8h0M17.5 12h0M17.5 16h0" /></svg>),
+  map: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="5" width="7" height="6" rx="1.2" /><rect x="13.5" y="13" width="7" height="6" rx="1.2" /><path d="M10.5 8h3a3 3 0 0 1 3 3v2" /></svg>),
 };
 /**
  * The mark: the kula ring drawn with kula rings (src/mark.ts). Small sizes show
@@ -105,6 +127,36 @@ export function Sym({ n, onClick, right }: { n: Node; onClick?: (n: Node) => voi
         <button className="sym-locate" aria-label={`Locate ${n.name} in the graph`} title="Locate in graph" onClick={(e) => { e.stopPropagation(); onClick(n); }}><Icon.target /></button>
       )}
     </div>
+  );
+}
+
+// ---------- toggle ----------
+/**
+ * The one switch: every binary choice – on/off settings, show/hide options,
+ * Packages and Fences on the graph, layer rows – renders a Toggle with a
+ * label, role="switch" and aria-checked. Two-way *modes* (Symbols/Files,
+ * light/dark, Open/Closed) are not choices of on/off – those stay segmented
+ * controls. Styles live in system.css (the .tgl block).
+ */
+export function Toggle({ label, checked, onChange, hint, count, testId, className = "", disabled }: {
+  label: ReactNode; checked: boolean; onChange: (v: boolean) => void;
+  /** aria-label + tooltip: what the switch does, not its state. */
+  hint?: string; /** trailing figure (e.g. package count) – stays inside the label. */
+  count?: ReactNode; testId?: string; className?: string; disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button" role="switch" aria-checked={checked} aria-label={hint} title={hint}
+      data-testid={testId} disabled={disabled}
+      className={`tgl ${checked ? "on" : ""} ${className}`}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="tgl-label">
+        {label}
+        {count != null && count !== "" && <span className="tgl-count">{count}</span>}
+      </span>
+      <span className="tgl-track" aria-hidden="true"><span className="tgl-thumb" /></span>
+    </button>
   );
 }
 

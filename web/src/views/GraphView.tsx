@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FileTree, StripMenu } from "../FileTree";
 import Graph from "graphology";
 import Sigma from "sigma";
 import { EdgeRectangleProgram } from "sigma/rendering";
@@ -14,13 +15,13 @@ import { LinkArea } from "../Autofill";
 import { useCode } from "../CodePanel";
 import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLYPH, makeColorer } from "../colors";
 import { knownDirs, settings, useSettings, type Settings } from "../settings";
-import { Empty, Icon, Kind, Logo, Md, ShowOutput, StatTable, Sym, useToast } from "../ui";
+import { Empty, Icon, Kind, Logo, Md, ShowOutput, StatTable, Sym, Toggle, useToast } from "../ui";
 import { GraphLoader, type LoadStep } from "../AsciiMark";
 import { PreEditPanel } from "../AgentChecks";
 import type { IndexProgress } from "../api";
 import Contrast from "./Contrast";
 import type { ContrastMode, Go } from "../nav";
-import { Grip } from "../resize";
+import { Grip, PaneControls } from "../resize";
 
 type Props = {
   focus: number | null; setFocus: (id: number | null) => void; onChanged: () => void; version: number;
@@ -613,6 +614,7 @@ function MapView(props: Props) {
     const t = window.setTimeout(() => setCardOn(true), 260);
     return () => window.clearTimeout(t);
   }, [hover]);
+  const graphFiles = useMemo(() => (data ? [...new Set(data.nodes.filter((n) => n.kind !== "package" && n.path && !n.path.startsWith("pkg:")).map((n) => n.path))] : []), [data]);
   const pkgCount = data ? data.nodes.filter((n) => n.kind === "package").length : 0;
   const hubCount = graph ? graph.filterNodes((_id, a) => isHub(a)).length : 0;
 
@@ -623,20 +625,28 @@ function MapView(props: Props) {
       {err && <div className="loading"><Empty title={err.includes("WebGL") ? "Graph unavailable" : "No graph yet"}>{err}{!err.includes("WebGL") && <div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => api.reindex().then(onChanged)}>Build graph</button></div>}</Empty></div>}
 
       <div className="graph-overlay hud">
-        <div className="seg">
-          <button className={level === "symbol" ? "on" : ""} onClick={() => setLevel("symbol")}>Symbols</button>
-          <button className={level === "file" ? "on" : ""} onClick={() => setLevel("file")}>Files</button>
+        {/* the file tree opens only from this dropdown – pick a file to focus it */}
+        {data && <StripMenu testId="graph-files" className="graph-files" title="Browse the files" label={<><Icon.sidebar /><span className="hud-lbl">Files</span></>}>
+          {(close) => <FileTree paths={graphFiles} onPick={(p) => {
+            close();
+            const hit = data.nodes.find((n) => n.path === p && n.kind === "file") ?? data.nodes.find((n) => n.path === p);
+            if (hit) setFocus(hit.id);
+          }} />}
+        </StripMenu>}
+        <div className="seg seg-ico">
+          <button className={level === "symbol" ? "on" : ""} onClick={() => setLevel("symbol")} title="Symbols" aria-label="Symbols" data-testid="graph-level-symbol"><span className="ico-fn" aria-hidden="true">ƒ</span><span className="hud-lbl">Symbols</span></button>
+          <button className={level === "file" ? "on" : ""} onClick={() => setLevel("file")} title="Files" aria-label="Files" data-testid="graph-level-file"><Icon.doc /><span className="hud-lbl">Files</span></button>
         </div>
-        <button className={`btn sm hud-btn ${s.packages ? "on" : ""}`} aria-pressed={s.packages} onClick={() => settings.set({ packages: !s.packages })} title="Show external packages on the rim">
-          <Icon.box /> Packages{pkgCount ? <span className="muted"> {pkgCount}</span> : null}
-        </button>
-        <button className="btn sm hud-btn" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs"><Icon.compare /> Contrast</button>
+        <Toggle className="hud-tgl" label={<><Icon.box /> <span className="hud-lbl">Packages</span></>} checked={s.packages}
+          onChange={(v) => settings.set({ packages: v })} hint="Packages – show external packages on the rim"
+          count={pkgCount || undefined} testId="graph-packages" />
+        <button className="btn sm hud-btn" onClick={() => setContrast({ base: "HEAD", head: "WORKTREE" })} title="Overlay two revisions' graphs"><Icon.compare /> <span className="hud-lbl">Contrast</span></button>
         <button className={`btn sm hud-btn ${iso || isoAsk != null ? "on" : ""}`} aria-pressed={!!iso} onClick={() => setIsoAsk(isoAsk == null ? (iso ? iso.slice.selectors.join(" ") : "") : null)} title="Show only part of the codebase, with its boundary  (i)">
-          <Icon.isolate /> Isolate{iso ? <span className="muted"> {iso.slice.counts.nodes}</span> : null}
+          <Icon.isolate /> <span className="hud-lbl">Isolate</span>{iso ? <span className="muted hud-n"> {iso.slice.counts.nodes}</span> : null}
         </button>
-        <button className={`btn sm hud-btn ${fencesOn ? "on" : ""}`} aria-pressed={fencesOn} onClick={() => setFencesOn(!fencesOn)} title="Show what agents may not touch  (f)">
-          <Icon.lock /> Fences{fences ? <span className="muted"> {[...fences.values()].filter((v) => v !== "scope").length}</span> : null}
-        </button>
+        <Toggle className="hud-tgl" label={<><Icon.lock /> <span className="hud-lbl">Fences</span></>} checked={fencesOn}
+          onChange={(v) => setFencesOn(v)} hint="Fences – show what agents may not touch  (f)"
+          count={fences ? [...fences.values()].filter((v) => v !== "scope").length || undefined : undefined} testId="graph-fences" />
         {data && (
           <span className="hud-stats hide-sm">
             {settling ? <><span className="dot warn pulse" /> settling</> : <>
@@ -941,7 +951,7 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
   };
 
   return (
-    <aside className="inspector" aria-label="Symbol inspector">
+    <aside className="inspector" aria-label="Symbol inspector" data-pane>
       <Grip id="inspector" edge="left" min={300} max={960} label="Resize inspector" />
       <header>
         <div className="row">
@@ -949,7 +959,7 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
           <span className="spacer" />
           <button className="btn ghost sm" disabled={trail.current.at <= 0} onClick={() => step(-1)} aria-label="Back" title="Back  [">←</button>
           <button className="btn ghost sm" disabled={trail.current.at >= trail.current.stack.length - 1} onClick={() => step(1)} aria-label="Forward" title="Forward  ]">→</button>
-          <button className="btn ghost sm" onClick={onClose} aria-label="Close" title="Close  esc"><Icon.close /></button>
+          <PaneControls onClose={onClose} testId="insp" />
         </div>
         <h2>{ctx?.node.name ?? "…"}</h2>
         {ctx && <div className="muted mono" style={{ fontSize: 11.5 }}>{ctx.node.path}:{ctx.node.start_line}–{ctx.node.end_line}</div>}

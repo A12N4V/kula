@@ -10,9 +10,15 @@
 @import "./styles/agents.css";
 @import "./styles/agents-memory.css";
 @import "./styles/agents-teams.css";
+@import "./styles/agents-terrain.css"; /* U3 – actors on the terrain */
 @import "./styles/settings.css";
 @import "./styles/type.css";
 @import "./styles/sweep.css";
+@import "./styles/map.css"; /* U1 · MapView */
+@import "./styles/flow.css"; /* F1 · flow canvas kit */
+@import "./styles/plain.css"; /* U9 · the reading layer */
+@import "./styles/workspace.css"; /* workspace: agents on the map */
+@import "./styles/dock.css"; /* bottom dock: terminal + run log */
 
 /* ------------------------------------------------------------------ K2 · unified agent config (skills, rules, MCP, memory layers) */
 .sk-diff { margin-top: var(--gap); border-top: 1px solid var(--line); padding-top: var(--gap); }
@@ -53,4 +59,15 @@
    detail side clears it so neither the textarea nor the bar buttons are under it. */
 @media (min-width: 761px) {
   .kq .kq-editor { padding-left: 32px; }
+}
+
+/* a3 – agents tab on the flow canvas: React Flow's transparent edge
+   hit-areas (20 px invisible stroke) render above nodes and group frames
+   and eat their clicks. Edge clicks are not a capability in any agents
+   view, so within the four agents canvases the hit-area yields. */
+.org .react-flow__edge-interaction,
+.wf-graph .react-flow__edge-interaction,
+.m1-graph .react-flow__edge-interaction,
+.rf-canvas .react-flow__edge-interaction {
+  pointer-events: none;
 }

@@ -79,7 +79,7 @@
 .cp-body { flex: 1; overflow: auto; background: var(--bg); }
 .cp-code { margin: 0; padding: 8px 0 40px; font: 12px/1.6 var(--mono); tab-size: 4; counter-reset: ln; }
 .cp-code > div { display: grid; grid-template-columns: 52px 1fr; white-space: pre; }
-.cp-code > div.lit { background: var(--accent-soft); box-shadow: inset 2px 0 0 0 transparent; }
+.cp-code > div.lit { background: var(--accent-soft); }
 .cp-code > div.lit .ln { color: var(--accent); border-right-color: var(--accent); }
 .cp-code .ln { padding-right: 12px; text-align: right; color: var(--text-3); opacity: .7; border-right: 1px solid var(--line); user-select: none; }
 .cp-code code { padding-left: 14px; font: inherit; color: var(--text); }
@@ -191,3 +191,25 @@
 /* D1: hover/focus system – the panel edge is a border, not a shadow. */
 .code-panel { box-shadow: none; }
 .cpl-row { height: 28px; }
+
+/* ================================================================ E1: editable code panel */
+/* A transparent textarea is laid exactly over the painted <pre>, so line
+   numbers and colouring stay untouched. The wrapper is as wide as the widest
+   line (max-content) so the caret never runs past the visible pre. */
+.cp-edit { position: relative; width: 100%; min-width: max-content; }
+.cp-area { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 8px 24px 40px 66px;
+  border: 0; outline: none; resize: none; overflow: hidden; white-space: pre;
+  font: 12px/1.6 var(--mono); tab-size: 4; letter-spacing: 0;
+  color: transparent; caret-color: var(--accent); background: transparent; cursor: text; }
+.cp-area::selection { color: transparent; background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.cp-editing .cp-code { pointer-events: none; }
+.cp-dot { display: inline-block; width: 7px; height: 7px; margin-left: 8px; border-radius: 50%; background: var(--accent); vertical-align: 2px; }
+.cp-note { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel-2); font-size: 12px; }
+.cp-note .spacer { flex: 1; }
+.cp-conflict { border-bottom-color: color-mix(in oklab, var(--yellow) 45%, var(--line)); }
+.cp-fence .cp-tick { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); cursor: pointer; }
+.cp-fence .cp-tick input { accent-color: var(--accent); }
+.cp-note button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* U14 · notes open in the editor: the target row doubles as the anchor input */
+.cp-note-target { width: 100%; max-width: 460px; font-size: 12px; padding: 3px 8px; }

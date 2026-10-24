@@ -79,6 +79,8 @@ export interface ResearchRun {
 export interface Team {
   name: string; about?: string; prompt?: string; under?: string;
   members: { name?: string; agent: string; model?: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
+  /** Canvas arrangement, workflow → [x, y] (B1: kept in kula.toml under the team). */
+  positions?: Record<string, [number, number]>;
 }
 /** A work mode (src/workflow.rs): its own fences, scope, steps, docs and memory policy. */
 export interface Workflow {
@@ -93,7 +95,16 @@ export interface Suggestion { id: number; kind: "guard" | "workflow"; guard?: Ra
 export type AgentAction = "task_start" | "task_done" | "remember" | "confirm" | "forget" | "memory_edit" | "memory_stale" | "guards_save" | "workflows_save"
   | "settings_save" | "doc_read" | "doc_save" | "docs_sync" | "brief" | "connect" | "suggestion_accept" | "suggestion_dismiss" | "preview"
   | "teams_save" | "team_prompt" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install"
-  | "workflow_rename" | "skill_save" | "skill_delete" | "skills_sync" | "skill_adopt";
+  | "workflow_rename" | "skill_save" | "skill_delete" | "skills_sync" | "skill_adopt"
+  | "team_save" | "team_delete" | "team_add_member" | "team_remove_member" | "team_layout" | "mcp_adopt";
+
+/** B1 · one portfolio card in the Agents grid (GET /api/agent/cards):
+ *  one per workflow/agent, description from the workflow. */
+export interface AgentCard {
+  name: string; role: string; description: string; tags: string[];
+  agent: string; model?: string; skills: string[]; teams: string[];
+  fences: string[]; scope: string[]; builtin: boolean;
+}
 /** A shared skill (src/skills.rs): one source in .agents/skills, a copy per agent. */
 export type SkillState = "synced" | "differs" | "missing" | "native";
 export interface Skill { name: string; description: string; body: string; files: string[]; targets: Record<string, SkillState> }
@@ -194,12 +205,36 @@ export const api = {
   metaAction: <T = unknown>(kind: "issues" | "proposals" | "notes", action: string | number, body: Record<string, unknown>) =>
     post<T>(`/api/meta/${kind}/${action}`, body),
 
+  // U2 · map: the whole map in one payload, paged family chains, progress
+  map: () => get<MapData>("/api/map"),
+  mapChains: (family: string, cursor?: string, limit = 40) =>
+    get<ChainPage>(`/api/map/chains?${q({ family, cursor, limit })}`),
+  mapProgress: () => get<MapProgress>("/api/map/progress"),
+
+  // U1 · MapView: blocks and chains (+ E1's embed endpoints)
+  syntagm: () => get<SyntagmData>("/api/syntagm"),
+  syntagmBlock: (id: string) => get<MapViewBlock>(`/api/syntagm/block/${encodeURIComponent(id)}`),
+  syntagmChain: (id: string) => get<Chain>(`/api/syntagm/chain/${encodeURIComponent(id)}`),
+  embedStatus: () => get<EmbedStatus>("/api/embed/status"),
+  embedCheck: () => get<EmbedCheck>("/api/embed/check"),
+  embedInstall: () => post<EmbedInstall>("/api/embed/install"),
+  embedRemove: () => post<EmbedInstall>("/api/embed/remove"),
+
+  // I1 · Embeddings switch: persist the switch, run and cancel a batch embed
+  embedEnable: (enabled: boolean) => post<EmbedStatusFull>("/api/embed/enable", { enabled }),
+  embedRun: () => post<{ started: boolean; reason?: string }>("/api/embed/run", {}),
+  embedCancel: () => post<{ cancelled: boolean }>("/api/embed/cancel", {}),
+
   // K2 · unified agent config: skills, rules, MCP, memory layers
   configMatrix: () => get<ConfigMatrix>("/api/agent/config_matrix"),
+  skillIndex: () => get<SkillIndex>("/api/agent/skill_index"),
   skillDetail: (name: string) => get<SkillDetail>(`/api/agent/skill_detail?${q({ name })}`),
   skillDiff: (name: string, agent: string) => get<SkillDiff>(`/api/agent/skill_diff?${q({ name, agent })}`),
   memoryLayers: () => get<MemoryLayer[]>("/api/agent/memory_layers"),
   mcpSync: (name: string) => post<{ written: string[] }>("/api/agent/mcp_sync", { name }),
+
+  // B1 · cards, team edits, folder import
+  agentCards: () => get<AgentCard[]>("/api/agent/cards"),
 };
 
 // K2 types, derived from what each agent already reads (src/agent_config.rs).
@@ -213,7 +248,7 @@ export interface SkillUsage { workflows: string[]; teams: string[]; seats: strin
 export interface SkillDetail { skill: Skill; usage: SkillUsage }
 export interface SkillDiff { name: string; agent: string; diff: string | null }
 /** A memory with its layer derived at read time: scope and provenance. */
-export interface MemoryLayer extends Memory { scope: "task" | "workflow" | "repo"; scope_name: string; agent: string; commit: string; symbol: string | null }
+export interface MemoryLayer extends Memory { scope: "task" | "workflow" | "repo"; scope_name: string; agent: string; commit: string; symbol: string | null; /** B1: memories imported from a TencentDB store are their own layer. */ layer: "tencentdb" | "task" | "workflow" | "repo" }
 
 export function relTime(ts: number) {
   const d = Math.max(0, Date.now() / 1000 - ts);
@@ -227,4 +262,28 @@ export function relTime(ts: number) {
 // Cluster colours share the graph palette (see colors.ts).
 export { hue as colorFor } from "./colors";
 
+// U1 · MapView shared types (the contract shapes live in views/map/types.ts).
+import type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/map/types";
+export type { Chain, ChainPage, EmbedCheck, MapData, MapProgress, SyntagmData } from "./views/map/types";
+export interface MapViewBlock { block: import("./views/map/types").Block }
+export interface EmbedStatus { state: "off" | "on" | "stale"; installed: boolean; model: string | null; ms: number }
+export interface EmbedInstall { ok: boolean; phase?: string; done?: number; total?: number }
+// I1 · the /api/map/progress payload (map_run.rs state) – re-exported from types.ts.
+
+// I1 · the real /api/embed/status payload (embed.rs api_status) and /api/map/progress (map_run.rs).
+export interface EmbedRun { running: boolean; phase: string; done: number; total: number; batches: number; cancelled: boolean; provider: string; error: string }
+export interface EmbedStatusFull { enabled: boolean; installed: boolean; feature: boolean; model_dir: string; run: EmbedRun }
+
 export type LangRow = { id: string; name: string; files: number; indexed: boolean; builtin: boolean; tier: string };
+
+/** The skills index (src/skill_index.rs): every skill and instruction file an
+ *  agent would load here, found where Claude Code, Codex, Gemini and Cursor look. */
+export interface IndexedSkill {
+  name: string; description: string;
+  agent: "claude" | "codex" | "gemini" | "cursor" | "shared";
+  scope: "repo" | "nested" | "plugin" | "user" | "admin";
+  kind: "skill" | "command" | "rule";
+  path: string; meta: Record<string, string>; body: string; plugin?: string;
+}
+export interface InstructionFile { path: string; agent: "claude" | "codex" | "gemini"; scope: "repo" | "nested" | "user"; bytes: number; headline: string }
+export interface SkillIndex { skills: IndexedSkill[]; instructions: InstructionFile[]; searched: string[] }
