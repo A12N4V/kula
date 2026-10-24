@@ -15,7 +15,10 @@ export function linksOf(body: string) {
   return [...body.matchAll(/\[\[([^\]]+)\]\]/g)].map((m) => m[1].trim()).filter(Boolean);
 }
 
-export function NotesGraph({ notes, sel, onPick }: { notes: Note[]; sel: string; onPick: (target: string) => void }) {
+export function NotesGraph({ notes, sel, onPick, onOpenNote }: { notes: Note[]; sel: string; onPick: (target: string) => void; onOpenNote?: (n: Note) => void }) {
+  // Tests click graph nodes by coordinates; the Sigma instance is exposed the
+  // same way the main graph is (navigator.webdriver only).
+  const onSigma = (s: any) => { if (navigator.webdriver) (window as any).__notesSigma = s; };
   const nodes: MiniNode[] = [], edges: MiniEdge[] = [];
   const seen = new Set<string>();
   const short = (t: string) => { const s = t.replace(/^(file|symbol|commit|cluster):/, ""); return s.length > 30 ? "…" + s.slice(-29) : s; };
@@ -37,8 +40,18 @@ export function NotesGraph({ notes, sel, onPick }: { notes: Note[]; sel: string;
   return (
     <div className="notes-graph">
       <MiniGraph nodes={nodes} edges={edges} sel={sel || undefined} label={`Notes as a graph: ${notes.length} notes on ${seen.size - 1} targets`}
-        onPick={(id) => { const t = id.startsWith("note:") ? notes.find((n) => `note:${n.id}` === id)?.target ?? "" : id; onPick(t === sel ? "" : t); }}
-        groupLabel={(k) => `${k}s`} />
+        onPick={(id) => {
+          // A note node opens the note in the editor (U14); a target hub
+          // still filters the sidebar to that target.
+          if (id.startsWith("note:")) {
+            const n = notes.find((x) => `note:${x.id}` === id);
+            if (n && onOpenNote) { onOpenNote(n); return; }
+          }
+          const t = id.startsWith("note:") ? notes.find((n) => `note:${n.id}` === id)?.target ?? "" : id;
+          onPick(t === sel ? "" : t);
+        }}
+        groupLabel={(k) => `${k}s`}
+        onSigma={onSigma} />
       <div className="graph-legend">
         <span>{notes.length} notes · {seen.size - 1} targets</span>
         <span><i className="gk note" />note</span>

@@ -19,7 +19,7 @@ const dirOf = (p: string) => p.slice(0, p.lastIndexOf("/") + 1);
 export function useHere(): Place | null {
   const code = useCode();
   const list = useSyncExternalStore(subscribe, recent);
-  if (code.target) return { path: code.target.path, name: code.target.name, kind: code.target.kind, id: code.target.id };
+  if (code.target) return { path: code.target.path ?? "", name: code.target.name, kind: code.target.kind, id: code.target.id };
   return list[0] ?? null;
 }
 
