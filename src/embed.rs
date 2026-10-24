@@ -178,10 +178,13 @@ pub fn standard_profile(cfg: &EmbedCfg) -> Profile {
     Profile { batch: cfg.batch_size(), threads: cfg.pool(), pause_ms: cfg.pause(), name: "standard".into() }
 }
 
-/// The gentle profile for small machines: one worker, a 4-text batch, a
-/// longer pause. Embeddings take longer but never crowd the machine.
+/// The gentle profile for small machines: one worker, a capped batch, a
+/// longer pause. An explicitly configured batch is honoured when it is
+/// already smaller than the cap (so tests and tuned configs stay put);
+/// otherwise the batch is capped at 4. Embeddings take longer but never
+/// crowd the machine.
 pub fn gentle_profile(cfg: &EmbedCfg) -> Profile {
-    Profile { batch: 4, threads: 1, pause_ms: (cfg.pause() * 2).max(500), name: "gentle".into() }
+    Profile { batch: cfg.batch_size().min(4), threads: 1, pause_ms: (cfg.pause() * 2).max(500), name: "gentle".into() }
 }
 
 /// Pick a profile for this machine. Low RAM or few cores no longer refuse –
@@ -655,7 +658,9 @@ impl Throttle {
     fn step(&mut self, load1: f64, free_ram_gb: f64) -> bool {
         if self.busy(load1, free_ram_gb) {
             self.pause_ms = (self.pause_ms * 2).min(MAX_ADAPT_PAUSE_MS);
-            self.batch = (self.batch / 2).max(MIN_ADAPT_BATCH);
+            // The floor never lifts the batch above the profile's base: a
+            // configured or gentle small batch stays small even under load.
+            self.batch = (self.batch / 2).max(MIN_ADAPT_BATCH.min(self.base_batch));
             self.paused_for_load = true;
             true
         } else {
