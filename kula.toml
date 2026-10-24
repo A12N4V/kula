@@ -16,8 +16,8 @@ reindex = true   # keep the graph current after commit / checkout / merge
 max_risk = "medium"   # CI gate: none | low | medium | high
 
 [agents]
-hide_secrets = true
-memory = true
+hide_secrets = true   # keep .env, keys and certificates out of every agent answer
+memory = true         # let agents remember facts about the code (`kula memory`)
 
 # Fence code off from AI agents. locked: read, never edit · hidden: never shown ·
 # review: editable, flagged in `kula check`. Paths are globs; symbols are names.
