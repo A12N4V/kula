@@ -82,6 +82,25 @@ async function overlaps(page: Page) {
 
 const VIEWS = ["graph", "overview", "changes", "agents", "map"] as const;
 
+test.describe("x8 findings", () => {
+  // X8 finding 2 (docs/design/fuse3-audit.md): the map legend overflows its
+  // box (pinned by content). Fails until U11 fixes the legend.
+  test("x8/U11: map legend does not overflow its box", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "widths are set in the spec");
+    for (const [w, h] of [[1440, 900], [1100, 900], [390, 844]] as const) {
+      await page.setViewportSize({ width: w, height: h });
+      await open(page, "map");
+      await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
+      const bad = await page.evaluate(() => {
+        const el = document.querySelector<HTMLElement>(".u7-legend");
+        if (!el) return "legend not found on the page";
+        return el.scrollWidth - el.clientWidth > 2 ? `sw ${el.scrollWidth}>${el.clientWidth}` : null;
+      });
+      expect(bad, `legend problem at ${w}px: ${bad}`).toBeNull();
+    }
+  });
+});
+
 test.describe("overflow", () => {
   for (const width of [390, 1100] as const) {
     test(`no element overflows its box at ${width}px, panel closed`, async ({ page }) => {
