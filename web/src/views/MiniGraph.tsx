@@ -16,9 +16,11 @@ import { useSettings } from "../settings";
 export interface MiniNode { id: string; label: string; color: string; size: number; group?: string; hub?: boolean; glyph?: string; x?: number; y?: number }
 export interface MiniEdge { source: string; target: string; color?: string; size?: number; flow?: boolean }
 
-export function MiniGraph({ nodes, edges, sel, onPick, groupLabel, label, height }: {
+export function MiniGraph({ nodes, edges, sel, onPick, groupLabel, label, height, onSigma }: {
   nodes: MiniNode[]; edges: MiniEdge[]; sel?: string; onPick?: (id: string) => void;
   groupLabel?: (g: string) => string; label: string; height?: number | string;
+  /** Optional access to the Sigma instance (tests click nodes by coordinates). */
+  onSigma?: (s: Sigma | null) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const view = useRef<{ s: Sigma; ov: Overlay; g: Graph } | null>(null);
@@ -79,7 +81,8 @@ export function MiniGraph({ nodes, edges, sel, onPick, groupLabel, label, height
     s.on("leaveNode", () => { hover.current = null; nb = near(); s.refresh({ skipIndexation: true }); ov.set({ quiet: false }); el.style.cursor = ""; });
     s.on("clickNode", ({ node }) => pick.current?.(node));
     view.current = { s, ov, g };
-    return () => { ov.kill(); s.kill(); view.current = null; };
+    onSigma?.(s);
+    return () => { ov.kill(); s.kill(); view.current = null; onSigma?.(null); };
   }, [key, cfg.curved, cfg.flow]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

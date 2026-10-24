@@ -51,3 +51,36 @@ links (`#map/<block>` drill, inspector tabs) must keep the chrome.
 
 Signed off by X9 after wave 2 lands (before/after table at 1440 and 390 to be
 appended there).
+
+# Final record (X9, wave 2)
+
+X9 re-ran the audit after wave 2 (U12 agents outside the boxes, U13 toggles
+and lists, U14 notes in the editor) at 1440×900, 1100×720 and 390×844, dark
+and light, across every view in `nav.ts` (overview, graph, map, changes,
+history, branches, proposals, issues, notes, flows, agents, query) – 72
+probes per tree via `node .kula-team/scratch/x9-sweep.mjs`.
+
+## Before/after table
+
+Findings from X8's wave-1 audit plus X9's own baseline sweep (before =
+wave-1 integration tree d39e25c, after = the wave-2 merge tree):
+
+| # | Finding | Owner | Before (wave 1) | After (wave 2) | Proof |
+|---|---|---|---|---|---|
+| 1 | `sb-help` × in-page `btn sm` on #agents, 1440 + 390 | U13 | OVERLAP (probe: 12 hits) | (pending) | sweep `agents 1440/390` |
+| 2 | Map legend overflows its box | U11 | fixed on U11 branch; guard test passes | (pending) | `overflow.spec › legend` |
+| 3 | Colour key / plain-words dock over squares | U11 | fixed (chips, 0 square hits) | (pending) | `overlap.spec › x8/U11` |
+| 4 | Transport vs zoom row on map phone | U11 | guard test passes | (pending) | `overlap.spec › transport` |
+| 5 | 1100px Explore × headline | U11 | fixed (icon-only ≤1280) | (pending) | `overlap.spec › 1100` |
+| 6 | `--bg-3` / `--shadow` undefined tokens | U10 | fixed (25c1581) | (pending) | grep |
+| 7 | Panes: data-pane + PaneControls + Grip everywhere | U10 | all 9 wired | (pending) | `u10-panels.spec` |
+| 8 | Agent square vs zone frames/labels/squares | U12 | present on base | (pending) | `u12-agents.spec` |
+| 9 | Small-target drift at 390: `u2-frame` 36×32, `u7-legend-head` 34×40, `u9-chip`/`ex-btn` 34×30, `strip-menu-btn` 250×30 (map) / 50×28 (graph), `legend-head` 262×27 (graph) | U11/U13 | FOUND by X9 baseline | (pending) | sweep `x9-sweep-out.txt` |
+
+## Design-lint
+
+(pending)
+
+## Sign-off
+
+(pending)

@@ -541,15 +541,27 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
     return () => window.removeEventListener("keydown", onKey);
   }, [runner]);
   useEffect(() => { if (selStep) setTab("pipeline"); }, [selStep]);
+  // U14: a sticky note opens in the code panel's note mode – its text is the
+  // step's task, saved straight back into the pipeline (localStorage-backed).
+  const openSticky = useCallback((id: string) => {
+    const st = pipe.steps.find((x) => x.id === id);
+    if (!st || st.kind !== "note") return false;
+    const body = st.task && st.task !== "Double-click to edit" ? st.task : "";
+    code.open({
+      note: { target: st.name || "sticky", body, name: st.name || "Sticky note", lock: true },
+      save: async (text) => { pipe.patch(id, { task: text }); },
+    });
+    return true;
+  }, [code, pipe]);
   const onStepTool = useCallback((id: string, a: "done" | "remove" | "run" | "toggle" | "insert" | "open") => {
     if (a === "done") runner.markDone(id);
     else if (a === "run") void runner.run(id);
     else if (a === "toggle") toggleStep(id);
     else if (a === "insert") openPanel(id);
-    else if (a === "open") setNdv(id);
+    else if (a === "open") { if (!openSticky(id)) setNdv(id); }
     else removeStep(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runner, pipe]);
+  }, [runner, pipe, openSticky]);
   const canvas = useMemo(() => ({
     onKey: (key: string, _sel: string | null, ev: React.KeyboardEvent) => keysRef.current(key, ev, true),
     onStub: (id: string) => { if (id.startsWith("step:")) openPanel(id.slice(5)); },
@@ -607,6 +619,8 @@ export default function MapView({ block, go }: { openSymbol?: (id: number) => vo
       facts: [[`#${runnable(pipe.steps).indexOf(st) + 1}`, "in the pipeline"], ...(st.ms != null ? [[`${(st.ms / 1000).toFixed(1)}s`, "last run"]] : [])] as [string, string][],
       actions: [
         <button key="r" className="btn sm" onClick={() => void runner.run(st.id)} disabled={runner.running}><Icon.play /> Run from here</button>,
+        // U14: a sticky note edits in the code panel, not the details sheet
+        ...(st.kind === "note" ? [<button key="e" className="btn sm" data-testid="u14-sticky-edit" onClick={() => openSticky(st.id)}><Icon.doc /> Edit</button>] : []),
         <button key="o" className="btn sm" onClick={() => setNdv(st.id)}><Icon.arrow /> Details</button>,
         <button key="d" className="btn sm" onClick={() => toggleStep(st.id)}><Icon.lock /> {st.disabled ? "Activate" : "Deactivate"}</button>,
       ],
