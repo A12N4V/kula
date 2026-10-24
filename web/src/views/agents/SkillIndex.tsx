@@ -6,6 +6,7 @@
 // skill that lives outside the shared set can be added to it in one click.
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, get, post, type IndexedSkill, type SkillIndex as Ix } from "../../api";
 import { Empty, Icon, useToast } from "../../ui";
 import { useCode } from "../../CodePanel";
@@ -67,12 +68,14 @@ function useSkillSearch(q: string, on: boolean) {
 }
 
 /** Preview + import pane for one GitHub hit: same data-pane pattern as every
-    sidebar in this run – Grip on the free edge, PaneControls up top, Esc out. */
+    sidebar in this run – portaled to document.body (a transformed view-enter
+    ancestor would otherwise become the containing block), Grip on the free
+    edge, PaneControls up top, Esc out. */
 function HitPane({ hit, installed, busy, onClose, onImport }: {
   hit: SkillHit; installed: boolean; busy: boolean; onClose: () => void; onImport: () => void;
 }) {
   const { text, err } = useRawText(hit);
-  return (
+  return createPortal(
     <div className="sx-pane" data-pane data-testid="sx-hit-pane">
       <Grip id="sx-hit-pane" edge="left" min={280} max={720} label="Resize preview" />
       <div className="sx-pane-head">
@@ -94,7 +97,8 @@ function HitPane({ hit, installed, busy, onClose, onImport }: {
         </button>
         {installed && <span className="muted">in .agents/skills, copied to every agent</span>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -147,7 +151,7 @@ export default function SkillIndex({ ix, err, act, shared }: { ix: Ix | null; er
   const importHit = (h: SkillHit) => {
     if (importing || installed[hitKey(h)]) return;
     setImporting(true);
-    post<{ name: string; written: string }>("/api/agent/skill_import", { repo: h.repo, path: h.path })
+    post<{ name: string; written: string[] }>("/api/agent/skill_import", { repo: h.repo, path: h.path })
       .then((r) => {
         toast(`${r.name} installed for every agent`);
         setInstalled((s) => ({ ...s, [hitKey(h)]: true }));

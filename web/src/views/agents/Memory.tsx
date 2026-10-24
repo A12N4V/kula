@@ -46,9 +46,10 @@ function TencentBanner() {
       .then(() => setBusy(false));
   };
   const adopt = () => {
-    post<{ written?: string[] }>("/api/agents/mcp_adopt", { server: src.mcp || "tencentdb-memory" })
+    // B1's contract is { name } – the server key in .mcp.json to adopt.
+    post<{ written?: string[] }>("/api/agents/mcp_adopt", { name: src.mcp || "tencentdb-memory" })
       .then(() => { setAdopted("ok"); toast("TencentDB MCP adopted by every agent"); })
-      .catch(() => { setAdopted("no"); toast("mcp_adopt is not on this build yet", "err"); });
+      .catch((e) => { setAdopted("no"); toast(e.message || "mcp_adopt failed", "err"); });
   };
   return (
     <div className="mem-x10" data-testid="mem-tencent">

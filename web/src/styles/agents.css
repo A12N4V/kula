@@ -572,7 +572,9 @@
 .sx-gh-note { font-size: 12px; padding: 2px 0; }
 .sx-link { color: var(--text-3); text-decoration: none; font-size: 13px; padding: 2px 4px; flex: none; }
 .sx-link:hover { color: var(--accent); }
-.sx-pane { position: absolute; top: 0; right: 0; bottom: 0; width: min(460px, 62%); z-index: 8; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); }
+/* The pane is portaled to document.body (same rule as every sidebar in this
+   run – a transformed view-enter ancestor must not be its containing block). */
+.sx-pane { position: fixed; top: 49px; right: 27px; bottom: 27px; width: min(460px, 62vw); z-index: 8; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); }
 .sx-pane-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .sx-pane-head .sx-desc { font-size: 11.5px; }
 .sx-pane-body { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 12px; font: 12px/1.6 var(--mono); white-space: pre-wrap; word-break: break-word; }

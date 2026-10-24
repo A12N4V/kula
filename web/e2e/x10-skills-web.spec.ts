@@ -131,11 +131,19 @@ test("TencentDB memory: banner from a real store, import toast, MCP adopt", asyn
   writeFileSync(`${store()}/memories.json`, MEM);
   mkdirSync(`${store()}/wiki`, { recursive: true });
   writeFileSync(`${store()}/wiki/api.md`, "# Cursor pagination\nUse tokens.\n");
-  const mcp = `${readFileSync(FIXTURE_DIR, "utf8").trim()}/.mcp.json`;
-  if (!existsSync(mcp)) writeFileSync(mcp, JSON.stringify({ mcpServers: { "tencentdb-memory": {} } }));
+  const root = readFileSync(FIXTURE_DIR, "utf8").trim();
+  const mcp = `${root}/.mcp.json`;
+  // Only write .mcp.json when absent, and remember it so afterAll removes
+  // exactly the file this spec created – nothing pre-existing is touched.
+  const mcpWritten = !existsSync(mcp);
+  if (mcpWritten) { writeFileSync(mcp, JSON.stringify({ mcpServers: { "tencentdb-memory": {} } })); mcpWrittenFlag = true; }
 
+  let adoptBody: { name?: string } | null = null;
   await page.route("**/api/agent/memory_import", (r: Route) => r.fulfill({ json: { added: 3, skipped: 1 } }));
-  await page.route("**/api/agents/mcp_adopt", (r: Route) => r.fulfill({ json: { written: ["claude", "codex"] } }));
+  await page.route("**/api/agents/mcp_adopt", (r: Route) => {
+    adoptBody = r.request().postDataJSON() as { name?: string };
+    r.fulfill({ json: { written: ["claude", "codex"] } });
+  });
   await opened(page, "agents/memory");
 
   const banner = page.getByTestId("mem-tencent");
@@ -150,6 +158,8 @@ test("TencentDB memory: banner from a real store, import toast, MCP adopt", asyn
 
   await page.getByTestId("mem-adopt").click();
   await expect(page.locator(".toast").filter({ hasText: "adopted by every agent" })).toBeVisible();
+  // the payload is B1's contract: the server key, under `name`
+  expect(adoptBody).toEqual({ name: "tencentdb-memory" });
 });
 
 test("TencentDB memory: no store, no banner", async ({ page }) => {
@@ -162,6 +172,11 @@ test("TencentDB memory: no store, no banner", async ({ page }) => {
 });
 
 test.afterAll(() => {
-  // clean up the fixture store whatever happened
+  // clean up the fixture store whatever happened, and the .mcp.json this
+  // spec wrote – the exact file it created, never a pre-existing one
   try { rmSync(store(), { recursive: true, force: true }); } catch { /* gone already */ }
+  if (mcpWrittenFlag) { try { rmSync(`${readFileSync(FIXTURE_DIR, "utf8").trim()}/.mcp.json`); } catch { /* gone already */ }
+    mcpWrittenFlag = false; }
 });
+// set inside the memory test; module scope so afterAll can see it
+let mcpWrittenFlag = false;
