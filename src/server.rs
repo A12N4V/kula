@@ -742,6 +742,68 @@ struct AgentReq {
     positions: BTreeMap<String, Vec<f64>>,
     /// Which agents to install a workflow for.
     targets: Vec<String>,
+    /// fuse5 · logo_save: the kind (agent · team · research), name, SVG text
+    /// and the mark parameters that produced it.
+    kind: String,
+    svg: String,
+    params: crate::logos::LogoParams,
+    /// fuse5 · run: true when the Workspace (rather than MCP or the CLI) asked
+    /// for it, so the teams-first rule applies.
+    from_workspace: bool,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct LogoReq {
+    kind: String,
+    name: String,
+    svg: String,
+    params: crate::logos::LogoParams,
+}
+
+/// What a Workspace run does: start one team, or (settings permitting) a solo
+/// task. Pure so the refusal is unit-tested without a server.
+enum RunKind {
+    Solo,
+    Team(String),
+}
+
+fn run_decision(team: &str, allow_solo: bool) -> Result<RunKind> {
+    if team.is_empty() {
+        if allow_solo {
+            Ok(RunKind::Solo)
+        } else {
+            Err(anyhow!("agents work in teams now – deploy a team from the Teams editor, or set allow_solo = true in settings"))
+        }
+    } else {
+        Ok(RunKind::Team(team.to_string()))
+    }
+}
+
+/// POST /api/agents/logo_save – sanitise and save a studio mark under
+/// `.kula/logos/<kind>/<name>.svg`, its dials in kula.toml.
+async fn logo_save(State(s): State<AppState>, Json(a): Json<LogoReq>) -> ApiResult {
+    blocking(move || {
+        let kind = crate::logos::Kind::parse(&a.kind)?;
+        let (p, bytes) = crate::logos::save(&s.repo.root, kind, &a.name, &a.svg, &a.params)?;
+        Ok(json!({ "ok": true, "path": p.strip_prefix(&s.repo.root).unwrap_or(&p).to_string_lossy(), "bytes": bytes }))
+    })
+    .await
+}
+
+/// GET /api/agent/logos – every saved logo, with its mark parameters.
+async fn logos_list(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!(crate::logos::list(&s.repo.root)))).await
+}
+
+/// GET /api/agent/logo?kind=&name= – one saved logo's sanitised SVG text.
+async fn logo_read(State(s): State<AppState>, axum::extract::Query(qs): axum::extract::Query<std::collections::HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let kind = crate::logos::Kind::parse(qs.get("kind").map(String::as_str).unwrap_or("agent"))?;
+        let name = qs.get("name").ok_or_else(|| anyhow!("send ?name="))?;
+        Ok(json!({ "kind": kind.as_str(), "name": name, "svg": crate::logos::read(&s.repo.root, kind, name)? }))
+    })
+    .await
 }
 
 async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Json(a): Json<AgentReq>) -> ApiResult {
@@ -852,6 +914,42 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
                 json!({ "text": crate::agents::team_prompt(&cfg, t, m) })
             }
             "research_start" => json!(crate::research::start(r, &a.workflow, &format!("user:{}", r.user()), true)?),
+            // fuse5 · workspace runs come from teams: a bare agent is refused
+            // unless settings allow solo runs.
+            "run" => {
+                let cfg = crate::config::Config::load(&r.root)?;
+                let team = a.team.as_ref().map(|t| t.name.clone()).filter(|n| !n.is_empty()).unwrap_or_default();
+                match run_decision(&team, cfg.agents.allow_solo)? {
+                    RunKind::Solo => json!(crate::guard::task_start(
+                        r,
+                        &a.title,
+                        a.scope.clone(),
+                        (!a.workflow.is_empty()).then_some(a.workflow.as_str()),
+                        &r.user()
+                    )?),
+                    RunKind::Team(name) => json!(crate::guard::team_start(r, &name, &format!("user:{}", r.user()))?),
+                }
+            }
+            // fuse5 · delete one workflow: a kula.toml workflow goes, a
+            // built-in is hidden (restorable).
+            "workflow_delete" => {
+                crate::config::workflow_delete(&r.root, &a.name)?;
+                json!({ "ok": true })
+            }
+            // fuse5 · research templates: save a custom loop, delete (builtin
+            // templates are hidden, not removed, and can be restored).
+            "research_template_save" => {
+                let w = a.workflows.first().ok_or_else(|| anyhow!("send the workflow"))?;
+                if crate::workflow::builtin().iter().any(|b| b.name == w.name) {
+                    crate::config::restore_workflow(&r.root, &w.name)?;
+                }
+                crate::config::set_workflows(&r.root, &a.workflows)?;
+                json!({ "ok": true })
+            }
+            "research_template_delete" => {
+                crate::config::workflow_delete(&r.root, &a.name)?;
+                json!({ "ok": true })
+            }
             "research_stop" => json!(crate::research::stop(r)?),
             "workflow_rename" => {
                 crate::research::rename_workflow(r, &a.workflow, &a.name)?;
@@ -1251,6 +1349,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/meta", get(meta_all))
         .route("/api/agents", get(agents_info))
         .route("/api/agents/{action}", post(agents_action))
+        .route("/api/agents/logo_save", post(logo_save))
         // K2: unified agent config (see the K2 block at the end of this file).
         // under /api/agent/ (GET namespace): axum merges a static path into the
         // sibling /api/agents/{action} MethodRouter, so a GET there answers 405
@@ -1258,6 +1357,9 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/agent/skill_detail", get(k2_skill_detail))
         .route("/api/agent/skill_index", get(k2_skill_index))
         .route("/api/agent/cards", get(k2_agent_cards))
+        // fuse5 · saved logos from the logo studio (B2)
+        .route("/api/agent/logos", get(logos_list))
+        .route("/api/agent/logo", get(logo_read))
         .route("/api/agent/skill_search", get(k2_skill_search))
         .route("/api/agent/skill_import", post(k2_skill_import))
         .route("/api/agent/memory_sources", get(k2_memory_sources))
@@ -1598,5 +1700,21 @@ mod b1_tests {
         assert_eq!(tests["teams"], json!(["ship"]));
         assert_eq!(tests["builtin"], false);
         assert!(tests["scope"].as_array().unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod b2_tests {
+    use super::*;
+
+    /// fuse5 · a Workspace run without a team is refused with a clear
+    /// message; with allow_solo it goes out as a solo task; with a team it
+    /// starts that team.
+    #[test]
+    fn run_refuses_solo_unless_allow_solo() {
+        let err = run_decision("", false).unwrap_err().to_string();
+        assert!(err.contains("teams now") && err.contains("allow_solo"), "{err}");
+        assert!(matches!(run_decision("", true).unwrap(), RunKind::Solo));
+        assert!(matches!(run_decision("ship", false).unwrap(), RunKind::Team(t) if t == "ship"));
     }
 }

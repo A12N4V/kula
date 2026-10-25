@@ -149,6 +149,9 @@ pub struct Guards {
     secrets: Option<GlobSet>,
     task: Option<(Task, GlobSet, Vec<String>)>,
     workflow: Option<Workflow>,
+    /// fuse5 · when the run comes from a team, the team's domain: paths it may
+    /// touch. Empty domains mean the whole repository.
+    team: Option<(String, GlobSet)>,
 }
 
 pub(crate) fn globset(pats: &[String]) -> Result<GlobSet> {
@@ -336,7 +339,27 @@ impl Guards {
             None => None,
         };
         let own = globset(&OWN.iter().map(|s| s.to_string()).collect::<Vec<_>>())?;
-        Ok(Guards { rules, own, secrets, task, workflow: wf })
+        // fuse5 · a run that comes from a team carries the team's fences on
+        // top of the repository's, and its domain narrows everything else.
+        let mut team = None;
+        if let Some((t, _, _)) = &task {
+            if let Some(name) = t.by.strip_prefix("team:") {
+                let name = name.to_string();
+                if let Some(tm) = cfg.teams.iter().find(|x| x.name == name) {
+                    for (i, r) in tm.fences.iter().enumerate() {
+                        rules.push(Compiled {
+                            globs: globset(&r.paths)?,
+                            level: Level::parse(&r.level),
+                            rule: r.clone(),
+                            source: format!("team {name} fence #{}", i + 1),
+                        });
+                    }
+                    let domain = globset(&tm.domains)?;
+                    team = Some((name, domain));
+                }
+            }
+        }
+        Ok(Guards { rules, own, secrets, task, workflow: wf, team })
     }
 
     pub fn task(&self) -> Option<&Task> {
@@ -407,6 +430,17 @@ impl Guards {
                     level: Level::Scope,
                     reason: format!("task \"{}\" covers only {}", t.title, t.scope.join(", ")),
                     rule: "task".into(),
+                });
+            }
+        }
+        // fuse5 · a team's domain: when the run comes from a team with domains,
+        // anything outside them is out of scope for that run's agents.
+        if let Some((name, domain)) = &self.team {
+            if !domain.is_empty() && !domain.is_match(path) {
+                raise(Verdict {
+                    level: Level::Scope,
+                    reason: format!("team {name} works in its own domains – this path is outside them"),
+                    rule: format!("team {name}"),
                 });
             }
         }
@@ -1124,5 +1158,47 @@ mod shell_guard_tests {
             assert!(why.is_some() || !more.is_empty(), "{cmd} -> no refusal, no extra targets");
         }
         assert!(shell_guard("cat tests/login.test.ts | grep -n salt", "", &fenced, &[]).1.is_none());
+    }
+}
+
+#[cfg(test)]
+mod b2_tests {
+    use super::*;
+
+    /// fuse5 · a run that comes from a team (by = "team:<name>") gets the
+    /// team's fences on top, and its domain fences everything outside.
+    #[test]
+    fn team_fences_and_domains_apply_to_team_runs() {
+        let toml = r#"
+            [agents]
+            memory = false
+
+            [[team]]
+            name = "ship"
+            members = [{ name = "atlas", workflow = "fix", service = "claude" }]
+            fences = [{ paths = ["migrations/**"], level = "locked", reason = "schema is the DBA's" }]
+            domains = ["src/**"]
+            limits = { max_cost = 5.0, max_turns = 40, autonomy = "act" }
+
+            [[workflow]]
+            name = "fix"
+        "#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        let t = Task { title: "t".into(), scope: vec![], started: 0, by: "team:ship".into(), workflow: "fix".into() };
+        let g = Guards::new(&cfg, Some(t)).unwrap();
+        // the team's own fence applies inside its workflow's runs
+        let v = g.path("migrations/001.sql");
+        assert_eq!(v.level, Level::Locked, "{v:?}");
+        assert_eq!(v.rule, "team ship fence #1");
+        // the domain fences what the team may not touch
+        let out = g.path("docs/readme.md");
+        assert_eq!(out.level, Level::Scope, "{out:?}");
+        assert!(out.rule.starts_with("team ship"), "{out:?}");
+        // inside the domain it stays open (no workflow fences on fix)
+        assert_eq!(g.path("src/main.rs").level, Level::Open);
+        // the same config without a team run: no team fences, no domain
+        let g2 = Guards::new(&cfg, Some(Task { title: "t".into(), started: 0, by: "user:me".into(), ..Default::default() })).unwrap();
+        assert_eq!(g2.path("migrations/001.sql").level, Level::Open);
+        assert_eq!(g2.path("docs/readme.md").level, Level::Open);
     }
 }

@@ -18,6 +18,7 @@ mod guard;
 mod index;
 mod isolate;
 mod kg;
+mod logos;
 mod lang_cmd;
 mod map;
 mod map_api;

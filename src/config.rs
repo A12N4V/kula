@@ -32,6 +32,13 @@ pub struct Config {
     /// a workflow or task reuses one as `scope = ["@name"]`.
     #[serde(rename = "scope")]
     pub scopes: Vec<Scope>,
+    /// Saved marks from the logo studio (`[[logo]]`): where each SVG lives
+    /// (`.kula/logos/<kind>/<name>.svg`) and the dials that produced it.
+    #[serde(rename = "logo", default)]
+    pub logos: Vec<Logo>,
+    /// Built-in workflows hidden by name (`workflow_hide`); restorable.
+    #[serde(default)]
+    pub disabled: Vec<String>,
     /// `[embed]` – optional EmbeddingGemma embeddings for Syntagm (E1). Off by default.
     pub embed: Embed,
 }
@@ -175,6 +182,47 @@ pub struct Team {
     /// kula.toml so the canvas remembers its arrangement.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub positions: BTreeMap<String, Vec<f64>>,
+    /// The team's own fences: the same rules a `[[guard]]` holds, but they
+    /// apply only to runs started from this team.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub fences: Vec<GuardRule>,
+    /// Paths and globs the team may touch – its domain. Everything else is
+    /// fenced for its runs, unless a fence says otherwise.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
+    /// How far the team may go: cost, turns, autonomy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limits: Option<Limits>,
+}
+
+/// How far a team may go on its own.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Limits {
+    /// The most one run from this team may cost (units are whatever the
+    /// provider bills in); 0 for no cap.
+    #[serde(skip_serializing_if = "is_zero_f64")]
+    pub max_cost: f64,
+    /// The most turns one run may take; 0 for no cap.
+    #[serde(skip_serializing_if = "is_zero_usize")]
+    pub max_turns: usize,
+    /// How much the team may do without asking: ask (default) · act · full.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub autonomy: String,
+}
+
+fn is_zero_f64(n: &f64) -> bool {
+    *n == 0.0
+}
+
+impl Limits {
+    /// The autonomy level as stored: empty reads as `ask`.
+    pub fn autonomy(&self) -> &str {
+        match self.autonomy.as_str() {
+            "act" | "full" => &self.autonomy,
+            _ => "ask",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -184,8 +232,13 @@ pub struct Member {
     /// without one, the agent below is the name, as before.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub name: String,
-    /// What runs this seat: claude · cursor · codex · gemini, any MCP client
-    /// name, or `any` (empty) for whichever agent is connected.
+    /// The service that runs this seat: claude · cursor · codex · gemini, any
+    /// MCP client name, or `any` (empty) for whichever agent is connected.
+    /// Fuse 5: this is the seat's own choice; agents no longer store one.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub service: String,
+    /// The agent that runs it (pre-fuse-5 spelling). Still read; a saved team
+    /// moves it onto `service`.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub agent: String,
     /// The model it should use ("claude-opus-5-5", "gpt-5"); empty for the
@@ -213,12 +266,25 @@ pub struct Member {
 }
 
 impl Member {
-    /// How the team refers to this seat: its name, else its agent.
+    /// How the team refers to this seat: its name, else its service (the old
+    /// `agent` spelling counts).
     pub fn key(&self) -> &str {
         if self.name.is_empty() {
-            &self.agent
+            let s = if self.service.is_empty() { &self.agent } else { &self.service };
+            s
         } else {
             &self.name
+        }
+    }
+    /// The service that runs it, for people: `any` when unset. Fuse 5 spells
+    /// it `service`; the old `agent` field still reads (the migration moves
+    /// it onto `service` when a team is saved, and `load` normalises it).
+    pub fn runner(&self) -> &str {
+        let s = if self.service.is_empty() { &self.agent } else { &self.service };
+        if s.is_empty() {
+            "any"
+        } else {
+            s
         }
     }
     /// The provider that actually runs it: its own, else the repo default.
@@ -226,14 +292,6 @@ impl Member {
         match self.runner() {
             "any" if !default.is_empty() => default,
             r => r,
-        }
-    }
-    /// The agent that runs it, for people: `any` when unset.
-    pub fn runner(&self) -> &str {
-        if self.agent.is_empty() {
-            "any"
-        } else {
-            &self.agent
         }
     }
 }
@@ -252,11 +310,32 @@ pub struct Agents {
     /// until someone picks another.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub default: String,
+    /// Fuse 5: runs go out from teams. When true, a bare agent (no team) may
+    /// still be deployed from the Workspace.
+    pub allow_solo: bool,
 }
 
 impl Default for Agents {
     fn default() -> Self {
-        Agents { hide_secrets: true, memory: true, docs: vec![], default: String::new() }
+        Agents { hide_secrets: true, memory: true, docs: vec![], default: String::new(), allow_solo: false }
+    }
+}
+
+/// A saved logo's mark parameters, kept beside the SVG file in kula.toml.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct Logo {
+    /// agent · team · research – the folder and colour family it belongs to.
+    pub kind: String,
+    /// The name it was saved under (the SVG file's stem).
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<crate::logos::LogoParams>,
+}
+
+impl Default for Logo {
+    fn default() -> Self {
+        Logo { kind: "agent".into(), name: String::new(), params: None }
     }
 }
 
@@ -335,12 +414,28 @@ impl Default for Check {
 }
 
 impl Config {
-    /// The repo's `kula.toml`, or defaults when there is none.
+    /// The repo's `kula.toml`, or defaults when there is none. Fuse 5: seats
+    /// that still spell their runner `agent =` read as `service` – the old
+    /// field stays in the file until the team is next saved.
     pub fn load(root: &Path) -> Result<Config> {
         let p = root.join(FILE);
-        match std::fs::read_to_string(&p) {
-            Ok(s) => toml::from_str(&s).with_context(|| format!("reading {}", p.display())),
-            Err(_) => Ok(Config::default()),
+        let mut cfg = match std::fs::read_to_string(&p) {
+            Ok(s) => toml::from_str::<Config>(&s).with_context(|| format!("reading {}", p.display()))?,
+            Err(_) => Config::default(),
+        };
+        cfg.migrate();
+        Ok(cfg)
+    }
+
+    /// Move old spellings onto the new ones, in memory: a seat's `agent`
+    /// becomes its `service` when the seat has no service of its own yet.
+    pub fn migrate(&mut self) {
+        for t in &mut self.teams {
+            for m in &mut t.members {
+                if m.service.is_empty() && !m.agent.is_empty() {
+                    m.service = m.agent.clone();
+                }
+            }
         }
     }
 
@@ -498,6 +593,17 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
         if !crate::workflow::valid_name(&t.name) {
             anyhow::bail!("team names are letters, digits, - and _: {:?}", t.name);
         }
+        for r in &t.fences {
+            if r.paths.is_empty() && r.symbols.is_empty() {
+                anyhow::bail!("team {}: a fence needs paths or symbols", t.name);
+            }
+            if !matches!(r.level.as_str(), "locked" | "hidden" | "review") {
+                anyhow::bail!("team {}: fence level must be locked, hidden or review, not {:?}", t.name, r.level);
+            }
+        }
+        if !matches!(t.limits.as_ref().map(|l| l.autonomy.as_str()).unwrap_or("ask"), "" | "ask" | "act" | "full") {
+            anyhow::bail!("team {}: autonomy must be ask, act or full", t.name);
+        }
         if !seen.insert(&t.name) {
             anyhow::bail!("two teams are called {}", t.name);
         }
@@ -541,7 +647,23 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
             cur = up.under.clone();
         }
     }
-    edit(root, |d| set_tables(d, "team", teams))
+    // Save through the migrated shapes: old `agent =` spellings come back as
+    // `service =` on every seat that had one.
+    let migrated: Vec<Team> = teams
+        .iter()
+        .map(|t| Team {
+            members: t
+                .members
+                .iter()
+                .map(|m| Member {
+                    service: if m.service.is_empty() { m.agent.clone() } else { m.service.clone() },
+                    ..m.clone()
+                })
+                .collect(),
+            ..t.clone()
+        })
+        .collect();
+    edit(root, |d| set_tables(d, "team", &migrated))
 }
 
 // ---------------------------------------------------------------- team edits
@@ -586,7 +708,7 @@ pub fn team_add_member(root: &Path, team: &str, workflow: &str, agent: &str) -> 
     let m = if agent.trim().is_empty() {
         crate::config::Member { name: workflow.trim().to_string(), workflow: workflow.trim().to_string(), ..Default::default() }
     } else {
-        crate::config::Member { agent: agent.trim().to_string(), workflow: workflow.trim().to_string(), ..Default::default() }
+        crate::config::Member { service: agent.trim().to_string(), workflow: workflow.trim().to_string(), ..Default::default() }
     };
     edit_teams(root, |teams| {
         let t = teams.iter_mut().find(|t| t.name == team).ok_or_else(|| anyhow!("no team {team:?}"))?;
@@ -627,6 +749,61 @@ pub fn set_agents(root: &Path, a: &Agents) -> Result<Config> {
         // left out means unchanged: settings saves that predate it keep the default
         if !a.default.is_empty() {
             t["default"] = toml_edit::value(&a.default);
+        }
+        t["allow_solo"] = toml_edit::value(a.allow_solo);
+        Ok(())
+    })
+}
+
+/// Save the mark parameters under one saved logo (`[[logo]]`); the SVG file
+/// itself lives in `.kula/logos/` (src/logos.rs). Creates or replaces the row.
+pub fn set_logo_params(root: &Path, kind: crate::logos::Kind, name: &str, params: &crate::logos::LogoParams) -> Result<Config> {
+    let row = Logo { kind: kind.as_str().into(), name: name.into(), params: Some(params.clone()) };
+    edit(root, |d| {
+        let mut rows: Vec<Logo> = {
+            let cfg = Config::load(root).unwrap_or_default();
+            cfg.logos
+        };
+        rows.retain(|l| !(l.kind == row.kind && l.name == row.name));
+        rows.push(row);
+        set_tables(d, "logo", &rows)
+    })
+}
+
+/// Drop one logo's row (its file is removed by src/logos.rs remove).
+pub fn remove_logo(root: &Path, kind: crate::logos::Kind, name: &str) -> Result<()> {
+    edit(root, |d| {
+        let mut rows: Vec<Logo> = {
+            let cfg = Config::load(root).unwrap_or_default();
+            cfg.logos
+        };
+        rows.retain(|l| !(l.kind == kind.as_str() && l.name == name));
+        set_tables(d, "logo", &rows)
+    })
+    .map(|_| ())
+}
+
+/// Hide a built-in workflow by name (`disabled = [...]` in kula.toml); it
+/// stays defined and can come back with `restore_workflow`.
+pub fn disable_workflow(root: &Path, name: &str) -> Result<Config> {
+    edit(root, |d| {
+        let mut names: Vec<String> = Config::load(root).unwrap_or_default().disabled;
+        if !names.iter().any(|n| n == name) {
+            names.push(name.to_string());
+        }
+        d["disabled"] = toml_edit::value(names.iter().collect::<toml_edit::Array>());
+        Ok(())
+    })
+}
+
+/// Bring a hidden built-in back.
+pub fn restore_workflow(root: &Path, name: &str) -> Result<Config> {
+    edit(root, |d| {
+        let names: Vec<String> = Config::load(root).unwrap_or_default().disabled.into_iter().filter(|n| n != name).collect();
+        if names.is_empty() {
+            d.remove("disabled");
+        } else {
+            d["disabled"] = toml_edit::value(names.iter().collect::<toml_edit::Array>());
         }
         Ok(())
     })
@@ -706,6 +883,117 @@ mod tests {
         remove_team(&dir, "ship").unwrap();
         assert!(Config::load(&dir).unwrap().teams.is_empty());
         assert!(team_add_member(&dir, "ship", "tests", "cursor").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// fuse5 · Remove one saved workflow by name. Built-ins are hidden, not
+/// removed: their name lands in `disabled` and `restore_workflow` brings
+/// them back. A kula.toml workflow is deleted outright.
+pub fn workflow_delete(root: &Path, name: &str) -> Result<Config> {
+    let cfg = Config::load(root)?;
+    let is_builtin = crate::workflow::builtin().iter().any(|w| w.name == name);
+    let saved = cfg.workflows.iter().any(|w| w.name == name);
+    if is_builtin {
+        // hidden, not removed – restorable; a saved override goes too
+        if saved {
+            edit(root, |d| {
+                let left: Vec<crate::workflow::Workflow> =
+                    Config::load(root).unwrap_or_default().workflows.into_iter().filter(|w| w.name != name).collect();
+                set_tables(d, "workflow", &left)
+            })?;
+        }
+        disable_workflow(root, name)
+    } else if saved {
+        edit(root, |d| {
+            let mut left: Vec<crate::workflow::Workflow> =
+                Config::load(root).unwrap_or_default().workflows.into_iter().filter(|w| w.name != name).collect();
+            left.retain(|w| w.name != name);
+            set_tables(d, "workflow", &left)
+        })
+    } else {
+        anyhow::bail!("no workflow called {name:?}")
+    }
+}
+
+#[cfg(test)]
+mod b2_tests {
+    use super::*;
+
+    fn tmp(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("kula-b2-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("kula.toml"), "[agents]\nmemory = true\n\n[[team]]\nname = \"ship\"\nmembers = [{ agent = \"claude\", workflow = \"tests\" }]\n").unwrap();
+        d
+    }
+
+    /// fuse5 · team_save accepts fences, domains and limits; validation holds.
+    #[test]
+    fn team_save_takes_fences_domains_and_limits() {
+        let dir = tmp("fences");
+        let t = Team {
+            name: "ship".into(),
+            members: vec![Member { name: "atlas".into(), workflow: "tests".into(), ..Default::default() }],
+            fences: vec![GuardRule { paths: vec!["migrations/**".into()], level: "locked".into(), reason: "schema is the DBA's".into(), ..Default::default() }],
+            domains: vec!["src/**".into()],
+            limits: Some(Limits { max_cost: 5.0, max_turns: 40, autonomy: "act".into() }),
+            ..Default::default()
+        };
+        upsert_team(&dir, &t).unwrap();
+        let cfg = Config::load(&dir).unwrap();
+        let got = cfg.teams.iter().find(|t| t.name == "ship").unwrap();
+        assert_eq!(got.fences[0].paths, vec!["migrations/**".to_string()]);
+        assert_eq!(got.domains, vec!["src/**".to_string()]);
+        assert_eq!(got.limits.as_ref().unwrap().max_turns, 40);
+        assert_eq!(got.limits.as_ref().unwrap().autonomy(), "act");
+        // a bad level or autonomy is refused, and the file is untouched
+        let mut bad = t.clone();
+        bad.fences[0].level = "open".into();
+        assert!(upsert_team(&dir, &bad).is_err());
+        bad.fences[0].level = "locked".into();
+        bad.limits = Some(Limits { autonomy: "yolo".into(), ..Default::default() });
+        assert!(upsert_team(&dir, &bad).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// fuse5 · an old seat spelled `agent =` reads as `service`, and saving
+    /// the team persists the move while the old field stays readable.
+    #[test]
+    fn old_agent_fields_migrate_onto_seat_service() {
+        let dir = tmp("migrate");
+        let cfg = Config::load(&dir).unwrap();
+        let seat = &cfg.teams[0].members[0];
+        assert_eq!(seat.service, "claude", "the load migration fills service from agent");
+        assert_eq!(seat.runner(), "claude");
+        assert_eq!(seat.key(), "claude");
+        // saving keeps the old field (older kula builds still read it)
+        upsert_team(&dir, &cfg.teams[0]).unwrap();
+        let text = std::fs::read_to_string(dir.join("kula.toml")).unwrap();
+        assert!(text.contains("service = \"claude\""), "{text}");
+        assert!(text.contains("agent = \"claude\""), "the old field stays: {text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// fuse5 · workflow_delete: a kula.toml workflow goes, a built-in is
+    /// hidden and restorable.
+    #[test]
+    fn workflow_delete_hides_builtins_and_removes_customs() {
+        let dir = tmp("wdel");
+        workflow_delete(&dir, "fix").unwrap();
+        let cfg = Config::load(&dir).unwrap();
+        assert!(crate::workflow::all(&cfg).iter().all(|w| w.name != "fix"), "the built-in is hidden");
+        assert_eq!(cfg.disabled, vec!["fix".to_string()]);
+        restore_workflow(&dir, "fix").unwrap();
+        let cfg = Config::load(&dir).unwrap();
+        assert!(crate::workflow::all(&cfg).iter().any(|w| w.name == "fix"), "restored");
+        // a custom workflow is removed outright
+        let w = crate::workflow::Workflow { name: "mine".into(), about: "x".into(), ..Default::default() };
+        set_workflows(&dir, &[w]).unwrap();
+        workflow_delete(&dir, "mine").unwrap();
+        assert!(Config::load(&dir).unwrap().workflows.is_empty());
+        // and a missing name is refused
+        assert!(workflow_delete(&dir, "nonesuch").is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
