@@ -1,6 +1,7 @@
 import { CodeProvider } from "./CodePanel";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { PaneControls } from "./resize";
+import { WindowDock } from "./ui/Window";
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
 import type { ContrastMode, Go, Target, View } from "./nav";
@@ -312,6 +313,7 @@ export default function App() {
       {palette && <Palette meta={meta} onClose={() => setPalette(false)} go={(v, t) => { setPalette(false); go(v, t); }} onReindex={() => { setPalette(false); reindex(); }} onSettings={() => { setPalette(false); setPrefs(true); }} />}
       {help && <Help onClose={() => setHelp(false)} />}
       {prefs && <SettingsPanel onClose={() => setPrefs(false)} />}
+      <WindowDock />
       {opening && <Opening repo={repo} onDone={endOpening} />}
     </div>
     </CodeProvider>

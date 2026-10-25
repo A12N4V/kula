@@ -1,0 +1,118 @@
+/* Desktop windows (X13) – one window look for every sidebar, editor popup and
+   dialog: flat, square, 1px warm lines, absolute-black ground, no glass, no
+   decorative shadow. Geometry lives in ui/windows.ts; this file is the look. */
+
+#kula-desktop { pointer-events: none; }
+#kula-desktop > * { pointer-events: auto; }
+
+.win {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+  min-height: 120px;
+  background: var(--bg, #000);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius, 8px);
+  overflow: hidden;
+  color: var(--text);
+}
+.win[data-snap="left"] { outline: 1px solid var(--accent); outline-offset: 2px; }
+.win[data-snap="right"] { outline: 1px solid var(--accent); outline-offset: 2px; }
+.win[data-snap="top"] { outline: 1px solid var(--accent); outline-offset: 2px; }
+.win[data-snap="bottom"] { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+html[data-dragging-win], html[data-dragging-win] * { cursor: grabbing !important; user-select: none; }
+
+/* header – the drag strip; double-click maximises; arrows move, alt+arrows resize */
+.win-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 40px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--line-2);
+  background: var(--panel, #111);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.win-head:active { cursor: grabbing; }
+.win-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.win-head .ico, .win-head svg { width: 15px; height: 15px; flex: none; color: var(--text-2); }
+.win-title {
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  letter-spacing: .04em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* body + footer */
+.win-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.win-foot { flex: none; border-top: 1px solid var(--line-2); }
+
+/* resize grips – every edge and corner, 7px of hit area */
+.win-rz { position: absolute; z-index: 5; touch-action: none; }
+.win-rz-n { top: -3px; left: 8px; right: 8px; height: 7px; cursor: ns-resize; }
+.win-rz-s { bottom: -3px; left: 8px; right: 8px; height: 7px; cursor: ns-resize; }
+.win-rz-e { right: -3px; top: 8px; bottom: 8px; width: 7px; cursor: ew-resize; }
+.win-rz-w { left: -3px; top: 8px; bottom: 8px; width: 7px; cursor: ew-resize; }
+.win-rz-ne { top: -3px; right: -3px; width: 14px; height: 14px; cursor: nesw-resize; }
+.win-rz-nw { top: -3px; left: -3px; width: 14px; height: 14px; cursor: nwse-resize; }
+.win-rz-se { bottom: -3px; right: -3px; width: 14px; height: 14px; cursor: nwse-resize; }
+.win-rz-sw { bottom: -3px; left: -3px; width: 14px; height: 14px; cursor: nesw-resize; }
+.win[data-max] .win-rz { display: none; }
+
+/* maximised – same contract as the panes' [data-pane][data-max] */
+.win[data-max] { inset: 10px !important; width: auto !important; height: auto !important; border-radius: var(--radius, 8px); }
+
+/* the dock – small, centred, bottom */
+.win-dock {
+  position: fixed;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  z-index: 299;
+  background: var(--panel, #111);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius, 8px);
+}
+.win-dock button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.win-dock button:hover { background: var(--panel-2); color: var(--text); }
+.win-dock button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ≤ 600px: every window is a full-width sheet, stacked like the panes */
+@media (max-width: 600px) {
+  .win {
+    left: 0 !important; top: 0 !important; right: 0 !important;
+    width: 100% !important; height: 100dvh !important;
+    max-width: none; border-radius: 0; border-left: 0; border-right: 0; border-top: 0;
+    z-index: 500 !important;
+  }
+  .win[data-max] { inset: 0 !important; }
+  .win-rz { display: none !important; }
+  .win-head { height: 44px; }
+  .win-dock { bottom: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .win, .win-head, .win-dock { transition: none; animation: none; }
+}
