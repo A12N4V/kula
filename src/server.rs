@@ -796,7 +796,10 @@ async fn logos_list(State(s): State<AppState>) -> ApiResult {
 }
 
 /// GET /api/agent/logo?kind=&name= – one saved logo's sanitised SVG text.
-async fn logo_read(State(s): State<AppState>, axum::extract::Query(qs): axum::extract::Query<std::collections::HashMap<String, String>>) -> ApiResult {
+async fn logo_read(
+    State(s): State<AppState>,
+    axum::extract::Query(qs): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> ApiResult {
     blocking(move || {
         let kind = crate::logos::Kind::parse(qs.get("kind").map(String::as_str).unwrap_or("agent"))?;
         let name = qs.get("name").ok_or_else(|| anyhow!("send ?name="))?;
@@ -918,7 +921,7 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
             "run" => {
                 let cfg = crate::config::Config::load(&r.root)?;
                 let team = a.team.as_ref().map(|t| t.name.clone()).filter(|n| !n.is_empty()).unwrap_or_default();
-                match run_decision(&team, a.from_workspace, cfg.agents.allow_solo)? {
+                match run_decision(&team, cfg.agents.allow_solo)? {
                     RunKind::Solo => json!(crate::guard::task_start(
                         r,
                         &a.title,

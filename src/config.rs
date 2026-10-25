@@ -216,7 +216,9 @@ fn is_zero_f64(n: &f64) -> bool {
 }
 
 impl Limits {
-    /// The autonomy level as stored: empty reads as `ask`.
+    /// The autonomy level as stored: empty reads as `ask`. Kept for the
+    /// guard's autonomy checks coming with wave 2.
+    #[allow(dead_code)]
     pub fn autonomy(&self) -> &str {
         match self.autonomy.as_str() {
             "act" | "full" => &self.autonomy,
@@ -270,8 +272,11 @@ impl Member {
     /// `agent` spelling counts).
     pub fn key(&self) -> &str {
         if self.name.is_empty() {
-            let s = if self.service.is_empty() { &self.agent } else { &self.service };
-            s
+            if self.service.is_empty() {
+                &self.agent
+            } else {
+                &self.service
+            }
         } else {
             &self.name
         }
@@ -655,10 +660,7 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
             members: t
                 .members
                 .iter()
-                .map(|m| Member {
-                    service: if m.service.is_empty() { m.agent.clone() } else { m.service.clone() },
-                    ..m.clone()
-                })
+                .map(|m| Member { service: if m.service.is_empty() { m.agent.clone() } else { m.service.clone() }, ..m.clone() })
                 .collect(),
             ..t.clone()
         })
@@ -771,6 +773,8 @@ pub fn set_logo_params(root: &Path, kind: crate::logos::Kind, name: &str, params
 }
 
 /// Drop one logo's row (its file is removed by src/logos.rs remove).
+/// Kept for the logo_delete route planned with the studio UI.
+#[allow(dead_code)]
 pub fn remove_logo(root: &Path, kind: crate::logos::Kind, name: &str) -> Result<()> {
     edit(root, |d| {
         let mut rows: Vec<Logo> = {
@@ -924,7 +928,11 @@ mod b2_tests {
         let d = std::env::temp_dir().join(format!("kula-b2-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
-        std::fs::write(d.join("kula.toml"), "[agents]\nmemory = true\n\n[[team]]\nname = \"ship\"\nmembers = [{ agent = \"claude\", workflow = \"tests\" }]\n").unwrap();
+        std::fs::write(
+            d.join("kula.toml"),
+            "[agents]\nmemory = true\n\n[[team]]\nname = \"ship\"\nmembers = [{ agent = \"claude\", workflow = \"tests\" }]\n",
+        )
+        .unwrap();
         d
     }
 
@@ -935,7 +943,12 @@ mod b2_tests {
         let t = Team {
             name: "ship".into(),
             members: vec![Member { name: "atlas".into(), workflow: "tests".into(), ..Default::default() }],
-            fences: vec![GuardRule { paths: vec!["migrations/**".into()], level: "locked".into(), reason: "schema is the DBA's".into(), ..Default::default() }],
+            fences: vec![GuardRule {
+                paths: vec!["migrations/**".into()],
+                level: "locked".into(),
+                reason: "schema is the DBA's".into(),
+                ..Default::default()
+            }],
             domains: vec!["src/**".into()],
             limits: Some(Limits { max_cost: 5.0, max_turns: 40, autonomy: "act".into() }),
             ..Default::default()

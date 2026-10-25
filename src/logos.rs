@@ -9,7 +9,7 @@
 //! event handlers (`on*`), no `javascript:` URLs, no external references.
 //! Anything past 256 KB is refused before parsing.
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -100,7 +100,7 @@ pub fn sanitise(svg: &str) -> Result<String> {
     for tag in ["script", "foreignObject", "image", "use", "iframe", "embed", "object", "animate", "set"] {
         loop {
             let lower = out.to_lowercase();
-            let Some(pos) = lower.find(&format!("<{tag}")).map(|i| i) else { break };
+            let Some(pos) = lower.find(&format!("<{tag}")) else { break };
             let (next, resume) = drop_tag_at(&out, pos, tag);
             if next == out {
                 break; // no progress – unterminated tag, cut the tail instead
@@ -155,7 +155,8 @@ fn strip_bad_attrs(svg: &str) -> String {
             break;
         };
         // the attribute name: letters, '-', ':' immediately before '='
-        let name_start = rest[..eq].rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ':')).map(|i| i + 1).unwrap_or(eq);
+        let name_start =
+            rest[..eq].rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ':')).map(|i| i + 1).unwrap_or(eq);
         let name = &rest[name_start..eq];
         let is_name = !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b':');
         if !is_name {
@@ -188,7 +189,6 @@ fn strip_bad_attrs(svg: &str) -> String {
             || ["javascript:", "vbscript:", "file:"].iter().any(|p| value.to_lowercase().contains(p));
         if drop {
             // skip name, '=', quote, value, quote; also eat whitespace before the name
-            let name_start = name_start;
             rest = &rest[name_start + name.len() + 1 + 1 + end + 1..];
         } else {
             out.push_str(&rest[..name_start + name.len() + 1 + 1 + end + 1]);
@@ -255,11 +255,8 @@ pub fn read(root: &Path, kind: Kind, name: &str) -> Result<String> {
 /// file that has no row yet (saved by hand).
 pub fn list(root: &Path) -> Vec<SavedLogo> {
     let cfg = crate::config::Config::load(root).unwrap_or_default();
-    let mut out: Vec<SavedLogo> = cfg
-        .logos
-        .iter()
-        .map(|l| SavedLogo { kind: l.kind.clone(), name: l.name.clone(), params: l.params.clone() })
-        .collect();
+    let mut out: Vec<SavedLogo> =
+        cfg.logos.iter().map(|l| SavedLogo { kind: l.kind.clone(), name: l.name.clone(), params: l.params.clone() }).collect();
     for k in [Kind::Agent, Kind::Team, Kind::Research] {
         let Ok(entries) = std::fs::read_dir(dir(root, k)) else { continue };
         for e in entries.flatten() {
@@ -275,6 +272,8 @@ pub fn list(root: &Path) -> Vec<SavedLogo> {
 }
 
 /// Delete one saved logo: the file and its kula.toml row.
+/// Kept for the logo_delete route planned with the studio UI.
+#[allow(dead_code)]
 pub fn remove(root: &Path, kind: Kind, name: &str) -> Result<()> {
     anyhow::ensure!(valid_name(name), "bad logo name {name:?}");
     let _ = std::fs::remove_file(dir(root, kind).join(format!("{name}.svg")));
