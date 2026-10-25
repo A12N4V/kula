@@ -61,6 +61,19 @@ export const LOOP_TEMPLATES: LoopTemplate[] = [
   },
 ];
 
+/** The built-in workflows (src/workflow.rs builtin()), mirrored so the Research
+ *  tab can restore one the user hid: `research_template_delete` hides a
+ *  built-in in kula.toml's `disabled` list, and `research_template_save` with
+ *  the same definition brings it back. Keep in step with workflow.rs. */
+export const BUILTIN_LOOPS: Record<string, { name: string; about: string; steps: string[]; scope?: string[]; lock?: string[]; memory?: "write" | "read" | "off" }> = {
+  explore: { name: "explore", about: "Read and explain the code; change nothing", steps: ["Answer from the graph first: context_pack, context, sparql", "Read code; change nothing – every file is locked", "remember what you learn that the next session would need"], lock: ["**"] },
+  fix: { name: "fix", about: "Fix a bug with the smallest change that holds", steps: ["recall memories on the symbols involved", "pre_edit before changing a symbol: callers, tests, risk", "Make the smallest change that fixes it; add a regression test", "verify_edit: no dangling callers, no fenced files touched", "remember the root cause on the symbol you fixed"] },
+  refactor: { name: "refactor", about: "Restructure without changing behaviour; tests are the contract", steps: ["pre_edit every symbol you move or rename", "Keep public signatures unless asked otherwise", "Tests are locked: they must pass unchanged", "verify_edit: modified symbols' callers in other files still fit"], lock: ["**/*test*", "**/tests/**"] },
+  tests: { name: "tests", about: "Write tests; leave the code under test alone", steps: ["context_pack the code under test", "Write tests only – the code under test is out of scope", "A failing test is a finding: report it, don't fix the code"], scope: ["**/*test*", "**/tests/**"] },
+  docs: { name: "docs", about: "Write documentation; no code changes", steps: ["context_pack the code you document; quote names exactly", "Only documentation is in scope", "Check examples against the current signatures"], scope: ["**/*.md", "docs/**", "**/README*"], memory: "read" },
+  autoresearch: { name: "autoresearch", about: "Run experiments in a loop: change, measure, keep what's better", steps: ["research: the metric, the baseline, the best so far and every experiment tried", "Form one hypothesis; change only the files in scope", "experiment: kula runs the metric, keeps the change as a commit if it is better, reverts it if not", "remember what worked and what didn't, on the code it was about", "Repeat until the budget is spent; never edit the metric or its inputs"] },
+};
+
 /** The template's command for this repository, and whether it is a real fit. */
 export function metricFor(t: LoopTemplate, stack: string[]): { cmd: string; fits: boolean } {
   const s = stack.find((x) => (t.metric as Record<string, string>)[x] !== undefined);

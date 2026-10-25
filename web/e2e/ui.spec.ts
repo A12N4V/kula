@@ -1331,10 +1331,10 @@ test.describe("teams and research (T1)", () => {
   test("T1.3b: research loop – create it, start it with confirmation, stop it with confirmation", async ({ page, request }, info) => {
     desktopOnly(info);
     await open(page, "agents/research");
-    // The fixture has no loop yet: the new-loop form shows the loop steps.
+    // The fixture has no loop yet: the new-loop form is open (U19 moved the
+    // loop-steps pipeline onto the card grid under the template cards).
     const form = page.locator(".tpl-form");
     await expect(form).toBeVisible();
-    await expect(page.locator(".loop-step")).not.toHaveCount(0);
     await form.getByLabel("Loop name").fill("e2e-loop");
     await form.getByLabel("Metric command").fill("sh -c 'echo 41'");
     await form.getByRole("button", { name: "Create e2e-loop" }).click();
@@ -1345,13 +1345,15 @@ test.describe("teams and research (T1)", () => {
     const tok = await page.evaluate(() => document.querySelector('meta[name="kula-token"]')?.content ?? "test");
     await request.post("/api/git/exec", { data: { args: ["add", "-A"] }, headers: { "x-kula-token": tok } });
     await request.post("/api/git/exec", { data: { args: ["commit", "-qm", "e2e: clean tree for research"] }, headers: { "x-kula-token": tok } });
-    // Start needs a confirmation click.
-    await page.getByRole("button", { name: "Start" }).click();
-    await page.getByRole("button", { name: "Confirm start" }).click();
+    // Start needs a confirmation click (scoped to the open loop: the cards
+    // behind carry "not started" tags that also match /Start/).
+    const panel = page.getByTestId("rs-open");
+    await panel.getByRole("button", { name: "Start" }).click();
+    await panel.getByRole("button", { name: "Confirm start" }).click();
     await expect(page.locator(".research .tag.accent")).toContainText("running");
     // Stop needs one too.
-    await page.getByRole("button", { name: "Stop" }).click();
-    await page.getByRole("button", { name: "Confirm stop" }).click();
+    await panel.getByRole("button", { name: "Stop" }).click();
+    await panel.getByRole("button", { name: "Confirm stop" }).click();
     await expect(page.locator(".research .tag.accent")).toHaveCount(0);
   });
 });
