@@ -847,7 +847,8 @@ test.describe("agents", () => {
     await page.goBack();
     // Going back remounts the tab, which closes the sidebar again: the card
     // opens it once more.
-    await card.click();
+    // the card body opens the agent; the mark on top opens the logo studio (U17)
+    await card.locator(".card__t").click();
     await expect(page.locator(".ag-side-head h2")).toHaveText("e2e-migrate");
     page.once("dialog", (d) => d.accept());
     await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();

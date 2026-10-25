@@ -60,6 +60,8 @@ export interface GuardRule { level: GuardLevel; paths: string[]; symbols: string
 export interface AgentsInfo {
   rules: GuardRule[]; task: Task | null; files: { path: string; verdict: Verdict }[]; levels: Record<string, GuardLevel>;
   memories: Memory[]; secrets_hidden: boolean; memory_enabled: boolean; default_agent?: string; mcp_registered: boolean; hook_installed: boolean; kula_toml: boolean;
+  /** B2 · fuse5: true when a bare agent may be deployed from the Workspace. */
+  allow_solo?: boolean;
   workflows: Workflow[]; workflow: Workflow | null; workflow_rules: GuardRule[]; raw_rules: RawRule[]; docs_list: string[];
   connections: Connection[]; docs: AgentDoc[]; suggestions: Suggestion[];
   teams: Team[]; team: { name: string; started: number; by: string } | null; research: ResearchRun[];
@@ -78,15 +80,27 @@ export interface ResearchRun {
 /** A team (kula.toml [[team]]): each agent in its own workflow. */
 export interface Team {
   name: string; about?: string; prompt?: string; under?: string;
-  members: { name?: string; agent: string; model?: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
+  members: { name?: string; /** fuse5 · the seat's service (was `agent`); the old field still reads, so agent stays required until U18 removes it. */ service?: string; agent: string; model?: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
   /** Canvas arrangement, workflow → [x, y] (B1: kept in kula.toml under the team). */
   positions?: Record<string, [number, number]>;
+  /** B2 · fuse5: the team's own fences, on top of the repository's (shown as inherited there). */
+  fences?: RawRule[];
+  /** Paths and globs this team may touch; everything else is fenced for its runs. */
+  domains?: string[];
+  /** How far the team may go on its own. */
+  limits?: TeamLimits;
 }
+/** B2 · fuse5: cost, turns and autonomy caps for one team. */
+export interface TeamLimits { max_cost?: number; max_turns?: number; autonomy?: "ask" | "act" | "full" | "" }
 /** A work mode (src/workflow.rs): its own fences, scope, steps, docs and memory policy. */
 export interface Workflow {
   name: string; about?: string; scope?: string[]; lock?: string[]; hide?: string[]; review?: string[];
   memory?: "write" | "read" | "off" | ""; steps?: string[]; docs?: string[]; builtin?: boolean; research?: Research | null; prompt?: string;
 }
+/** B2 · fuse5: the mark parameters a saved logo was rolled from (src/logos.rs). */
+export interface LogoParams { dims: 2 | 3; yaw?: number; pitch?: number; density?: number; seed?: number }
+/** A saved mark from the logo studio: `.kula/logos/<kind>/<name>.svg` + its dials in kula.toml. */
+export interface SavedLogo { kind: "agent" | "team" | "research"; name: string; params?: LogoParams }
 /** A guard rule as written in kula.toml. */
 export interface RawRule { paths?: string[]; symbols?: string[]; level: "locked" | "hidden" | "review"; reason?: string }
 export interface Connection { id: string; name: string; docs: string; workflows: string[]; mcp: boolean; hook: boolean; files: string[] }
@@ -96,7 +110,9 @@ export type AgentAction = "task_start" | "task_done" | "remember" | "confirm" | 
   | "settings_save" | "doc_read" | "doc_save" | "docs_sync" | "brief" | "connect" | "suggestion_accept" | "suggestion_dismiss" | "preview"
   | "teams_save" | "team_prompt" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install"
   | "workflow_rename" | "skill_save" | "skill_delete" | "skills_sync" | "skill_adopt"
-  | "team_save" | "team_delete" | "team_add_member" | "team_remove_member" | "team_layout" | "mcp_adopt";
+  | "team_save" | "team_delete" | "team_add_member" | "team_remove_member" | "team_layout" | "mcp_adopt"
+  // B2 · fuse5: neutral-agent runs from teams, deletions, research templates
+  | "run" | "workflow_delete" | "research_template_save" | "research_template_delete";
 
 /** B1 · one portfolio card in the Agents grid (GET /api/agent/cards):
  *  one per workflow/agent, description from the workflow. */
@@ -235,6 +251,11 @@ export const api = {
 
   // B1 · cards, team edits, folder import
   agentCards: () => get<AgentCard[]>("/api/agent/cards"),
+
+  // B2 · saved logos from the logo studio
+  logos: () => get<SavedLogo[]>("/api/agent/logos"),
+  logo: (kind: SavedLogo["kind"], name: string) => get<{ kind: SavedLogo["kind"]; name: string; svg: string }>(`/api/agent/logo?${q({ kind, name })}`),
+  logoSave: (body: { kind: SavedLogo["kind"]; name: string; svg: string; params: LogoParams }) => post<{ ok: boolean; path: string; bytes: number }>("/api/agents/logo_save", body),
 };
 
 // K2 types, derived from what each agent already reads (src/agent_config.rs).

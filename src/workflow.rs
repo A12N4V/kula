@@ -209,6 +209,9 @@ pub fn all(cfg: &Config) -> Vec<Workflow> {
             None => out.push(w),
         }
     }
+    // Hidden built-ins stay defined but out of sight (workflow_hide); a
+    // kula.toml workflow under the same name is not a built-in and stays.
+    out.retain(|w| !w.builtin || !cfg.disabled.iter().any(|n| n == &w.name));
     out
 }
 
