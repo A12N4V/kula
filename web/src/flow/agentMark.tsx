@@ -145,13 +145,29 @@ export function getLogo(kind: MarkFamily, name: string): LogoEntry | null {
   return null;
 }
 
+/** B2's contract: `GET /api/agent/logos` lists `{kind, name, params}` without
+ *  the svg – the drawing comes from `GET /api/agent/logo?kind=&name=` per
+ *  saved logo, fetched here once and cached with the rest. */
+interface SavedLogoListEntry { kind: MarkFamily; name: string; params?: Partial<LogoParams> }
+
 async function fetchLogos() {
   if (logoFetched) return;
   logoFetched = true;
+  const headers = { "x-kula-token": sessionStorage.getItem("kula.token") ?? "" };
   try {
-    const r = await fetch("/api/agent/logos", { headers: { "x-kula-token": sessionStorage.getItem("kula.token") ?? "" } });
+    const r = await fetch("/api/agent/logos", { headers });
     if (!r.ok) throw new Error(String(r.status));
-    for (const e of await r.json() as LogoEntry[]) if (e && e.kind && e.name && e.svg) logoCache.set(logoKey(e.kind, e.name), e);
+    const list = await r.json() as SavedLogoListEntry[];
+    await Promise.all((Array.isArray(list) ? list : []).filter((e) => e && e.kind && e.name).map(async (e) => {
+      try {
+        const lr = await fetch(`/api/agent/logo?kind=${encodeURIComponent(e.kind)}&name=${encodeURIComponent(e.name)}`, { headers });
+        if (!lr.ok) return;
+        const body = await lr.json() as { svg?: string };
+        if (!body.svg) return;
+        const params = { dims: (e.params?.dims ?? 3) as 2 | 3, yaw: e.params?.yaw ?? 0, pitch: e.params?.pitch ?? 0, density: e.params?.density ?? 1200, seed: e.params?.seed ?? 0 };
+        logoCache.set(logoKey(e.kind, e.name), { kind: e.kind, name: e.name, svg: body.svg, params });
+      } catch { /* one logo unreadable – its hashed mark stays */ }
+    }));
   } catch { /* offline or before B2 – the hashed marks stay */ }
   logoMissing.add("all");
   for (const w of logoWaiters) w();

@@ -58,11 +58,10 @@ test.describe("the logo studio", () => {
     await expect(page.getByTestId("logo-save")).toBeVisible();
     // the mark click did not open the agent sidebar underneath
     await expect(page.getByTestId("ag-side")).toHaveCount(0);
-    // Esc closes and focus returns to the card that opened the studio
+    // Esc closes and focus returns to the mark that opened the studio
     await page.keyboard.press("Escape");
     await expect(studio).toHaveCount(0);
-    const card = page.locator(".ag-cards .ag-card").first();
-    await expect(card).toBeFocused();
+    await expect(mark).toBeFocused();
   });
 
   test("2D flattens the projection; reroll draws a different curve", async ({ page }, info) => {
@@ -98,6 +97,26 @@ test.describe("the logo studio", () => {
     expect(anims).toBe(0);
   });
 
+  test("the mark opens the studio from the keyboard too", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop");
+    await open(page);
+    const mark = page.locator(".ag-cards .ag-card [data-testid^=ag-art-]").first();
+    await expect(mark).toBeVisible();
+    await mark.focus();
+    await expect(mark).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("logo-studio")).toBeVisible();
+    await expect(page.getByTestId("ag-side")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("logo-studio")).toHaveCount(0);
+    // Space works as well, and focus stays on the mark for another try
+    await expect(mark).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(page.getByTestId("logo-studio")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("logo-studio")).toHaveCount(0);
+  });
+
   test("Save logo posts logo_save; the saved svg then replaces the mark", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop");
     const saves: { kind?: string; name?: string; params?: { dims?: number; density?: number } }[] = [];
@@ -105,9 +124,18 @@ test.describe("the logo studio", () => {
       saves.push(r.request().postDataJSON() as object);
       await r.fulfill({ json: { ok: true } });
     });
+    // B2's contract: the list carries {kind, name, params} only – the svg
+    // comes from GET /api/agent/logo?kind=&name= per saved logo.
     let logos: unknown[] = [];
     await page.route("**/api/agent/logos", async (r) => {
-      await r.fulfill({ json: logos });
+      await r.fulfill({ json: logos.map((l) => ({ kind: (l as { kind: string }).kind, name: (l as { name: string }).name, params: (l as { params?: object }).params })) });
+    });
+    await page.route("**/api/agent/logo?*", async (r) => {
+      const u = new URL(r.request().url());
+      const kind = u.searchParams.get("kind") ?? "";
+      const name = u.searchParams.get("name") ?? "";
+      const hit = logos.find((l) => (l as { kind: string; name: string }).kind === kind && (l as { kind: string; name: string }).name === name) as { svg?: string } | undefined;
+      await r.fulfill({ json: hit ? { kind, name, svg: hit.svg ?? "" } : {} });
     });
     await open(page);
     const mark = page.locator(".ag-cards .ag-card [data-testid^=ag-art-]").first();

@@ -7,25 +7,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { harmonographSegments, markPose, putLogo, svgId, type MarkFamily, type LogoParams } from "../../flow/agentMark";
+import { api } from "../../api";
 import { Icon } from "../../ui";
-
-/** Post `logo_save` to the backend (B2 contract; no api.ts import so the
- *  studio also works before B2 lands – the call simply fails then). */
-async function logoSave(kind: MarkFamily, name: string, svg: string, params: LogoParams) {
-  const r = await fetch("/api/agents/logo_save", {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-kula-token": sessionStorage.getItem("kula.token") ?? "" },
-    body: JSON.stringify({ kind, name, svg, params }),
-  });
-  if (!r.ok) throw new Error(`logo_save ${r.status}`);
-}
 
 /** The studio's svg, as a string, from the same segments the preview draws –
  *  what the backend stores is exactly what the preview showed. */
-export function logoSvg(name: string, params: LogoParams, lw: number): string {
+export function logoSvg(name: string, family: MarkFamily, params: LogoParams, lw: number): string {
   const n = Math.round(params.density);
   const per = Math.max(4, Math.round(n / 100));
-  const segs = harmonographSegments(name, n, per, "agent", { seed: params.seed, yaw: params.yaw, pitch: params.pitch, dims: params.dims });
+  const segs = harmonographSegments(name, n, per, family, { seed: params.seed, yaw: params.yaw, pitch: params.pitch, dims: params.dims });
   const paths = segs.map((g, i) => `<path d="${g.d}" fill="none" stroke="${g.stroke}" stroke-opacity="${g.opacity.toFixed(3)}" stroke-width="${lw.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" data-figure data-logo="${svgId(name)}">${paths}</svg>`;
 }
@@ -41,6 +31,7 @@ function Studio({ kind, name, onClose }: { kind: MarkFamily; name: string; onClo
   const [lw, setLw] = useState(0.5); // line weight, the stroke width
   const [seed, setSeed] = useState(0);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [note, setNote] = useState("");
   const closeRef = useRef<HTMLButtonElement>(null);
   const opener = useRef<Element | null>(null);
 
@@ -64,23 +55,28 @@ function Studio({ kind, name, onClose }: { kind: MarkFamily; name: string; onClo
   const n = Math.round(400 + density * 2000);
   const params: LogoParams = { dims, yaw, pitch, density: n, seed };
   const segs = useMemo(
-    () => harmonographSegments(name, n, Math.max(4, Math.round(n / 100)), "agent", {
+    () => harmonographSegments(name, n, Math.max(4, Math.round(n / 100)), kind, {
       seed,
       yaw,
       pitch,
       dims,
     }),
-    [name, n, yaw, pitch, seed, dims],
+    [name, n, kind, yaw, pitch, seed, dims],
   );
 
   const save = async () => {
     setState("saving");
+    setNote("");
     try {
-      await logoSave(kind, name, logoSvg(name, params, lw), params);
-      putLogo({ kind, name, svg: logoSvg(name, params, lw), params });
+      const svg = logoSvg(name, kind, params, lw);
+      await api.logoSave({ kind, name, svg, params });
+      putLogo({ kind, name, svg, params });
       setState("saved");
       setTimeout(onClose, 450);
-    } catch { setState("error"); }
+    } catch (e) {
+      setState("error");
+      setNote(e instanceof Error && e.message ? e.message : "could not save – the backend refused");
+    }
   };
 
   return (
@@ -121,7 +117,7 @@ function Studio({ kind, name, onClose }: { kind: MarkFamily; name: string; onClo
             <div className="logo-actions">
               <button className="btn" data-testid="logo-save" disabled={state === "saving"} onClick={save}>Save logo</button>
               {state === "saved" && <span className="mono logo-note" data-testid="logo-saved">saved</span>}
-              {state === "error" && <span className="mono logo-note logo-note-err">could not save – the backend refused</span>}
+              {state === "error" && note && <span className="mono logo-note logo-note-err">{note}</span>}
             </div>
           </div>
         </div>
