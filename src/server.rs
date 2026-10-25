@@ -804,7 +804,15 @@ fn b2_action(r: &Repo, action: &str, a: &AgentReq) -> anyhow::Result<Value> {
             if crate::workflow::builtin().iter().any(|b| b.name == w.name) {
                 crate::config::restore_workflow(root, &w.name)?;
             }
-            crate::config::set_workflows(root, &a.workflows)?;
+            // Upsert: keep every other custom workflow in kula.toml.
+            let mut all: Vec<_> = crate::config::Config::load(root)?.workflows.into_iter().filter(|x| !x.builtin).collect();
+            for w in &a.workflows {
+                match all.iter_mut().find(|x| x.name == w.name) {
+                    Some(x) => *x = w.clone(),
+                    None => all.push(w.clone()),
+                }
+            }
+            crate::config::set_workflows(root, &all)?;
             json!({ "ok": true })
         }
         "research_template_delete" => {
@@ -1837,6 +1845,10 @@ mod b2_tests {
         assert_eq!(crate::workflow::all(&cfg).iter().find(|w| w.name == "fix").unwrap().steps.len(), 2);
         // saving a custom loop writes it
         b2_action(&r, "research_template_save", &AgentReq { workflows: vec![w("loop-x")], ..Default::default() }).unwrap();
+        // Saving a template keeps the other custom workflows.
+        b2_action(&r, "research_template_save", &AgentReq { workflows: vec![w("loop-y")], ..Default::default() }).unwrap();
+        let names: Vec<_> = crate::config::Config::load(&r.root).unwrap().workflows.into_iter().map(|w| w.name).collect();
+        assert!(names.contains(&"loop-x".to_string()) && names.contains(&"loop-y".to_string()), "{names:?}");
         assert!(crate::config::Config::load(&r.root).unwrap().workflows.iter().any(|w| w.name == "loop-x"));
         // no workflow sent is a clear error
         assert!(b2_action(&r, "research_template_save", &AgentReq::default()).is_err());
