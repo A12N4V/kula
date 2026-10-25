@@ -1,22 +1,14 @@
-// Agents: how AI agents work in this repository, and everything you can change
-// about it. Workflows (work modes with their own fences, scope, steps, docs and
-// memory policy), the fences in kula.toml, the memories agents keep, the docs
-// they read, and which agents are wired up. Every edit here writes the same
-// files the CLI does (kula.toml, refs/kula/meta, AGENTS.md, each agent's
-// config), so MCP, the pre-edit hook and `kula check` see it at once.
-
-// Teams tab (module U16): a tab bar across the top – one tab per team, a "+"
-// tab to create one (inline name, Enter saves via team_save) – and below it
-// the team as a map canvas (TeamCanvas): members as agent squares with their
-// harmonograph, the lead on top, edges from the lead, drag to arrange (saved
-// with team_layout). The Details toggle opens TeamSidebar: the agents from the
-// Agents tab as small cards with + / −, and the team settings.
+// Teams (module U18): the canvas fills the whole view like the Map – no
+// enclosing card or frame. A thin tab bar sits on top: one icon + name tab per
+// team, "+" to add one, "×" to delete the open one. Everything else – the
+// canvas header with its limits chips, the Details sidebar, the orange-family
+// marks – lives in TeamCanvas and TeamSidebar.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentsInfo, Team } from "../../api";
 import { Icon, useToast } from "../../ui";
 import { takeStashedAdd, type Act, type Tab } from "./data";
-import { Card, TabStrip } from "./parts";
+import { TabStrip } from "./parts";
 import TeamCanvas, { CanvasHead } from "./TeamCanvas";
 import TeamSidebar from "./TeamSidebar";
 
@@ -34,7 +26,7 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   const teamNames = JSON.stringify(teams.map((t) => t.name));
   useEffect(() => {
     tabrow.current?.querySelectorAll<HTMLButtonElement>(".team-tabs [role=tab]").forEach((b: HTMLButtonElement) => {
-      b.setAttribute("data-testid", `team-tab-${b.textContent?.trim() || "unnamed"}`);
+      b.setAttribute("data-testid", `team-tab-${b.textContent?.replace("●", "").trim() || "unnamed"}`);
     });
   }, [teamNames, cur, adding]);
   const toast = useToast();
@@ -94,6 +86,7 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
     }).catch((e: Error) => toast(e.message, "err"));
   };
   const remove = (name: string) => {
+    if (!confirm(`Delete the ${name} team from kula.toml?`)) return;
     act("team_delete", { name }, `${name} deleted`).catch((e: Error) => toast(e.message, "err"));
     // deleting the active team selects another tab, never a blank canvas
     const rest = teams.filter((x) => x.name !== name);
@@ -125,15 +118,18 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
     ...t,
     members: t.members.map((m) => ({ ...m, agent: m.agent || "any", workflow: m.workflow ?? "" })),
   }), [t]);
+  // TabStrip renders "●" for the running dot inside the label text; the
+  // effect above names tabs from the text, so the dot is stripped first.
   return (
-    <Card title="Teams" sub="kula.toml" className="ag-wide team-card">
-      {/* the strip is shared (parts.tsx); the + tab is ours – same look, with a testid */}
+    <div className="tc-view" data-testid="teams-view">
       <div className="tc-tabrow" ref={tabrow}>
         <TabStrip label="Teams" addLabel="New team" cur={adding ? "" : String(cur)}
-          items={teams.map((x, i) => ({ key: String(i), label: x.name || "unnamed", dot: info.team?.name === x.name }))}
+          items={teams.map((x, i) => ({ key: String(i), label: x.name || "unnamed", icon: <Icon.team />, dot: info.team?.name === x.name }))}
           onPick={(k) => { setCur(Number(k)); setMember(null); }} />
         <button className={`team-tab-add${adding ? " on" : ""}`} data-testid="team-tab-add" aria-label="New team" title="New team"
           onClick={() => { setAdding(true); setNewName(""); }}><Icon.plus /></button>
+        {!adding && shown && <button className="team-tab-del" data-testid="team-tab-delete" aria-label={`Delete ${shown.name}`} title={`Delete ${shown.name}`}
+          onClick={() => remove(shown.name)}><Icon.close /></button>}
       </div>
       {adding ? (
         <div className="tc-add" data-testid="team-add-form">
@@ -150,7 +146,7 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
         <div className={`tc-stage${side ? " tc-with-side" : ""}`}>
           <div className="tc-main">
             <CanvasHead team={shown} live={info.team?.name === shown.name} sideOpen={side} onSide={() => setSide((v) => !v)}
-              onWork={() => act("team_start", { name: shown.name }, `${shown.name} at work`).catch((e: Error) => toast(e.message, "err"))}
+              onDeploy={() => act("run", { team: { name: shown.name } }, `${shown.name} deployed to the Workspace`).catch((e: Error) => toast(e.message, "err"))}
               onStop={() => act("team_stop", {}, `${shown.name} stood down`).catch(() => {})} />
             <TeamCanvas key={shown.name} team={shown} info={info} live={info.team?.name === shown.name} onMove={layout} onOpen={(k) => { setSide(true); setMember(k); }} />
           </div>
@@ -159,8 +155,8 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
             onDelete={() => remove(shown.name)} onClose={() => { setSide(false); setMember(null); }} />}
         </div>
       ) : (
-        <div className="muted ag-empty">No teams yet – use the + tab above.</div>
+        <div className="muted ag-empty">No teams yet – use the + above.</div>
       )}
-    </Card>
+    </div>
   );
 }

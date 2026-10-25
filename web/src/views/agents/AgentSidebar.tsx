@@ -1,9 +1,11 @@
-// The agent sidebar: everything the old workflow editor had, opened from a
-// card instead of a list row. Same pane mechanism as the code panel –
-// data-pane, PaneControls (full screen · close) and a Grip on its free edge.
-// Esc or close returns focus to the card that opened it.
+// The agent sidebar, rebuilt lean (module U18): a toggle panel – name, role,
+// prompt, steps, skills, autonomy – with every section collapsible and one
+// primary action (Save). Agents are platform neutral: there is no service
+// picker here, and no direct Workspace deploy – a team seat picks its service
+// and the team is what deploys (B2). Same pane mechanism as the code panel –
+// data-pane, PaneControls and a Grip; Esc or close returns focus to the card.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Chips } from "../../Autofill";
 import { Icon } from "../../ui";
@@ -15,10 +17,24 @@ import type { Act } from "./data";
 const BUILTIN = ["explore", "fix", "refactor", "tests", "docs", "autoresearch"];
 const NATIVE: [string, string, string][] = [["claude", "Claude Code subagent", ".claude/agents/kula-"], ["cursor", "Cursor rule", ".cursor/rules/kula-"], ["gemini", "Gemini CLI command", ".gemini/commands/kula/"]];
 
-export default function AgentSidebar({ wf, orig, info, isNew, dirty, act, onGraph, onWorkspace, onSet, onSave, onRemove, onClose }: {
+/** One collapsible section of the panel: a fold button, then the fields. */
+function Section({ id, title, hint, open, onToggle, children }: { id: string; title: string; hint?: string; open: boolean; onToggle: () => void; children: ReactNode }) {
+  return (
+    <section className={`ag-sec${open ? " open" : ""}`} data-testid={`ag-sec-${id}`}>
+      <button className="ag-sec-head" aria-expanded={open} aria-controls={`ag-sec-body-${id}`} onClick={onToggle}>
+        <span className="ag-sec-t">{title}</span>
+        {hint && <span className="muted ag-sec-hint">{hint}</span>}
+        <span className={`ag-sec-chev${open ? " up" : ""}`}><Icon.chevron /></span>
+      </button>
+      {open && <div className="ag-sec-body" id={`ag-sec-body-${id}`}>{children}</div>}
+    </section>
+  );
+}
+
+export default function AgentSidebar({ wf, orig, info, isNew, dirty, act, onGraph, onSet, onSave, onRemove, onClose }: {
   wf: Workflow; orig: string | null; info: import("../../api").AgentsInfo; isNew: boolean; dirty: boolean;
   act: Act;
-  onGraph: (wf: string) => void; onWorkspace: (agent?: string) => void;
+  onGraph: (wf: string) => void;
   onSet: (k: keyof Workflow, v: unknown) => void;
   onSave: () => void; onRemove: () => void; onClose: () => void;
 }) {
@@ -40,6 +56,10 @@ export default function AgentSidebar({ wf, orig, info, isNew, dirty, act, onGrap
   }, []);
   const draft = wf, cur = info.workflows.find((w) => w.name === orig);
   const set = onSet;
+  // the folds: basics always open, the rest remember one toggle each
+  const [folds, setFolds] = useState<Record<string, boolean>>({ steps: true, fences: !isNew });
+  const fold = (id: string) => setFolds((f) => ({ ...f, [id]: !f[id] }));
+  const openFences = () => setFolds((f) => ({ ...f, fences: true }));
   // The pane mounts at body level, like the code panel: inside the view it
   // would take a transformed ancestor as its containing block and drift with
   // the detail's scroll.
@@ -54,70 +74,83 @@ export default function AgentSidebar({ wf, orig, info, isNew, dirty, act, onGrap
       <div className="ag-side-scroll">
         <section className="card wf-edit">
           <div className="ag-body wf-form">
-            <label><span>name</span><input className="input mono" value={draft.name} onChange={(e) => set("name", e.target.value.replace(/[^\w-]/g, ""))} placeholder="db-migrate" /></label>
-            <label><span>role</span><input className="input" value={draft.about ?? ""} onChange={(e) => set("about", e.target.value)} placeholder="One line: what this kind of work is" /></label>
-            <label className="wf-prompt"><span>prompt</span><textarea className="input" rows={2} value={draft.prompt ?? ""} onChange={(e) => set("prompt", e.target.value)} placeholder="system prompt for every agent in this workflow" aria-label="System prompt" /></label>
-            <div className="wf-fence-grid">
-              <FenceField level="open" label="scope" hint="agents may change only this" values={draft.scope ?? []} onChange={(v) => set("scope", v)} />
-              <FenceField level="locked" label="lock" hint="read, never edit" values={draft.lock ?? []} onChange={(v) => set("lock", v)} />
-              <FenceField level="hidden" label="hide" hint="never shown" values={draft.hide ?? []} onChange={(v) => set("hide", v)} />
-              <FenceField level="review" label="review" hint="editable, a person checks" values={draft.review ?? []} onChange={(v) => set("review", v)} />
+            <div className="wf-basics">
+              <label><span>name</span><input className="input mono" value={draft.name} onChange={(e) => set("name", e.target.value.replace(/[^\w-]/g, ""))} placeholder="db-migrate" /></label>
+              <label><span>role</span><input className="input" value={draft.about ?? ""} onChange={(e) => set("about", e.target.value)} placeholder="One line: what this kind of work is" /></label>
+              <label className="wf-prompt"><span>prompt</span><textarea className="input" rows={2} value={draft.prompt ?? ""} onChange={(e) => set("prompt", e.target.value)} placeholder="system prompt for every agent in this workflow" aria-label="System prompt" /></label>
             </div>
-            <label><span>memory</span>
-              <div className="seg">
-                {(["write", "read", "off"] as const).map((m) => <button key={m} type="button" className={(draft.memory || "write") === m ? "on" : ""} onClick={() => set("memory", m)}>{m === "write" ? "recall + remember" : m === "read" ? "recall only" : "off"}</button>)}
+            <Section id="steps" title="steps" hint={String(draft.steps?.length ?? 0)} open={!!folds.steps} onToggle={() => fold("steps")}>
+              <div className="wf-steps">
+                <ol>
+                  {(draft.steps ?? []).map((s, i) => (
+                    <li key={i}>
+                      <span className="loop-n">{String(i + 1).padStart(2, "0")}</span>
+                      <input className="input" value={s} onChange={(e) => set("steps", draft.steps!.map((x, j) => (j === i ? e.target.value : x)))} aria-label={`Step ${i + 1}`} />
+                      <button className="btn sm ghost icon-only" disabled={i === 0} onClick={() => { const v = [...draft.steps!]; [v[i - 1], v[i]] = [v[i], v[i - 1]]; set("steps", v); }} aria-label="Move up"><Icon.up /></button>
+                      <button className="btn sm ghost icon-only" disabled={i === draft.steps!.length - 1} onClick={() => { const v = [...draft.steps!]; [v[i + 1], v[i]] = [v[i], v[i + 1]]; set("steps", v); }} aria-label="Move down"><Icon.down /></button>
+                      <button className="btn sm ghost icon-only danger" onClick={() => set("steps", draft.steps!.filter((_, j) => j !== i))} aria-label="Remove step"><Icon.close /></button>
+                    </li>
+                  ))}
+                </ol>
+                <button className="btn sm ghost" onClick={() => set("steps", [...(draft.steps ?? []), ""])}><Icon.plus /> Add step</button>
               </div>
-            </label>
-            <label><span>skills</span><Chips values={draft.docs ?? []} onChange={(v) => set("docs", v)} placeholder="files to read first, e.g. docs/ARCHITECTURE.md" label="Docs" /></label>
-            <div className="wf-steps">
-              <span className="wf-lbl">steps</span>
-              <ol>
-                {(draft.steps ?? []).map((s, i) => (
-                  <li key={i}>
-                    <span className="loop-n">{String(i + 1).padStart(2, "0")}</span>
-                    <input className="input" value={s} onChange={(e) => set("steps", draft.steps!.map((x, j) => (j === i ? e.target.value : x)))} aria-label={`Step ${i + 1}`} />
-                    <button className="btn sm ghost icon-only" disabled={i === 0} onClick={() => { const v = [...draft.steps!]; [v[i - 1], v[i]] = [v[i], v[i - 1]]; set("steps", v); }} aria-label="Move up"><Icon.up /></button>
-                    <button className="btn sm ghost icon-only" disabled={i === draft.steps!.length - 1} onClick={() => { const v = [...draft.steps!]; [v[i + 1], v[i]] = [v[i], v[i + 1]]; set("steps", v); }} aria-label="Move down"><Icon.down /></button>
-                    <button className="btn sm ghost icon-only danger" onClick={() => set("steps", draft.steps!.filter((_, j) => j !== i))} aria-label="Remove step"><Icon.close /></button>
-                  </li>
-                ))}
-              </ol>
-              <button className="btn sm ghost" onClick={() => set("steps", [...(draft.steps ?? []), ""])}><Icon.plus /> Add step</button>
-            </div>
-            <div className={`wf-research ${draft.research ? "on" : ""}`}>
-              <label className="toggle"><input type="checkbox" checked={!!draft.research} onChange={(e) => set("research", e.target.checked ? { metric: "", goal: "min" } : null)} /> <Icon.flask /> autoresearch loop – kula runs a metric and keeps only what improves it</label>
-              {draft.research && (
-                <div className="wf-research-grid">
-                  <label><span>metric</span><input className="input mono" value={draft.research.metric} onChange={(e) => set("research", { ...draft.research!, metric: e.target.value })} placeholder="a command whose last number is the result" aria-label="Metric" /></label>
-                  <label><span>better</span>
-                    <div className="seg">{(["min", "max"] as const).map((g) => <button key={g} type="button" className={(draft.research!.goal || "min") === g ? "on" : ""} onClick={() => set("research", { ...draft.research!, goal: g })}>{g === "min" ? "lower" : "higher"}</button>)}</div>
-                  </label>
-                  <label><span>budget</span><input className="input mono" type="number" min={0} value={draft.research.budget ?? 0} onChange={(e) => set("research", { ...draft.research!, budget: Math.max(0, Number(e.target.value) || 0) })} aria-label="Budget" title="experiments before it stops; 0 for no limit" /></label>
+            </Section>
+            <Section id="skills" title="skills" hint={String(draft.docs?.length ?? 0)} open={!!folds.skills} onToggle={() => fold("skills")}>
+              <label><span>skills</span><Chips values={draft.docs ?? []} onChange={(v) => set("docs", v)} placeholder="files to read first, e.g. docs/ARCHITECTURE.md" label="Docs" /></label>
+            </Section>
+            <Section id="autonomy" title="autonomy" hint={draft.memory || "write"} open={folds.autonomy !== false} onToggle={() => fold("autonomy")}>
+              <label><span>memory</span>
+                <div className="seg">
+                  {(["write", "read", "off"] as const).map((m) => <button key={m} type="button" className={(draft.memory || "write") === m ? "on" : ""} onClick={() => set("memory", m)}>{m === "write" ? "recall + remember" : m === "read" ? "recall only" : "off"}</button>)}
                 </div>
-              )}
-            </div>
+              </label>
+              <div className={`wf-research ${draft.research ? "on" : ""}`}>
+                <label className="toggle"><input type="checkbox" checked={!!draft.research} onChange={(e) => set("research", e.target.checked ? { metric: "", goal: "min" } : null)} /> <Icon.flask /> autoresearch loop – kula runs a metric and keeps only what improves it</label>
+                {draft.research && (
+                  <div className="wf-research-grid">
+                    <label><span>metric</span><input className="input mono" value={draft.research.metric} onChange={(e) => set("research", { ...draft.research!, metric: e.target.value })} placeholder="a command whose last number is the result" aria-label="Metric" /></label>
+                    <label><span>better</span>
+                      <div className="seg">{(["min", "max"] as const).map((g) => <button key={g} type="button" className={(draft.research!.goal || "min") === g ? "on" : ""} onClick={() => set("research", { ...draft.research!, goal: g })}>{g === "min" ? "lower" : "higher"}</button>)}</div>
+                    </label>
+                    <label><span>budget</span><input className="input mono" type="number" min={0} value={draft.research.budget ?? 0} onChange={(e) => set("research", { ...draft.research!, budget: Math.max(0, Number(e.target.value) || 0) })} aria-label="Budget" title="experiments before it stops; 0 for no limit" /></label>
+                  </div>
+                )}
+              </div>
+            </Section>
+            <Section id="fences" title="fences" hint={draft.scope?.length ? `${draft.scope.length} scope` : undefined} open={!!folds.fences} onToggle={() => fold("fences")}>
+              <div className="wf-fence-grid">
+                <FenceField level="open" label="scope" hint="agents may change only this" values={draft.scope ?? []} onChange={(v) => set("scope", v)} />
+                <FenceField level="locked" label="lock" hint="read, never edit" values={draft.lock ?? []} onChange={(v) => set("lock", v)} />
+                <FenceField level="hidden" label="hide" hint="never shown" values={draft.hide ?? []} onChange={(v) => set("hide", v)} />
+                <FenceField level="review" label="review" hint="editable, a person checks" values={draft.review ?? []} onChange={(v) => set("review", v)} />
+              </div>
+              {!isNew && <button className="btn sm ghost" onClick={() => onGraph(orig!)}><Icon.graph /> Preview fences</button>}
+            </Section>
             {!isNew && !dirty && (
-              <div className="wf-native">
-                <span className="wf-lbl">use it in</span>
-                <div className="wf-native-row">
-                  {NATIVE.map(([id, label, dir]) => {
-                    const done = info.connections.find((c) => c.id === id)?.workflows.includes(orig!);
-                    return (
-                      <button key={id} className={`btn sm ${done ? "ghost" : ""}`} title={`${dir}${orig}`} onClick={() => act("workflow_install", { workflow: orig, targets: [id] }, `${orig} installed as a ${label}`).catch(() => {})}>
-                        <Mark id={id} size={14} /> {label}{done && <Icon.check />}
-                      </button>
-                    );
-                  })}
-                  <code className="wf-run" title="any other harness">kula run -w {orig} -- {"<agent>"}</code>
+              <Section id="native" title="use it in" open={false} onToggle={() => fold("native")}>
+                <div className="wf-native">
+                  <div className="wf-native-row">
+                    {NATIVE.map(([id, label, dir]) => {
+                      const done = info.connections.find((c) => c.id === id)?.workflows.includes(orig!);
+                      return (
+                        <button key={id} className={`btn sm ${done ? "ghost" : ""}`} title={`${dir}${orig}`} onClick={() => act("workflow_install", { workflow: orig, targets: [id] }, `${orig} installed as a ${label}`).catch(() => {})}>
+                          <Mark id={id} size={14} /> {label}{done && <Icon.check />}
+                        </button>
+                      );
+                    })}
+                    <code className="wf-run" title="any other harness">kula run -w {orig} -- {"<agent>"}</code>
+                  </div>
                 </div>
-              </div>
+              </Section>
+            )}
+            {!isNew && !dirty && !info.task && (
+              <Section id="start" title="start a task" open={false} onToggle={() => fold("start")}>
+                <StartIn wf={orig!} act={act} />
+              </Section>
             )}
             <div className="row wf-actions">
-              {!isNew && <button className="btn sm ghost" onClick={() => onGraph(orig!)}><Icon.graph /> Preview fences</button>}
-              {!isNew && onWorkspace && <button className="btn sm" onClick={() => onWorkspace(orig!)} data-testid="wf-use-workspace"><Icon.workspace /> Use on Workspace</button>}
-              <span className="spacer" />
-              {!isNew && !dirty && !info.task && <StartIn wf={orig!} act={act} />}
               {!isNew && (BUILTIN.includes(orig ?? "") ? !cur?.builtin : true) && <button className="btn sm ghost danger" onClick={onRemove}>{BUILTIN.includes(orig ?? "") ? "Reset to built-in" : "Delete"}</button>}
+              <span className="spacer" />
               <button className="btn sm primary" disabled={!draft.name || (!dirty && !isNew)} onClick={onSave}>{isNew ? "Create" : "Save"}</button>
             </div>
           </div>

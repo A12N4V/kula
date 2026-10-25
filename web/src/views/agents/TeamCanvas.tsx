@@ -47,8 +47,10 @@ function SquareNode({ data }: { data: { member: Member; live: boolean; lead: boo
         <AgentHarmonograph name={key(m)} size={30} family="team" />
       </div>
       <div className="tc-node-body">
+        {/* the seat's role only: the name and the mark already say which agent
+            this is, and a duplicated workflow line made every label truncate */}
         <span className="tc-node-name mono">{m.name || m.agent || "any agent"}</span>
-        <span className="tc-node-sub">{isLead ? "lead" : titleFor(m.role || "member")}{m.workflow ? ` · ${m.workflow}` : ""}</span>
+        <span className="tc-node-sub">{isLead ? "lead" : titleFor(m.role || "member")}</span>
       </div>
     </div>
   );
@@ -112,7 +114,12 @@ function Canvas({ team, info, live, onMove, onOpen }: {
   useEffect(() => { setRfEdges(edges); }, [setRfEdges, edges]);
   const count = members.length;
   useEffect(() => {
-    const id = window.requestAnimationFrame(() => rf.fitView({ padding: 0.25, maxZoom: 1.1 }));
+    const id = window.requestAnimationFrame(() => {
+      // On a phone the fitted zoom shrinks the squares until their marks are
+      // untouchable: keep the real size and let the canvas pan instead.
+      const floor = () => { if (window.innerWidth <= 600 && rf.getZoom() < 1) rf.zoomTo(1, { duration: 0 }); };
+      rf.fitView({ padding: 0.25, maxZoom: 1.1 }).then(floor).catch(() => {});
+    });
     return () => window.cancelAnimationFrame(id);
   }, [rf, team.name, count]);
   // Drag-stop → save. One write per gesture, debounced 500 ms.
@@ -155,20 +162,32 @@ export default function TeamCanvas(props: Parameters<typeof Canvas>[0]) {
   return <ReactFlowProvider><Canvas {...props} /></ReactFlowProvider>;
 }
 
-/** The canvas header row: the toggle for the sidebar lives with the map's own chrome. */
-export function CanvasHead({ team, onSide, sideOpen, onWork, onStop, live }: {
-  team: Team; onSide: () => void; sideOpen: boolean; live: boolean; onWork: () => void; onStop: () => void;
+/** The canvas header row: limits chips (cost, turns, autonomy, fences) so the
+ *  team's own rules are visible before you deploy, the sidebar toggle and the
+ *  team action – "Deploy to Workspace" starts the whole team (B2: run requires
+ *  a team; an agent alone is refused). */
+export function CanvasHead({ team, onSide, sideOpen, onDeploy, onStop, live }: {
+  team: Team; onSide: () => void; sideOpen: boolean; live: boolean; onDeploy: () => void; onStop: () => void;
 }) {
   const [confirmStop, setConfirmStop] = useState(false);
   useEffect(() => { if (!confirmStop) return; const id = setTimeout(() => setConfirmStop(false), 3000); return () => clearTimeout(id); }, [confirmStop]);
+  const chips: string[] = [];
+  if (team.limits?.max_cost != null) chips.push(`≤ $${team.limits.max_cost}`);
+  if (team.limits?.max_turns != null) chips.push(`≤ ${team.limits.max_turns} turns`);
+  chips.push(team.limits?.autonomy ? team.limits.autonomy : "ask");
+  if (team.fences?.length) chips.push(`${team.fences.length} fence${team.fences.length === 1 ? "" : "s"}`);
+  if (team.domains?.length) chips.push(`${team.domains.length} domain${team.domains.length === 1 ? "" : "s"}`);
   return (
     <div className="tc-head">
       <span className="tc-head-name mono">{team.name}</span>
       {team.about && <span className="tc-head-about muted">{team.about}</span>}
+      <span className="tc-chips" aria-label="Team limits">
+        {chips.map((c) => <span key={c} className="tc-chip mono" data-testid="tc-limit-chip">{c}</span>)}
+      </span>
       <span className="spacer" />
       {live
         ? <button className="btn sm" onClick={() => (confirmStop ? (setConfirmStop(false), onStop()) : setConfirmStop(true))}>{confirmStop ? "Confirm stand down" : "Stand down"}</button>
-        : <button className="btn sm primary" data-testid="team-work" onClick={onWork}><Icon.play /> Put to work</button>}
+        : <button className="btn sm primary" data-testid="team-work" onClick={onDeploy}><Icon.workspace /> Deploy to Workspace</button>}
       <button className={`btn sm ghost${sideOpen ? " on" : ""}`} data-testid="team-side-toggle" aria-expanded={sideOpen} onClick={onSide} title="Team details"><Icon.sidebar /> Details</button>
     </div>
   );

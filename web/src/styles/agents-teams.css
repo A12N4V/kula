@@ -394,20 +394,32 @@ input.mi-title { font: 600 14px var(--mono); }
    through the harmonograph itself; the fc-* controls come from flow.css. */
 
 /* the + tab's inline create form */
-.tc-tabrow { display: flex; align-items: flex-end; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
-.tc-tabrow .team-tabs { border-bottom: 0; margin-bottom: 0; flex: 1; }
-.tc-add { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); background: var(--panel); }
+.tc-view { display: grid; gap: 0; align-content: start; min-width: 0; }
+/* the thin tab bar: icons + names, + to add, × to delete the open team */
+.tc-tabrow { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 8px; min-width: 0; flex-wrap: wrap; }
+.tc-tabrow .team-tabs { border-bottom: 0; margin-bottom: 0; flex: 1; min-width: 0; }
+.tc-tabrow .team-tabs button { padding: 6px 10px; font-size: 11.5px; }
+.tc-tab-add-spacer { flex: none; }
+.team-tab-del { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; background: none; border: 0; color: var(--text-3); cursor: pointer; flex: none; }
+.team-tab-del:hover { color: var(--red); }
+.team-tab-add { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; background: none; border: 0; color: var(--text-3); cursor: pointer; flex: none; }
+.team-tab-add:hover, .team-tab-add.on { color: var(--accent); }
+.tc-add { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
 .tc-add .input { max-width: 260px; }
 .tc-add-hint { font-size: 11px; }
 
-/* the canvas stage: canvas + the sidebar pane beside it */
+/* the canvas stage: canvas + the sidebar pane beside it. The view fills the
+   whole tab like the Map: no enclosing card, the canvas takes what is left. */
 .tc-stage { display: grid; min-height: 0; }
 .tc-with-side { grid-template-columns: minmax(0, 1fr) 560px; }
-.tc-main { display: grid; grid-template-rows: auto minmax(320px, 1fr); min-width: 0; border: 1px solid var(--line); background: var(--bg); }
-.tc-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.tc-main { display: grid; grid-template-rows: auto minmax(320px, 1fr); min-width: 0; border-top: 1px solid var(--line); background: var(--bg); }
+.tc-head { display: flex; align-items: center; gap: 8px 10px; padding: 6px 10px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
 .tc-head-name { font-weight: 600; font-size: 13px; color: var(--text); }
 .tc-head-about { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px; }
 .tc-head .btn.on { border-color: var(--accent); color: var(--accent); }
+/* limits chips: cost, turns, autonomy, fences, domains – mono, one line */
+.tc-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.tc-chip { padding: 1px 7px; border: 1px solid var(--line-2); font-size: 10.5px; color: var(--text-2); white-space: nowrap; }
 
 /* the React Flow ground: the map's dotted canvas, pan and zoom */
 .tc-canvas { position: relative; min-height: 320px; height: 100%; }
@@ -433,20 +445,40 @@ input.mi-title { font: 600 14px var(--mono); }
 .tc-node.live .hgraph path { animation: hg-draw 1.4s ease-out both, hg-swing 6s linear 1.4s infinite; }
 @media (prefers-reduced-motion: reduce) { .tc-node .hgraph path { animation: none; } }
 
-/* the sidebar pane content: members, the agents from the Agents tab, settings */
+/* the sidebar pane content: settings + limits first, members, the search box */
 .tc-side { z-index: 40; }
 .tc-side-scroll { display: grid; gap: 14px; padding: 12px; align-content: start; }
 .tc-side-h { margin: 0; font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
 .tc-side section { display: grid; gap: 6px; }
-.tc-mcard, .tc-acard { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border: 1px solid var(--line); background: var(--panel);
-  color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
-.tc-mcard:hover, .tc-acard:hover { border-color: var(--line-2); background: var(--panel-2); }
+.tc-side-settings { display: grid; gap: 6px; border: 0; padding: 0; }
+/* Limits & domains: a fold like the agent panel's sections */
+.tc-limits { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
+.tc-fold { display: flex; align-items: center; gap: 6px; width: 100%; padding: 0; background: none; border: 0; cursor: pointer; text-align: left; }
+.tc-fold:hover { color: var(--text-2); }
+.tc-chev { margin-left: auto; transition: transform .15s; }
+.tc-chev.up { transform: rotate(180deg); }
+.tc-limits-body { display: grid; gap: 8px; }
+.tc-lim-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tc-fences { display: grid; gap: 6px; }
+.tc-fence { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.tc-fence-level { width: 92px; flex: none; }
+.tc-fence .input { min-width: 0; flex: 1; }
+.tc-inherited { display: grid; gap: 4px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.tc-inherited-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tc-inh-chip { padding: 1px 7px; border: 1px dashed var(--line-2); font-size: 10px; color: var(--text-3); }
+/* member rows: a div with two sibling buttons, never a button in a button */
+.tc-mcard { display: flex; align-items: stretch; gap: 0; border: 1px solid var(--line); background: var(--panel); }
+.tc-mcard:hover { border-color: var(--line-2); background: var(--panel-2); }
+.tc-mrow-open { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; padding: 7px 10px; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.tc-mrow-open:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.tc-mcard > .btn { border: 0; border-left: 1px solid var(--line); align-self: stretch; }
+.tc-mcard, .tc-acard { align-items: center; gap: 0; padding: 0; font-size: 12px; }
+.tc-acard { display: flex; border: 1px solid var(--line); background: var(--panel); color: var(--text-2); padding: 4px 10px 4px 8px; gap: 9px; }
+.tc-acard:hover { border-color: var(--line-2); background: var(--panel-2); }
 .tc-mcard-name { font-weight: 600; font-size: 12px; color: var(--text); }
-.tc-mcard-sub { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tc-mcard-x { display: inline-flex; padding: 3px; border: 1px solid var(--line); color: var(--text-3); }
-.tc-mcard-x:hover { border-color: var(--red); color: var(--red); }
-.tc-acard { cursor: default; }
-.tc-side-settings { border-top: 1px solid var(--line); padding-top: 10px; }
+.tc-mcard-sub { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.tc-side-agents .input { width: 100%; box-sizing: border-box; }
+.tc-add-hits { display: grid; gap: 4px; max-height: 280px; overflow-y: auto; }
 .tc-side-empty { font-size: 12px; }
 .tc-member-edit { display: grid; gap: 10px; }
 @media (max-width: 760px) {
@@ -456,3 +488,31 @@ input.mi-title { font: 600 14px var(--mono); }
 
 /* The edge anchors are invisible: the square itself is the anchor. */
 .tc-node .react-flow__handle { opacity: 0; pointer-events: none; }
+
+/* U18 · the lean agent sidebar: collapsible sections, one primary action */
+.ag-sec { display: grid; gap: 0; border-top: 1px solid var(--line); }
+.ag-sec:first-of-type { border-top: 0; }
+.ag-sec-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 0; background: none; border: 0; cursor: pointer; text-align: left; }
+.ag-sec-head:hover .ag-sec-t { color: var(--text); }
+.ag-sec-t { font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.ag-sec-hint { font-size: 10.5px; }
+.ag-sec-chev { margin-left: auto; color: var(--text-3); transition: transform .15s; }
+.ag-sec-chev.up { transform: rotate(180deg); }
+.ag-sec-body { display: grid; gap: 12px; padding: 2px 0 10px; }
+
+/* phone: the tab bar wraps onto its own rows, nothing scrolls sideways; the
+   zoom cluster sits in its corner with a solid ground, clear of the nodes */
+@media (max-width: 600px) {
+  .tc-tabrow .team-tabs { flex-wrap: wrap; overflow-x: visible; }
+  .tc-tabrow .team-tabs button { padding: 10px 12px; }
+  .team-tab-add, .team-tab-del { width: 40px; height: 40px; }
+  .tc-head { flex-wrap: wrap; }
+  .tc-chips { order: 3; flex-basis: 100%; }
+  .tc-node-mark { padding: 6px; }
+  .tc-canvas .fc-controls {
+    position: absolute; left: auto; right: 8px; top: 8px; bottom: auto; z-index: 5;
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 2px; background: var(--panel); border: 1px solid var(--line);
+  }
+  .tc-canvas .fc-controls .fc-ctl { width: 40px; height: 40px; }
+}

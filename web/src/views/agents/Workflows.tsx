@@ -83,9 +83,11 @@ export default function Workflows({ info, act, onGraph, onWorkspace }: { info: A
 
   // Card data: the backend route (module B1) when it answers, otherwise the
   // same shape derived from AgentsInfo – one view, one shape, either way.
+  // Research loops are their own tab (U19): they never show as agent cards.
   const [remote, setRemote] = useState<CardData[] | null>(null);
   useEffect(() => { fetchCards().then(setRemote); }, [info]);
-  const cards: (CardData | null)[] = (remote ?? info.workflows.map(toCard));
+  const agents = info.workflows.filter((w) => !w.research);
+  const cards: (CardData | null)[] = (remote ?? agents.map(toCard)).filter((c) => c && agents.some((w) => w.name === c.name));
   return (
     <div className="wf-tabs">
       {sugg.map((s) => <SuggestionRow key={s.id} s={s} act={act} />)}
@@ -106,7 +108,7 @@ export default function Workflows({ info, act, onGraph, onWorkspace }: { info: A
       {!adding && (isNew ? draft : sel && draft) ? (
         <AgentSidebar
           wf={draft!} orig={orig} info={info} isNew={isNew} dirty={dirty} act={act}
-          onGraph={(w) => onGraph(w)} onWorkspace={onWorkspace!} onSet={set}
+          onGraph={(w) => onGraph(w)} onSet={set}
           onSave={save} onRemove={remove} onClose={close} />
       ) : !adding && !draft && <Empty title="Pick a card" />}
     </div>
