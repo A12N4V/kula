@@ -154,7 +154,7 @@ export default function App() {
     else if (view === "graph" && target.fences !== undefined) h += `/fences${target.fences ? `/${enc(target.fences)}` : ""}`;
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
-    else if (view === "agents" && target.tab) h += `/${target.tab}`;
+    else if (view === "agents" && target.tab && target.tab !== "workflows") h += `/${target.tab}`;
     else if (view === "map" && target.block) h += `/${target.block}`;
     if (`#${h}` === location.hash) return;
     if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);

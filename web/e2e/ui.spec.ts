@@ -1000,7 +1000,7 @@ test.describe("agents", () => {
   test("docs: the brief in AGENTS.md is current, edits save, and agents connect in their own formats", async ({ page }, info) => {
     desktopOnly(info);
     await open(page, "agents/docs");
-    const item = page.locator(".doc-item").filter({ hasText: "AGENTS.md" });
+    const item = page.locator(".doc-item").filter({ hasText: /^AGENTS\.md/ });
     await expect(item).toContainText("brief current");
     const area = page.getByLabel("Edit AGENTS.md");
     await expect(area).toHaveValue(/kula:begin/);

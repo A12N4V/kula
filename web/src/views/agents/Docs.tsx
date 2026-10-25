@@ -9,15 +9,23 @@
 // instruction files (CLAUDE.md, AGENTS.md, GEMINI.md) as its own section –
 // what used to be a separate Instructions tab.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, type AgentDoc, type AgentsInfo } from "../../api";
 import { CodeField, LinkArea } from "../../Autofill";
+import { useCode } from "../../CodePanel";
 import { Icon, useToast } from "../../ui";
 import type { Act } from "./data";
 import { Card, useListNav } from "./parts";
 
-export default function Docs({ info, act, instructions }: { info: AgentsInfo; act: Act; instructions?: React.ReactNode }) {
-  const [sel, setSel] = useState<string>(info.docs[0]?.path ?? "AGENTS.md");
+export default function Docs({ info, act, instructions, more }: { info: AgentsInfo; act: Act; instructions?: React.ReactNode; more?: string[] }) {
+  // One list: the docs agents are pointed at, then the instruction files the
+  // skills index found (merged Docs + Instructions) – no duplicate paths.
+  const docs = useMemo(() => {
+    const seen = new Set(info.docs.map((d) => d.path));
+    const extra = (more ?? []).filter((p) => !seen.has(p)).map((p) => ({ path: p, readers: "read first by its agent", exists: true, bytes: 0, synced: false, current: false }));
+    return [...info.docs, ...extra];
+  }, [info.docs, more]);
+  const [sel, setSel] = useState<string>(docs[0]?.path ?? "AGENTS.md");
   const [text, setText] = useState<string | null>(null);
   const [saved, setSaved] = useState<string>("");
   const [brief, setBrief] = useState<string | null>(null);
@@ -27,16 +35,18 @@ export default function Docs({ info, act, instructions }: { info: AgentsInfo; ac
     setText(null);
     api.agentAction<{ text: string }>("doc_read", { path: sel }).then((r) => { setText(r.text); setSaved(r.text); }).catch((e) => toast(e.message, "err"));
   }, [sel, info]);
-  const nav = useListNav(info.docs.length, (i) => setSel(info.docs[i].path));
-  const doc = info.docs.find((d) => d.path === sel);
+  const code = useCode();
+  // j/k moves, enter opens the file in the code panel, esc clears.
+  const nav = useListNav(docs.length, (i) => { setSel(docs[i].path); code.open({ path: docs[i].path }); });
+  const doc = docs.find((d) => d.path === sel);
   const state = (d: AgentDoc) => (!d.exists ? ["missing", ""] : d.current ? ["brief current", "green"] : d.synced ? ["brief outdated", "yellow"] : ["no brief", ""]);
   const settings = (docs: string[]) => act("settings_save", { agents: { hide_secrets: info.secrets_hidden, memory: info.memory_enabled, docs } }, "Saved to kula.toml");
   return (
     <div className="docs-split">
       <div className="docs-list">
-        <div className="section-title">Read by agents <span className="count">{info.docs.length}</span></div>
+        <div className="section-title">Read by agents <span className="count">{docs.length}</span></div>
         <div {...nav.props}>
-          {info.docs.map((d, i) => (
+          {docs.map((d, i) => (
             <button key={d.path} className={`doc-item row-hover ${sel === d.path ? "on" : ""} ${nav.sel === i ? "kb-sel" : ""}`} data-idx={i} id={`list-item-${i}`} onClick={() => setSel(d.path)}>
               <span className="mono">{d.path}</span>
               <span className={`tag ${state(d)[1]}`}>{state(d)[0]}</span>

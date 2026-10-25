@@ -64,9 +64,11 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
   // the address follows through the one hash writer in App, so an old link
   // keeps working and lands where the menu can see it.
   useEffect(() => {
-    const r = routeTab(target?.tab);
-    if (r !== target?.tab) { go?.("agents", { tab: r }); return; }
-    setTabState(r);
+    const raw = target?.tab;
+    // A retired id redirects through `go` so the address follows; a real tab
+    // (or none – the bare `#agents` default) just sets the strip.
+    if (raw && RETIRED[raw]) { go?.("agents", { tab: RETIRED[raw] }); return; }
+    setTabState(routeTab(raw));
   }, [target?.tab]);
   const setTab = (t: Tab) => { setTabState(t); go?.("agents", { tab: t }); };
 
@@ -131,7 +133,7 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
             </>}
             {tab === "settings" && <Settings info={info} act={act} setTab={setTab} />}
             {tab === "memory" && <MemoryTab info={info} act={act} open={open} />}
-            {tab === "docs" && <Docs info={info} act={act} instructions={<Instructions ix={sx.ix} err={sx.err} />} />}
+            {tab === "docs" && <Docs info={info} act={act} more={[...new Set((sx.ix?.instructions ?? []).map((i) => i.path))]} instructions={<Instructions ix={sx.ix} err={sx.err} />} />}
           </div>
         </div>
       </div>
