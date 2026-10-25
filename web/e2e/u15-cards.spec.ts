@@ -57,7 +57,7 @@ test.describe("agent cards and the agent sidebar", () => {
     await expect(side).toHaveCount(0);
     await expect(card).toBeFocused();
     // and Esc does the same
-    await card.click();
+    await card.locator(".card__t").click();
     await expect(side).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(side).toHaveCount(0);

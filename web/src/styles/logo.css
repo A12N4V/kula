@@ -7,8 +7,12 @@
 .logo-click { cursor: pointer; }
 .logo-click:focus-visible { outline: 1px solid var(--accent, #d8c7a0); outline-offset: 2px; }
 
-/* the studio itself: a portal overlay, one window on the veil */
+/* the studio itself: a portal overlay, one window on the veil. While it is
+   open the page behind it is out of play (hidden from hit-testing and AT). */
 .logo-root { position: relative; z-index: 90; }
+.logo-studio-open > body > :not(.logo-root) { visibility: hidden; }
+.logo-studio-open > body > .logo-root,
+.logo-studio-open > body > .logo-root * { visibility: visible; }
 .logo-veil {
   position: fixed; inset: 0; z-index: 90;
   background: color-mix(in srgb, var(--bg) 72%, transparent);
@@ -41,7 +45,20 @@
 .logo-row .spacer { flex: 1; }
 .logo-slider { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 8px; }
 .logo-slider > span { font: 11px/1 var(--font-mono, var(--font)); color: var(--muted, #a09a92); letter-spacing: 0.04em; }
-.logo-slider input[type="range"] { width: 100%; accent-color: var(--accent, #d8c7a0); }
+/* the dials: a 40px hit target, a 1px warm track, a square thumb – no native
+   grey anywhere */
+.logo-slider input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 40px; margin: 0; background: transparent; cursor: pointer;
+}
+.logo-slider input[type="range"]::-webkit-slider-runnable-track { height: 1px; background: var(--line-2); }
+.logo-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; margin-top: -7px;
+  background: var(--accent); border: 1px solid var(--accent-ink); border-radius: 0;
+}
+.logo-slider input[type="range"]::-moz-range-track { height: 1px; background: var(--line-2); }
+.logo-slider input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; background: var(--accent); border: 1px solid var(--accent-ink); border-radius: 0; }
 .logo-actions { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
 .logo-note { font-size: 11px; color: var(--muted, #a09a92); }
 .logo-note-err { color: #d08770; }

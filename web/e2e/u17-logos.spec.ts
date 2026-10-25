@@ -84,6 +84,20 @@ test.describe("the logo studio", () => {
     expect(dDen1).not.toBe(dDen0);
   });
 
+  test("prefers-reduced-motion keeps the studio still", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await open(page);
+    await page.locator(".ag-cards .ag-card [data-testid^=ag-art-]").first().click();
+    await expect(page.getByTestId("logo-studio")).toBeVisible();
+    // nothing in the studio animates: no running CSS/WAAPI animations at all
+    const anims = await page.evaluate(() => document.getAnimations().filter((a) => {
+      const el = a.effect && "target" in a.effect ? a.effect.target : null;
+      return el instanceof Element && !!el.closest("[data-testid=logo-studio]");
+    }).length);
+    expect(anims).toBe(0);
+  });
+
   test("Save logo posts logo_save; the saved svg then replaces the mark", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop");
     const saves: { kind?: string; name?: string; params?: { dims?: number; density?: number } }[] = [];

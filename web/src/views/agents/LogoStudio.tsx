@@ -45,14 +45,18 @@ function Studio({ kind, name, onClose }: { kind: MarkFamily; name: string; onClo
   const opener = useRef<Element | null>(null);
 
   // one interaction away, but still one interaction: Esc closes and focus
-  // returns to the mark that opened the studio
+  // returns to the mark that opened the studio. While the studio is open the
+  // page behind it is hidden from hit-testing and assistive tech – the studio
+  // is the only interaction there is.
   useEffect(() => {
     opener.current = document.activeElement;
     closeRef.current?.focus();
+    document.documentElement.classList.add("logo-studio-open");
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
+      document.documentElement.classList.remove("logo-studio-open");
       (opener.current as HTMLElement | null)?.focus?.();
     };
   }, [onClose]);
