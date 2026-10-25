@@ -25,11 +25,14 @@ async function openSettings(page: Page) {
   return win;
 }
 
-/** Drag the window by its header from the grab point by (dx, dy). */
+/** Drag the window by its header from the grab point by (dx, dy).
+ *  boundingBox is page-relative; the mouse takes viewport coords, so the
+ *  scroll offset is subtracted first. */
 async function dragBy(page: Page, win: ReturnType<Page["locator"]>, dx: number, dy: number) {
   const head = win.locator("[data-testid=settings-head]");
   const hb = (await head.boundingBox())!;
-  const gx = hb.x + hb.width / 2, gy = hb.y + hb.height / 2;
+  const [sx, sy] = await page.evaluate(() => [window.scrollX, window.scrollY]);
+  const gx = hb.x + hb.width / 2 - sx, gy = hb.y + hb.height / 2 - sy;
   await page.mouse.move(gx, gy);
   await page.mouse.down();
   await page.mouse.move(gx + dx, gy + dy, { steps: 6 });
@@ -123,22 +126,29 @@ test.describe("x13 desktop windows", () => {
 
   test("two windows stack – click brings one to front (z order)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await open(page);
-    const a = await openSettings(page);
-    // open a second window: the help palette pane is not a Window; use a
-    // second settings reopen? Instead open settings, then help is a pane –
-    // so prove z order within the store: two windows via localStorage.
-    await page.evaluate(() => {
-      const st = JSON.parse(localStorage.getItem("kula.windows.v1") ?? "{}");
-      st["code-panel"] = { x: 200, y: 200, w: 500, h: 400, z: st.settings.z - 1, open: true };
-      localStorage.setItem("kula.windows.v1", JSON.stringify(st));
+    // seed a second (not-yet-owned) window with a higher z than settings
+    await page.addInitScript(() => {
+      try {
+        sessionStorage.setItem("kula.opened", "1");
+        localStorage.setItem("kula.settings.v1", JSON.stringify({ opening: false }));
+        localStorage.setItem("kula.windows.v1", JSON.stringify({
+          "code-panel": { x: 200, y: 200, w: 500, h: 400, z: 5, open: true },
+          settings: { x: 300, y: 300, w: 700, h: 500, z: 3, open: true },
+        }));
+      } catch { /* */ }
     });
-    // reload so the second window mounts through a real owner later; here the
-    // store itself is exercised through the settings window's z bump
-    await a.click();
-    const z = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v1")!)["settings"].z);
-    await page.evaluate(() => document.dispatchEvent(new Event("x")));
-    expect(z).toBeGreaterThan(0);
+    await page.goto("/#overview");
+    await page.keyboard.press(",");
+    const win = page.locator("[data-testid=settings]");
+    await expect(win).toBeVisible();
+    // opening a window brings it to front: its z must pass the seeded sibling
+    const sib = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v1")!)["code-panel"].z);
+    const mine = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v1")!)["settings"].z);
+    expect(mine).toBeGreaterThan(sib);
+    // and a click on a front window keeps it front (idempotent focus)
+    await win.click();
+    const again = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v1")!)["settings"].z);
+    expect(again).toBe(mine);
   });
 
   test("position and size persist in localStorage and reopen where left", async ({ page }) => {
@@ -156,6 +166,7 @@ test.describe("x13 desktop windows", () => {
     await page.keyboard.press(",");
     const again = page.locator("[data-testid=settings]");
     await expect(again).toBeVisible();
+    await page.waitForTimeout(300); // let the pop-in animation settle
     const reopened = (await again.boundingBox())!;
     expect(Math.abs(reopened.x - after.x)).toBeLessThan(3);
     expect(Math.abs(reopened.y - after.y)).toBeLessThan(3);

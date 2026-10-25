@@ -9,7 +9,6 @@
 @import "./styles/code.css";
 @import "./styles/agents.css";
 @import "./styles/agents-memory.css";
-@import "./styles/windows.css";
 @import "./styles/agents-teams.css";
 @import "./styles/logo.css"; /* U17 · the logo studio and saved logos */
 @import "./styles/agents-terrain.css"; /* U3 – actors on the terrain */
@@ -21,6 +20,7 @@
 @import "./styles/plain.css"; /* U9 · the reading layer */
 @import "./styles/workspace.css"; /* workspace: agents on the map */
 @import "./styles/dock.css"; /* bottom dock: terminal + run log */
+@import "./styles/windows.css"; /* X13 · desktop windows – last so the window chrome wins the cascade */
 
 /* ------------------------------------------------------------------ K2 · unified agent config (skills, rules, MCP, memory layers) */
 .sk-diff { margin-top: var(--gap); border-top: 1px solid var(--line); padding-top: var(--gap); }
