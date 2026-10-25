@@ -18,46 +18,58 @@ import Overview from "./agents/Overview";
 import Workflows from "./agents/Workflows";
 import ResearchTab from "./agents/Research";
 import Teams from "./agents/Teams";
-import Fences from "./agents/Fences";
 import MemoryTab from "./agents/Memory";
 import Docs from "./agents/Docs";
-import Connect from "./agents/Connect";
+import SkillIndex, { Instructions, useSkillIndex } from "./agents/SkillIndex";
 import Skills from "./agents/Skills";
 import Settings, { ImportSkill } from "./agents/Settings";
-import SkillIndex, { Instructions, useSkillIndex } from "./agents/SkillIndex";
 import { Grip, listWidth } from "../resize";
 
 // A menu, not a dashboard: configure first – the agents, their teams, the
-// skills and instruction files they load, fences, wiring and settings – then
-// what agents have done. Each entry opens a listing on the right.
+// skills and docs they load, memory, and the settings that wire it together –
+// then what agents have done. Each entry opens a listing on the right.
+// Seven icon tabs, no overflow: instructions live in Docs, fences in Teams
+// (U18), Connect is a Settings section. Old links still land:
+//  #agents/instructions → Docs, #agents/fences → Teams' limits,
+//  #agents/connect → Settings, #agents/overview → the Agents list.
 const TABS = [
-  { id: "workflows", label: "Agents", icon: Icon.workflow, group: "Configure", hint: "Work modes: role, scope, steps" },
-  { id: "teams", label: "Teams", icon: Icon.team, group: "Configure", hint: "Agents that work together" },
-  { id: "skills", label: "Skills", icon: Icon.box, group: "Configure", hint: "Every SKILL.md an agent loads" },
-  { id: "instructions", label: "Instructions", icon: Icon.doc, group: "Configure", hint: "CLAUDE.md, AGENTS.md, GEMINI.md" },
-  { id: "fences", label: "Fences", icon: Icon.fence, group: "Configure", hint: "What agents may not touch" },
-  { id: "connect", label: "Connect", icon: Icon.plug, group: "Configure", hint: "MCP and hooks per agent" },
-  { id: "settings", label: "Settings", icon: Icon.gear, group: "Configure", hint: "Memory, secrets, default agent" },
-  { id: "overview", label: "Overview", icon: Icon.agents, group: "Activity", hint: "The task and the roster" },
-  { id: "research", label: "Research", icon: Icon.flask, group: "Activity", hint: "Research loops" },
-  { id: "memory", label: "Memory", icon: Icon.memory, group: "Activity", hint: "What agents remember" },
-  { id: "docs", label: "Docs", icon: Icon.doc, group: "Activity", hint: "Docs agents read" },
+  { id: "workflows", label: "Agents", icon: Icon.workflow, hint: "Work modes: role, scope, steps" },
+  { id: "teams", label: "Teams", icon: Icon.team, hint: "Agents that work together" },
+  { id: "research", label: "Research", icon: Icon.flask, hint: "Research loops" },
+  { id: "skills", label: "Skills", icon: Icon.box, hint: "Every SKILL.md an agent loads" },
+  { id: "memory", label: "Memory", icon: Icon.memory, hint: "What agents remember" },
+  { id: "docs", label: "Docs", icon: Icon.doc, hint: "Docs and instruction files" },
+  { id: "settings", label: "Settings", icon: Icon.gear, hint: "Memory, secrets, wiring, default agent" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
+// Retired tab ids still arrive in the URL hash – never a dead link.
+const RETIRED: Record<string, Tab> = { instructions: "docs", fences: "teams", connect: "settings", overview: "workflows" };
+const isTab = (t: string | undefined): t is Tab => TABS.some((x) => x.id === t);
+const routeTab = (t: string | undefined): Tab => (isTab(t) ? t : RETIRED[t ?? ""] ?? "workflows");
 
 export { LEVEL_TEXT, LEVEL_MEANS, GuardTag, Snippet };
 
 export default function Agents({ version, onChanged, openSymbol, go, target }: Nav) {
   const [info, setInfo] = useState<AgentsInfo | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [tab, setTabState] = useState<Tab>(() => (TABS.some((t) => t.id === target?.tab) ? target!.tab : "workflows") as Tab);
+  const [tab, setTabState] = useState<Tab>(() => routeTab(target?.tab));
   const toast = useToast();
   const sx = useSkillIndex(version);
   const code = useCode();
   const load = () => api.agents().then((i) => { setInfo(i); setErr(null); }).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, [version]);
   // The URL is the tab: back and forward move between them.
-  useEffect(() => { setTabState((TABS.some((t) => t.id === target?.tab) ? target!.tab : "workflows") as Tab); }, [target?.tab]);
+  // The URL is the tab: back and forward move between them. Retired tab ids
+  // (instructions, fences, connect, overview) route to their new home – and
+  // the address follows through the one hash writer in App, so an old link
+  // keeps working and lands where the menu can see it.
+  useEffect(() => {
+    const raw = target?.tab;
+    // A retired id redirects through `go` so the address follows; a real tab
+    // (or none – the bare `#agents` default) just sets the strip.
+    if (raw && RETIRED[raw]) { go?.("agents", { tab: RETIRED[raw] }); return; }
+    setTabState(routeTab(raw));
+  }, [target?.tab]);
   const setTab = (t: Tab) => { setTabState(t); go?.("agents", { tab: t }); };
 
   const act = async (action: Parameters<typeof api.agentAction>[0], body: Record<string, unknown>, done: string) => {
@@ -80,9 +92,10 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
   if (!info) return <div className="page"><div className="muted">Reading workflows, fences and memories…</div></div>;
   const stale = info.memories.filter((m) => m.stale).length;
   const outdated = info.docs.filter((d) => d.synced && !d.current).length;
-  const badge: Partial<Record<Tab, number>> = { memory: stale, docs: outdated, fences: info.suggestions.filter((s) => s.kind === "guard").length, workflows: info.suggestions.filter((s) => s.kind === "workflow").length, skills: (info.skills ?? []).filter((s) => Object.values(s.targets).some((t) => t === "missing" || t === "differs")).length + (info.skill_strays?.length ?? 0) };
+  // Fences moved into Teams (U18), so guard suggestions count on Teams.
+  const badge: Partial<Record<Tab, number>> = { memory: stale, docs: outdated, teams: info.suggestions.filter((s) => s.kind === "guard").length, workflows: info.suggestions.filter((s) => s.kind === "workflow").length, skills: (info.skills ?? []).filter((s) => Object.values(s.targets).some((t) => t === "missing" || t === "differs")).length + (info.skill_strays?.length ?? 0) };
 
-  const counts: Partial<Record<Tab, number>> = { workflows: info.workflows.length, teams: info.teams?.length, skills: sx.ix?.skills.length, instructions: sx.ix?.instructions.length };
+  const counts: Partial<Record<Tab, number>> = { workflows: info.workflows.length, teams: info.teams?.length, skills: sx.ix?.skills.length, docs: (sx.ix?.instructions.length ?? 0) + outdated };
   const cur = TABS.find((t) => t.id === tab)!;
   return (
     <div className="split agents ag-split" style={listWidth("agents", 260)}>
@@ -90,15 +103,12 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
         <div className="list-head"><h2>Agents</h2><span className="spacer" />
           <button className="btn sm ghost icon-only" onClick={() => onWorkspace()} title="Open the Workspace – where these agents work" aria-label="Open Workspace" data-testid="ag-to-workspace"><Icon.workspace /></button>
         </div>
-        <nav className="ag-tabs" role="tablist" aria-label="Agents" aria-orientation="vertical">
-          {TABS.map((t, i) => (
-            <span key={t.id} className="ag-tab-wrap">
-              {(i === 0 || TABS[i - 1].group !== t.group) && <div className="ag-group" aria-hidden="true">{t.group}</div>}
-              <button role="tab" aria-selected={tab === t.id} aria-label={t.label} className={`ag-mi ${tab === t.id ? "on" : ""}`} onClick={() => setTab(t.id)} title={t.hint}>
-                <t.icon /><span className="ag-mi-label">{t.label}</span>
-                {!!badge[t.id] ? <span className="badge">{badge[t.id]}</span> : counts[t.id] != null && <span className="ag-mi-n">{counts[t.id]}</span>}
-              </button>
-            </span>
+        <nav className="ag-tabs" role="tablist" aria-label="Agents" aria-orientation="vertical" data-testid="ag-tabs">
+          {TABS.map((t) => (
+            <button key={t.id} role="tab" aria-selected={tab === t.id} aria-label={t.label} className={`ag-mi ${tab === t.id ? "on" : ""}`} onClick={() => setTab(t.id)} title={t.hint}>
+              <t.icon /><span className="ag-mi-label">{t.label}</span>
+              {!!badge[t.id] ? <span className="badge">{badge[t.id]}</span> : counts[t.id] != null && <span className="ag-mi-n">{counts[t.id]}</span>}
+            </button>
           ))}
         </nav>
       </div>
@@ -110,8 +120,10 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
             {tab === "workflows" && <button className="btn sm" onClick={() => onWorkspace()}><Icon.workspace /> Open Workspace</button>}
           </header>
           <div className="ag-panel" key={tab}>
-            {tab === "overview" && <Overview info={info} act={act} setTab={setTab} onGraph={onGraph} open={open} />}
+            {/* Overview lost its menu entry – its roster and stats live here,
+                under the Agents list, so nothing the agents page knew is gone. */}
             {tab === "workflows" && <Workflows info={info} act={act} onGraph={onGraph} setTab={setTab} onWorkspace={onWorkspace} />}
+            {tab === "workflows" && <Overview info={info} act={act} setTab={setTab} onGraph={onGraph} open={open} />}
             {tab === "research" && <ResearchTab info={info} act={act} open={open} go={go} />}
             {tab === "teams" && <Teams info={info} act={act} setTab={setTab} />}
             {tab === "skills" && <>
@@ -119,12 +131,9 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
               <details className="sx-more"><summary>Copies per agent, MCP and memory layers</summary><Skills info={info} act={act} open={open} /></details>
               <ImportSkill info={info} act={act} />
             </>}
-            {tab === "instructions" && <Instructions ix={sx.ix} err={sx.err} />}
             {tab === "settings" && <Settings info={info} act={act} setTab={setTab} />}
-            {tab === "fences" && <Fences info={info} act={act} onGraph={onGraph} />}
             {tab === "memory" && <MemoryTab info={info} act={act} open={open} />}
-            {tab === "docs" && <Docs info={info} act={act} />}
-            {tab === "connect" && <Connect info={info} act={act} />}
+            {tab === "docs" && <Docs info={info} act={act} more={[...new Set((sx.ix?.instructions ?? []).map((i) => i.path))]} instructions={<Instructions ix={sx.ix} err={sx.err} />} />}
           </div>
         </div>
       </div>

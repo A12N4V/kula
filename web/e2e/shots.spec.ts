@@ -94,12 +94,12 @@ test("proposals, issues, notes", async ({ page }) => {
   await shot(page, "notes");
 });
 
-test("agents: overview, workflows, fences, memory, docs, connect", async ({ page }) => {
+test("agents: overview, teams, research, skills, memory, docs, settings", async ({ page }) => {
   await at(page, "agents");
   await expect(page.locator(".loop-step").first()).toBeVisible();
   await page.waitForTimeout(700); // cards fade in
   await shot(page, "agents");
-  for (const t of ["workflows", "fences", "memory", "docs", "connect"]) {
+  for (const t of ["workflows", "teams", "research", "skills", "memory", "docs", "settings"]) {
     await at(page, `agents/${t}`);
     await page.waitForTimeout(900);
     await shot(page, `agents-${t}`);

@@ -20,14 +20,14 @@ test.describe("s1 agents split", () => {
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // `a` opens Agents (its rail item is back as the config home)
     await expect(page.locator(".ag-menu .list-head h2")).toHaveText("Agents");
     const tabs = page.locator(".ag-tabs [role=tab]");
-    await expect(tabs).toHaveCount(11);
-    for (const name of ["Agents", "Teams", "Skills", "Instructions", "Fences", "Connect", "Settings", "Overview", "Research", "Memory", "Docs"]) {
+    await expect(tabs).toHaveCount(7);
+    for (const name of ["Agents", "Teams", "Research", "Skills", "Memory", "Docs", "Settings"]) {
       await expect(page.getByRole("tab", { name, exact: true })).toBeVisible();
     }
     await expect(page.getByRole("tab", { name: "Agents", exact: true })).toHaveAttribute("aria-selected", "true");
   });
 
-  test("workflows, memory and connect tabs compose their parts", async ({ page }) => {
+  test("workflows, memory and settings (with Connect as a section) compose their parts", async ({ page }) => {
     test.skip(test.info().project.name !== "desktop");
     await open(page, "agents");
     await page.getByRole("tab", { name: "Agents", exact: true }).click();
@@ -37,7 +37,7 @@ test.describe("s1 agents split", () => {
     await expect(page.locator(".wf-edit")).toBeVisible();
     await page.getByRole("tab", { name: "Memory", exact: true }).click();
     await expect(page.locator(".ag-remember")).toBeVisible();
-    await page.locator(".ag-tabs [role=tab]", { hasText: "Connect" }).click();
+    await page.getByRole("tab", { name: "Settings", exact: true }).click();
     await expect(page.locator(".conn-grid .conn").first()).toBeVisible();
     await expect(page.locator(".mod-grid .mod").first()).toBeVisible();
   });

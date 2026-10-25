@@ -73,3 +73,48 @@
 .tgl.compact { padding: 0 6px; gap: 6px; }
 .tgl.compact .tgl-label { display: none; }
 .tgl.sm { height: 26px; }
+
+/* ---------- animated icon toggles (X12) ---------- */
+/* State lives in the icon: it morphs between the two states, the track is a
+   1px warm rectangle. prefers-reduced-motion keeps the swap, drops the motion. */
+.ico-tgl { gap: 6px; padding: 0 8px; height: 30px; }
+.ico-tgl-icon { display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; }
+.ico-tgl-icon svg { transition: transform 0.25s var(--ease), opacity 0.25s var(--ease); }
+.ico-tgl:not(.on) .ico-tgl-icon { color: var(--text-3); }
+@media (prefers-reduced-motion: reduce) { .ico-tgl-icon svg { transition: none; } }
+
+/* Sun morphs into a moon: the rays fold in, the bite carves the crescent. */
+.sun-moon .sun-moon-rays { transition: opacity 0.25s var(--ease), transform 0.25s var(--ease); transform-origin: 12px 12px; }
+.sun-moon-disc { transition: transform 0.25s var(--ease); }
+.sun-moon .sun-moon-bite { fill: var(--bg); stroke: none; transition: transform 0.25s var(--ease); transform-origin: 9.4px 10.4px; }
+.sun-moon.moon .sun-moon-rays { opacity: 0; transform: scale(0.4) rotate(40deg); }
+.sun-moon:not(.moon) .sun-moon-bite { transform: translate(24px, 24px) scale(0); }
+@media (prefers-reduced-motion: reduce) { .sun-moon .sun-moon-rays, .sun-moon-disc, .sun-moon .sun-moon-bite { transition: none; } }
+
+/* ---------- Dropdown (ui/Dropdown.tsx) – the one select-style control ---------- */
+.dd { position: relative; display: inline-flex; }
+.dd-btn { display: inline-flex; align-items: center; gap: 8px; height: var(--ctl-h); padding: 0 8px 0 10px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text-2); font: var(--ctl-font) var(--mono);
+  cursor: pointer; transition: background var(--dur), border-color var(--dur), color var(--dur); }
+.dd-btn:hover:not(:disabled) { background: var(--hover-bg); border-color: var(--hover-line); color: var(--text); }
+.dd-btn:disabled { color: var(--text-3); cursor: not-allowed; }
+.dd-value { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dd-caret { display: inline-flex; }
+.dd-caret svg { width: 12px; height: 12px; transition: transform var(--dur) var(--ease); }
+.dd-caret.on svg { transform: rotate(180deg); }
+.dd-menu { position: fixed; z-index: 120; margin: 0; padding: 4px; list-style: none; min-width: 160px; max-width: min(360px, calc(100vw - 16px));
+  max-height: 320px; overflow: auto; background: var(--panel); border: 1px solid var(--line-2); font: var(--ctl-font) var(--mono); }
+.dd-menu, .dd-menu * { box-sizing: border-box; }
+.dd-opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; color: var(--text-2); cursor: pointer; }
+.dd-opt:hover, .dd-opt.kb-sel { background: var(--hover-bg); color: var(--text); }
+.dd-mark { display: inline-flex; flex: none; }
+.dd-mark svg { width: 14px; height: 14px; }
+.dd-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-hint { margin-left: 8px; color: var(--text-3); }
+.dd-opt svg { width: 14px; height: 14px; flex: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .dd-menu { animation: dd-in 0.15s var(--ease); transform-origin: top; }
+  .dd-menu.up { animation: dd-in-up 0.15s var(--ease); transform-origin: bottom; }
+}
+@keyframes dd-in { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes dd-in-up { from { opacity: 0; transform: translateY(4px); } }

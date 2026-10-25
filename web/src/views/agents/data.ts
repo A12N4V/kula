@@ -48,4 +48,4 @@ export const takeStashedAdd = (): "team" | "agent" | null => {
     return k === "team" || k === "agent" ? k : null;
   } catch { return null; }
 };
-export type Tab = "overview" | "workflows" | "research" | "teams" | "skills" | "fences" | "memory" | "docs" | "connect";
+export type Tab = "workflows" | "research" | "teams" | "skills" | "memory" | "docs" | "settings";

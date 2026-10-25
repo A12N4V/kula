@@ -2,7 +2,15 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { dirColor, groupDirs, rankHue } from "./colors";
 import { fuzzyScore } from "./nav";
 import { settings, useKnownDirs, useSettings, type Settings } from "./settings";
-import { Icon } from "./ui";
+import { Icon, IconToggle, SunMoon } from "./ui";
+
+/** The icon a switch carries – icon + state, one per setting. */
+const TOGGLE_ICON: Partial<Record<keyof Settings, React.ComponentType>> = {
+  opening: Icon.doc, territories: Icon.graph, hubIcons: Icon.box, imports: Icon.flows, packages: Icon.package,
+  curved: Icon.branches, flow: Icon.arrow,
+};
+// Every boolean setting has a semantic icon – the fallback never renders.
+const IconDefault = Icon.box;
 import { api, type LangRow } from "./api";
 import { Grip, hasCustomSizes, PaneControls, resetSizes } from "./resize";
 
@@ -194,11 +202,34 @@ function Toggle({ k, label, hint, q }: { k: keyof Settings; label: string; hint?
   const s = useSettings();
   const on = !!s[k];
   if (q && !fuzzyScore(q, `${label} ${hint ?? ""}`)) return null;
+  const Icon = TOGGLE_ICON[k] ?? IconDefault;
   return (
     <label className="set-row toggle">
       <div className="set-label"><span>{label}</span>{hint && <small>{hint}</small>}</div>
-      <button role="switch" aria-checked={on} aria-label={label} className={`switch ${on ? "on" : ""}`} onClick={() => settings.set({ [k]: !on } as Partial<Settings>)}><i /></button>
+      <IconToggle checked={on} hint={label} icon={() => <Icon />}
+        onChange={(v) => settings.set({ [k]: v } as Partial<Settings>)} />
     </label>
+  );
+}
+
+/** The theme switch: sun for light, moon for dark, morphing between the two.
+    A "system" theme resolves through matchMedia for its starting state, and
+    the first flip writes an explicit choice. */
+function ThemeMorph() {
+  const s = useSettings();
+  const dark = s.theme === "dark" || (s.theme === "system" && typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches);
+  return (
+    <>
+      <IconToggle checked={dark} hint={dark ? "Dark theme – switch to light" : "Light theme – switch to dark"}
+        testId="theme-toggle"
+        icon={(on) => <SunMoon on={on} />}
+        onChange={(v) => settings.set({ theme: v ? "dark" : "light" })} />
+      {/* Follow-the-OS stays reachable from the panel: one small reset next to the morph. */}
+      {s.theme !== "system" && (
+        <button className="btn ghost sm" data-testid="theme-system" aria-label="Follow the system theme"
+          onClick={() => settings.set({ theme: "system" })}>system</button>
+      )}
+    </>
   );
 }
 
@@ -315,7 +346,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         </nav>
         <div className="set-body" ref={body} onScroll={onScroll}>
           <div className="set-sec" id="set-appearance">Appearance</div>
-          <Row label="Theme" q={q}><Seg value={s.theme} options={[["system", "System"], ["dark", "Dark"], ["light", "Light"]]} onChange={(theme) => settings.set({ theme })} /></Row>
+          <Row label="Theme" q={q}><ThemeMorph /></Row>
           <Toggle k="opening" label="Opening sequence" hint="Your repo's graph, dithered, once per session" q={q} />
           <Row label="Panel sizes" hint="Drag any panel edge; double-click an edge to reset it" q={q}>
             <button className="btn sm" disabled={!hasCustomSizes()} onClick={() => { resetSizes(); settings.set({}); }}>Reset all</button>

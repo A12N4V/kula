@@ -160,6 +160,40 @@ export function Toggle({ label, checked, onChange, hint, count, testId, classNam
   );
 }
 
+// ---------- animated icon toggles ----------
+/**
+ * The icon switch: state lives in the icon (it morphs, it does not slide),
+ * the track is a plain warm 1px pill. `icon` gets the checked state and may
+ * return any mark – a sun that swaps for a moon, an eye, a key. Respect
+ * prefers-reduced-motion: the CSS keeps the morph, drops the motion.
+ */
+export function IconToggle({ checked, onChange, icon, hint, testId, className = "", disabled }: {
+  checked: boolean; onChange: (v: boolean) => void;
+  icon: (on: boolean) => ReactNode;
+  /** aria-label: what the switch does, not its state. */
+  hint?: string; testId?: string; className?: string; disabled?: boolean;
+}) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-label={hint} title={hint}
+      data-testid={testId} disabled={disabled}
+      className={`tgl ico-tgl ${checked ? "on" : ""} ${className}`}
+      onClick={() => onChange(!checked)}>
+      <span className="ico-tgl-icon">{icon(checked)}</span>
+    </button>
+  );
+}
+
+/** Sun that morphs into a moon – the theme switch. */
+export function SunMoon({ on }: { on: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" {...P} width="16" height="16" className={`sun-moon ${on ? "moon" : ""}`}>
+      <circle cx="12" cy="12" r="5" className="sun-moon-disc" />
+      <path d="M12 3.5v-2M12 22.5v-2M3.5 12h-2M22.5 12h-2M6 6 4.6 4.6M19.4 19.4 18 18M18 6l1.4-1.4M4.6 19.4 6 18" className="sun-moon-rays" />
+      <circle cx="9.4" cy="10.4" r="4.6" className="sun-moon-bite" />
+    </svg>
+  );
+}
+
 // ---------- tooltips ----------
 /**
  * The one tooltip: appears after a short delay, carries real information
