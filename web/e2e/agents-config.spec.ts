@@ -29,7 +29,7 @@ test.describe("agents config home", () => {
     // sidebar when a card is clicked
     await expect(page.locator("[data-testid^=ag-card-]").first()).toBeVisible();
     await expect(page.locator(".wf-graph")).toHaveCount(0);
-    await page.locator("[data-testid^=ag-card-]").first().click();
+    await page.locator("[data-testid^=ag-card-]").first().locator(".card__t").click();
     await expect(page.locator(".wf-edit")).toBeVisible();
     await page.getByTestId("wf-use-workspace").click();
     await expect(page).toHaveURL(/#map\b/);

@@ -38,7 +38,8 @@ test.describe("agent cards and the agent sidebar", () => {
     await open(page);
     const name = await page.locator("[data-testid^=ag-card-]:not([data-testid=ag-card-add])").first().getAttribute("data-testid");
     const card = page.locator(`[data-testid=${name}]`);
-    await card.click();
+    // the card body opens the agent; the mark on top opens the logo studio (U17)
+    await card.locator(".card__t").click();
     // the sidebar is a pane: controls, grip, the editor inside
     const side = page.getByTestId("ag-side");
     await expect(side).toBeVisible();
@@ -92,7 +93,7 @@ test.describe("agent cards and the agent sidebar", () => {
     await open(page);
     const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(over, "the agents grid scrolls sideways").toBeLessThanOrEqual(1);
-    await page.locator("[data-testid^=ag-card-]:not([data-testid=ag-card-add])").first().click();
+    await page.locator("[data-testid^=ag-card-]:not([data-testid=ag-card-add])").first().locator(".card__t").click();
     const side = page.getByTestId("ag-side");
     await expect(side).toBeVisible();
     // phone: every pane is a bottom sheet (the shared pane rule)

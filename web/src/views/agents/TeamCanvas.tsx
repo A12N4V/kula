@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Background, BackgroundVariant, Handle, Panel, Position, ReactFlow, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow, type Edge, type Node, type NodeChange } from "@xyflow/react";
 import { AgentHarmonograph, agentGradient } from "../../flow/agentMark";
+import { openLogoStudio } from "./LogoStudio";
 import { Icon } from "../../ui";
 import { seatKey, titleFor } from "../../roster";
 import type { AgentsInfo, Team } from "../../api";
@@ -34,13 +35,17 @@ const key = (m: Member) => seatKey(m) || `seat-${m.workflow || "none"}-${m.agent
 function SquareNode({ data }: { data: { member: Member; live: boolean; lead: boolean } }) {
   const m = data.member;
   const isLead = data.lead;
-  const [a, b] = agentGradient(key(m));
+  const [a, b] = agentGradient(key(m), "team");
   return (
     <div className={`tc-node${data.live ? " live" : ""}`} style={{ ["--tc-a" as string]: a, ["--tc-b" as string]: b }}>
       {/* the handles are what an edge anchors to – hidden, the square is the anchor */}
       <Handle type="target" position={Position.Top} isConnectable={false} />
       <Handle type="source" position={Position.Bottom} isConnectable={false} />
-      <div className="tc-node-mark"><AgentHarmonograph name={key(m)} size={30} /></div>
+      <div className="tc-node-mark logo-click" role="button" tabIndex={0} aria-label={`Open the logo studio for ${m.name || m.agent || "any agent"}`}
+        data-testid={`tc-mark-${key(m)}`} onClick={(e) => { e.stopPropagation(); openLogoStudio("team", key(m)); }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); openLogoStudio("team", key(m)); } }}>
+        <AgentHarmonograph name={key(m)} size={30} family="team" />
+      </div>
       <div className="tc-node-body">
         <span className="tc-node-name mono">{m.name || m.agent || "any agent"}</span>
         <span className="tc-node-sub">{isLead ? "lead" : titleFor(m.role || "member")}{m.workflow ? ` · ${m.workflow}` : ""}</span>

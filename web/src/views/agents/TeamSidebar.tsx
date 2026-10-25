@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { Icon } from "../../ui";
 import { Grip, PaneControls } from "../../resize";
 import { agentGradient, AgentHarmonograph } from "../../flow/agentMark";
+import { openLogoStudio } from "./LogoStudio";
 import { seatKey, titleFor } from "../../roster";
 import { AGENT_IDS, AGENT_NAME, MODELS } from "./data";
 import { keyName } from "./parts";
@@ -65,11 +66,11 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
               {team.members.length === 0 && <div className="muted tc-side-empty">No members yet – add agents below.</div>}
               {team.members.map((m) => {
                 const k = memberKey(m);
-                const [a, b] = agentGradient(k);
+                const [a, b] = agentGradient(k, "team");
                 return (
                   <button key={k} className="tc-mcard" data-testid={`tc-member-${k}`} onClick={() => onPickMember(k)}
                     style={{ ["--tc-a" as string]: a, ["--tc-b" as string]: b }}>
-                    <AgentHarmonograph name={k} size={22} />
+                    <AgentHarmonograph name={k} size={22} family="team" />
                     <span className="tc-mcard-name mono">{m.name || m.agent || "any agent"}</span>
                     <span className="tc-mcard-sub">{memberKey(m) === leadSeat(team) ? "lead" : titleFor(m.role || "member")}{m.workflow ? ` · ${m.workflow}` : ""}</span>
                     <span className="spacer" />
@@ -144,7 +145,7 @@ function MemberEdit({ team, m, info, act, onSet, onClose }: {
   const known = !m.agent || m.agent === "any" || AGENT_IDS.includes(m.agent);
   return (
     <section className="tc-member-edit" aria-label={`Edit ${m.name || m.agent}`}>
-      <div className="mi-kind"><AgentHarmonograph name={k} size={16} /> {k === leadSeat(team) ? "lead" : titleFor(m.role || "member")}<span className="spacer" />
+      <div className="mi-kind"><AgentHarmonograph name={k} size={16} family="team" /> {k === leadSeat(team) ? "lead" : titleFor(m.role || "member")}<span className="spacer" />
         <button className="btn sm ghost icon-only" onClick={onClose} aria-label="Back to the team"><Icon.close /></button>
       </div>
       <label className="mi-field"><span>name</span>

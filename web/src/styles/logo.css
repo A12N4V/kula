@@ -1,0 +1,60 @@
+/* U17 · the logo studio and saved logos. Same design ground as every view:
+   absolute black, 1px warm lines, mono labels, no glass, no glow, no shadow. */
+
+/* a saved logo replaces the hashed mark; it is clickable where marks open
+   the studio */
+.logo-saved svg { width: 100%; height: 100%; display: block; }
+.logo-click { cursor: pointer; }
+.logo-click:focus-visible { outline: 1px solid var(--accent, #d8c7a0); outline-offset: 2px; }
+
+/* the studio itself: a portal overlay, one window on the veil */
+.logo-root { position: relative; z-index: 90; }
+.logo-veil {
+  position: fixed; inset: 0; z-index: 90;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.logo-win {
+  width: min(560px, 100%); max-height: min(560px, 100%);
+  display: flex; flex-direction: column;
+  background: var(--panel, #0d0d0d);
+  border: 1px solid var(--line-2);
+  color: var(--text);
+}
+.logo-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
+  font: 12px/1 var(--font-mono, var(--font));
+  letter-spacing: 0.04em;
+}
+.logo-body { display: flex; gap: 16px; padding: 16px; min-height: 0; }
+.logo-stage {
+  flex: 1; min-width: 0; aspect-ratio: 1;
+  border: 1px solid var(--line);
+  background: var(--bg-2, #0a0a0a);
+  display: flex; align-items: center; justify-content: center;
+}
+.logo-stage svg { width: 100%; height: 100%; display: block; }
+.logo-ctl { width: 200px; flex: none; display: flex; flex-direction: column; gap: 10px; }
+.logo-row { display: flex; align-items: center; gap: 8px; }
+.logo-row .spacer { flex: 1; }
+.logo-slider { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 8px; }
+.logo-slider > span { font: 11px/1 var(--font-mono, var(--font)); color: var(--muted, #a09a92); letter-spacing: 0.04em; }
+.logo-slider input[type="range"] { width: 100%; accent-color: var(--accent, #d8c7a0); }
+.logo-actions { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.logo-note { font-size: 11px; color: var(--muted, #a09a92); }
+.logo-note-err { color: #d08770; }
+
+@media (max-width: 600px) {
+  .logo-veil { padding: 0; }
+  .logo-win { width: 100%; height: 100%; max-height: none; border: 0; }
+  .logo-body { flex-direction: column; overflow: auto; }
+  .logo-ctl { width: auto; }
+}
+
+/* reduced motion: the studio is a still drawing anyway; keep any inherited
+   draw-on animation from ever running inside it */
+@media (prefers-reduced-motion: reduce) {
+  .logo-stage .ag-card-hg, .logo-stage path { animation: none !important; }
+}

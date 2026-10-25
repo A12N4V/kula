@@ -4,7 +4,8 @@
 // button: clicking it opens the agent sidebar (AgentSidebar).
 
 import { useMemo } from "react";
-import { harmonographPath, harmonographSegments, svgId } from "../../flow/agentMark";
+import { harmonographPath, harmonographSegments, svgId, useLogo, type MarkFamily } from "../../flow/agentMark";
+import { openLogoStudio } from "./LogoStudio";
 import { Icon } from "../../ui";
 import type { Workflow } from "../../api";
 
@@ -49,13 +50,29 @@ export async function fetchCards(): Promise<CardData[] | null> {
 /** The card's art: the 3D harmonograph seen from its one angle, a fine line
  *  whose colour flows along the trace. It draws itself once, slowly: a mask
  *  path runs its dashoffset (pathLength 1). Reduced motion keeps it still –
- *  the full curve, already drawn. */
-export function CardArt({ name }: { name: string }) {
+ *  the full curve, already drawn. Clicking the mark opens the logo studio
+ *  (module U17) while the rest of the card opens the agent – the card itself
+ *  stays one button, so the art is a click region, not a nested control. A
+ *  saved logo replaces the hashed curve. */
+export function CardArt({ name, family = "agent", onStudio = true }: { name: string; family?: MarkFamily; onStudio?: boolean }) {
+  const logo = useLogo(family, name);
   const id = `hgm-${svgId(name)}`;
-  const segs = useMemo(() => harmonographSegments(name), [name]);
+  const segs = useMemo(() => harmonographSegments(name, 2400, 24, family), [name, family]);
   const whole = useMemo(() => harmonographPath(name, 2400), [name]);
+  const open = (e: { stopPropagation: () => void }) => {
+    if (!onStudio) return;
+    e.stopPropagation();
+    openLogoStudio(family, name);
+  };
+  if (logo) {
+    return (
+      <span className={`ag-card-art-svg logo-saved${onStudio ? " logo-click" : ""}`} data-testid={`ag-art-${name}`} data-figure
+        onClick={open} style={{ display: "block", aspectRatio: "1" }} dangerouslySetInnerHTML={{ __html: logo.svg }} />
+    );
+  }
   return (
-    <svg className="ag-card-art-svg" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" aria-hidden="true" data-figure data-testid={`ag-art-${name}`}>
+    <svg className={`ag-card-art-svg${onStudio ? " logo-click" : ""}`} viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" aria-hidden="true" data-figure data-testid={`ag-art-${name}`}
+      onClick={open}>
       <defs>
         <mask id={id} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
           <path className="ag-card-hg" d={whole} pathLength={1} fill="none" stroke="#fff" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
