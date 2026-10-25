@@ -658,6 +658,7 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "mcp_registered": read(".mcp.json").contains("\"kula\""),
             "hook_installed": read(".claude/settings.json").contains("kula guard hook"),
             "kula_toml": crate::config::Config::exists(&r.root),
+            "allow_solo": cfg.agents.allow_solo,
             "workflows": crate::workflow::all(&cfg),
             "workflow": g.workflow(),
             "workflow_rules": g.workflow_rules().into_iter().map(|(rule, level)| json!({ "level": level, "paths": rule.paths, "symbols": rule.symbols, "reason": rule.reason })).collect::<Vec<_>>(),
@@ -768,7 +769,7 @@ enum RunKind {
     Team(String),
 }
 
-fn run_decision(team: &str, allow_solo: bool) -> Result<RunKind> {
+fn run_decision(team: &str, allow_solo: bool) -> anyhow::Result<RunKind> {
     if team.is_empty() {
         if allow_solo {
             Ok(RunKind::Solo)
