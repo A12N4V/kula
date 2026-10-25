@@ -1,15 +1,19 @@
 // Settings tab – every agent-wide switch in one place: the [agents] policy in
-// kula.toml (memory, secrets, the default agent), how each agent is wired in
-// (MCP server, pre-edit hook), and skill imports – a SKILL.md from disk or a
-// paste, or a skill an agent already keeps in its own folder. Every change
-// writes the same files the CLI does, so the Workspace picks it up at once.
+// kula.toml (memory, secrets, the default agent), wiring and Connect (the old
+// Connect tab, now a section: MCP, hooks and the enforcement points), and
+// skill imports – a SKILL.md from disk or a paste, or a skill an agent already
+// keeps in its own folder. Every change writes the same files the CLI does,
+// so the Workspace picks it up at once. One 8px rhythm: rows are 8px apart,
+// the label column is aligned, sections are grouped.
 
 import { useState } from "react";
 import type { AgentsInfo } from "../../api";
-import { Icon, Toggle } from "../../ui";
+import { Dropdown } from "../../ui/Dropdown";
+import { Icon, IconToggle } from "../../ui";
 import { GhMark } from "./SkillIndex";
 import { AGENT_NAME, type Act } from "./data";
 import { AgentMark, Card } from "./parts";
+import Connect from "./Connect";
 
 /** name/description from a SKILL.md's front matter; the rest is the body. */
 export function parseSkill(src: string, fallback = ""): { name: string; description: string; body: string } {
@@ -20,7 +24,7 @@ export function parseSkill(src: string, fallback = ""): { name: string; descript
   return { name, description: field("description"), body: (m ? m[2] : src).trim() };
 }
 
-export function ImportSkill({ info, act, setTab }: { info: AgentsInfo; act: Act; setTab?: (t: "connect" | "skills") => void }) {
+export function ImportSkill({ info, act, setTab }: { info: AgentsInfo; act: Act; setTab?: (t: "skills") => void }) {
   const [text, setText] = useState("");
   const [file, setFile] = useState("");
   const strays = info.skill_strays ?? [];
@@ -58,39 +62,35 @@ export function ImportSkill({ info, act, setTab }: { info: AgentsInfo; act: Act;
   );
 }
 
-export default function Settings({ info, act, setTab }: { info: AgentsInfo; act: Act; setTab: (t: "connect" | "skills") => void }) {
+export default function Settings({ info, act, setTab }: { info: AgentsInfo; act: Act; setTab: (t: "skills") => void }) {
   const base = { hide_secrets: info.secrets_hidden, memory: info.memory_enabled, docs: info.docs_list };
   const save = (agents: Record<string, unknown>, done: string) => act("settings_save", { agents: { ...base, ...agents } }, done).catch(() => {});
   const wired = info.connections.filter((c) => c.mcp);
+  // The Connect section sits further down the page – jump to it, never to a
+  // tab that no longer exists.
+  const toConnect = () => document.getElementById("set-connect")?.scrollIntoView({ behavior: "smooth", block: "start" });
   return (
     <div className="ag-grid set-grid">
-      <Card title="Policy" sub="[agents] in kula.toml">
-        <div className="ags-row"><span>Agents may keep memories</span><span className="spacer" />
-          <Toggle label="" checked={info.memory_enabled} onChange={(v) => save({ memory: v }, v ? "Agent memory on" : "Agent memory off")} hint="Let agents remember facts about the code" testId="set-memory" className="sm" /></div>
-        <div className="ags-row"><span>Hide likely secrets</span><span className="muted ags-desc">.env, keys, certificates</span><span className="spacer" />
-          <Toggle label="" checked={info.secrets_hidden} onChange={(v) => save({ hide_secrets: v }, v ? "Secrets hidden from agents" : "Secrets visible to agents")} hint="Keep secrets out of every agent answer" testId="set-secrets" className="sm" /></div>
-        <div className="ags-row"><span>Default agent</span><span className="spacer" />
-          {wired.length === 0 ? <button className="btn sm ghost" onClick={() => setTab("connect")}>Connect one first</button> : (
-            <div className="seg sm" role="radiogroup" aria-label="Default agent">
-              {wired.map((c) => (
-                <button key={c.id} role="radio" aria-checked={info.default_agent === c.id} className={info.default_agent === c.id ? "on" : ""} title={c.name} onClick={() => save({ default: c.id }, `${c.name} is the default`)} data-testid={`set-default-${c.id}`}>
-                  <AgentMark id={c.id} />{AGENT_NAME[c.id] ?? c.name}
-                </button>
-              ))}
-            </div>
+      <Card title="Policy" sub="[agents] in kula.toml" className="ag-wide">
+        <div className="ags-row set-row"><span className="set-label">Agents may keep memories</span><span className="spacer" />
+          <IconToggle checked={info.memory_enabled} onChange={(v) => save({ memory: v }, v ? "Agent memory on" : "Agent memory off")} hint="Let agents remember facts about the code" testId="set-memory"
+            icon={(on) => <Icon.memory />} />
+        </div>
+        <div className="ags-row set-row"><span className="set-label">Hide likely secrets <span className="muted ags-desc">.env, keys, certificates</span></span><span className="spacer" />
+          <IconToggle checked={info.secrets_hidden} onChange={(v) => save({ hide_secrets: v }, v ? "Secrets hidden from agents" : "Secrets visible to agents")} hint="Keep secrets out of every agent answer" testId="set-secrets"
+            icon={(on) => <Icon.shield />} />
+        </div>
+        <div className="ags-row set-row"><span className="set-label">Default agent</span><span className="spacer" />
+          {wired.length === 0 ? <button className="btn sm ghost" onClick={toConnect}>Connect one first</button> : (
+            <Dropdown value={info.default_agent ?? wired[0].id} options={wired.map((c) => ({ value: c.id, label: AGENT_NAME[c.id] ?? c.name, icon: <AgentMark id={c.id} /> }))}
+              onChange={(id) => { const c = info.connections.find((x) => x.id === id); if (c) save({ default: id }, `${c.name} is the default`); }}
+              label="Default agent" testId="set-default" className="set-default" />
           )}
         </div>
       </Card>
-      <Card title="Wiring" sub="what each agent reads" right={<button className="btn sm ghost" onClick={() => setTab("connect")}><Icon.plug /> Connect</button>}>
-        {info.connections.map((c) => (
-          <div key={c.id} className="ags-row">
-            <AgentMark id={c.id} /><span>{c.name}</span><span className="spacer" />
-            <span className={`tag ${c.mcp ? "green" : ""}`}>{c.mcp ? "MCP" : "no MCP"}</span>
-            <span className={`tag ${c.hook ? "green" : ""}`}>{c.hook ? "hook" : "no hook"}</span>
-            {!(c.mcp && c.hook) && <button className="btn sm" onClick={() => act("connect", { agent: c.id }, `${c.name} connected`).catch(() => {})}>Connect</button>}
-          </div>
-        ))}
-      </Card>
+      <div id="set-connect" className="set-connect">
+        <Connect info={info} act={act} />
+      </div>
       <ImportSkill info={info} act={act} setTab={setTab} />
     </div>
   );

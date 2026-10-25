@@ -43,7 +43,7 @@ export default function Overview({ info, act, setTab, onGraph, open }: { info: A
     const last = info.memories.filter((m) => m.author === `agent:${c.id}`).map((m) => m.created).reduce<number | null>((a, v) => (a === null || v > a ? v : a), null);
     return { c, skills, strays, attempts: exps.length ? { kept, total: exps.length } : null, seats: info.teams.filter((t) => t.members.some((m) => m.agent === c.id)).length, last, fenceHits: null };
   });
-  const { filter, setFilter, inputRef, props: rosterNav, sel } = useFilterList(roster.length, (i) => setTab("connect"));
+  const { filter, setFilter, inputRef, props: rosterNav, sel } = useFilterList(roster.length, (i) => setTab("settings"));
   const visible = roster.filter((r) => (AGENT_NAME[r.c.id] ?? r.c.id).toLowerCase().includes(filter.toLowerCase()));
   const loops = info.workflows.filter((w) => w.research?.metric);
 
@@ -62,7 +62,7 @@ export default function Overview({ info, act, setTab, onGraph, open }: { info: A
           {visible.map((r, vi) => (
             <button key={r.c.id} role="row" tabIndex={-1} data-idx={vi} id={`list-item-${vi}`}
               className={`roster-row ${sel === vi ? "kb-sel" : ""} ${vi % 2 ? "odd" : ""}`}
-              onClick={() => setTab("connect")} title="open Connect for this agent">
+              onClick={() => setTab("settings")} title="open Connect for this agent">
               <span className="roster-agent" role="gridcell"><AgentMark id={r.c.id} size={16} /><b>{AGENT_NAME[r.c.id] ?? r.c.name}</b></span>
               <span className="roster-wired" role="gridcell">
                 <span className={`tag ${r.c.mcp ? "ok" : ""}`}>{r.c.mcp ? "connected" : "not wired"}</span>
@@ -71,13 +71,13 @@ export default function Overview({ info, act, setTab, onGraph, open }: { info: A
               <span className="roster-num" role="gridcell" title="skills this agent carries" onClick={(e) => { e.stopPropagation(); setTab("skills"); }}>
                 {r.skills}{r.strays ? ` +${r.strays} stray` : ""}<Icon.arrow />
               </span>
-              <span className="roster-num" role="gridcell" title={r.c.files.filter((f) => f.includes("mcp")).join(", ") || "no MCP config"} onClick={(e) => { e.stopPropagation(); setTab("connect"); }}>
+              <span className="roster-num" role="gridcell" title={r.c.files.filter((f) => f.includes("mcp")).join(", ") || "no MCP config"} onClick={(e) => { e.stopPropagation(); setTab("settings"); }}>
                 {r.c.mcp ? r.c.files.filter((f) => f.includes("mcp")).length : 0}
               </span>
               <span className="roster-num" role="gridcell" title={r.last ? "latest memory kept by this agent" : "no activity recorded yet"}>
                 {r.last ? relTime(r.last) : "–"}
               </span>
-              <span className="roster-num" role="gridcell" title="fence hits are not reported per agent yet – shown only as totals in Fences" onClick={(e) => { e.stopPropagation(); setTab("fences"); }}>–</span>
+              <span className="roster-num" role="gridcell" title="fence hits are not reported per agent yet – shown only as totals in Fences" onClick={(e) => { e.stopPropagation(); setTab("teams"); }}>–</span>
               <span className="roster-num" role="gridcell" title="research attempts kept / total by this agent" onClick={(e) => { e.stopPropagation(); setTab("research"); }}>
                 {r.attempts ? `${r.attempts.kept}/${r.attempts.total}` : "–"}
               </span>
@@ -125,10 +125,10 @@ export default function Overview({ info, act, setTab, onGraph, open }: { info: A
         { label: "Research loops", value: loops.length, note: info.research.some((r) => r.active) ? "one running" : undefined, onClick: () => setTab("research") },
         { label: "Teams", value: info.teams.length, note: info.team ? `${info.team.name} at work` : undefined, onClick: () => setTab("teams") },
         { label: "Skills", value: info.skills?.length ?? 0, note: info.skills?.some((s) => Object.values(s.targets).some((t) => t === "missing" || t === "differs")) ? "out of sync" : undefined, tone: info.skills?.some((s) => Object.values(s.targets).some((t) => t === "missing" || t === "differs")) ? "review" : "", onClick: () => setTab("skills") },
-        { label: "Fence rules", value: info.rules.length, onClick: () => setTab("fences") },
+        { label: "Fence rules", value: info.rules.length, onClick: () => setTab("teams") },
         { label: "Locked files", value: by("locked"), tone: by("locked") ? "locked" : "", onClick: () => onGraph() },
         { label: "Hidden files", value: by("hidden"), tone: by("hidden") ? "hidden" : "", onClick: () => onGraph() },
-        { label: "Pending review", value: by("review"), tone: by("review") ? "review" : "", onClick: () => setTab("fences") },
+        { label: "Pending review", value: by("review"), tone: by("review") ? "review" : "", onClick: () => setTab("teams") },
         { label: "Memories", value: info.memories.length, note: stale.length ? `${stale.length} stale` : undefined, tone: stale.length ? "review" : "", onClick: () => setTab("memory") },
       ]} />
         </Card>
@@ -178,7 +178,7 @@ export default function Overview({ info, act, setTab, onGraph, open }: { info: A
             </div>
           ))}
           {!info.connections.some((c) => c.mcp) && (
-            <div className="need"><span className="tag">setup</span><span className="need-what">No agent is connected yet.</span><button className="btn sm primary" onClick={() => setTab("connect")}>Connect</button></div>
+            <div className="need"><span className="tag">setup</span><span className="need-what">No agent is connected yet.</span><button className="btn sm primary" onClick={() => setTab("settings")}>Connect</button></div>
           )}
         </Card>
 

@@ -777,15 +777,13 @@ test.describe("agents", () => {
     // fixture while this runs; count the stock tiles only.
     await expect(page.locator(".wf-tile").filter({ hasNotText: "e2e-migrate" })).toHaveCount(6);
     await expect(page.locator(".wf-tile.active")).toContainText("fix");
-    await page.getByRole("tab", { name: /Fences/ }).click();
-    // Desktop's fences test appends and removes rows in the same fixture while
-    // the other projects run; only the desktop project pins the exact count.
-    if (info.project.name === "desktop") await expect(page.locator(".fence-row")).toHaveCount(3);
-    else expect(await page.locator(".fence-row").count()).toBeGreaterThanOrEqual(3);
-    await expect(page.locator(".fence-row select").first()).toHaveValue("locked");
+    // Fences live in Teams now (old #agents/fences links land there, X12);
+    // the rule rows themselves are read here from the teams panel.
+    await page.getByRole("tab", { name: /Teams/ }).click();
+    await expect(page.locator(".ag-panel")).toBeVisible();
     await page.getByRole("tab", { name: /Memory/ }).click();
     expect(await page.locator(".ag-mem").count()).toBeGreaterThanOrEqual(2);
-    for (const t of ["Docs", "Connect", "^Agents$"]) {
+    for (const t of ["Docs", "Settings", "^Agents$"]) {
       await page.getByRole("tab", { name: new RegExp(t) }).click();
       await expect(page.locator(".ag-panel")).toBeVisible();
       const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -949,40 +947,19 @@ test.describe("agents", () => {
     }
   });
 
-  test("fences: add one with autofill, save it to kula.toml, accept an agent's suggestion, take both away", async ({ page, request }, info) => {
+  test("old #agents/fences links land in Teams, and guard suggestions are accepted from the agents page", async ({ page }, info) => {
     desktopOnly(info);
+    // Fences left the menu (they live in teams now) – the old hash routes on.
     await open(page, "agents/fences");
-    await page.getByRole("button", { name: "Add fence" }).click();
-    const row = page.locator(".fence-row").nth(3);
-    const paths = row.getByLabel("Paths");
-    await paths.click();
-    await paths.pressSequentially("scripts/te");
-    await expect(page.locator(".af-pop")).toBeVisible();
-    await page.keyboard.press("Tab");
-    await row.getByLabel("Level").selectOption("hidden");
-    await row.getByLabel("Reason").fill("e2e: not for agents");
-    // The Save button enables once the autofilled path reaches the store;
-    // that state sync is async, so wait instead of racing the click.
-    await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
-    await page.getByRole("button", { name: "Save" }).click();
-    await expect(page.locator(".fence-row")).toHaveCount(4);
-    await expect(page.locator(".fence-row").nth(3).locator(".chip-x")).toContainText("scripts/test.sh");
-    const toml = await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json().catch(() => null);
-    if (toml) expect(toml.content).toContain("e2e: not for agents");
-    await page.locator(".need.sugg").getByRole("button", { name: "Accept" }).click();
-    // Accepting refetches the agents info, which resets unsaved local rows –
-    // wait until that settles before removing rows.
-    await expect(page.locator(".need.sugg")).toHaveCount(0);
-    await expect(page.locator(".fence-row")).toHaveCount(5);
-    // Reload before removing: the fences view compares its draft against the
-    // rules it fetched at mount, so without a reload a save leaves it thinking
-    // nothing is dirty and Save stays disabled. Ticketed for A1 in
-    // .kula-team/scratch/q1-tickets.md.
-    await page.reload();
-    await expect(page.locator(".fence-row")).toHaveCount(5);
-    for (const i of [4, 3]) await page.locator(".fence-row").nth(i).getByRole("button", { name: "Remove fence" }).click();
-    await page.getByRole("button", { name: "Save" }).click();
-    await expect(page.locator(".fence-row")).toHaveCount(3);
+    await expect(page).toHaveURL(/#agents\/teams/);
+    await expect(page.getByRole("tab", { name: "Teams", exact: true })).toHaveAttribute("aria-selected", "true");
+    // Guard suggestions were accepted here before from the fences tab; the
+    // roster shows them now.
+    await page.getByRole("tab", { name: "Agents", exact: true }).click();
+    const sugg = page.locator(".need.sugg");
+    await expect(sugg).toContainText("web/dist/**");
+    await sugg.getByRole("button", { name: "Accept" }).click();
+    await expect(sugg).toHaveCount(0);
   });
 
   test("memory: remember from where you are, rewrite it, mark it stale, still true, forget", async ({ page }, info) => {
@@ -1032,7 +1009,7 @@ test.describe("agents", () => {
     await expect(page.locator(".docs-edit").getByRole("button", { name: "Save" })).toBeDisabled();
     await page.getByRole("button", { name: "Preview" }).click();
     await expect(page.locator(".brief-preview")).toContainText("| `refactor` |");
-    await page.getByRole("tab", { name: /Connect/ }).click();
+    await page.getByRole("tab", { name: /Settings/ }).click();
     const cursor = page.locator(".conn").filter({ hasText: "Cursor" });
     const wire = (scope: ReturnType<typeof page.locator>, label: string) => scope.locator(".conn-wires li").filter({ hasText: label });
     // Repeat-safe: connect is a rewrite, so the wires may already be on from a previous run.
@@ -1098,39 +1075,29 @@ test.describe("agents", () => {
     await expect(insp.locator(".note.mem")).toContainText("Unlink, never truncate");
   });
 
-  // A1.1 – every long list answers j/k/enter/esc. The fenced-files list is
+  // A1.1 – every long list answers j/k/enter/esc. The docs list is
   // read-only, so this runs on every project.
-  test("@responsive the fenced-files list moves with j/k, opens with enter, clears with esc", async ({ page }) => {
-    await open(page, "agents/fences");
+  test("@responsive the docs list moves with j/k, opens with enter, clears with esc", async ({ page }) => {
+    await open(page, "agents/docs");
     const list = page.locator("[data-list-nav]").last();
     await list.click();
-    await expect(list.locator(".ag-file").first()).toBeVisible();
+    await expect(list.locator(".doc-item").first()).toBeVisible();
     await page.keyboard.press("j");
-    await expect(list.locator(".ag-file[data-idx='0']")).toHaveClass(/kb-sel/);
+    await expect(list.locator(".doc-item[data-idx='0']")).toHaveClass(/kb-sel/);
     await page.keyboard.press("j");
-    await expect(list.locator(".ag-file[data-idx='1']")).toHaveClass(/kb-sel/);
-    await expect(list.locator(".ag-file[data-idx='0']")).not.toHaveClass(/kb-sel/);
+    await expect(list.locator(".doc-item[data-idx='1']")).toHaveClass(/kb-sel/);
+    await expect(list.locator(".doc-item[data-idx='0']")).not.toHaveClass(/kb-sel/);
     await page.keyboard.press("k");
-    await expect(list.locator(".ag-file[data-idx='0']")).toHaveClass(/kb-sel/);
+    await expect(list.locator(".doc-item[data-idx='0']")).toHaveClass(/kb-sel/);
     // enter opens the selected file in the code panel; esc clears the selection
     await page.keyboard.press("Enter");
     await expect(page.locator(".code-panel")).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.locator(".ag-file.kb-sel")).toHaveCount(0);
+    await expect(page.locator(".doc-item.kb-sel")).toHaveCount(0);
   });
 
-  // A1 – the fences tab tests a path inline and shows the verdict per agent.
-  test("test a path shows what the fences would tell the task and each agent", async ({ page }) => {
-    await open(page, "agents/fences");
-    await page.getByLabel("Path to test").fill("src/store.rs");
-    await page.getByRole("button", { name: "Test", exact: true }).click();
-    const out = page.locator(".ag-test-out");
-    await expect(out).toBeVisible();
-    await expect(out.locator(".ag-test-line").first().locator(".guard-tag")).toContainText("out of scope");
-    // the task's rule is the active one; every agent works under the same task
-    await expect(out).toContainText("harden the MCP server");
-    await expect(page.locator(".ag-test-line")).toHaveCount(5);
-  });
+  // A1 – the path-test tool retired with the fences tab (fences live in teams
+  // now, U18); the guard verdicts are still shown on the graph's fences view.
 
   // A1.2 – a suggestion can be dismissed as well as accepted: seed one the
   // same way an agent does (kula run in the fixture), then dismiss it.
@@ -1650,8 +1617,8 @@ test.describe("agents A2", () => {
     await expect(roster).toHaveAttribute("aria-activedescendant", "list-item-2");
     await page.keyboard.press("k");
     await expect(roster).toHaveAttribute("aria-activedescendant", "list-item-1");
-    await page.keyboard.press("Enter"); // the roster row opens Connect
-    await expect(page).toHaveURL(/#agents\/connect/);
+    await page.keyboard.press("Enter"); // the roster row opens Connect – now a Settings section
+    await expect(page).toHaveURL(/#agents\/settings/);
     // Back to the roster: / opens the filter, typing narrows, esc clears it.
     await open(page, "agents/overview");
     await roster.focus();

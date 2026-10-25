@@ -374,7 +374,7 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
       { key: "reindex", label: "Reindex knowledge graph", hint: "", run: onReindex },
       { key: "fences", label: "Graph: show fences", hint: "f", run: () => go("graph", { fences: "" }) },
       ...(["explore", "fix", "refactor", "tests", "docs", "autoresearch"]).map((w) => ({ key: `fences:${w}`, label: `Graph: preview the ${w} workflow's fences`, hint: "", run: () => go("graph", { fences: w }) })),
-      ...(["workflows", "teams", "skills", "fences", "connect", "settings", "memory", "docs"]).map((t) => ({ key: `agents:${t}`, label: `Agents: ${t}`, hint: "", run: () => go("agents", { tab: t }) })),
+      ...(["workflows", "teams", "research", "skills", "memory", "docs", "settings"]).map((t) => ({ key: `agents:${t}`, label: `Agents: ${t}`, hint: "", run: () => go("agents", { tab: t }) })),
       { key: "settings", label: "Open settings", hint: ",", run: onSettings },
       { key: "help", label: "Keyboard shortcuts", hint: "?", run: () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" })); } },
       ...(["directory", "cluster", "kind", "churn"] as const).map((c) => ({ key: `color:${c}`, label: `Colour graph by ${c}`, hint: "", run: () => { settings.set({ colorBy: c }); go("graph"); } })),

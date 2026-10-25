@@ -5,7 +5,9 @@
 // files the CLI does (kula.toml, refs/kula/meta, AGENTS.md, each agent's
 // config), so MCP, the pre-edit hook and `kula check` see it at once.
 
-// Docs tab: the files agents read, and the generated brief (module S1).
+// Docs tab: the files agents read, the generated brief (module S1), and the
+// instruction files (CLAUDE.md, AGENTS.md, GEMINI.md) as its own section –
+// what used to be a separate Instructions tab.
 
 import { useEffect, useState } from "react";
 import { api, type AgentDoc, type AgentsInfo } from "../../api";
@@ -14,7 +16,7 @@ import { Icon, useToast } from "../../ui";
 import type { Act } from "./data";
 import { Card, useListNav } from "./parts";
 
-export default function Docs({ info, act }: { info: AgentsInfo; act: Act }) {
+export default function Docs({ info, act, instructions }: { info: AgentsInfo; act: Act; instructions?: React.ReactNode }) {
   const [sel, setSel] = useState<string>(info.docs[0]?.path ?? "AGENTS.md");
   const [text, setText] = useState<string | null>(null);
   const [saved, setSaved] = useState<string>("");
@@ -46,11 +48,13 @@ export default function Docs({ info, act }: { info: AgentsInfo; act: Act }) {
           <CodeField value={adding} onChange={setAdding} as="pattern" placeholder="add a doc every agent reads" label="Add a doc" />
           <button className="btn sm" disabled={!adding.trim()} aria-label="Add doc"><Icon.plus /></button>
         </form>
-        <div className="section-title">Settings</div>
-        <label className="toggle"><input type="checkbox" checked={info.memory_enabled} onChange={(e) => act("settings_save", { agents: { hide_secrets: info.secrets_hidden, memory: e.target.checked, docs: info.docs_list } }, e.target.checked ? "Agent memory on" : "Agent memory off")} /> agents may keep memories</label>
-        <label className="toggle"><input type="checkbox" checked={info.secrets_hidden} onChange={(e) => act("settings_save", { agents: { hide_secrets: e.target.checked, memory: info.memory_enabled, docs: info.docs_list } }, "Saved")} /> hide likely secrets</label>
         <div className="section-title">Brief</div>
         <div className="row"><button className="btn sm primary" onClick={() => act("docs_sync", {}, "Brief synced into the instruction files")}>Sync brief</button><button className="btn sm ghost" onClick={() => api.agentAction<{ text: string }>("brief").then((r) => setBrief(r.text))}>Preview</button></div>
+        {instructions && <div className="docs-instructions" data-testid="instructions-section">
+          <div className="section-title">Instruction files</div>
+          <p className="muted sx-lede">CLAUDE.md, AGENTS.md and GEMINI.md – what each agent reads before anything else, kept in sync by the brief above.</p>
+          {instructions}
+        </div>}
       </div>
       <section className="card docs-edit">
         <div className="card-head">
