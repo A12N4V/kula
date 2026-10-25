@@ -748,9 +748,6 @@ struct AgentReq {
     kind: String,
     svg: String,
     params: crate::logos::LogoParams,
-    /// fuse5 · run: true when the Workspace (rather than MCP or the CLI) asked
-    /// for it, so the teams-first rule applies.
-    from_workspace: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -764,6 +761,7 @@ struct LogoReq {
 
 /// What a Workspace run does: start one team, or (settings permitting) a solo
 /// task. Pure so the refusal is unit-tested without a server.
+#[derive(Debug)]
 enum RunKind {
     Solo,
     Team(String),
@@ -920,7 +918,7 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
             "run" => {
                 let cfg = crate::config::Config::load(&r.root)?;
                 let team = a.team.as_ref().map(|t| t.name.clone()).filter(|n| !n.is_empty()).unwrap_or_default();
-                match run_decision(&team, cfg.agents.allow_solo)? {
+                match run_decision(&team, a.from_workspace, cfg.agents.allow_solo)? {
                     RunKind::Solo => json!(crate::guard::task_start(
                         r,
                         &a.title,
