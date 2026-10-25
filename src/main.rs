@@ -19,6 +19,7 @@ mod index;
 mod isolate;
 mod kg;
 mod lang_cmd;
+mod logos;
 mod map;
 mod map_api;
 mod map_cmd;
