@@ -977,9 +977,7 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
             "research_start" => json!(crate::research::start(r, &a.workflow, &format!("user:{}", r.user()), true)?),
             // fuse5 · workspace runs, workflow deletes and research template
             // saves/deletes live in b2_action (unit-tested there).
-            "run" | "workflow_delete" | "research_template_save" | "research_template_delete" => {
-                b2_action(r, action.as_str(), &a)?
-            }
+            "run" | "workflow_delete" | "research_template_save" | "research_template_delete" => b2_action(r, action.as_str(), &a)?,
             "research_stop" => json!(crate::research::stop(r)?),
             "workflow_rename" => {
                 crate::research::rename_workflow(r, &a.workflow, &a.name)?;
@@ -1863,8 +1861,9 @@ mod b2_tests {
         assert!(cfg.agents.allow_solo);
         assert!(matches!(run_decision("", cfg.agents.allow_solo).unwrap(), RunKind::Solo));
         // with a team named, the route reaches the team decision
-        let mut a = AgentReq::default();
-        a.team = Some(crate::config::Team { name: "ship".into(), ..Default::default() });
+        // the req shape mirrors what the route would build; run_decision only
+        // reads the team name it is handed
+        let _a = AgentReq { team: Some(crate::config::Team { name: "ship".into(), ..Default::default() }), ..Default::default() };
         assert!(matches!(run_decision("ship", cfg.agents.allow_solo).unwrap(), RunKind::Team(t) if t == "ship"));
     }
 }
