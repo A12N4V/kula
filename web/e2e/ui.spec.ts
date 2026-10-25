@@ -840,7 +840,8 @@ test.describe("agents", () => {
     // The fence key renders once the graph is built; under full-suite load that
     // can take longer than the default 5 s (the fences-overlay test waits 20 s too).
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 20_000 });
-    await expect(page.locator(".fence-key select")).toHaveValue("e2e-migrate", { timeout: 10_000 });
+    // The fence picker is the shared Dropdown now (X12): the trigger reads the previewed workflow.
+    await expect(page.locator(".fence-key").getByRole("button", { name: "Fences of" })).toContainText("e2e-migrate", { timeout: 10_000 });
     await expect(page.locator(".fence-key")).toContainText("editable");
     await page.goBack();
     // Going back remounts the tab, which closes the sidebar again: the card
@@ -1053,10 +1054,14 @@ test.describe("agents", () => {
     await expect(key).toBeVisible();
     await expect(key.locator(".guard-tag.locked")).toBeVisible();
     await expect(key).toContainText("harden the MCP server");
-    await expect(key.locator("select")).toHaveValue("");
+    // The fence picker is the shared Dropdown (X12): it reads "now" with no
+    // workflow previewed.
+    const picker = key.getByRole("button", { name: "Fences of" });
+    await expect(picker).toContainText("now");
     await expect(page.getByRole("switch", { name: /Fences/ })).toHaveAttribute("aria-checked", "true");
     await page.screenshot({ path: "test-results/graph-fences.png" });
-    await key.locator("select").selectOption("refactor");
+    await picker.click();
+    await page.getByRole("option", { name: "refactor workflow" }).click();
     await expect(key).toContainText("preview");
     await expect(key.locator(".guard-tag.locked")).toBeVisible();
     await page.keyboard.press("f");

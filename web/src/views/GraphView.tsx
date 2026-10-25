@@ -16,6 +16,7 @@ import { useCode } from "../CodePanel";
 import { blend, churnColor, dirColor, GLYPH, groupDirs, hue, kindColor, LANG_GLYPH, makeColorer } from "../colors";
 import { knownDirs, settings, useSettings, type Settings } from "../settings";
 import { Empty, Icon, Kind, Logo, Md, ShowOutput, StatTable, Sym, Toggle, useToast } from "../ui";
+import { Dropdown } from "../ui/Dropdown";
 import { GraphLoader, type LoadStep } from "../AsciiMark";
 import { PreEditPanel } from "../AgentChecks";
 import type { IndexProgress } from "../api";
@@ -679,10 +680,11 @@ function MapView(props: Props) {
       {fences && !trace && graph && (
         <div className="graph-overlay fence-key" role="note">
           <span className="eyebrow">{fenceWf ? "preview" : "for agents"}</span>
-          <select className="fk-wf" value={fenceWf} onChange={(e) => setFenceWf(e.target.value)} aria-label="Fences of">
-            <option value="">{fenceInfo.active ? `now · ${fenceInfo.active}` : "now"}</option>
-            {fenceInfo.workflows.map((w) => <option key={w} value={w}>{w} workflow</option>)}
-          </select>
+          <Dropdown<string> className="fk-wf" value={fenceWf} onChange={setFenceWf} label="Fences of"
+            options={[
+              { value: "", label: fenceInfo.active ? `now · ${fenceInfo.active}` : "now" },
+              ...fenceInfo.workflows.map((w) => ({ value: w, label: `${w} workflow` })),
+            ]} />
           {(["locked", "hidden", "review"] as GuardLevel[]).map((l) => {
             const n = [...fences.values()].filter((v) => v === l).length;
             return n ? <span key={l} className="fk" title={LEVEL_MEANS[l]}><GuardTag level={l} /> {n} <span className="muted fk-means">{LEVEL_MEANS[l]}</span></span> : null;

@@ -60,8 +60,14 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
   useEffect(() => { load(); }, [version]);
   // The URL is the tab: back and forward move between them.
   // The URL is the tab: back and forward move between them. Retired tab ids
-  // (instructions, fences, connect, overview) route to their new home.
-  useEffect(() => { setTabState(routeTab(target?.tab)); }, [target?.tab]);
+  // (instructions, fences, connect, overview) route to their new home – and
+  // the address follows through the one hash writer in App, so an old link
+  // keeps working and lands where the menu can see it.
+  useEffect(() => {
+    const r = routeTab(target?.tab);
+    if (r !== target?.tab) { go?.("agents", { tab: r }); return; }
+    setTabState(r);
+  }, [target?.tab]);
   const setTab = (t: Tab) => { setTabState(t); go?.("agents", { tab: t }); };
 
   const act = async (action: Parameters<typeof api.agentAction>[0], body: Record<string, unknown>, done: string) => {

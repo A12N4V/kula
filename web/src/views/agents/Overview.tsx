@@ -77,7 +77,7 @@ export default function Overview({ info, act, setTab, onGraph, open }: { info: A
               <span className="roster-num" role="gridcell" title={r.last ? "latest memory kept by this agent" : "no activity recorded yet"}>
                 {r.last ? relTime(r.last) : "–"}
               </span>
-              <span className="roster-num" role="gridcell" title="fence hits are not reported per agent yet – shown only as totals in Fences" onClick={(e) => { e.stopPropagation(); setTab("teams"); }}>–</span>
+              <span className="roster-num" role="gridcell" title="fence hits are not reported per agent yet – shown only as totals in Teams" onClick={(e) => { e.stopPropagation(); setTab("teams"); }}>–</span>
               <span className="roster-num" role="gridcell" title="research attempts kept / total by this agent" onClick={(e) => { e.stopPropagation(); setTab("research"); }}>
                 {r.attempts ? `${r.attempts.kept}/${r.attempts.total}` : "–"}
               </span>

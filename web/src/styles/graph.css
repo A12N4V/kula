@@ -178,8 +178,9 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 
 @media (max-width: 760px) { .trace-chip, .fence-key { left: 14px; right: 14px; transform: none; max-width: none; bottom: 64px; } }
 
-/* graph: fence legend */
+/* graph: fence legend – the Dropdown trigger sized to the overlay control */
 .fk-wf { height: 22px; padding: 0 6px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); font: inherit; font-size: 11.5px; }
+.fk-wf .dd-btn { height: 22px; padding: 0 6px; background: var(--bg); border-color: var(--line-2); font: inherit; font-size: 11.5px; }
 .fk-means { font-size: 10.5px; }
 
 /* D1: hover/focus system – quiet borders instead of decoration shadows. */

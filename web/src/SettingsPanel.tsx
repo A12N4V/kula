@@ -7,7 +7,9 @@ import { Icon, IconToggle, SunMoon } from "./ui";
 /** The icon a switch carries – icon + state, one per setting. */
 const TOGGLE_ICON: Partial<Record<keyof Settings, React.ComponentType>> = {
   opening: Icon.doc, territories: Icon.graph, hubIcons: Icon.box, imports: Icon.flows, packages: Icon.package,
+  curved: Icon.branches, flow: Icon.arrow,
 };
+// Every boolean setting has a semantic icon – the fallback never renders.
 const IconDefault = Icon.box;
 import { api, type LangRow } from "./api";
 import { Grip, hasCustomSizes, PaneControls, resetSizes } from "./resize";
@@ -217,10 +219,17 @@ function ThemeMorph() {
   const s = useSettings();
   const dark = s.theme === "dark" || (s.theme === "system" && typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches);
   return (
-    <IconToggle checked={dark} hint={dark ? "Dark theme – switch to light" : "Light theme – switch to dark"}
-      testId="theme-toggle"
-      icon={(on) => <SunMoon on={on} />}
-      onChange={(v) => settings.set({ theme: v ? "dark" : "light" })} />
+    <>
+      <IconToggle checked={dark} hint={dark ? "Dark theme – switch to light" : "Light theme – switch to dark"}
+        testId="theme-toggle"
+        icon={(on) => <SunMoon on={on} />}
+        onChange={(v) => settings.set({ theme: v ? "dark" : "light" })} />
+      {/* Follow-the-OS stays reachable from the panel: one small reset next to the morph. */}
+      {s.theme !== "system" && (
+        <button className="btn ghost sm" data-testid="theme-system" aria-label="Follow the system theme"
+          onClick={() => settings.set({ theme: "system" })}>system</button>
+      )}
+    </>
   );
 }
 

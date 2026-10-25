@@ -70,13 +70,20 @@ test.describe("the lean agents menu", () => {
     const before = await theme.getAttribute("aria-checked");
     await theme.click();
     await expect(theme).toHaveAttribute("aria-checked", before === "true" ? "false" : "true");
+    // Once off "system", a small reset brings follow-the-OS back from the panel.
+    await expect(page.getByTestId("theme-system")).toBeVisible();
+    await page.getByTestId("theme-system").click();
+    await expect(page.getByTestId("theme-system")).toHaveCount(0);
   });
 
   test("the fluid dropdown on the default agent answers keyboard and pointer", async ({ page }) => {
     await open(page, "agents/settings", FIXTURE);
     // The fixture wires Claude Code with MCP and hook, so the picker shows.
     const trigger = page.getByRole("button", { name: "Default agent" });
-    await expect(trigger).toBeVisible();
+    // The agents list resolves over the shared repo server under parallel
+    // projects – wait for the picker to be wired, then interact.
+    await expect(trigger).toBeVisible({ timeout: 20_000 });
+    await expect(trigger).toBeEnabled({ timeout: 20_000 });
     // Open, walk with the arrows, pick with Enter.
     await trigger.click();
     const menu = page.getByRole("listbox", { name: "Default agent" });
@@ -88,9 +95,12 @@ test.describe("the lean agents menu", () => {
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await expect(menu).toBeHidden();
-    // Esc closes without choosing.
+    // Esc closes without choosing; Tab closes while focus moves on.
     await trigger.click();
     await page.keyboard.press("Escape");
+    await expect(page.getByRole("listbox", { name: "Default agent" })).toBeHidden();
+    await trigger.click();
+    await page.keyboard.press("Tab");
     await expect(page.getByRole("listbox", { name: "Default agent" })).toBeHidden();
   });
 });
@@ -98,8 +108,10 @@ test.describe("the lean agents menu", () => {
 test.describe("the menu never overflows", () => {
   test("@responsive no sideways scroll at 1100 and at 390, icons only when tight", async ({ page }) => {
     await open(page, "agents");
+    // Under three parallel projects the shared repo server can be slow to
+    // answer api.agents – wait for the strip, then measure.
     const tabs = page.locator(".ag-tabs [role=tab]");
-    await expect(tabs.first()).toBeVisible();
+    await expect(tabs.first()).toBeVisible({ timeout: 20_000 });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, "the agents menu scrolls sideways").toBeLessThanOrEqual(1);
     // Icon tabs: every tab answers by its label however narrow the strip gets.

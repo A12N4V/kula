@@ -77,6 +77,7 @@ export function Dropdown<V extends string>({ value, options, onChange, label, te
     else if (e.key === "End") { e.preventDefault(); setActive(options.length - 1); }
     else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(options[active]); }
     else if (e.key === "Escape") { e.preventDefault(); setOpen(false); btn.current?.focus(); }
+    else if (e.key === "Tab") { setOpen(false); } // focus moves on, the menu does not linger
     else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
       // Typeahead: first option whose label starts with the typed run, else the next hit.
       const now = Date.now();

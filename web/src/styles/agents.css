@@ -509,7 +509,7 @@
   .ag-menu .ag-tabs { flex-direction: row; overflow-x: auto; scrollbar-width: none; padding: 4px 8px 8px; gap: 4px; }
   .ag-menu .ag-tabs button.ag-mi { flex: none; height: 40px; padding: 0 10px; }
   .ag-menu .ag-tabs button.ag-mi .ag-mi-label { display: none; }
-  .ag-menu .ag-tabs button.ag-mi { width: auto; padding: 0 12px; justify-content: center; gap: 0; }
+  .ag-menu .ag-tabs button.ag-mi { width: 44px; padding: 0; justify-content: center; gap: 0; }
   .ag-split > .detail { display: block; overflow: visible; } /* the menu is a strip on phones, so the listing stays */
 }
 /* Tab strip: one 8px rhythm, grouped rows, aligned label column. */
