@@ -743,11 +743,6 @@ struct AgentReq {
     positions: BTreeMap<String, Vec<f64>>,
     /// Which agents to install a workflow for.
     targets: Vec<String>,
-    /// fuse5 · logo_save: the kind (agent · team · research), name, SVG text
-    /// and the mark parameters that produced it.
-    kind: String,
-    svg: String,
-    params: crate::logos::LogoParams,
 }
 
 #[derive(Deserialize, Default)]
@@ -757,6 +752,67 @@ struct LogoReq {
     name: String,
     svg: String,
     params: crate::logos::LogoParams,
+}
+
+/// The core of `POST /api/agents/logo_save`, split out so the route is
+/// unit-tested without a server.
+fn logo_save_req(root: &std::path::Path, a: &LogoReq) -> anyhow::Result<Value> {
+    let kind = crate::logos::Kind::parse(&a.kind)?;
+    let (p, bytes) = crate::logos::save(root, kind, &a.name, &a.svg, &a.params)?;
+    Ok(json!({ "ok": true, "path": p.strip_prefix(root).unwrap_or(&p).to_string_lossy(), "bytes": bytes }))
+}
+
+/// The core of `GET /api/agent/logo`, split out for the same reason.
+fn logo_read_req(root: &std::path::Path, kind: &str, name: Option<&str>) -> anyhow::Result<Value> {
+    let kind = crate::logos::Kind::parse(kind)?;
+    let name = name.ok_or_else(|| anyhow!("send ?name="))?;
+    Ok(json!({ "kind": kind.as_str(), "name": name, "svg": crate::logos::read(root, kind, name)? }))
+}
+
+/// fuse5 · the b2 actions' core, split out of `agents_action` so each route
+/// is unit-tested without a server: Workspace runs, workflow and research
+/// template deletes, research template saves.
+fn b2_action(r: &Repo, action: &str, a: &AgentReq) -> anyhow::Result<Value> {
+    let root = &r.root;
+    Ok(match action {
+        // fuse5 · workspace runs come from teams: a bare agent is refused
+        // unless settings allow solo runs.
+        "run" => {
+            let cfg = crate::config::Config::load(root)?;
+            let team = a.team.as_ref().map(|t| t.name.clone()).filter(|n| !n.is_empty()).unwrap_or_default();
+            match run_decision(&team, cfg.agents.allow_solo)? {
+                RunKind::Solo => json!(crate::guard::task_start(
+                    r,
+                    &a.title,
+                    a.scope.clone(),
+                    (!a.workflow.is_empty()).then_some(a.workflow.as_str()),
+                    &r.user()
+                )?),
+                RunKind::Team(name) => json!(crate::guard::team_start(r, &name, &format!("user:{}", r.user()))?),
+            }
+        }
+        // fuse5 · delete one workflow: a kula.toml workflow goes, a
+        // built-in is hidden (restorable).
+        "workflow_delete" => {
+            crate::config::workflow_delete(root, &a.name)?;
+            json!({ "ok": true })
+        }
+        // fuse5 · research templates: save a custom loop, delete (builtin
+        // templates are hidden, not removed, and can be restored).
+        "research_template_save" => {
+            let w = a.workflows.first().ok_or_else(|| anyhow!("send the workflow"))?;
+            if crate::workflow::builtin().iter().any(|b| b.name == w.name) {
+                crate::config::restore_workflow(root, &w.name)?;
+            }
+            crate::config::set_workflows(root, &a.workflows)?;
+            json!({ "ok": true })
+        }
+        "research_template_delete" => {
+            crate::config::workflow_delete(root, &a.name)?;
+            json!({ "ok": true })
+        }
+        _ => anyhow::bail!("unknown action {action}"),
+    })
 }
 
 /// What a Workspace run does: start one team, or (settings permitting) a solo
@@ -782,10 +838,16 @@ fn run_decision(team: &str, allow_solo: bool) -> anyhow::Result<RunKind> {
 /// POST /api/agents/logo_save – sanitise and save a studio mark under
 /// `.kula/logos/<kind>/<name>.svg`, its dials in kula.toml.
 async fn logo_save(State(s): State<AppState>, Json(a): Json<LogoReq>) -> ApiResult {
+    blocking(move || logo_save_req(&s.repo.root, &a)).await
+}
+
+/// POST /api/agents/logo_delete {kind, name} – forget one saved logo: the
+/// file goes and its kula.toml row is cleared.
+async fn logo_delete(State(s): State<AppState>, Json(a): Json<LogoReq>) -> ApiResult {
     blocking(move || {
         let kind = crate::logos::Kind::parse(&a.kind)?;
-        let (p, bytes) = crate::logos::save(&s.repo.root, kind, &a.name, &a.svg, &a.params)?;
-        Ok(json!({ "ok": true, "path": p.strip_prefix(&s.repo.root).unwrap_or(&p).to_string_lossy(), "bytes": bytes }))
+        crate::logos::remove(&s.repo.root, kind, &a.name)?;
+        Ok(json!({ "ok": true }))
     })
     .await
 }
@@ -800,12 +862,9 @@ async fn logo_read(
     State(s): State<AppState>,
     axum::extract::Query(qs): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult {
-    blocking(move || {
-        let kind = crate::logos::Kind::parse(qs.get("kind").map(String::as_str).unwrap_or("agent"))?;
-        let name = qs.get("name").ok_or_else(|| anyhow!("send ?name="))?;
-        Ok(json!({ "kind": kind.as_str(), "name": name, "svg": crate::logos::read(&s.repo.root, kind, name)? }))
-    })
-    .await
+    let kind = qs.get("kind").map(String::as_str).unwrap_or("agent").to_string();
+    let name = qs.get("name").cloned();
+    blocking(move || logo_read_req(&s.repo.root, &kind, name.as_deref())).await
 }
 
 async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Json(a): Json<AgentReq>) -> ApiResult {
@@ -916,41 +975,10 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
                 json!({ "text": crate::agents::team_prompt(&cfg, t, m) })
             }
             "research_start" => json!(crate::research::start(r, &a.workflow, &format!("user:{}", r.user()), true)?),
-            // fuse5 · workspace runs come from teams: a bare agent is refused
-            // unless settings allow solo runs.
-            "run" => {
-                let cfg = crate::config::Config::load(&r.root)?;
-                let team = a.team.as_ref().map(|t| t.name.clone()).filter(|n| !n.is_empty()).unwrap_or_default();
-                match run_decision(&team, cfg.agents.allow_solo)? {
-                    RunKind::Solo => json!(crate::guard::task_start(
-                        r,
-                        &a.title,
-                        a.scope.clone(),
-                        (!a.workflow.is_empty()).then_some(a.workflow.as_str()),
-                        &r.user()
-                    )?),
-                    RunKind::Team(name) => json!(crate::guard::team_start(r, &name, &format!("user:{}", r.user()))?),
-                }
-            }
-            // fuse5 · delete one workflow: a kula.toml workflow goes, a
-            // built-in is hidden (restorable).
-            "workflow_delete" => {
-                crate::config::workflow_delete(&r.root, &a.name)?;
-                json!({ "ok": true })
-            }
-            // fuse5 · research templates: save a custom loop, delete (builtin
-            // templates are hidden, not removed, and can be restored).
-            "research_template_save" => {
-                let w = a.workflows.first().ok_or_else(|| anyhow!("send the workflow"))?;
-                if crate::workflow::builtin().iter().any(|b| b.name == w.name) {
-                    crate::config::restore_workflow(&r.root, &w.name)?;
-                }
-                crate::config::set_workflows(&r.root, &a.workflows)?;
-                json!({ "ok": true })
-            }
-            "research_template_delete" => {
-                crate::config::workflow_delete(&r.root, &a.name)?;
-                json!({ "ok": true })
+            // fuse5 · workspace runs, workflow deletes and research template
+            // saves/deletes live in b2_action (unit-tested there).
+            "run" | "workflow_delete" | "research_template_save" | "research_template_delete" => {
+                b2_action(r, action.as_str(), &a)?
             }
             "research_stop" => json!(crate::research::stop(r)?),
             "workflow_rename" => {
@@ -1352,6 +1380,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/agents", get(agents_info))
         .route("/api/agents/{action}", post(agents_action))
         .route("/api/agents/logo_save", post(logo_save))
+        .route("/api/agents/logo_delete", post(logo_delete))
         // K2: unified agent config (see the K2 block at the end of this file).
         // under /api/agent/ (GET namespace): axum merges a static path into the
         // sibling /api/agents/{action} MethodRouter, so a GET there answers 405
@@ -1718,5 +1747,124 @@ mod b2_tests {
         assert!(err.contains("teams now") && err.contains("allow_solo"), "{err}");
         assert!(matches!(run_decision("", true).unwrap(), RunKind::Solo));
         assert!(matches!(run_decision("ship", false).unwrap(), RunKind::Team(t) if t == "ship"));
+    }
+
+    /// fuse5 · a temp fixture repo for the route-level tests below.
+    fn fixture() -> (tempfile::TempDir, Repo) {
+        let d = tempfile::tempdir().unwrap();
+        let out = std::process::Command::new("git").args(["init", "-q"]).arg(d.path()).output().unwrap();
+        assert!(out.status.success(), "git init failed: {}", String::from_utf8_lossy(&out.stderr));
+        let r = Repo { root: d.path().to_path_buf() };
+        std::fs::write(d.path().join("kula.toml"), "[agents]\nmemory = false\n").unwrap();
+        (d, r)
+    }
+
+    /// fuse5 · route test – POST /api/agents/logo_save writes the sanitised
+    /// SVG and its params; the same SVG with a script is refused; the delete
+    /// route takes the logo away again.
+    #[test]
+    fn logo_save_list_read_delete_routes() {
+        let (_d, r) = fixture();
+        let good = "<svg xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M0 0\"/></svg>";
+        let req = |name: &str, svg: &str| LogoReq {
+            kind: "team".into(),
+            name: name.into(),
+            svg: svg.into(),
+            params: crate::logos::LogoParams { dims: 3, yaw: 30.0, pitch: 20.0, density: 60, seed: 42 },
+        };
+        let out = logo_save_req(&r.root, &req("ship-mark", good)).unwrap();
+        assert_eq!(out["ok"], json!(true));
+        assert!(out["path"].as_str().unwrap().starts_with(".kula/logos/team/"));
+        // list route: the saved logo is there with its params
+        let logos = crate::logos::list(&r.root);
+        assert_eq!(logos.len(), 1);
+        assert_eq!(logos[0].name, "ship-mark");
+        assert_eq!(logos[0].kind.as_str(), "team");
+        // read route: sanitised text comes back
+        let read = logo_read_req(&r.root, "team", Some("ship-mark")).unwrap();
+        assert_eq!(read["svg"], json!(good));
+        // a script-bearing SVG is saved with the script stripped out
+        let bad = "<svg><script>alert(1)</script><path d=\"M0 0\"/></svg>";
+        assert!(logo_save_req(&r.root, &req("evil", bad)).is_ok());
+        let read = logo_read_req(&r.root, "team", Some("evil")).unwrap();
+        assert!(!read["svg"].as_str().unwrap().contains("script"), "{}", read["svg"]);
+        // delete route: the file and the kula.toml row go (evil stays)
+        crate::logos::remove(&r.root, crate::logos::Kind::parse("team").unwrap(), "ship-mark").unwrap();
+        assert!(!r.kula_dir().join("logos/team/ship-mark.svg").exists());
+        assert!(crate::logos::list(&r.root).iter().all(|l| l.name != "ship-mark"));
+    }
+
+    /// fuse5 · route tests – workflow_delete removes a kula.toml workflow
+    /// and hides a built-in; research_template_save restores a hidden
+    /// built-in and saves custom loops; research_template_delete hides the
+    /// built-in and removes the custom.
+    #[test]
+    fn workflow_delete_route_hides_builtins_and_removes_customs() {
+        let (_d, r) = fixture();
+        std::fs::write(
+            r.root.join("kula.toml"),
+            "[agents]\nmemory = false\n\n[[workflow]]\nname = \"polish-custom\"\nsteps = [\"polish\"]\n",
+        )
+        .unwrap();
+        let req = |name: &str| AgentReq { name: name.into(), ..Default::default() };
+        // a custom workflow goes for good
+        assert_eq!(b2_action(&r, "workflow_delete", &req("polish-custom")).unwrap(), json!({"ok": true}));
+        assert!(crate::config::Config::load(&r.root).unwrap().workflows.iter().all(|w| w.name != "polish-custom"));
+        // a built-in is hidden, not removed, and shows as disabled
+        assert_eq!(b2_action(&r, "workflow_delete", &req("fix")).unwrap(), json!({"ok": true}));
+        let cfg = crate::config::Config::load(&r.root).unwrap();
+        assert!(cfg.disabled.iter().any(|d| d == "fix"), "{cfg:?}");
+        assert!(crate::workflow::all(&cfg).iter().all(|w| w.name != "fix"));
+        // research_template_delete is the same shape for templates
+        assert_eq!(b2_action(&r, "research_template_delete", &req("explore")).unwrap(), json!({"ok": true}));
+        assert!(crate::config::Config::load(&r.root).unwrap().disabled.iter().any(|d| d == "explore"));
+    }
+
+    #[test]
+    fn research_template_save_route_saves_and_restores() {
+        let (_d, r) = fixture();
+        std::fs::write(r.root.join("kula.toml"), "[agents]\nmemory = false\n").unwrap();
+        let w = |name: &str| crate::workflow::Workflow {
+            name: name.into(),
+            about: "a loop".into(),
+            steps: vec!["one".into(), "two".into()],
+            ..Default::default()
+        };
+        // saving a hidden built-in's name restores it
+        b2_action(&r, "workflow_delete", &AgentReq { name: "fix".into(), ..Default::default() }).unwrap();
+        let out = b2_action(&r, "research_template_save", &AgentReq { workflows: vec![w("fix")], ..Default::default() }).unwrap();
+        assert_eq!(out, json!({"ok": true}));
+        let cfg = crate::config::Config::load(&r.root).unwrap();
+        assert!(cfg.disabled.iter().all(|d| d != "fix"));
+        assert_eq!(crate::workflow::all(&cfg).iter().find(|w| w.name == "fix").unwrap().steps.len(), 2);
+        // saving a custom loop writes it
+        b2_action(&r, "research_template_save", &AgentReq { workflows: vec![w("loop-x")], ..Default::default() }).unwrap();
+        assert!(crate::config::Config::load(&r.root).unwrap().workflows.iter().any(|w| w.name == "loop-x"));
+        // no workflow sent is a clear error
+        assert!(b2_action(&r, "research_template_save", &AgentReq::default()).is_err());
+        // an unknown action is refused
+        assert!(b2_action(&r, "nonsense", &AgentReq::default()).is_err());
+    }
+
+    /// fuse5 · route test – POST /api/agents/run from the Workspace: no team
+    /// and no allow_solo is refused with the team message; a team starts
+    /// that team; allow_solo lets a solo task through (config-level, the
+    /// guard itself is tested in guard.rs).
+    #[test]
+    fn run_route_requires_a_team() {
+        let (_d, r) = fixture();
+        // no team, no allow_solo → refused with the clear message
+        let err = b2_action(&r, "run", &AgentReq::default()).unwrap_err().to_string();
+        assert!(err.contains("teams now") && err.contains("allow_solo"), "{err}");
+        // allow_solo → the solo decision is reached (task_start needs a live
+        // agent host, so the decision path is what this asserts)
+        std::fs::write(r.root.join("kula.toml"), "[agents]\nmemory = false\nallow_solo = true\n").unwrap();
+        let cfg = crate::config::Config::load(&r.root).unwrap();
+        assert!(cfg.agents.allow_solo);
+        assert!(matches!(run_decision("", cfg.agents.allow_solo).unwrap(), RunKind::Solo));
+        // with a team named, the route reaches the team decision
+        let mut a = AgentReq::default();
+        a.team = Some(crate::config::Team { name: "ship".into(), ..Default::default() });
+        assert!(matches!(run_decision("ship", cfg.agents.allow_solo).unwrap(), RunKind::Team(t) if t == "ship"));
     }
 }

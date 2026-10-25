@@ -272,8 +272,6 @@ pub fn list(root: &Path) -> Vec<SavedLogo> {
 }
 
 /// Delete one saved logo: the file and its kula.toml row.
-/// Kept for the logo_delete route planned with the studio UI.
-#[allow(dead_code)]
 pub fn remove(root: &Path, kind: Kind, name: &str) -> Result<()> {
     anyhow::ensure!(valid_name(name), "bad logo name {name:?}");
     let _ = std::fs::remove_file(dir(root, kind).join(format!("{name}.svg")));
