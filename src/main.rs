@@ -2409,9 +2409,14 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 if !wf.is_empty() && workflow::find(&cfg, wf).is_none() {
                     bail!("no workflow called {wf}");
                 }
-                // re-saving keeps what the UI set: prompts, hand-offs
-                let old =
-                    cfg.teams.iter().find(|t| t.name == name).and_then(|t| t.members.iter().find(|x| x.key() == agent.trim())).cloned();
+                // re-saving keeps what the UI set: prompts, hand-offs.
+                // Seats are keyed by name/workflow now, so `claude` also
+                // matches the seat that service runs.
+                let old = cfg
+                    .teams
+                    .iter()
+                    .find(|t| t.name == name)
+                    .and_then(|t| t.members.iter().find(|x| x.key() == agent.trim() || x.service == agent.trim() || x.agent == agent.trim()).cloned());
                 members.push(config::Member {
                     agent: agent.trim().into(),
                     workflow: wf.trim().into(),
@@ -2422,8 +2427,14 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
             // `-m gemini=fix:lead` names the lead as well as --lead does
             let lead = lead.or_else(|| members.iter().find(|m| m.role == "lead").map(|m| m.key().to_string()));
             if let Some(lead) = &lead {
+                // the lead may be named by seat key or by the service that runs it
+                let key = members
+                    .iter()
+                    .find(|m| m.key() == lead.as_str() || m.service == lead.as_str() || m.agent == lead.as_str())
+                    .map(|m| m.key().to_string())
+                    .unwrap_or_else(|| lead.clone());
                 for m in members.iter_mut() {
-                    m.reports_to = if m.key() == lead { String::new() } else { lead.clone() };
+                    m.reports_to = if m.key() == key { String::new() } else { key.clone() };
                 }
             }
             let mut teams = cfg.teams.clone();

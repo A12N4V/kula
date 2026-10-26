@@ -644,9 +644,20 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
             anyhow::bail!("team {}: two members are called {d}", t.name);
         }
         for m in &t.members {
-            for other in std::iter::once(&m.reports_to).filter(|r| !r.is_empty()).chain(m.hands_off.iter()) {
-                if !names.contains(&other.as_str()) || other == m.key() {
-                    anyhow::bail!("team {}: {} points at {other:?}, which is not another member", t.name, m.key());
+            // reports_to stays inside the team (it is the team's own
+            // hierarchy); a hand-off may cross teams – quality's critics take
+            // work from core and frontend, so any seat of any team is fair.
+            if !m.reports_to.is_empty() && (!names.contains(&m.reports_to.as_str()) || m.reports_to == m.key()) {
+                anyhow::bail!("team {}: {} reports to {:?}, which is not another member", t.name, m.key(), m.reports_to);
+            }
+        }
+        let all_seats: Vec<&str> = teams.iter().flat_map(|t| t.members.iter().map(|m| m.key())).collect();
+        for t in teams {
+            for m in &t.members {
+                for other in &m.hands_off {
+                    if !all_seats.contains(&other.as_str()) || other == &m.key() {
+                        anyhow::bail!("team {}: {} hands off to {other:?}, which is not another seat", t.name, m.key());
+                    }
                 }
             }
         }
@@ -1115,5 +1126,52 @@ mod b2_tests {
         // and a missing name is refused
         assert!(workflow_delete(&dir, "nonesuch").is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod b3_tests {
+    use super::*;
+
+    /// fuse5 B3 · the committed kula.toml (kula's own agentic setup) parses,
+    /// and every reference in it resolves: team tree, seats, @scopes.
+    #[test]
+    fn committed_kula_toml_loads() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let cfg = Config::load(root).unwrap_or_else(|e| panic!("the committed kula.toml does not load: {e}"));
+        assert_eq!(cfg.project.name, "kula");
+        assert_eq!(cfg.teams.len(), 6, "the dogfood setup wires six teams");
+        for t in &cfg.teams {
+            assert!(!t.members.is_empty(), "team {} has no seats", t.name);
+            for m in &t.members {
+                assert!(!m.key().trim().is_empty(), "team {}: a seat has an empty name", t.name);
+                assert!(
+                    m.workflow.is_empty() || crate::workflow::all(&cfg).iter().any(|w| w.name == m.workflow),
+                    "team {}: seat {} works in {}, which is not a workflow",
+                    t.name,
+                    m.key(),
+                    m.workflow
+                );
+                let names: Vec<&str> = t.members.iter().map(|m| m.key()).collect();
+                let all_seats: Vec<&str> = cfg.teams.iter().flat_map(|x| x.members.iter().map(|m| m.key())).collect();
+                // reports_to is the team's own hierarchy; a hand-off may cross teams
+                assert!(m.reports_to.is_empty() || (names.contains(&m.reports_to.as_str()) && m.reports_to != m.key()), "team {}: reports_to {:?} is not another seat", t.name, m.reports_to);
+                for other in &m.hands_off {
+                    assert!(all_seats.contains(&other.as_str()) && other != &m.key(), "team {}: hands_off {other:?} is not another seat", t.name);
+                }
+            }
+            if !t.under.is_empty() {
+                assert!(cfg.teams.iter().any(|x| x.name == t.under && x.name != t.name), "team {}: under {:?} is not a team", t.name, t.under);
+            }
+        }
+        // every @scope a workflow or seat uses names a [[scope]]
+        let scopes: Vec<&str> = cfg.scopes.iter().map(|s| s.name.as_str()).collect();
+        for w in crate::workflow::all(&cfg) {
+            for s in &w.scope {
+                if let Some(name) = s.strip_prefix('@') {
+                    assert!(scopes.contains(&name), "workflow {} uses @{name}, which is not a [[scope]]", w.name);
+                }
+            }
+        }
     }
 }
