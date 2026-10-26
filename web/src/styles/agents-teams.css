@@ -402,8 +402,8 @@ input.mi-title { font: 600 14px var(--mono); }
 .tc-tab-add-spacer { flex: none; }
 .team-tab-del { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; background: none; border: 0; color: var(--text-3); cursor: pointer; flex: none; }
 .team-tab-del:hover { color: var(--red); }
-.team-tab-add { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; background: none; border: 0; color: var(--text-3); cursor: pointer; flex: none; }
-.team-tab-add:hover, .team-tab-add.on { color: var(--accent-text); }
+.team-tab-add { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; background: var(--panel); border: 1px solid var(--line); color: var(--text-3); cursor: pointer; flex: none; }
+.team-tab-add:hover, .team-tab-add.on { border-color: var(--text-3); color: var(--accent-text); }
 .tc-add { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
 .tc-add .input { max-width: 260px; }
 .tc-add-hint { font-size: 11px; }
