@@ -88,7 +88,7 @@ export function WorkspaceSection({ info, act }: { info: AgentsInfo; act: Act }) 
         </div>
       </div>
       <div className="ags-row set-row"><span className="set-label">Index excludes <span className="muted ags-desc">globs the graph never reads</span></span>
-        <Chips values={exclude} onChange={(v) => { setExclude(v); save({ exclude: v }, "Index excludes saved"); }} placeholder="dist/**" label="Index excludes" as="name" />
+        <span data-testid="set-exclude"><Chips values={exclude} onChange={(v) => { setExclude(v); save({ exclude: v }, "Index excludes saved"); }} placeholder="dist/**" label="Index excludes" as="name" /></span>
       </div>
       <div className="ags-row set-row"><span className="set-label">Index file size limit <span className="muted ags-desc">larger files stay out of the graph</span></span><span className="spacer" />
         <input className="input mono set-num" type="number" min={1} max={100000} value={num("max_file_kb", 512)} aria-label="Max file size in KB" data-testid="set-max-file-kb"

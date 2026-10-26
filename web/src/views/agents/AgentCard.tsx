@@ -8,6 +8,7 @@ import { harmonographPath, harmonographSegments, svgId, useLogo, type MarkFamily
 import { openLogoStudio } from "./LogoStudio";
 import { Icon } from "../../ui";
 import type { Workflow } from "../../api";
+import { dropHandlers, getDrag, setDrag, type DragPayload } from "./dnd";
 
 export interface CardData {
   name: string;
@@ -88,10 +89,15 @@ export function CardArt({ name, family = "agent", onStudio = true }: { name: str
   );
 }
 
-export default function AgentCard({ card, live, onOpen }: { card: CardData; live: boolean; onOpen: () => void }) {
+export default function AgentCard({ card, live, onOpen, onDelete, onDragStart, onDropPayload }: { card: CardData; live: boolean; onOpen: () => void; onDelete?: () => void; onDragStart?: (e: React.DragEvent) => void; onDropPayload?: (p: DragPayload) => void }) {
+  const open = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); }
+  };
   return (
-    <button className="card ag-card" data-testid={`ag-card-${card.name}`} onClick={onOpen} aria-haspopup="dialog">
-      <span className="card__art" aria-hidden="true"><CardArt name={card.name} /></span>
+    <div className="card ag-card" data-testid={`ag-card-${card.name}`} role="button" tabIndex={0} onClick={onOpen} onKeyDown={open}
+      aria-haspopup="dialog" draggable={!!onDragStart} onDragStart={onDragStart}
+      {...(onDropPayload ? dropHandlers(["skill", "memory"], onDropPayload) : {})}>
+      <span className="card__art"><CardArt name={card.name} /></span>
       <span className="card__body">
         <span className="card__meta">
           <span className="mono">{card.agent}</span>
@@ -102,7 +108,13 @@ export default function AgentCard({ card, live, onOpen }: { card: CardData; live
         <span className="card__d">{card.description || card.role || <span className="muted">no role yet</span>}</span>
         <span className="card__fmt">{card.tags.join(" · ") || "–"}</span>
       </span>
-    </button>
+      {onDelete && (
+        <span className="ag-card-ovf" onClick={(e) => e.stopPropagation()}>
+          <button className="btn sm ghost" aria-label={`Delete ${card.name}`} title="Delete this agent" data-testid={`ag-card-del-${card.name}`}
+            onClick={() => { if (confirm(`Delete the ${card.name} agent?`)) onDelete(); }}>Delete</button>
+        </span>
+      )}
+    </div>
   );
 }
 

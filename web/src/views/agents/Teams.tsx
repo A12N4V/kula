@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentsInfo, Team } from "../../api";
 import { Icon, useToast } from "../../ui";
 import { takeStashedAdd, type Act, type Tab } from "./data";
+import { seatKey } from "../../roster";
 import { TabStrip } from "./parts";
 import TeamCanvas, { CanvasHead } from "./TeamCanvas";
 import TeamSidebar from "./TeamSidebar";
@@ -126,7 +127,18 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
     <div className="tc-view" data-testid="teams-view">
       <div className="tc-tabrow" ref={tabrow}>
         <TabStrip label="Teams" addLabel="New team" cur={adding ? "" : String(cur)}
-          items={teams.map((x, i) => ({ key: String(i), label: x.name || "unnamed", icon: <Icon.team />, dot: info.team?.name === x.name }))}
+          items={teams.map((x, i) => {
+            // nested teams (`under`) read as a breadcrumb, not a flat row:
+            // "kula › core › research" above the tab label
+            const chain: string[] = [];
+            let up = teams.find((y) => y.name === (x as Team).under);
+            const seen = new Set<string>([(x as Team).name]);
+            while (up && !seen.has(up.name)) { chain.unshift(up.name); seen.add(up.name); up = teams.find((y) => y.name === up!.under); }
+            return {
+              key: String(i), label: x.name || "unnamed", icon: <Icon.team />, dot: info.team?.name === x.name,
+              depth: chain.length, title: chain.length ? chain.join(" › ") : undefined,
+            };
+          })}
           onPick={(k) => { setCur(Number(k)); setMember(null); }} />
         <button className={`team-tab-add${adding ? " on" : ""}`} data-testid="team-tab-add" aria-label="New team" title="New team"
           onClick={() => { setAdding(true); setNewName(""); }}><Icon.plus /></button>
@@ -150,7 +162,20 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
             <CanvasHead team={shown} live={info.team?.name === shown.name} sideOpen={side} onSide={() => setSide((v) => !v)}
               onDeploy={() => act("run", { team: { name: shown.name } }, `${shown.name} deployed to the Workspace`).catch((e: Error) => toast(e.message, "err"))}
               onStop={() => act("team_stop", {}, `${shown.name} stood down`).catch(() => {})} />
-            <TeamCanvas key={shown.name} team={shown} info={info} live={info.team?.name === shown.name} onMove={layout} onOpen={(k) => { setSide(true); setMember(k); }} />
+            <TeamCanvas key={shown.name} team={shown} info={info} live={info.team?.name === shown.name} onMove={layout} onOpen={(k) => { setSide(true); setMember(k); }}
+              onDropAgent={(name) => addMember(name)}
+              onSeatDrop={(source, target, shift) => {
+                if (!t) return;
+                const tk = seatKey(target);
+                const from = source;
+                if (!from || from === tk) return;
+                const members = t.members.map((m) => {
+                  if (seatKey(m) !== tk) return m;
+                  return shift ? { ...m, hands_off: [...(m.hands_off || []), from] } : { ...m, reports_to: from };
+                });
+                setTeams((prev) => prev.map((y, j) => (j === cur ? { ...y, members } : y)));
+                toast(shift ? `${from} hands off to ${tk}` : `${tk} answers to ${from}`);
+              }} />
           </div>
           {side && <TeamSidebar team={shown} all={teams} info={info} member={member} act={act} onSet={set}
             onAdd={addMember} onRemove={removeMember} onPickMember={setMember}

@@ -516,3 +516,11 @@ input.mi-title { font: 600 14px var(--mono); }
   }
   .tc-canvas .fc-controls .fc-ctl { width: 40px; height: 40px; }
 }
+/* u20 · drag targets: a 1px accent outline, no glow */
+.tc-drop { position: relative; }
+.tc-drop.drop-ok, .ag-card.drop-ok { outline: 1px solid var(--accent); outline-offset: 1px; }
+.tc-node.tc-drop.drop-ok { outline: 1px solid var(--accent); outline-offset: 2px; }
+.tc-drag { position: absolute; inset: 0; }
+.ag-card-ovf { position: absolute; top: 8px; right: 8px; display: none; }
+.ag-card:hover .ag-card-ovf, .ag-card:focus-within .ag-card-ovf { display: inline-flex; }
+.ag-head { margin: 0 0 8px; }

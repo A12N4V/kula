@@ -32,12 +32,25 @@ function defaultLayout(members: Member[]): Record<string, [number, number]> {
 
 const key = (m: Member) => seatKey(m) || `seat-${m.workflow || "none"}-${m.agent || "any"}`;
 
-function SquareNode({ data }: { data: { member: Member; live: boolean; lead: boolean } }) {
+function SquareNode({ data }: { data: { member: Member; live: boolean; lead: boolean; teamName?: string; onSeatDrop?: (source: string, target: Member, shift: boolean) => void } }) {
   const m = data.member;
   const isLead = data.lead;
   const [a, b] = agentGradient(key(m), "team");
   return (
-    <div className={`tc-node${data.live ? " live" : ""}`} style={{ ["--tc-a" as string]: a, ["--tc-b" as string]: b }}>
+    <div className={`tc-node${data.live ? " live" : ""} tc-drop`} style={{ ["--tc-a" as string]: a, ["--tc-b" as string]: b }}
+      onDragOver={(e) => { if (data.onSeatDrop && e.dataTransfer.types.includes("application/x-kula-drag")) { e.preventDefault(); e.currentTarget.classList.add("drop-ok"); } }}
+      onDragLeave={(e) => e.currentTarget.classList.remove("drop-ok")}
+      onDrop={(e) => {
+        e.currentTarget.classList.remove("drop-ok");
+        try {
+          const p = JSON.parse(e.dataTransfer.getData("application/x-kula-drag")) as { kind: string; member?: string; name?: string };
+          if (p.kind === "seat" && p.member && data.onSeatDrop) data.onSeatDrop(p.member, data.member, e.shiftKey);
+        } catch { /* not ours */ }
+      }}>
+      {/* dropping a seat here sets reports_to (shift-drag sets hands_off); the seat itself drags as its key */}
+      <div className="tc-drag" draggable onDragStart={(e) => {
+        try { e.dataTransfer.setData("application/x-kula-drag", JSON.stringify({ kind: "seat", team: data.teamName, member: key(m) })); e.dataTransfer.setData("text/plain", key(m)); } catch { /* */ }
+      }} aria-hidden="true" />
       {/* the handles are what an edge anchors to – hidden, the square is the anchor */}
       <Handle type="target" position={Position.Top} isConnectable={false} />
       <Handle type="source" position={Position.Bottom} isConnectable={false} />
@@ -58,8 +71,9 @@ function SquareNode({ data }: { data: { member: Member; live: boolean; lead: boo
 
 const nodeTypes = { tc: SquareNode };
 
-function Canvas({ team, info, live, onMove, onOpen }: {
+function Canvas({ team, info, live, onMove, onOpen, onDropAgent, onSeatDrop }: {
   team: Team; info?: AgentsInfo; live: boolean; onMove: (positions: Record<string, [number, number]>) => void; onOpen: (k: string) => void;
+  onDropAgent?: (name: string) => void; onSeatDrop?: (source: string, target: Member, shift: boolean) => void;
 }) {
   const rf = useReactFlow();
   const reduced = useRef(false);
@@ -80,7 +94,7 @@ function Canvas({ team, info, live, onMove, onOpen }: {
       return {
         id: k, type: "tc", position: { x, y },
         zIndex: m === lead ? 2 : 0, // the lead on top
-        data: { member: m, live, lead: m === lead },
+        data: { member: m, live, lead: m === lead, teamName: team.name, onSeatDrop: onSeatDrop },
         draggable: true,
         style: { width: W, height: H },
         sourcePosition: Position.Bottom,
@@ -136,7 +150,16 @@ function Canvas({ team, info, live, onMove, onOpen }: {
   }, [onNodesState, onMove, team.positions]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   return (
-    <div className="tc-canvas" data-testid="team-canvas" tabIndex={0} aria-label={`Team ${team.name} canvas`}>
+    <div className="tc-canvas tc-drop" data-testid="team-canvas" tabIndex={0} aria-label={`Team ${team.name} canvas`}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-kula-drag")) e.preventDefault(); }}
+      onDrop={(e) => {
+        try {
+          const raw = e.dataTransfer.getData("application/x-kula-drag");
+          if (!raw) return;
+          const p = JSON.parse(raw) as { kind: string; name?: string };
+          if (p.kind === "agent" && p.name && onDropAgent) { e.preventDefault(); onDropAgent(p.name); }
+        } catch { /* not ours */ }
+      }}>
       <ReactFlow
         nodes={rfNodes} edges={rfEdges} nodeTypes={nodeTypes}
         onNodesChange={onNodesChange} onEdgesChange={onEdgesState}
