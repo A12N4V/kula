@@ -430,7 +430,9 @@ impl Default for Hooks {
 }
 
 /// fuse5 B3 · name seats after their workflow, unless that name is taken
-/// (then fall back to the old `agent`), so keys are unique everywhere.
+/// (then fall back to the old `agent`), so keys are unique everywhere. Old
+/// configs point at seats by the agent's name (`reports_to = "claude"`), so
+/// those references are rewritten onto the seat's new name.
 fn seat_names(t: &mut Team) {
     let mut taken: std::collections::HashSet<String> = t.members.iter().filter(|m| !m.name.is_empty()).map(|m| m.name.clone()).collect();
     for m in &mut t.members {
@@ -447,6 +449,36 @@ fn seat_names(t: &mut Team) {
         if !candidate.is_empty() {
             taken.insert(candidate.clone());
             m.name = candidate;
+        }
+    }
+    // rename the references: `claude` (the old spelling) now names the seat
+    // that service runs, so who-reports-to-whom keeps working
+    let mut renamed: Vec<(String, String)> = t
+        .members
+        .iter()
+        .filter(|m| !m.name.is_empty())
+        .flat_map(|m| {
+            let mut olds = vec![];
+            if !m.agent.is_empty() && m.agent != m.name {
+                olds.push(m.agent.clone());
+            }
+            if !m.service.is_empty() && m.service != m.name {
+                olds.push(m.service.clone());
+            }
+            olds.into_iter().map(|o| (o, m.name.clone())).collect::<Vec<_>>()
+        })
+        .collect();
+    // a service named the same as an explicit seat name keeps pointing there
+    let explicit: std::collections::HashSet<&str> = t.members.iter().filter(|m| !m.name.is_empty() && m.name == m.service || m.name == m.agent).map(|m| m.name.as_str()).collect();
+    renamed.retain(|(old, _)| !explicit.contains(old.as_str()));
+    for m in &mut t.members {
+        for r in &mut m.hands_off {
+            if let Some((old, new)) = renamed.iter().find(|(o, _)| o == r) {
+                *r = new.clone();
+            }
+        }
+        if let Some((_, new)) = renamed.iter().find(|(o, _)| o == &m.reports_to) {
+            m.reports_to = new.clone();
         }
     }
 }
