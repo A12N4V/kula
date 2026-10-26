@@ -722,7 +722,7 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
         for t in teams.iter() {
             for m in &t.members {
                 for other in &m.hands_off {
-                    if !all_seats.contains(&other.as_str()) || other == &m.key() {
+                    if !all_seats.contains(&other.as_str()) || other == m.key() {
                         anyhow::bail!("team {}: {} hands off to {other:?}, which is not another seat", t.name, m.key());
                     }
                 }
