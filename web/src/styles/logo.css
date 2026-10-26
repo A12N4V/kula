@@ -4,6 +4,24 @@
 /* a saved logo replaces the hashed mark; it is clickable where marks open
    the studio */
 .logo-saved svg { width: 100%; height: 100%; display: block; }
+
+/* the marks are real buttons now – drop the UA button chrome entirely
+   (Chrome's dark-scheme default border is rgb(107,107,107), a neutral grey
+   that the warm palette forbids) and keep the touch surface honest */
+button.ag-card-art-svg {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  /* hit target: 28px on desktop, 40px on a phone (the phone floor is set
+     in the agents phone media query) */
+  min-width: 28px;
+  min-height: 28px;
+}
+@media (max-width: 760px) {
+  button.ag-card-art-svg { min-width: 40px; min-height: 40px; }
+}
 .logo-click { cursor: pointer; }
 .logo-click:focus-visible { outline: 1px solid var(--accent, #d8c7a0); outline-offset: 2px; }
 
@@ -56,3 +74,6 @@
 @media (prefers-reduced-motion: reduce) {
   .logo-stage .ag-card-hg, .logo-stage path { animation: none !important; }
 }
+
+.logo-val { font-weight: 400; color: var(--text-2); font-variant-numeric: tabular-nums; margin-left: 6px; }
+.logo-dims-state { min-width: 24px; color: var(--accent); }
