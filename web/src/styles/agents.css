@@ -655,3 +655,9 @@
 /* X14 – the agent grid must not scroll under the statusbar on a phone
    (cartographer probe: ag-card × sb-help). */
 @media (max-width: 760px) { .ag-split { padding-bottom: 28px; } }
+@media (max-width: 760px) { .ag-split .detail, .ag-detail { padding-bottom: 28px; } }
+
+/* X14 space audit – the "? shortcuts" statusbar button sits under the agent
+   grid on a phone (probe overlap) and earns nothing there: the shortcuts it
+   opens are keyboard-only anyway. Hidden ≤ 760px. */
+@media (max-width: 760px) { .sb-help { display: none; } }

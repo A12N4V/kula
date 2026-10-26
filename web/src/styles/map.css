@@ -497,3 +497,8 @@ span.fm-lane-stop { cursor: default; }
 .mset-sheet { width: 268px; max-height: min(560px, 78vh); overflow: auto; }
 .mset-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: var(--text-2); cursor: pointer; }
 .mset-row input { accent-color: var(--accent); }
+
+/* X14 – touch targets on a phone: the HUD toggles meet the 40px floor. */
+@media (max-width: 760px) {
+  .ex-btn, .u2-frame, [data-testid="u7-legend-head"], [data-testid="u9-chip"], .u2-tidy-btn, .mset-wrap .ex-btn { min-height: 40px; min-width: 40px; }
+}
