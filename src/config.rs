@@ -429,6 +429,28 @@ impl Default for Hooks {
     }
 }
 
+/// fuse5 B3 · name seats after their workflow, unless that name is taken
+/// (then fall back to the old `agent`), so keys are unique everywhere.
+fn seat_names(t: &mut Team) {
+    let mut taken: std::collections::HashSet<String> = t.members.iter().filter(|m| !m.name.is_empty()).map(|m| m.name.clone()).collect();
+    for m in &mut t.members {
+        if !m.name.is_empty() {
+            continue;
+        }
+        let candidate = if !taken.contains(&m.workflow) && !m.workflow.is_empty() {
+            m.workflow.clone()
+        } else if !taken.contains(&m.agent) && !m.agent.is_empty() {
+            m.agent.clone()
+        } else {
+            String::new()
+        };
+        if !candidate.is_empty() {
+            taken.insert(candidate.clone());
+            m.name = candidate;
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Check {
@@ -457,7 +479,10 @@ impl Config {
     }
 
     /// Move old spellings onto the new ones, in memory: a seat's `agent`
-    /// becomes its `service` when the seat has no service of its own yet.
+    /// becomes its `service` when the seat has no service of its own yet, and
+    /// an unnamed seat takes its workflow's name (falling back to the old
+    /// `agent` when two unnamed seats share a workflow) – seats are keyed by
+    /// name, never the service, so every config ends up with unique keys.
     pub fn migrate(&mut self) {
         for t in &mut self.teams {
             for m in &mut t.members {
@@ -465,6 +490,8 @@ impl Config {
                     m.service = m.agent.clone();
                 }
             }
+            // name seats after their workflow, unless that name is taken
+            seat_names(t);
         }
     }
 
@@ -617,8 +644,15 @@ pub fn set_scopes(root: &Path, scopes: &[Scope]) -> Result<Config> {
 }
 
 pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
+    // Fuse 5 B3: seats are keyed by name (defaulting to the workflow), so
+    // normalise the names before validating – an old config with two unnamed
+    // seats on the same workflow falls back to their agents.
+    let mut teams = teams.to_vec();
+    for t in teams.iter_mut() {
+        seat_names(t);
+    }
     let mut seen = std::collections::HashSet::new();
-    for t in teams {
+    for t in &teams {
         if !crate::workflow::valid_name(&t.name) {
             anyhow::bail!("team names are letters, digits, - and _: {:?}", t.name);
         }
@@ -652,7 +686,7 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
             }
         }
         let all_seats: Vec<&str> = teams.iter().flat_map(|t| t.members.iter().map(|m| m.key())).collect();
-        for t in teams {
+        for t in teams.iter() {
             for m in &t.members {
                 for other in &m.hands_off {
                     if !all_seats.contains(&other.as_str()) || other == &m.key() {
@@ -674,7 +708,7 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
         }
     }
     // teams of teams: each `under` names another team, and the nesting never loops
-    for t in teams {
+    for t in teams.iter() {
         let (mut cur, mut hops) = (t.under.clone(), 0);
         while !cur.is_empty() {
             hops += 1;
