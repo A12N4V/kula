@@ -116,9 +116,9 @@ test.describe("memory", () => {
     await expect(page.getByTestId("mem-graph-toggle")).toBeVisible();
     // the graph is not the default view
     await expect(page.locator(".m1-wrap, svg[aria-label^='Memory graph']").first()).toHaveCount(0);
-    if (await page.locator(".ag-mem-group").count()) {
-      await expect(page.locator(".ag-mem-author").first()).toBeVisible();
-    }
+    // the fixture seeds two memories by agent:e2e, so grouping is real
+    await expect(page.locator(".ag-mem-group").first()).toBeVisible();
+    await expect(page.locator(".ag-mem-author").first()).toContainText("agent:e2e");
     await page.getByTestId("mem-graph-toggle").click();
     await expect(page.locator("svg[aria-label^='Memory graph']").first()).toBeVisible();
   });
@@ -127,9 +127,11 @@ test.describe("memory", () => {
 test.describe("notes", () => {
   test("one list plus the graph – no duplicate card column", async ({ page, fx }) => {
     await open(page, fx, "notes", "u14-search");
-    // the old grouped card column is gone: at most the picked note renders
+    // the old grouped card column is gone: at most the picked note renders,
+    // and the fixture's one note is really in the list (never a vacuous pass)
     const sideNotes = page.locator(".notes-side .note");
     expect(await sideNotes.count()).toBeLessThanOrEqual(1);
+    await expect(page.getByText("One verdict per path").first()).toBeVisible();
     await expect(page.getByTestId("notes-graph-toggle")).toBeVisible();
   });
 });

@@ -65,17 +65,20 @@ export function ImportSkill({ info, act, setTab }: { info: AgentsInfo; act: Act;
 }
 
 /** Settings → Workspace: the kula.toml fields the audit found with no UI –
- *  a person never hand-edits them. Values live on the agents info payload
- *  when the backend serves them; until then each control falls back to its
- *  config default and still writes through settings_save. */
+ *  a person never hand-edits them. Values are shown only when the agents
+ *  info payload actually carries them; until the backend serves a field
+ *  (B3 extends set_agents) the control shows a muted placeholder and saves
+ *  through settings_save, which currently discards the unknown fields –
+ *  the UI never presents a guessed value as authoritative. */
 export function WorkspaceSection({ info, act }: { info: AgentsInfo; act: Act }) {
   const a = info as AgentsInfo & Record<string, unknown>;
-  const num = (k: string, d: number) => (typeof a[k] === "number" ? (a[k] as number) : d);
-  const str = (k: string, d: string) => (typeof a[k] === "string" && a[k] ? (a[k] as string) : d);
+  const has = (k: string) => k in a && a[k] !== undefined && a[k] !== null && a[k] !== "";
+  const num = (k: string) => (typeof a[k] === "number" ? (a[k] as number) : "");
+  const str = (k: string) => (typeof a[k] === "string" && a[k] ? (a[k] as string) : "");
   const save = (agents: Record<string, unknown>, done: string) => act("settings_save", { agents }, done).catch(() => {});
-  const [exclude, setExclude] = useState<string[]>((a.exclude as string[]) ?? []);
+  const [exclude, setExclude] = useState<string[]>(has("exclude") ? ((a.exclude as string[]) ?? []) : []);
   const risks = ["none", "low", "medium", "high"] as const;
-  const risk = risks.includes(str("max_risk", "medium") as (typeof risks)[number]) ? (str("max_risk", "medium") as (typeof risks)[number]) : "medium";
+  const risk = has("max_risk") && risks.includes(str("max_risk") as (typeof risks)[number]) ? (str("max_risk") as (typeof risks)[number]) : null;
   return (
     <Card title="Workspace" sub="indexing, checks and how agents start" className="ag-wide">
       <div className="ags-row set-row toggle"><span className="set-label">Let a bare agent run without a team <span className="muted ags-desc">allow_solo – teams are the default deploy</span></span><span className="spacer" />
@@ -83,7 +86,8 @@ export function WorkspaceSection({ info, act }: { info: AgentsInfo; act: Act }) 
           icon={(on) => <span className={`set-glyph${on ? " on" : ""}`}><Icon.workflow />{!on && <span className="set-glyph-off" />}</span>} />
       </div>
       <div className="ags-row set-row"><span className="set-label">Check risk ceiling <span className="muted ags-desc">kula check refuses plans above it</span></span><span className="spacer" />
-        <div className="seg" role="radiogroup" aria-label="Check risk ceiling" data-testid="set-max-risk">
+        <div className="seg" role="radiogroup" aria-label="Check risk ceiling" data-testid="set-max-risk" aria-describedby={risk === null ? "set-max-risk-unknown" : undefined}>
+          {risk === null && <span id="set-max-risk-unknown" className="muted">not reported yet</span>}
           {risks.map((r) => <button key={r} role="radio" aria-checked={risk === r} className={risk === r ? "on" : ""} onClick={() => save({ max_risk: r }, `Check ceiling: ${r}`)}>{r}</button>)}
         </div>
       </div>
@@ -91,15 +95,15 @@ export function WorkspaceSection({ info, act }: { info: AgentsInfo; act: Act }) 
         <span data-testid="set-exclude"><Chips values={exclude} onChange={(v) => { setExclude(v); save({ exclude: v }, "Index excludes saved"); }} placeholder="dist/**" label="Index excludes" as="name" /></span>
       </div>
       <div className="ags-row set-row"><span className="set-label">Index file size limit <span className="muted ags-desc">larger files stay out of the graph</span></span><span className="spacer" />
-        <input className="input mono set-num" type="number" min={1} max={100000} value={num("max_file_kb", 512)} aria-label="Max file size in KB" data-testid="set-max-file-kb"
+        <input className="input mono set-num" type="number" min={1} max={100000} value={num("max_file_kb")} placeholder={has("max_file_kb") ? undefined : "512?"} aria-label="Max file size in KB" data-testid="set-max-file-kb"
           onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) save({ max_file_kb: v }, `Files above ${v} KB skipped`); }} />
       </div>
       <div className="ags-row set-row"><span className="set-label">Default branch <span className="muted ags-desc">project.default_branch</span></span><span className="spacer" />
-        <input className="input mono set-num" defaultValue={str("default_branch", "main")} aria-label="Default branch" data-testid="set-default-branch"
-          onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== str("default_branch", "main")) save({ default_branch: v }, `Default branch: ${v}`); }} />
+        <input className="input mono set-num" defaultValue={str("default_branch")} placeholder={has("default_branch") ? undefined : "main?"} aria-label="Default branch" data-testid="set-default-branch"
+          onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== str("default_branch")) save({ default_branch: v }, `Default branch: ${v}`); }} />
       </div>
       <div className="ags-row set-row"><span className="set-label">Embed pause <span className="muted ags-desc">ms between embed batches – raise it on busy machines</span></span><span className="spacer" />
-        <input className="input mono set-num" type="number" min={0} max={5000} value={num("pause_ms", 120)} aria-label="Embed pause in milliseconds" data-testid="set-pause-ms"
+        <input className="input mono set-num" type="number" min={0} max={5000} value={num("pause_ms")} placeholder={has("pause_ms") ? undefined : "120?"} aria-label="Embed pause in milliseconds" data-testid="set-pause-ms"
           onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v >= 0) save({ pause_ms: v }, `Embed pause ${v} ms`); }} />
       </div>
     </Card>
@@ -107,8 +111,8 @@ export function WorkspaceSection({ info, act }: { info: AgentsInfo; act: Act }) 
 }
 
 /** Settings → Scopes: the named graph slices ([[scope]]) as name · about ·
- *  file count, with Forget. Agents' and teams' @name completions come from
- *  the same list (GET /api/scopes). */
+ *  pattern count, with Forget. Agents' and teams' @name completions come
+ *  from the same list (GET /api/scopes). */
 export function ScopesSection({ info, act }: { info: AgentsInfo; act: Act }) {
   const [scopes, setScopes] = useState<Scope[] | null>(null);
   useEffect(() => { api.scopes().then(setScopes).catch(() => setScopes([])); }, [info]);
@@ -124,7 +128,7 @@ export function ScopesSection({ info, act }: { info: AgentsInfo; act: Act }) {
           <div key={s.name} className="ags-row set-scopes-row" data-testid={`set-scope-${s.name}`}>
             <span className="mono set-scope-name">@{s.name}</span>
             <span className="muted ags-desc set-scope-about">{s.about || s.paths.join(" · ")}</span>
-            <span className="muted mono">{s.paths.length} file{s.paths.length === 1 ? "" : "s"}</span>
+            <span className="muted mono">{s.paths.length} pattern{s.paths.length === 1 ? "" : "s"}</span>
             <span className="spacer" />
             <button className="btn sm ghost" onClick={() => forget(s.name)} data-testid={`set-scope-forget-${s.name}`}>Forget</button>
           </div>

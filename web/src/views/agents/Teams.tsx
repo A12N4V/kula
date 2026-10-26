@@ -110,6 +110,44 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
       setMember(null);
     }).catch((e: Error) => toast(e.message, "err"));
   };
+  // Drag gestures on the tab rail (u20): a seat dropped on the tab row leaves
+  // its team (with an Undo chip); an agent card dropped on a specific tab
+  // joins that team. Both have keyboard equivalents: the sidebar's member
+  // remove control and the add search box.
+  const [undo, setUndo] = useState<{ team: string; seat: Team["members"][number] } | null>(null);
+  useEffect(() => { if (!undo) return; const id = setTimeout(() => setUndo(null), 8000); return () => clearTimeout(id); }, [undo]);
+  const tabrowDragOver = (e: React.DragEvent) => { if (e.dataTransfer.types.includes("application/x-kula-drag")) e.preventDefault(); };
+  const tabrowDrop = (e: React.DragEvent) => {
+    let raw = "";
+    try { raw = e.dataTransfer.getData("application/x-kula-drag"); } catch { return; }
+    if (!raw) return;
+    let p: { kind: string; name?: string; member?: string };
+    try { p = JSON.parse(raw); } catch { return; }
+    if (p.kind === "seat" && p.member && t) {
+      const seat = t.members.find((m) => seatKey(m) === p.member);
+      if (!seat || !seat.workflow) return;
+      e.preventDefault(); e.stopPropagation();
+      setTeams((prev) => prev.map((y, j) => (j === cur ? { ...y, members: y.members.filter((m) => seatKey(m) !== p.member) } : y)));
+      act("team_remove_member", { name: t.name, workflow: seat.workflow }, `${seat.workflow} left ${t.name}`).catch((er: Error) => toast(er.message, "err"));
+      setUndo({ team: t.name, seat });
+    } else if (p.kind === "agent" && p.name) {
+      // the tab under the pointer takes the agent, not the whole rail
+      const tab = (e.target as HTMLElement).closest("[role=tab]") as HTMLElement | null;
+      if (!tab?.parentElement) return;
+      const tabs = Array.from(tab.parentElement.querySelectorAll<HTMLElement>("[role=tab]"));
+      const team = teams[tabs.indexOf(tab)];
+      if (!team) return;
+      e.preventDefault(); e.stopPropagation();
+      addMember(team.name, p.name);
+    }
+  };
+  const undoRemove = () => {
+    const u = undo; if (!u) return;
+    setUndo(null);
+    if (!teams.some((y) => y.name === u.team)) { toast(`${u.team} is gone – cannot re-add`, "err"); return; }
+    setTeams((prev) => prev.map((y) => (y.name === u.team && !y.members.some((m) => m.workflow === u.seat.workflow) ? { ...y, members: [...y.members, { ...u.seat, agent: u.seat.agent || "any" }] } : y)));
+    act("team_add_member", { name: u.team, workflow: u.seat.workflow, ...(u.seat.agent && u.seat.agent !== "any" ? { agent: u.seat.agent } : {}) }, `${u.seat.workflow} rejoined ${u.team}`).catch((e: Error) => toast(e.message, "err"));
+  };
   const layout = (positions: Record<string, [number, number]>) => {
     if (!t) return;
     setTeams((prev) => prev.map((y, j) => (j === cur ? { ...y, positions } : y)));
@@ -125,7 +163,7 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   // effect above names tabs from the text, so the dot is stripped first.
   return (
     <div className="tc-view" data-testid="teams-view">
-      <div className="tc-tabrow" ref={tabrow}>
+      <div className="tc-tabrow" ref={tabrow} onDragOver={tabrowDragOver} onDrop={tabrowDrop}>
         <TabStrip label="Teams" addLabel="New team" cur={adding ? "" : String(cur)}
           items={teams.map((x, i) => {
             // nested teams (`under`) read as a breadcrumb, not a flat row:
@@ -145,6 +183,12 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
         {!adding && shown && <button className="team-tab-del" data-testid="team-tab-delete" aria-label={`Delete ${shown.name}`} title={`Delete ${shown.name}`}
           onClick={() => remove(shown.name)}><Icon.close /></button>}
       </div>
+      {undo && (
+        <div className="tc-undo" role="status" data-testid="team-remove-undo">
+          <span>{undo.seat.workflow} left {undo.team}</span>
+          <button className="btn sm ghost" onClick={undoRemove} data-testid="team-remove-undo-btn">Undo</button>
+        </div>
+      )}
       {adding ? (
         <div className="tc-add" data-testid="team-add-form">
           <input className="input mono" autoFocus data-testid="team-add-name" value={newName} placeholder="team name – e.g. research-crew"

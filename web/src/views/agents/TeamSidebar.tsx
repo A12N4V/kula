@@ -235,7 +235,15 @@ function effRows(m: Member, team: Team, info: AgentsInfo): { level: string; path
   for (const r of info.raw_rules ?? []) rows.push({ level: r.level, paths: (r.paths ?? []).join(" ") || "–", source: "repo", why: r.reason || "repository rule" });
   for (const r of team.fences ?? []) rows.push({ level: r.level, paths: (r.paths ?? []).join(" ") || "–", source: `team ${team.name}`, why: r.reason || `team ${team.name} fence` });
   const wf = info.workflows.find((w) => w.name === m.workflow);
-  for (const r of info.workflow_rules ?? []) if (wf && r.level) rows.push({ level: r.level, paths: r.paths.join(" ") || "–", source: `agent ${wf.name}`, why: r.reason || `${wf.name} rule` });
+  // workflow_rules has no owner field in the payload, so a rule counts as
+  // this seat's only when its paths actually come from this workflow's
+  // lock/hide/review lists – otherwise every rule was attributed to every seat.
+  const owns = (paths: string[], list?: string[]) => !!list && paths.some((p) => list.includes(p));
+  for (const r of info.workflow_rules ?? []) {
+    if (!wf) break;
+    const hit = (r.level === "locked" && owns(r.paths, wf.lock)) || (r.level === "hidden" && owns(r.paths, wf.hide)) || (r.level === "review" && owns(r.paths, wf.review));
+    if (hit) rows.push({ level: r.level, paths: r.paths.join(" ") || "–", source: `agent ${wf.name}`, why: r.reason || `${wf.name} rule` });
+  }
   return rows;
 }
 

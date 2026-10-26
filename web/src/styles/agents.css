@@ -657,8 +657,9 @@
 .ag-mem-author { display: flex; align-items: center; gap: 8px; padding: 8px 0 2px; border-bottom: 1px solid var(--line); }
 .ag-mem-author .muted { margin-left: auto; }
 .ag-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
-@media (max-width: 720px) {
-  /* 2-column compact cards with smaller marks at 390 */
+@media (max-width: 760px) {
+  /* 2-column compact cards with smaller marks at 390 – one phone breakpoint
+     (760) across the agents surfaces, matching logo.css */
   .ag-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ag-cards .ag-card-art-svg, .ag-cards .card__art svg { max-width: 96px; }
 }

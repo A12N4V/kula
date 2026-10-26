@@ -111,7 +111,10 @@ export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; ac
           onDragStart={agentDragStart}
           onDropPayload={(p) => {
             if (p.kind === "skill") act("skill_adopt", { agent: c.name, name: p.name }, `${p.name} attached to ${c.name}`).catch(() => {});
-            if (p.kind === "memory") act("memory_edit", { id: p.id, agent: c.name }, `memory #${p.id} scoped to ${c.name}`).catch(() => {});
+            // memory_edit takes only body/target today – the agent key is
+            // dropped server-side (B3 asked for the field), so the gesture
+            // must not claim a save it cannot make.
+            if (p.kind === "memory") act("memory_edit", { id: p.id, agent: c.name }, `not saved yet – scoping a memory to an agent needs the agent field on memory_edit`).catch(() => {});
           }} />)}
         <AddCard onClick={() => { setDraft(null); setOrig(null); setAdding(true); }} />
       </div>

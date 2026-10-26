@@ -2,8 +2,11 @@
 // an agent card drags onto a team tab or the team canvas to join the team, a
 // skill row or a memory drags onto an agent card to attach or scope it, and a
 // team seat dragged onto another seat sets reports_to (shift = hands_off).
-// Every gesture keeps its keyboard equivalent in the panel that owns it, and
-// the drop target is a 1px accent outline – no glow.
+// Keyboard equivalents: cards join a team through the team sidebar's add
+// search box, seats report to / hand off through the seat editor fields,
+// skills attach through the agent sidebar's skills chips. The memory→agent
+// gesture is visual only until the backend takes an agent field on
+// memory_edit. Drop targets are a 1px accent outline – no glow.
 
 export type DragPayload =
   | { kind: "agent"; name: string }
