@@ -9,7 +9,7 @@
 // PUT /api/file with the load-time hash, guarded, atomic and re-indexed.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Grip, PaneControls } from "./resize";
+import { Window } from "./ui/Window";
 import { api, get, type Node, type Verdict } from "./api";
 import { Icon, Kind } from "./ui";
 import { HereHint, nav, OptList, useOptions } from "./Autofill";
@@ -282,7 +282,8 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
   };
 
   return (
-    <aside className="code-panel" aria-label={isNote ? `Note ${t.note?.name ?? noteName}` : `Source of ${t.name ?? t.path}`} data-pane>      <Grip id="code" edge="left" min={320} max={1600} label="Resize source panel" />
+    <Window id="code-panel" title={isNote ? noteName : t.name ?? file} icon={isNote ? <Icon.doc /> : t.kind ? <Kind kind={t.kind} size={16} /> : undefined}
+      width={620} height={720} testId="cp" onClose={onClose} className="code-panel">
       <header>
         <div className="cp-kind">{isNote ? <Icon.doc /> : t.kind && <Kind kind={t.kind} size={14} />}<span>{isNote ? "note" : t.kind ?? "file"}</span>{!isNote && (t.line ? <span className="muted">· lines {t.line}–{t.end ?? t.line}</span> : <span className="muted">· {lines.length} lines</span>)}</div>
         <h2>{isNote ? noteName : t.name ?? file}{dirty && <span className="cp-dot" data-testid="cp-modified" title="unsaved changes" />}</h2>
@@ -309,7 +310,6 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
             </>
           )}
           <span className="spacer" />
-          <PaneControls onClose={onClose} closeLabel="Close source" testId="cp" />
         </div>
       </header>
       {note && (
@@ -374,6 +374,6 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
           </div>
         )}
       </div>
-    </aside>
+    </Window>
   );
 }

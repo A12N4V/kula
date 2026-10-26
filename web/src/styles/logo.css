@@ -7,31 +7,14 @@
 .logo-click { cursor: pointer; }
 .logo-click:focus-visible { outline: 1px solid var(--accent, #d8c7a0); outline-offset: 2px; }
 
-/* the studio itself: a portal overlay, one window on the veil. While it is
-   open the page behind it is out of play (hidden from hit-testing and AT). */
+/* the studio itself: a desktop window (ui/Window, x13). While it is open the
+   page behind it is out of play (hidden from hit-testing and AT); the
+   desktop layer – the studio's own window among them – stays visible. */
 .logo-root { position: relative; z-index: 90; }
-.logo-studio-open > body > :not(.logo-root) { visibility: hidden; }
+.logo-studio-open > body > :not(.logo-root):not(#kula-desktop) { visibility: hidden; }
 .logo-studio-open > body > .logo-root,
-.logo-studio-open > body > .logo-root * { visibility: visible; }
-.logo-veil {
-  position: fixed; inset: 0; z-index: 90;
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
-  display: flex; align-items: center; justify-content: center;
-  padding: 24px;
-}
-.logo-win {
-  width: min(560px, 100%); max-height: min(560px, 100%);
-  display: flex; flex-direction: column;
-  background: var(--panel, #0d0d0d);
-  border: 1px solid var(--line-2);
-  color: var(--text);
-}
-.logo-head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 14px; border-bottom: 1px solid var(--line);
-  font: 12px/1 var(--font-mono, var(--font));
-  letter-spacing: 0.04em;
-}
+.logo-studio-open > body > #kula-desktop,
+.logo-studio-open > body > #kula-desktop * { visibility: visible; }
 .logo-body { display: flex; gap: 16px; padding: 16px; min-height: 0; }
 .logo-stage {
   flex: 1; min-width: 0; aspect-ratio: 1;
@@ -64,8 +47,6 @@
 .logo-note-err { color: #d08770; }
 
 @media (max-width: 600px) {
-  .logo-veil { padding: 0; }
-  .logo-win { width: 100%; height: 100%; max-height: none; border: 0; }
   .logo-body { flex-direction: column; overflow: auto; }
   .logo-ctl { width: auto; }
 }

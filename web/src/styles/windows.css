@@ -99,15 +99,30 @@ html[data-dragging-win], html[data-dragging-win] * { cursor: grabbing !important
 .win-dock button:hover { background: var(--panel-2); color: var(--text); }
 .win-dock button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* ≤ 600px: every window is a full-width sheet, stacked like the panes */
+/* the code panel as a window: it brings its own docked-panel look */
+.win.code-panel { box-shadow: none; animation: none; }
+.win.code-panel .win-body { overflow: hidden; padding: 0; }
+.win.code-panel .win-body > header { flex: none; }
+
+/* the agent and team sidebars as windows: keep the old pane's inner rules */
+.win.ag-side-win { background: var(--panel); }
+.win.ag-side-win .win-body { padding: 0; gap: 0; }
+.win.ag-side-win .ag-side-scroll { flex: 1; min-height: 0; overflow: auto; padding: 14px; min-width: 0; }
+.win.ag-side-win .wf-edit { min-width: 0; padding: 0; border: 0; background: none; animation: none; }
+.win.ag-side-win .wf-actions, .win.ag-side-win .wf-native-row { flex-wrap: wrap; }
+.win.ag-side-win .wf-run { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+/* ≤ 600px: every window is a full-width bottom sheet, like the panes were –
+   full width, anchored to the bottom edge, never covering the top bar */
 @media (max-width: 600px) {
   .win {
-    left: 0 !important; top: 0 !important; right: 0 !important;
-    width: 100% !important; height: 100dvh !important;
-    max-width: none; border-radius: 0; border-left: 0; border-right: 0; border-top: 0;
+    left: 0 !important; right: 0 !important; bottom: 0 !important; top: auto !important;
+    width: 100% !important; height: auto !important;
+    max-height: calc(100dvh - 56px);
+    max-width: none; border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0;
     z-index: 500 !important;
   }
-  .win[data-max] { inset: 0 !important; }
+  .win[data-max] { inset: 0 !important; max-height: none; height: 100dvh !important; }
   .win-rz { display: none !important; }
   .win-head { height: 44px; }
   .win-dock { bottom: 8px; }

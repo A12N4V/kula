@@ -7,9 +7,8 @@
 // team settings (name, lead, nesting, delete) sit below.
 
 import { useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
 import { Icon } from "../../ui";
-import { Grip, PaneControls } from "../../resize";
+import { Window } from "../../ui/Window";
 import { agentGradient, AgentHarmonograph } from "../../flow/agentMark";
 import { openLogoStudio } from "./LogoStudio";
 import { seatKey, titleFor } from "../../roster";
@@ -33,7 +32,7 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
   onDelete: () => void;
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     opener.current = document.querySelector<HTMLElement>(`[data-testid="team-side-toggle"]`);
@@ -47,15 +46,11 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
   const inTeam = new Set(team.members.map((m) => m.workflow).filter(Boolean));
   const leadKey = team.members.find((m) => !m.reports_to)?.name;
   const memberObj = team.members.find((m) => memberKey(m) === member) ?? null;
-  return createPortal(
-    <aside className="ag-side tc-side" data-pane data-testid="team-side" tabIndex={-1} ref={ref} aria-label={`Team ${team.name}`}>
-      <Grip id="team-side" edge="left" min={300} max={820} label="Resize team panel" />
-      <header className="ag-side-head">
-        <span className="mono muted">team · kula.toml</span>
-        <h2>{team.name || "unnamed"}</h2>
-        <PaneControls onClose={onClose} closeLabel="Close team" closeTitle="Close  esc" testId="team-side" />
-      </header>
-      <div className="ag-side-scroll">
+  return (
+    <Window id={`team-sidebar-${team.name}`} title={team.name || "unnamed"} icon={<Icon.team />} width={440} height={620}
+      testId="team-side" onClose={onClose} className="ag-side-win">
+      <span className="mono muted">team · kula.toml</span>
+      <div className="ag-side-scroll" ref={ref} tabIndex={-1} aria-label={`Team ${team.name}`}>
         {/* members first: click one to edit it */}
         {memberObj ? (
           <MemberEdit team={team} m={memberObj} info={info} act={act} onSet={onSet} onClose={() => onPickMember(null)} />
@@ -130,8 +125,7 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
           </>
         )}
       </div>
-    </aside>,
-    document.body,
+    </Window>
   );
 }
 
