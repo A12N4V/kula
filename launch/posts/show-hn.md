@@ -23,17 +23,18 @@ How fences work:
 - Agents cannot switch it off: kula.toml and the hooks are locked for them; they can only `suggest` a change for a person to accept.
 
 Known limits:
-- Hooks are speed bumps; CI (`kula check`) is the real gate. A fence is only as strong as the hook each agent exposes, and a shell parser will have gaps.
+- The hook is a speed bump: the hook catches obvious shell writes; scripts, variables and cd-then-write can slip past; CI (`kula check`) is the gate. A fence is only as strong as the hook each agent exposes.
 - Graph edges are name heuristics. Expect false and missing edges with dynamic dispatch, reflection and heavy metaprogramming.
 - Windows gets the 11 built-in languages only; no prebuilt packs yet.
 - It is pre-1.0 (0.3) with one maintainer.
 - It does a lot (git UI, graph, issues and notes in git, agent workflows, RDF/SPARQL export). The map and the fences are the parts I would judge it on.
 
-Install: `brew tap a12n4v/kula https://github.com/A12N4V/kula && brew install kula`, or `cargo install kula`, npm, pip, nix, apt, or release binaries with .sha256 files.
+Install: `brew tap a12n4v/kula https://github.com/A12N4V/kula && brew install kula`, or `cargo install kula`, `npm i -g @kula-cli/kula` (npm is on 0.3.1; everything else is on 0.3.0), pip, nix, apt, or release binaries with .sha256 files.
 
 A question for you: if you run agents on a shared codebase, would you rather fence by path, by symbol, or by the kind of task (refactor locks tests, tests mode locks the code under test)? And if you can get a write past a fence, please open an issue with the command; I will fix those first.
 
 ## critic notes
+- Round 2: one shared honesty line about the hook; npm named as @kula-cli/kula with its 0.3.1 version gap noted.
 - Title: changed "git with a map" to "git with a code map" so it says what the map is; kept the en dash, no superlatives, under 80 chars.
 - Lead with what works without an agent, per research.md ("another AI tool" fatigue); "AI" appears nowhere in title.
 - Put curl|sh last and offered brew/cargo first. Did not claim signed releases: install.sh verifies a .sha256 only if one downloads, and skips silently otherwise. Said ".sha256 files", not "signed".

@@ -16,10 +16,10 @@ kula graph-diff main WORKTREE → symbols and call edges your uncommitted work a
 With agents: fences by path or by symbol. Lock src/billing.rs:charge_card, hide data/customers/**, or start a task in a workflow: refactor locks the tests, tests mode locks the code under test.
 
 4/
-One verdict, checked in several places: MCP answers, a pre-tool hook in Claude Code, Cursor, Codex and Gemini CLI (file tools and shell writes like sed -i or > file), the git pre-commit hook, and kula check in CI. Hooks slow an agent down; CI is the gate.
+One verdict, checked in several places: MCP answers, a pre-tool hook in Claude Code, Cursor, Codex and Gemini CLI (file tools and shell writes like sed -i or > file), the git pre-commit hook, and kula check in CI. The hook is a speed bump: obvious shell writes are caught; scripts, variables and cd-then-write can slip past. CI is the gate.
 
 5/
-Memory pinned to code: an agent's note is anchored to a symbol, stored in git, and comes back marked stale when that symbol changes.
+Memory pinned to code: an agent's note is anchored to a symbol, stored in git, and comes back marked stale when that symbol changes (on rename it is flagged lost, not followed).
 
 6/
 Limits, up front: call resolution is tree-sitter plus name heuristics, not compiler-grade. Windows gets 11 languages, not the 173 packs. It's 0.3 and I'm one person.
@@ -29,6 +29,7 @@ brew tap a12n4v/kula https://github.com/A12N4V/kula && brew install kula
 If you run agents on a shared repo: would you fence by path, by symbol, or by type of task? And if you get an agent past a fence, send me the command.
 
 ## critic notes
+- Round 2: post 5 rename caveat; post 4 uses the shared hook line (shortened to fit 280; split post 4 if X counts it over).
 - Each post checked under 280 chars (post 2 and 4 are the longest; trim the URL line if X counts it over).
 - Removed "finally" and "your agents will thank you" style lines.
 - Post 4 says "slow an agent down" instead of "enforced", matching README "hooks are speed bumps, CI is the wall".

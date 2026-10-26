@@ -2,7 +2,7 @@
 
 ## This Week in Rust (PR to rust-lang/this-week-in-rust, "Project/Tooling Updates")
 
-Only submit once there is a blog post to link (TWiR links posts, not repos). Draft line:
+**Skip until the blog post exists.** TWiR links posts, not repos. Draft line for then:
 
 ```
 * [kula 0.3: indexing git revisions with tree-sitter and SQLite, without a checkout](<blog post URL>)
@@ -26,7 +26,7 @@ What a reviewer can try in a few minutes:
 - `kula impact <symbol>` and `kula graph-diff main WORKTREE` for blast radius and structural diff
 - Optional: `kula agents connect` adds an MCP server and pre-edit hooks for Claude Code, Cursor, Codex or Gemini CLI, so a task can lock a path or a single function
 
-Limits: call resolution is heuristic, Windows supports 11 built-in languages (macOS and Linux add 173 packs), and there is one maintainer.
+Limits: the hook catches obvious shell writes; scripts, variables and cd-then-write can slip past; CI (`kula check`) is the gate; call resolution is heuristic, Windows supports 11 built-in languages (macOS and Linux add 173 packs), and there is one maintainer.
 
 Repo: https://github.com/A12N4V/kula
 Licence: MIT
@@ -35,6 +35,7 @@ Thanks,
 Arnav Sharma
 
 ## critic notes
+- Round 2: TWiR marked skip until the blog post exists; shared hook line in the Console email.
 - TWiR: removed the repo-link entry; the section links write-ups, so this is blocked on the bootcamp/blog post.
 - Console: checked against its stated criteria in research.md (devs as primary user, early stage). Said "0.3" and "pre-1.0" plainly.
 - Removed the feature laundry list (issues, proposals, RDF, autoresearch) from the email; reviewers skim, so it shows the three commands that work with no setup.
