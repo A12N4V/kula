@@ -20,7 +20,7 @@ async function open(page: Page, hash = "overview") {
 test.describe("agents config home", () => {
   test.beforeEach(({}, info) => test.skip(info.project.name !== "desktop"));
 
-  test("the rail opens Agents on the agents editor, with a Workspace hand-off", async ({ page }) => {
+  test("the rail opens Agents on the agents editor; deploys go through teams", async ({ page }) => {
     await open(page);
     await page.locator(".rail button[aria-label=Agents]").click();
     await expect(page).toHaveURL(/#agents$/);
@@ -31,8 +31,7 @@ test.describe("agents config home", () => {
     await expect(page.locator(".wf-graph")).toHaveCount(0);
     await page.locator("[data-testid^=ag-card-]").first().locator(".card__t").click();
     await expect(page.locator(".wf-edit")).toBeVisible();
-    await page.getByTestId("wf-use-workspace").click();
-    await expect(page).toHaveURL(/#map\b/);
+    await expect(page.getByTestId("wf-use-workspace")).toHaveCount(0);
   });
 
   test("settings: the policy switches are toggles and write kula.toml", async ({ page }) => {
