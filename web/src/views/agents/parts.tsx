@@ -45,15 +45,15 @@ export function Card({ title, sub, right, children, className = "" }: { title: s
   );
 }
 /** What a seat is called on screen: its name, else (teams made before names) the agent's. */
-export const seatName = (m: { name?: string; agent: string }) => m.name || AGENT_NAME[m.agent] || m.agent;
+export const seatName = (m: { name?: string; workflow?: string; agent?: string }) => m.name || AGENT_NAME[m.agent ?? ""] || m.workflow || m.agent || "";
 /** The display name for a key a teammate points at (reports_to, hands_off). */
-export const keyName = (members: { name?: string; agent: string }[], key: string) => {
+export const keyName = (members: { name?: string; workflow?: string; agent?: string }[], key: string) => {
   const m = members.find((x) => seatKey(x) === key);
   return m ? seatName(m) : key;
 };
 
 /** A seat's mark: the harmonograph of its name; `live` while it works. */
-export function SeatMark({ m, size = 16, live }: { m: { name?: string; agent: string }; size?: number; live?: boolean }) {
+export function SeatMark({ m, size = 16, live }: { m: { name?: string; workflow?: string; agent?: string }; size?: number; live?: boolean }) {
   // decorative: the seat's name always sits beside it, and the runner is written out where it matters
   return <Harmonograph seed={seatKey(m)} size={size} live={live} />;
 }
