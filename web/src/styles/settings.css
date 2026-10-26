@@ -227,6 +227,8 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 /* ================================================================ integration: phone hit targets */
 @media (max-width: 760px) {
   .cpl-row { min-height: 40px; }
+  /* the icon-toggle bars are full rows – 40px floor on a phone */
+  .set-row .ico-tgl { min-height: 40px; }
 }
 
 /* ================================================================ i1 · Embeddings section (I1) */
