@@ -2229,7 +2229,12 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                 || words_has(cmd, "patch")
                 || words_has(cmd, "env")
                 || words_has(cmd, "unset")
-                || words_has(cmd, "cd");
+                || words_has(cmd, "cd")
+                || ["sed", "tee", "touch", "rm", "truncate", "cp", "mv", "ln", "install", "xargs", "cargo", "prettier", "black", "rustfmt",
+                    "isort", "autopep8", "gofmt", "goimports", "ruff", "clang-format", "npx", "pnpm", "yarn", "bunx", "python", "python3",
+                    "python2", "node", "deno", "bun", "ruby", "perl", "php", "sh", "bash", "zsh", "lua", "Rscript"]
+                    .iter()
+                    .any(|w| words_has(cmd, w));
             if suspicious {
                 let fenced = guard::fenced_paths(repo, &g, st.as_ref());
                 let hidden = guard::hidden_paths(repo, &g);

@@ -735,6 +735,28 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
         if name == "git" {
             continue;
         }
+        // things the hook cannot see through: refuse while anything is fenced
+        if !fenced.is_empty() {
+            if let Some(why) = opaque_writer(name, ws) {
+                return (extra, refuse(&why));
+            }
+        }
+        // plain file writers, resolved against the tracked cd and variables
+        let in_place = name == "sed" && ws.iter().skip(1).any(|w| w == "-i" || w.starts_with("-i") || w.starts_with("--in-place"));
+        if in_place || matches!(name, "tee" | "touch" | "rm" | "truncate" | "cp" | "mv" | "ln" | "install") {
+            let args: Vec<&str> = ws.iter().skip(1).filter(|w| !w.starts_with('-')).map(String::as_str).collect();
+            let targets: Vec<&str> = match name {
+                // the first operand is sed's script unless -e/-f gave one
+                "sed" if !ws.iter().any(|w| w == "-e" || w == "-f") => args.iter().skip(1).copied().collect(),
+                "cp" | "mv" | "ln" | "install" => args.last().copied().into_iter().collect(),
+                _ => args,
+            };
+            for t in targets {
+                if let Some(why) = check_target(t, &cd, &vars, cwd_rel, fenced, &mut extra) {
+                    return (extra, Some(why));
+                }
+            }
+        }
         // redirections in this segment: > and >> targets
         if let Some(t) = redirect_target(seg) {
             if let Some(why) = check_target(&t, &cd, &vars, cwd_rel, fenced, &mut extra) {
@@ -752,6 +774,45 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
         let _ = name;
     }
     (extra, None)
+}
+
+const INTERPRETERS: &[&str] =
+    &["python", "python3", "python2", "node", "deno", "bun", "ruby", "perl", "php", "sh", "bash", "zsh", "lua", "Rscript"];
+const XARGS_WRITERS: &[&str] = &[
+    "sed", "tee", "rm", "cp", "mv", "touch", "truncate", "perl", "ruby", "python", "python3", "node", "sh", "bash", "zsh", "dd", "ln",
+    "install", "chmod", "awk", "prettier", "black", "gofmt", "rustfmt",
+];
+
+/// Commands whose write targets the hook cannot resolve: scripts, `xargs`
+/// feeding a writer, and formatters that rewrite whatever they find.
+fn opaque_writer(name: &str, ws: &[String]) -> Option<String> {
+    let rest: Vec<&str> = ws.iter().skip(1).map(String::as_str).collect();
+    let has = |f: &str| rest.contains(&f);
+    if INTERPRETERS.contains(&name) {
+        if rest.iter().any(|w| matches!(*w, "-c" | "-e" | "-E" | "-r" | "-p" | "-i") || w.starts_with("-pi") || w.starts_with("-i")) {
+            return Some(format!("`{name} -c/-e` code can write any path, and fenced paths exist here – run it as a person"));
+        }
+        if rest.iter().any(|w| !w.starts_with('-')) {
+            return Some(format!("a `{name}` script can write any path, and fenced paths exist here – run it as a person"));
+        }
+    }
+    if name == "xargs" {
+        if let Some(w) = rest.iter().find(|w| XARGS_WRITERS.contains(&w.rsplit('/').next().unwrap_or(w))) {
+            return Some(format!("`xargs {w}` writes paths the hook cannot see, and fenced paths exist here"));
+        }
+    }
+    let check = has("--check") || has("--diff") || has("-l") || has("--list-different") || has("-d");
+    let fmt = match name {
+        "cargo" => rest.first() == Some(&"fmt") && !check,
+        "prettier" => has("--write") || has("-w"),
+        "black" | "rustfmt" | "isort" | "autopep8" => !check,
+        "gofmt" | "goimports" => has("-w"),
+        "ruff" => rest.first() == Some(&"format") && !check || has("--fix"),
+        "clang-format" => has("-i"),
+        "npx" | "pnpm" | "yarn" | "bunx" => rest.iter().any(|w| *w == "prettier") && (has("--write") || has("-w")),
+        _ => false,
+    };
+    fmt.then(|| format!("`{name}` rewrites files across the tree, fenced ones included – run the formatter as a person"))
 }
 
 /// `git …` within `shell_guard`: the subcommands that rewrite history or trees
@@ -1164,6 +1225,55 @@ mod shell_guard_tests {
             assert!(why.is_some() || !more.is_empty(), "{cmd} -> no refusal, no extra targets");
         }
         assert!(shell_guard("cat tests/login.test.ts | grep -n salt", "", &fenced, &[]).1.is_none());
+    }
+
+    #[test]
+    fn shell_guard_tracks_vars_cd_and_refuses_opaque_writers() {
+        let fenced = vec![f("tests/t.rs")];
+        for cmd in [
+            "F=tests; sed -i s/x/y/ $F/t.rs",
+            "cd tests; sed -i s/x/y/ t.rs",
+            "cd tests && sed -i '' s/x/y/ t.rs",
+            "xargs -I{} sed -i s/x/y/ {} < list.txt",
+            "python3 -c \"open('te'+'sts/t.rs','w')\"",
+            "python3 w.py",
+            "node -e 'x'",
+            "perl -pi -e s/x/y/ tests/t.rs",
+            "cargo fmt",
+            "cargo fmt --all",
+            "prettier --write .",
+            "npx prettier -w src",
+            "black .",
+            "gofmt -w .",
+            "D=tests; cd $D; tee t.rs",
+            "cd tests; rm t.rs",
+            "cd tests; cp /tmp/x t.rs",
+        ] {
+            let (_, why) = shell_guard(cmd, "", &fenced, &[]);
+            assert!(why.is_some(), "{cmd} -> not refused");
+        }
+        for cmd in [
+            "cat tests/t.rs",
+            "grep -rn x tests",
+            "ls tests",
+            "cargo test",
+            "cargo fmt --check",
+            "black --check .",
+            "gofmt -l .",
+            "prettier --check .",
+            "cd src; sed -i s/x/y/ a.rs",
+            "F=src; sed -i s/x/y/ $F/a.rs",
+            "sed -n 1,5p tests/t.rs",
+            "xargs grep x < list.txt",
+            "python3 --version",
+        ] {
+            let (_, why) = shell_guard(cmd, "", &fenced, &[]);
+            assert!(why.is_none(), "{cmd} -> refused: {why:?}");
+        }
+        // nothing locked: scripts and formatters run freely
+        for cmd in ["python3 -c 'print(1)'", "python3 w.py", "cargo fmt", "xargs sed -i s/x/y/ < l"] {
+            assert!(shell_guard(cmd, "", &[], &[]).1.is_none(), "{cmd}");
+        }
     }
 }
 
