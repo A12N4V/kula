@@ -47,10 +47,18 @@ test.describe("agent cards and the agent sidebar", () => {
     await expect(page.getByTestId("ag-side-ctl")).toBeVisible();
     await expect(page.locator(".ag-side .grip-left")).toBeVisible();
     await expect(side.locator(".wf-edit")).toBeVisible();
-    // everything the old editor had: role, fences, memory, steps, actions
-    await expect(side.locator(".ff-open")).toBeVisible();
+    // everything the old editor had, now as collapsible sections (U18): role,
+    // memory, steps, skills, fences – and one primary action. No service
+    // picker, and no direct Workspace deploy: teams deploy agents (B2).
+    await expect(side.locator(".wf-basics")).toBeVisible();
     await expect(side.locator(".seg")).toBeVisible();
-    await expect(side.getByRole("button", { name: "Use on Workspace" })).toBeVisible();
+    await expect(side.getByTestId("ag-sec-steps")).toBeVisible();
+    await expect(side.getByTestId("ag-sec-skills")).toBeVisible();
+    const fenceHead = side.getByTestId("ag-sec-fences").locator(".ag-sec-head");
+    if ((await fenceHead.getAttribute("aria-expanded")) === "false") await fenceHead.click();
+    await expect(side.locator(".ff-open")).toBeVisible();
+    await expect(side.getByLabel("Service")).toHaveCount(0);
+    await expect(side.getByRole("button", { name: "Use on Workspace" })).toHaveCount(0);
     await expect(side.getByRole("button", { name: "Save" })).toBeVisible();
     // close returns focus to the card that opened it
     await page.getByTestId("ag-side-close").click();

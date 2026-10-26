@@ -124,7 +124,8 @@ test.describe("teams as a map canvas", () => {
     await expect(tab).toHaveClass(/on/);
     await expect(page.getByTestId("team-canvas")).toBeVisible();
     await expect.poll(async () => toml(request)).toContain(`name = "${name}"`);
-    // clean up: delete through the sidebar
+    // clean up: delete through the sidebar (the confirm is accepted)
+    page.once("dialog", (d) => d.accept());
     await page.getByTestId("team-side-toggle").click();
     const side = page.getByTestId("team-side");
     await expect(side).toBeVisible();
@@ -156,11 +157,20 @@ test.describe("teams as a map canvas", () => {
     }).toContain(`workflow = "${wf}"`);
     await side.locator(`[data-testid=team-add-${wf}]`).click();
     await expect(side.locator(`[data-testid=team-add-${wf}]`).first()).toHaveAttribute("aria-pressed", "false");
-    // team settings: rename through the sidebar, the server sees it
+    // the removal round-trips before anything else is edited: team_save is
+    // debounced and team_remove_member writes by name, so a rename typed while
+    // the removal is still in flight can race it on the server
+    await expect.poll(async () => {
+      const body = await toml(request);
+      const block = body.slice(body.indexOf('name = "ship"'));
+      return block.slice(0, block.indexOf("[[team]]", 1) > 0 ? block.indexOf("[[team]]", 1) : undefined);
+    }, { timeout: 15_000 }).not.toContain(`workflow = "${wf}"`);
+    // team settings: rename through the sidebar, the server sees it (the save
+    // is debounced 600 ms, so the poll waits well past it under load)
     const renamed = `ship-${Date.now() % 100000}`;
     await side.getByLabel("Team name").fill(renamed);
     await expect(page.getByTestId(`team-tab-${renamed}`)).toBeVisible();
-    await expect.poll(async () => toml(request)).toContain(`name = "${renamed}"`);
+    await expect.poll(async () => toml(request), { timeout: 15_000 }).toContain(`name = "${renamed}"`);
     // nesting: ship answers to steer by default
     await expect(side.getByLabel("Answers to team")).toHaveValue("steer");
   });
@@ -178,9 +188,9 @@ test.describe("teams as a map canvas", () => {
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + 140, box.y + box.height / 2 + 60, { steps: 8 });
     await page.mouse.up();
-    // the debounce is 500 ms; give it room, then read kula.toml
-    await page.waitForTimeout(1400);
-    expect(await toml(request)).toContain("positions");
+    // the layout save is debounced 500 ms; poll kula.toml instead of a fixed
+    // sleep, so load on the server cannot outlast the wait
+    await expect.poll(async () => toml(request), { timeout: 15_000 }).toContain("positions");
   });
 
   test("@responsive the canvas and the tab bar fit the phone", async ({ page }, info) => {

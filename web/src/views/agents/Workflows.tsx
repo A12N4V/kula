@@ -22,7 +22,7 @@ import AgentSidebar from "./AgentSidebar";
 
 const BUILTIN = ["explore", "fix", "refactor", "tests", "docs", "autoresearch"];
 
-export default function Workflows({ info, act, onGraph, onWorkspace }: { info: AgentsInfo; act: Act; onGraph: (wf?: string) => void; setTab?: (t: Tab) => void; onWorkspace?: (agent?: string) => void }) {
+export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; act: Act; onGraph: (wf?: string) => void; setTab?: (t: Tab) => void }) {
   // The open agent (sidebar). null = the grid only. "" means the new-agent
   // draft (no name yet); a name means the card's agent.
   const [sel, setSel] = useState<string | null>(null);

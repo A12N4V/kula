@@ -122,7 +122,7 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
           <div className="ag-panel" key={tab}>
             {/* Overview lost its menu entry – its roster and stats live here,
                 under the Agents list, so nothing the agents page knew is gone. */}
-            {tab === "workflows" && <Workflows info={info} act={act} onGraph={onGraph} setTab={setTab} onWorkspace={onWorkspace} />}
+            {tab === "workflows" && <Workflows info={info} act={act} onGraph={onGraph} setTab={setTab} />}
             {tab === "workflows" && <Overview info={info} act={act} setTab={setTab} onGraph={onGraph} open={open} />}
             {tab === "research" && <ResearchTab info={info} act={act} open={open} go={go} />}
             {tab === "teams" && <Teams info={info} act={act} setTab={setTab} />}

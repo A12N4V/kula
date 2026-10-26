@@ -59,8 +59,10 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   const t = teams[cur];
   // renaming a team carries the teams under it along
   const set = (x: Partial<Team>) => {
-    const was = teams[cur]?.name;
-    setTeams(teams.map((y, j) => (j === cur ? { ...y, ...x } : x.name !== undefined && y.under === was ? { ...y, under: x.name } : y)));
+    setTeams((prev) => {
+      const was = prev[cur]?.name;
+      return prev.map((y, j) => (j === cur ? { ...y, ...x } : x.name !== undefined && y.under === was ? { ...y, under: x.name } : y));
+    });
   };
   // Settings and member fields save on their own: shortly after they stop
   // changing, every touched team (found by index, so a rename still matches

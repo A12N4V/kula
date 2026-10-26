@@ -43,7 +43,14 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
     window.addEventListener("keydown", esc);
     return () => { window.removeEventListener("keydown", esc); opener.current?.focus(); };
   }, []);
-  const memberObj = team.members.find((m) => memberKey(m) === member) ?? null;
+  // The open member is held by its seat key, but editing the service (or the
+  // name) changes that key: pin the seat's index once, on open, so the editor
+  // stays mounted while its seat is renamed underneath it.
+  const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
+  useEffect(() => {
+    setPinnedIdx(member === null ? null : team.members.findIndex((m) => memberKey(m) === member));
+  }, [member]); // eslint-disable-line react-hooks/exhaustive-deps
+  const memberObj = pinnedIdx != null && pinnedIdx >= 0 ? team.members[pinnedIdx] : null;
   return createPortal(
     <aside className="ag-side tc-side" data-pane data-testid="team-side" tabIndex={-1} ref={ref} aria-label={`Team ${team.name}`}>
       <Grip id="team-side" edge="left" min={300} max={820} label="Resize team panel" />
@@ -54,7 +61,7 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
       </header>
       <div className="ag-side-scroll">
         {memberObj ? (
-          <MemberEdit team={team} m={memberObj} info={info} act={act} onSet={onSet} onClose={() => onPickMember(null)} />
+          <MemberEdit team={team} idx={pinnedIdx} info={info} act={act} onSet={onSet} onClose={() => onPickMember(null)} />
         ) : (
           <>
             {/* settings first, then the limits the team runs under */}
@@ -228,11 +235,12 @@ function AddToTeam({ team, info, onAdd, onRemove }: { team: Team; info: AgentsIn
 
 /** One member's fields – now with the seat's service: the agent definition
  *  is neutral, the service is chosen where the seat is. */
-function MemberEdit({ team, m, info, act, onSet, onClose }: {
-  team: Team; m: Member; info: AgentsInfo; act: Act; onSet: (x: Partial<Team>) => void; onClose: () => void;
+function MemberEdit({ team, idx, info, act, onSet, onClose }: {
+  team: Team; idx: number | null; info: AgentsInfo; act: Act; onSet: (x: Partial<Team>) => void; onClose: () => void;
 }) {
+  const m = team.members[idx ?? -1];
   const k = memberKey(m);
-  const setM = (x: Partial<Member>) => onSet({ members: team.members.map((y) => (memberKey(y) === k ? { ...y, ...x } : y)) });
+  const setM = (x: Partial<Member>) => onSet({ members: team.members.map((y, i) => (i === idx ? { ...y, ...x } : y)) });
   const setService = (v: string) => setM({ service: v, agent: v || "any" });
   const others = team.members.filter((y) => memberKey(y) !== k).map(memberKey).filter(Boolean);
   const svc = (m as { service?: string }).service ?? (m.agent === "any" ? "" : m.agent);
