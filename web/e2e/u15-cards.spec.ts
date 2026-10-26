@@ -43,9 +43,10 @@ test.describe("agent cards and the agent sidebar", () => {
     // the sidebar is a pane: controls, grip, the editor inside
     const side = page.getByTestId("ag-side");
     await expect(side).toBeVisible();
+    // the sidebar is a window now: controls and a resize grip, the editor inside
     await expect(side).toHaveAttribute("data-pane", /.*/);
     await expect(page.getByTestId("ag-side-ctl")).toBeVisible();
-    await expect(page.locator(".ag-side .grip-left")).toBeVisible();
+    await expect(page.locator(".win-rz-e").first()).toBeVisible();
     await expect(side.locator(".wf-edit")).toBeVisible();
     // everything the old editor had, now as collapsible sections (U18): role,
     // memory, steps, skills, fences – and one primary action. No service
@@ -83,7 +84,7 @@ test.describe("agent cards and the agent sidebar", () => {
     await form.getByLabel("Role").fill("Cards smoke agent");
     await form.locator("[data-testid=ag-add-name]").press("Enter");
     // the sidebar opens on the new agent, with the card in the grid
-    await expect(page.locator(".ag-side-head h2")).toHaveText(name);
+    await expect(page.locator("[data-testid=ag-side] .win-title")).toHaveText(name);
     const card = page.locator(`[data-testid=ag-card-${name}]`);
     await expect(card).toBeVisible();
     // the actions row stays inside the pane – no sideways spill
@@ -96,7 +97,7 @@ test.describe("agent cards and the agent sidebar", () => {
     await expect(card).toHaveCount(0);
   });
 
-  test("@responsive the cards fit 390 and the sidebar is a bottom sheet", async ({ page }, info) => {
+  test("@responsive the cards fit 390 and the sidebar is a window sheet", async ({ page }, info) => {
     test.skip(info.project.name !== "phone" && info.project.name !== "tablet");
     await open(page);
     const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -104,8 +105,22 @@ test.describe("agent cards and the agent sidebar", () => {
     await page.locator("[data-testid^=ag-card-]:not([data-testid=ag-card-add])").first().locator(".card__t").click();
     const side = page.getByTestId("ag-side");
     await expect(side).toBeVisible();
-    // phone: every pane is a bottom sheet (the shared pane rule)
-    const atBottom = await side.evaluate((el) => el.getBoundingClientRect().bottom >= window.innerHeight - 60);
-    expect(atBottom, "the sidebar should reach the bottom of the window").toBe(true);
+    // the sidebar is a desktop window: at ≤ 600px it is a full-width sheet,
+    // above that a movable window that still fits on screen
+    if (info.project.name === "phone") {
+      const sheet = await side.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, width: r.width, bottom: r.bottom, vw: window.innerWidth, vh: window.innerHeight };
+      });
+      expect(sheet.left, "the sheet starts at the left edge").toBeLessThanOrEqual(1);
+      expect(sheet.width, "the sheet is full width").toBeGreaterThanOrEqual(sheet.vw - 2);
+      expect(sheet.bottom, "the sheet reaches the bottom").toBeGreaterThanOrEqual(sheet.vh - 60);
+    } else {
+      const onScreen = await side.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return r.left >= 0 && r.top >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight;
+      });
+      expect(onScreen, "the window stays fully on screen").toBe(true);
+    }
   });
 });

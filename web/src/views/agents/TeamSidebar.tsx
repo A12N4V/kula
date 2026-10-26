@@ -1,17 +1,15 @@
 // The team sidebar (module U18): the team editor, opened beside the canvas
-// from the header's Details toggle. Same pane mechanism as the agent sidebar
-// – data-pane, PaneControls and a Grip, portaled to body so it cannot drift
-// with the scroll. Settings and Limits & domains come first (the audit: the
+// from the header's Details toggle. A desktop window (ui/Window), like the agent
+// sidebar. Settings and Limits & domains come first (the audit: the
 // editor a team needs is at the top), members follow, and "add to team" is a
 // search box over the repository's agents – research loops never appear here.
 // Member rows are divs with two sibling buttons (open, remove), never a
 // button inside a button.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Chips } from "../../Autofill";
 import { Icon } from "../../ui";
-import { Grip, PaneControls } from "../../resize";
+import { Window } from "../../ui/Window";
 import { AgentHarmonograph } from "../../flow/agentMark";
 import { seatKey, titleFor } from "../../roster";
 import { AGENT_IDS, AGENT_NAME, MODELS, type Act } from "./data";
@@ -32,7 +30,7 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
   onDelete: () => void;
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     opener.current = document.querySelector<HTMLElement>(`[data-testid="team-side-toggle"]`);
@@ -51,15 +49,11 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
     setPinnedIdx(member === null ? null : team.members.findIndex((m) => memberKey(m) === member));
   }, [member]); // eslint-disable-line react-hooks/exhaustive-deps
   const memberObj = pinnedIdx != null && pinnedIdx >= 0 ? team.members[pinnedIdx] : null;
-  return createPortal(
-    <aside className="ag-side tc-side" data-pane data-testid="team-side" tabIndex={-1} ref={ref} aria-label={`Team ${team.name}`}>
-      <Grip id="team-side" edge="left" min={300} max={820} label="Resize team panel" />
-      <header className="ag-side-head">
-        <span className="mono muted">team · kula.toml</span>
-        <h2>{team.name || "unnamed"}</h2>
-        <PaneControls onClose={onClose} closeLabel="Close team" closeTitle="Close  esc" testId="team-side" />
-      </header>
-      <div className="ag-side-scroll">
+  return (
+    <Window id={`team-sidebar-${team.name}`} title={team.name || "unnamed"} icon={<Icon.team />} width={440} height={620}
+      testId="team-side" onClose={onClose} className="ag-side-win">
+      <span className="mono muted">team · kula.toml</span>
+      <div className="ag-side-scroll" ref={ref} tabIndex={-1} aria-label={`Team ${team.name}`}>
         {memberObj ? (
           <MemberEdit team={team} idx={pinnedIdx} info={info} act={act} onSet={onSet} onClose={() => onPickMember(null)} />
         ) : (
@@ -90,8 +84,7 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
           </>
         )}
       </div>
-    </aside>,
-    document.body,
+    </Window>
   );
 }
 

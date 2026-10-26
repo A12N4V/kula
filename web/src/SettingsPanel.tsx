@@ -12,7 +12,8 @@ const TOGGLE_ICON: Partial<Record<keyof Settings, React.ComponentType>> = {
 // Every boolean setting has a semantic icon – the fallback never renders.
 const IconDefault = Icon.box;
 import { api, type LangRow } from "./api";
-import { Grip, hasCustomSizes, PaneControls, resetSizes } from "./resize";
+import { Grip, hasCustomSizes, resetSizes } from "./resize";
+import { Window } from "./ui/Window";
 
 // I1 · Embeddings: the check table and the run state as the Rust side sends them.
 interface EmbedStats {
@@ -325,16 +326,16 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const noHits = q && !visible.length && !body.current?.textContent?.toLowerCase().includes(q.toLowerCase());
 
   return (
-    <div className="scrim" onMouseDown={onClose}>
-      <section className="settings dialog" role="dialog" aria-modal="true" aria-label="Settings" data-pane onMouseDown={(e) => e.stopPropagation()}>
-        <Grip id="settings" edge="right" min={340} max={1100} label="Resize settings" />
-        <header>
-          <Icon.gear />
-          <h2>Settings</h2>
+    <Window id="settings" title="Settings" icon={<Icon.gear />} onClose={onClose} width={760} height={640} testId="settings"
+      className="settings dialog"
+      footer={
+        <footer>
+          <button className="btn sm ghost" onClick={() => { resetSizes(); settings.reset(); }}>Restore defaults</button>
           <span className="spacer" />
-          <button className="btn ghost sm restore-m" onClick={() => { resetSizes(); settings.reset(); }}>Restore defaults</button>
-          <PaneControls onClose={onClose} testId="settings" />
-        </header>
+          <span className="muted">Saved in this browser · Disk in .kula/clean.json</span>
+        </footer>
+      }>
+      <div>
         <div className="set-search">
           <Icon.search />
           <input className="input" type="search" placeholder="Search settings…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search settings" />
@@ -411,12 +412,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           {noHits && <div className="muted set-empty">Nothing matches “{q}”.</div>}
         </div>
         </div>
-        <footer>
-          <button className="btn sm ghost" onClick={() => { resetSizes(); settings.reset(); }}>Restore defaults</button>
-          <span className="spacer" />
-          <span className="muted">Saved in this browser · Disk in .kula/clean.json</span>
-        </footer>
-      </section>
-    </div>
+      </div>
+    </Window>
   );
 }

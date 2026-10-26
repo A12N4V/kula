@@ -2,14 +2,13 @@
 // prompt, steps, skills, autonomy – with every section collapsible and one
 // primary action (Save). Agents are platform neutral: there is no service
 // picker here, and no direct Workspace deploy – a team seat picks its service
-// and the team is what deploys (B2). Same pane mechanism as the code panel –
-// data-pane, PaneControls and a Grip; Esc or close returns focus to the card.
+// and the team is what deploys (B2). A desktop window (ui/Window) – drag, resize, minimise, remembered per
+// agent id; Esc or close returns focus to the card.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { Chips } from "../../Autofill";
 import { Icon } from "../../ui";
-import { Grip, PaneControls } from "../../resize";
+import { Window } from "../../ui/Window";
 import type { GuardLevel, Workflow } from "../../api";
 import { Mark } from "../../brands";
 import type { Act } from "./data";
@@ -38,9 +37,9 @@ export default function AgentSidebar({ wf, orig, info, isNew, dirty, act, onGrap
   onSet: (k: keyof Workflow, v: unknown) => void;
   onSave: () => void; onRemove: () => void; onClose: () => void;
 }) {
-  // Esc closes the sidebar (PaneControls' own Esc only unwinds full screen
-  // first) – and focus goes back to the card that opened it.
-  const ref = useRef<HTMLElement>(null);
+  // Esc closes the sidebar (the window's own Esc first unwinds full screen)
+  // – and focus goes back to the card that opened it.
+  const ref = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     opener.current = document.querySelector<HTMLElement>(`[data-testid="ag-card-${CSS.escape(orig ?? wf.name)}"]`);
@@ -60,18 +59,12 @@ export default function AgentSidebar({ wf, orig, info, isNew, dirty, act, onGrap
   const [folds, setFolds] = useState<Record<string, boolean>>({ steps: true, fences: !isNew });
   const fold = (id: string) => setFolds((f) => ({ ...f, [id]: !f[id] }));
   const openFences = () => setFolds((f) => ({ ...f, fences: true }));
-  // The pane mounts at body level, like the code panel: inside the view it
-  // would take a transformed ancestor as its containing block and drift with
-  // the detail's scroll.
-  return createPortal(
-    <aside className="ag-side" data-pane data-testid="ag-side" tabIndex={-1} ref={ref} aria-label={`Edit ${draft.name}`}>
-      <Grip id="ag-side" edge="left" min={340} max={900} label="Resize agent panel" />
-      <header className="ag-side-head">
-        <span className="mono muted">{isNew ? "new agent" : cur?.builtin ? "built in – saving overrides it in kula.toml" : BUILTIN.includes(orig ?? "") ? "overrides the built-in" : "kula.toml"}</span>
-        <h2>{isNew ? "New workflow" : draft.name}</h2>
-        <PaneControls onClose={onClose} closeLabel="Close agent" closeTitle="Close  esc" testId="ag-side" />
-      </header>
-      <div className="ag-side-scroll">
+  const title = isNew ? "New workflow" : draft.name;
+  return (
+    <Window id={`agent-sidebar-${orig ?? wf.name}`} title={title} icon={<Icon.gear />} width={480} height={640}
+      testId="ag-side" onClose={onClose} className="ag-side-win">
+      <span className="mono muted">{isNew ? "new agent" : cur?.builtin ? "built in – saving overrides it in kula.toml" : BUILTIN.includes(orig ?? "") ? "overrides the built-in" : "kula.toml"}</span>
+      <div className="ag-side-scroll" ref={ref} tabIndex={-1} aria-label={`Edit ${draft.name}`}>
         <section className="card wf-edit">
           <div className="ag-body wf-form">
             <div className="wf-basics">
@@ -156,8 +149,7 @@ export default function AgentSidebar({ wf, orig, info, isNew, dirty, act, onGrap
           </div>
         </section>
       </div>
-    </aside>,
-    document.body,
+    </Window>
   );
 }
 

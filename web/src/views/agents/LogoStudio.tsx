@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import { harmonographSegments, markPose, putLogo, svgId, type MarkFamily, type LogoParams } from "../../flow/agentMark";
 import { api } from "../../api";
 import { Icon } from "../../ui";
+import { Window } from "../../ui/Window";
 
 /** The studio's svg, as a string, from the same segments the preview draws –
  *  what the backend stores is exactly what the preview showed. */
@@ -32,7 +33,6 @@ function Studio({ kind, name, onClose }: { kind: MarkFamily; name: string; onClo
   const [seed, setSeed] = useState(0);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [note, setNote] = useState("");
-  const closeRef = useRef<HTMLButtonElement>(null);
   const opener = useRef<Element | null>(null);
 
   // one interaction away, but still one interaction: Esc closes and focus
@@ -41,7 +41,7 @@ function Studio({ kind, name, onClose }: { kind: MarkFamily; name: string; onClo
   // is the only interaction there is.
   useEffect(() => {
     opener.current = document.activeElement;
-    closeRef.current?.focus();
+    document.querySelector<HTMLElement>("[data-testid=\"logo-studio\"] .win-head")?.focus();
     document.documentElement.classList.add("logo-studio-open");
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKey);
@@ -80,14 +80,16 @@ function Studio({ kind, name, onClose }: { kind: MarkFamily; name: string; onClo
   };
 
   return (
-    <div className="logo-veil" data-testid="logo-studio" role="dialog" aria-label={`Logo studio – ${name}`} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
-      <div className="logo-win" onClick={(e) => e.stopPropagation()}>
-        <header className="logo-head">
-          <span className="mono">logo studio · {KIND_LABEL[kind]} · {name}</span>
-          <span className="spacer" />
-          <button ref={closeRef} className="btn sm ghost" onClick={onClose} aria-label="Close logo studio" data-testid="logo-close"><Icon.close /></button>
-        </header>
-        <div className="logo-body">
+    <Window id={`logo-studio-${name}`} title={`logo studio – ${KIND_LABEL[kind]} · ${name}`} icon={<Icon.gear />}
+      width={520} height={640} testId="logo-studio" onClose={onClose} className="logo-studio-win"
+      footer={
+        <div className="logo-actions">
+          <button className="btn" data-testid="logo-save" disabled={state === "saving"} onClick={save}>Save logo</button>
+          {state === "saved" && <span className="mono logo-note" data-testid="logo-saved">saved</span>}
+          {state === "error" && note && <span className="mono logo-note logo-note-err">{note}</span>}
+        </div>
+      }>
+      <div className="logo-body">
           <div className="logo-stage" data-testid="logo-stage">
             <svg viewBox="0 0 24 24" aria-hidden="true" data-figure data-testid="logo-preview">
               {segs.map((g, i) => (
@@ -114,15 +116,9 @@ function Studio({ kind, name, onClose }: { kind: MarkFamily; name: string; onClo
             <label className="logo-slider"><span className="mono">line weight</span>
               <input type="range" min="0.15" max="1.4" step="0.01" value={lw} onChange={(e) => setLw(Number(e.target.value))} aria-label="Line weight" data-testid="logo-lw" />
             </label>
-            <div className="logo-actions">
-              <button className="btn" data-testid="logo-save" disabled={state === "saving"} onClick={save}>Save logo</button>
-              {state === "saved" && <span className="mono logo-note" data-testid="logo-saved">saved</span>}
-              {state === "error" && note && <span className="mono logo-note logo-note-err">{note}</span>}
-            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </Window>
   );
 }
 
