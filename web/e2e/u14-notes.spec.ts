@@ -126,8 +126,15 @@ test("a sticky note on the map opens in the editor and saves back", async ({ pag
 
 test("a card's Edit button opens the same editor", async ({ page }) => {
   const n = await seedOne(page);
-  // open from the card in the sidebar, not the list row
-  await page.getByTestId(`u14-edit-${n}`).click();
+  // open from the card in the sidebar, not the list row. U20: the sidebar
+  // card is the newest note, so a parallel worker's write can briefly take
+  // its place – reload until ours is the card.
+  const edit = page.getByTestId(`u14-edit-${n}`);
+  await expect(async () => {
+    if (!(await edit.isVisible())) await page.reload();
+    await expect(edit).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
+  await edit.click();
   const panel = page.locator(".code-panel");
   await expect(panel).toBeVisible({ timeout: 10_000 });
   await expect(panel.getByTestId("cp-code")).toContainText("U14 seed");

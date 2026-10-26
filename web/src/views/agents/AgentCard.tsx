@@ -3,7 +3,7 @@
 // one line of role, and the tags line at the bottom. The whole card is the
 // button: clicking it opens the agent sidebar (AgentSidebar).
 
-import { useMemo } from "react";
+import { useMemo, type KeyboardEvent } from "react";
 import { harmonographPath, harmonographSegments, svgId, useLogo, type MarkFamily } from "../../flow/agentMark";
 import { openLogoStudio } from "./LogoStudio";
 import { Icon } from "../../ui";
@@ -65,7 +65,9 @@ export function CardArt({ name, family = "agent", onStudio = true }: { name: str
     e.stopPropagation();
     openLogoStudio(family, name);
   };
-  const studioProps = onStudio ? { type: "button" as const, "aria-label": `Edit logo – ${name}` } : {};
+  // Enter/Space on the mark must reach its own click, not the card's keydown
+  // (which opens the side panel and swallows the key).
+  const studioProps = onStudio ? { type: "button" as const, "aria-label": `Edit logo – ${name}`, onKeyDown: (e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); } } : {};
   if (logo) {
     return (
       <button className={`ag-card-art-svg logo-saved${onStudio ? " logo-click" : ""}`} data-testid={`ag-art-${name}`} data-figure

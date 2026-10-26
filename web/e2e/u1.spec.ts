@@ -217,6 +217,10 @@ test("node hover toolbar floats above the node, nothing on the node face", async
   test.skip(info.project.name !== "desktop", "hover needs a pointer");
   await open(page);
   await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+  // X14 restores the last viewport after the first fit: wait for the camera
+  // to settle, or the picked card slides away before the pointer arrives
+  const cam = () => page.locator("[data-testid=map-flow] .react-flow__viewport").first().getAttribute("style");
+  await expect(async () => { const a = await cam(); await page.waitForTimeout(400); expect(await cam()).toBe(a); }).toPass({ timeout: 10_000 });
   // hover a card clear of the zoom controls (bottom-left) and the HUD
   const cid = await page.evaluate(() => {
     for (const el of document.querySelectorAll("[data-testid=map-flow] .fc-card:not(.fc-card-sec)")) {

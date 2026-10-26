@@ -320,7 +320,7 @@ export default function App() {
         <span className="mono">{repo?.head?.slice(0, 8)}</span>
         <span className="sb-user">{repo?.user}</span>
         <button className="sb-help" data-testid="sb-dock" onClick={() => setDock((d) => !d)} title="Terminal and run log  ctrl+`"><Icon.console /> panel</button>
-        <button className="sb-help" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
+        <button className="sb-help sb-keys" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
       </footer>
 
       {palette && <Palette meta={meta} onClose={() => setPalette(false)} go={(v, t) => { setPalette(false); go(v, t); }} onReindex={() => { setPalette(false); reindex(); }} onSettings={() => { setPalette(false); setPrefs(true); }} />}
