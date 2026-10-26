@@ -1659,7 +1659,7 @@ test.describe("agents A2", () => {
     })));
     await open(page, "agents/research");
     // U19: loops are cards now – the card opens the loop editor (no tab).
-    await page.locator('[data-testid=rs-card-explore]').click();
+    await page.locator('[data-testid=rs-card-explore] .card__t').click(); // the card centre is the art – it opens the logo studio, the title opens the loop editor
     const tries = page.locator(".rf-tries");
     await expect(page.locator(".rf-try")).toHaveCount(5);
     // The timeline shows the run on a time axis with exact values and a legend table.
@@ -3005,7 +3005,7 @@ test.describe("agents on the flow canvas (A3)", () => {
     })));
     await open(page, "agents/research");
     // U19: loops are cards now – the card opens the loop editor (no tab).
-    await page.locator('[data-testid=rs-card-explore]').click();
+    await page.locator('[data-testid=rs-card-explore] .card__t').click(); // the card centre is the art – it opens the logo studio, the title opens the loop editor
     // The pipeline is on the canvas: stages left to right, sub-nodes below –
     // 4 stages + 2 solver circles + 2 attempt circles + 1 frontier record.
     await expect(page.locator(".rf-canvas .react-flow__node")).toHaveCount(9);
