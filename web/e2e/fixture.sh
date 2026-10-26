@@ -9,6 +9,9 @@ K="$ROOT/target/debug/kula"
 # /tmp on purpose: mktemp in the system temp dir (macOS /var/folders) is
 # unreliable in sandboxed checkouts – git clone intermittently fails with
 # "Operation not permitted" – so the fixture repo always lives under /tmp.
+# The EXIT trap below misses a SIGKILLed server, so sweep copies left by
+# earlier runs (older than 3h; a full suite takes about 1h) before adding one.
+find /tmp -maxdepth 1 -name 'kula-fixture.*' -type d -mmin +180 -exec rm -rf {} + 2>/dev/null
 D=$(mktemp -d "/tmp/kula-fixture.XXXXXX")/kula
 echo "$D" > "/tmp/kula-fixture-$1.path"
 # Clone through a cached bundle: in sandboxed checkouts a concurrent temp-file
