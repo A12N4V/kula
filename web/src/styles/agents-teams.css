@@ -524,3 +524,8 @@ input.mi-title { font: 600 14px var(--mono); }
 .ag-card-ovf { position: absolute; top: 8px; right: 8px; display: none; }
 .ag-card:hover .ag-card-ovf, .ag-card:focus-within .ag-card-ovf { display: inline-flex; }
 .ag-head { margin: 0 0 8px; }
+/* u20 · effective fences: one read-only list, outer layer first */
+.tc-eff-list { display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow: auto; }
+.tc-eff-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 3px 0; border-bottom: 1px solid color-mix(in oklab, var(--line) 60%, transparent); }
+.tc-eff-paths { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
+.tc-eff-src { font-size: 11px; flex: none; }

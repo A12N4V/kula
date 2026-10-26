@@ -226,6 +226,19 @@ function AddToTeam({ team, info, onAdd, onRemove }: { team: Team; info: AgentsIn
   );
 }
 
+
+/** The seat's effective fences, outer layer first: repo (the global raw
+ *  rules), then the team's fences, then the seat workflow's own rules. Each
+ *  row keeps its source so a person sees why a path is locked. */
+function effRows(m: Member, team: Team, info: AgentsInfo): { level: string; paths: string; source: string; why: string }[] {
+  const rows: { level: string; paths: string; source: string; why: string }[] = [];
+  for (const r of info.raw_rules ?? []) rows.push({ level: r.level, paths: (r.paths ?? []).join(" ") || "–", source: "repo", why: r.reason || "repository rule" });
+  for (const r of team.fences ?? []) rows.push({ level: r.level, paths: (r.paths ?? []).join(" ") || "–", source: `team ${team.name}`, why: r.reason || `team ${team.name} fence` });
+  const wf = info.workflows.find((w) => w.name === m.workflow);
+  for (const r of info.workflow_rules ?? []) if (wf && r.level) rows.push({ level: r.level, paths: r.paths.join(" ") || "–", source: `agent ${wf.name}`, why: r.reason || `${wf.name} rule` });
+  return rows;
+}
+
 /** One member's fields – now with the seat's service: the agent definition
  *  is neutral, the service is chosen where the seat is. */
 function MemberEdit({ team, idx, info, act, onSet, onClose }: {
@@ -277,6 +290,23 @@ function MemberEdit({ team, idx, info, act, onSet, onClose }: {
       <label className="mi-field"><span>system prompt</span>
         <textarea className="input" rows={3} value={m.prompt ?? ""} onChange={(e) => setM({ prompt: e.target.value })} aria-label="System prompt" />
       </label>
+      {/* Effective fences: one read-only list, outer layer first – repo · team
+          · agent – each row with its source, so a person sees why a path is
+          locked. Built from the same data Guards::for_agent layers; when the
+          backend's effective_fences route lands it replaces this derivation. */}
+      <div className="mi-field tc-eff" data-testid="tc-eff-fences">
+        <span>effective fences</span>
+        <div className="tc-eff-list" role="list">
+          {effRows(m, team, info).map((r, i) => (
+            <div key={i} className="tc-eff-row" role="listitem" title={r.why}>
+              <span className={`tag ${r.level === "locked" ? "red" : r.level === "review" ? "yellow" : ""}`}>{r.level}</span>
+              <span className="mono tc-eff-paths">{r.paths}</span>
+              <span className="muted tc-eff-src">{r.source}</span>
+            </div>
+          ))}
+          {effRows(m, team, info).length === 0 && <span className="muted">nothing is locked for this seat</span>}
+        </div>
+      </div>
       <div className="row">
         <button className="btn sm ghost" onClick={() => act("team_prompt", { teams: [team], agent: k }, "").catch(() => {})}>Preview prompt</button>
         <span className="spacer" />
