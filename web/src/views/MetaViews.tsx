@@ -247,9 +247,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
           {graphOn && <NotesGraph notes={all} sel={sel} onPick={setSel} onOpenNote={openNote} />}
           <aside className="notes-side detail-pad">
             <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{all.length}</span><span className="spacer" />{sel && <button className="btn sm ghost" onClick={() => setSel("")}>All</button>}<Toggle label="Graph" checked={graphOn} onChange={toggleGraph} hint="Show notes as a graph beside the list" testId="notes-graph-toggle" className="sm" /></div>
-            {graphOn
-              ? <NotesGraph notes={all} sel={sel} onPick={setSel} onOpenNote={openNote} />
-              : <Empty title="Graph off">Turn the graph back on to see how notes anchor to the repo.</Empty>}
+            {!graphOn && <Empty title="Graph off">Turn the graph back on to see how notes anchor to the repo.</Empty>}
             {selNote && (
               <div className="note" data-testid={`u14-card-${selNote.id}`}>
                 <Md text={selNote.body} onSymbol={(s) => openByName(s, openSymbol)} />
