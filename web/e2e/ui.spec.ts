@@ -765,7 +765,7 @@ test.describe("agents", () => {
 
   test("@responsive the task, its workflow and the agent loop, and what needs a person", async ({ page }, info) => {
     await open(page, "agents/overview");
-    await expect(page.locator(".ag-menu .list-head h2")).toHaveText("Agents");
+    await expect(page.locator(".ag-detail .page-head h1")).toHaveText("Agents");
     await expect(page.locator(".ag-task-title")).toHaveText("harden the MCP server");
     await expect(page.locator(".ag-now .ag-chips .tag")).toHaveText(["fix", "src/mcp.rs", "src/agent.rs"]);
     await expect(page.locator(".loop-step")).toHaveCount(6);
@@ -1288,14 +1288,15 @@ test.describe("teams and research (T1)", () => {
     await expect(page.getByTestId("team-tab-steer")).toBeVisible();
     await page.getByTestId("team-tab-ship").click();
     const canvas = page.getByTestId("team-canvas");
-    await expect(canvas).toContainText("claude");
+    // unnamed seats take their workflow's name (b3): claude's seat is "tests"
+    await expect(canvas).toContainText("tests");
     await expect(canvas).toContainText("cursor");
-    // The sidebar reads the hand-offs: cursor hands off to codex – no hovering.
+    // The sidebar reads the hand-offs: cursor hands off to codex (seat "explore") – no hovering.
     await page.getByTestId("team-side-toggle").click();
     const side = page.getByTestId("team-side");
     await expect(side).toBeVisible();
     await side.getByTestId("tc-member-cursor").click();
-    await expect(side.locator(".chip-toggle").filter({ hasText: "codex" })).toHaveAttribute("aria-pressed", "true");
+    await expect(side.locator(".chip-toggle").filter({ hasText: "explore" })).toHaveAttribute("aria-pressed", "true");
     // Back to the team: ship answers to steer (teams of teams).
     await side.getByRole("button", { name: "Back to the team" }).click();
     await expect(side.getByLabel("Answers to team")).toHaveValue("steer");
@@ -1371,7 +1372,8 @@ test.describe("g1 – graph, inspector and git by keyboard", () => {
     // 3 s: the card waits a beat by design, and under three workers the beat
     // can stretch – 1.5 s turned timing into a flaky failure.
     await expect(card).toBeVisible({ timeout: 3_000 });
-    await expect(card.locator(".hc-name")).toHaveText(a.label);
+    // a hub carries its "hub" badge inside the name row
+    await expect(card.locator(".hc-name")).toHaveText(new RegExp(`^${a.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(hub)?$`));
     // path:line – a real location, not a bare path.
     await expect(card.locator(".hc-path")).toHaveText(/:\d+$/);
     await expect(card.locator(".hc-stats b.in")).toHaveText(/^\d+$/);
@@ -1696,7 +1698,7 @@ test.describe("agents A2", () => {
     await open(page, "agents/teams");
     // The team canvas (U16): a seat is a square on the map; clicking it opens
     // the team sidebar on the seat's fields.
-    const seat = page.locator('[data-testid="team-canvas"] .react-flow__node').filter({ hasText: "codex" }).first();
+    const seat = page.locator('[data-testid="team-canvas"] .react-flow__node').filter({ hasText: "explore" }).first();
     await seat.click();
     const side = page.locator('[data-testid="team-side"]');
     await expect(side).toBeVisible();
@@ -1815,6 +1817,7 @@ test.describe("memory graph M1", () => {
   test("fixture memories are graph nodes; click selects the list row", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
     await open(page, "agents/memory");
+    await page.getByTestId("mem-graph-toggle").click(); // U20: the graph sits behind a toggle
     // the fixture memories, each with a DOM node counterpart on the graph –
     // the fixture is shared per worker, so other tests may have added more
     const nodes = page.locator(".m1-node");
@@ -1839,6 +1842,7 @@ test.describe("memory graph M1", () => {
   test("stale memory renders hollow (DOM class), fresh one does not", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
     await open(page, "agents/memory");
+    await page.getByTestId("mem-graph-toggle").click(); // U20: the graph sits behind a toggle
     const stale = page.locator(".m1-node.stale");
     await expect(stale).toHaveCount(1);
     await expect(stale).toHaveText("#5");
@@ -1851,6 +1855,7 @@ test.describe("memory graph M1", () => {
   test("the list filter (`/`) narrows the graph too", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
     await open(page, "agents/memory");
+    await page.getByTestId("mem-graph-toggle").click(); // U20: the graph sits behind a toggle
     const input = page.getByLabel("Filter memories");
     await input.fill("SPARQL");
     await expect(page.locator(".m1-node")).toHaveCount(1);
@@ -2982,6 +2987,7 @@ test.describe("agents on the flow canvas (A3)", () => {
   test("A3.3 memory: a canvas node fills the sidebar and the list row follows", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
     await open(page, "agents/memory");
+    await page.getByTestId("mem-graph-toggle").click(); // U20: the graph sits behind a toggle
     const node = page.locator('.react-flow__node[data-id^="mem:"]').first();
     await expect(node).toBeVisible();
     await node.click();

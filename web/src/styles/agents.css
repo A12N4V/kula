@@ -672,4 +672,4 @@
 /* X14 space audit – the "? shortcuts" statusbar button sits under the agent
    grid on a phone (probe overlap) and earns nothing there: the shortcuts it
    opens are keyboard-only anyway. Hidden ≤ 760px. */
-@media (max-width: 760px) { .sb-help { display: none; } }
+@media (max-width: 760px) { .sb-keys { display: none; } }
