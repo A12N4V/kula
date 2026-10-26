@@ -21,6 +21,7 @@ import { Icon, StatTable } from "../../ui";
 import { blank, type Act } from "./data";
 import { num, pct, RunChart } from "./parts";
 import { AgentHarmonograph } from "../../flow/agentMark";
+import { CardArt } from "./AgentCard";
 import { LOOP_TEMPLATES, BUILTIN_LOOPS, metricFor, type LoopTemplate } from "./templates";
 import { GLYPHS, IconPicker, LoopIcon } from "./loopicon";
 import ResearchFlow from "./ResearchFlow";
@@ -69,7 +70,7 @@ export default function ResearchTab({ info, act, open, go }: { info: AgentsInfo;
       </div>
 
       {sel && w ? <LoopPanel key={w.name} w={w} info={info} act={act} open={open} go={go}
-        onClose={() => setSel(null)} onDelete={() => { setSel(null); }} /> : null}
+        onClose={() => setSel(null)} onDelete={() => { setSel(null); }} onRenamed={setSel} /> : null}
       {adding !== null && <NewLoop key={adding === "blank" ? "blank" : adding.id} info={info} act={act} tpl={adding === "blank" ? null : adding}
         done={(n) => { setAdding(null); setSel(n); }} cancel={() => setAdding(null)} />}
       <section className="rs-sec" aria-label="Research loops">
@@ -120,7 +121,7 @@ function LoopCard({ w, info, onOpen }: { w: Workflow; info: AgentsInfo; onOpen: 
   ].filter(Boolean);
   return (
     <button className="card ag-card rs-card" data-testid={`rs-card-${w.name}`} onClick={onOpen} aria-haspopup="dialog">
-      <span className="card__art" aria-hidden="true"><CardArt name={w.name} /></span>
+      <span className="card__art" aria-hidden="true"><CardArt name={w.name} family="research" /></span>
       <span className="card__body">
         <span className="card__meta">
           <span className="mono">{w.builtin ? "built in" : "kula.toml"}</span>
@@ -134,20 +135,6 @@ function LoopCard({ w, info, onOpen }: { w: Workflow; info: AgentsInfo; onOpen: 
   );
 }
 
-/** The card's art: the 3D harmonograph from its one angle in the research
- *  family, drawing itself once. Clicking opens the logo studio; the card
- *  itself stays the one button (the art is a click region, not a control). */
-function CardArt({ name }: { name: string }) {
-  return (
-    <span className="rs-card-art" data-testid={`rs-art-${name}`}
-      role="button" tabIndex={0} aria-label={`Open logo studio – ${name}`}
-      onClick={(e) => { e.stopPropagation(); import("./LogoStudio").then((m) => m.openLogoStudio("research", name)); }}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); import("./LogoStudio").then((m) => m.openLogoStudio("research", name)); } }}>
-      <AgentHarmonograph name={name} size={240} family="research" />
-    </span>
-  );
-}
-
 /** A template card: the same layout, its own hue pair hashed from the
  *  template's id. Off-stack templates are dimmed but still usable – the
  *  metric is editable in the form. */
@@ -156,7 +143,7 @@ function TemplateCard({ t, stack, onUse }: { t: LoopTemplate; stack: string[]; o
   return (
     <button className={`card ag-card rs-card rs-tpl ${m.fits ? "" : "off"}`} data-testid={`rs-tpl-${t.id}`} onClick={onUse}
       title={m.fits ? undefined : `no command for ${stack.join(", ") || "this stack"} – edit the metric`}>
-      <span className="card__art" aria-hidden="true"><CardArt name={t.id} /></span>
+      <span className="card__art" aria-hidden="true"><CardArt name={t.id} family="research" /></span>
       <span className="card__body">
         <span className="card__meta"><span className="mono">template</span><span>{t.goal === "min" ? "↓ lower" : "↑ higher"}</span></span>
         <span className="card__t">{t.title}</span>
@@ -168,7 +155,7 @@ function TemplateCard({ t, stack, onUse }: { t: LoopTemplate; stack: string[]; o
 }
 
 /** One loop, read as a structure: head, files vs fenced, metric, history. */
-function LoopPanel({ w, info, act, open, go, onClose, onDelete }: { w: Workflow; info: AgentsInfo; act: Act; onDelete: () => void; onClose: () => void } & Links) {
+function LoopPanel({ w, info, act, open, go, onClose, onDelete, onRenamed }: { w: Workflow; info: AgentsInfo; act: Act; onDelete: () => void; onClose: () => void; onRenamed: (next: string) => void } & Links) {
   const runs = info.research.filter((r) => r.workflow === w.name);
   const run = runs.find((r) => r.active) ?? runs[0];
   const scope = info.research_scope?.[w.name];
@@ -213,7 +200,7 @@ function LoopPanel({ w, info, act, open, go, onClose, onDelete }: { w: Workflow;
       {editing && (
         <div className="r-edit">
           <MetricEdit w={w} save={save} />
-          <LoopSettings w={w} save={save} />
+          <LoopSettings w={w} save={save} act={act} onRenamed={onRenamed} />
         </div>
       )}
       {run ? <>
@@ -238,15 +225,27 @@ function LoopPanel({ w, info, act, open, go, onClose, onDelete }: { w: Workflow;
   );
 }
 
-function LoopSettings({ w, save }: { w: Workflow; save: (x: Partial<Workflow>) => Promise<unknown> }) {
+function LoopSettings({ w, save, act, onRenamed }: { w: Workflow; save: (x: Partial<Workflow>) => Promise<unknown>; act: Act; onRenamed: (next: string) => void }) {
   const [prompt, setPrompt] = useState(w.prompt ?? "");
   const [scope, setScope] = useState<string[]>(w.scope ?? []);
   const [icon, setIcon] = useState(w.research?.icon ?? "");
+  const [name, setName] = useState(w.name);
   const dirty = prompt !== (w.prompt ?? "") || JSON.stringify(scope) !== JSON.stringify(w.scope ?? []) || icon !== (w.research?.icon ?? "");
+  const renameDirty = name !== w.name && /^[a-zA-Z][\w-]*$/.test(name);
+  const rename = () => {
+    if (!renameDirty) return;
+    act("workflow_rename", { workflow: w.name, name }, `${w.name} renamed to ${name}`)
+      .then(() => onRenamed(name))
+      .catch(() => {});
+  };
   return (
     <>
       <div className="mi-kind">loop</div>
-      <div className="mi-title mono">{w.name}</div>
+      <div className="mi-field rs-rename">
+        <span>name</span>
+        <input className="input mono mi-title" value={name} onChange={(e) => setName(e.target.value.replace(/[^\w-]/g, ""))} aria-label="Loop name" data-testid="rs-rename-input" />
+        <button className="btn sm ghost" disabled={!renameDirty} onClick={rename} data-testid="rs-rename">Rename</button>
+      </div>
       <div className="mi-field"><span>icon</span><IconPicker value={icon} name={w.name} onChange={setIcon} /></div>
       <label className="mi-field"><span>system prompt</span><textarea className="input" rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label="System prompt" /></label>
       <div className="mi-field"><span>may edit</span><Chips values={scope} onChange={setScope} placeholder="src/index/**, tokenize" label="Scope" /></div>

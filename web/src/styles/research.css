@@ -21,6 +21,9 @@
 .rs-card-art { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 3; border-bottom: 1px solid var(--line); background: var(--bg); cursor: pointer; }
 .rs-card-art svg { width: 78%; height: 78%; }
 .rs-card-art:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* rename row: label, editable name and the Rename button on one line */
+.rs-rename { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.rs-rename .input { min-width: 0; }
 
 .rs-card .card__meta .rs-live { color: var(--accent); }
 .rs-tpl.off { opacity: .55; }
