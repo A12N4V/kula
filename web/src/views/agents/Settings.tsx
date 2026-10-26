@@ -6,13 +6,15 @@
 // so the Workspace picks it up at once. One 8px rhythm: rows are 8px apart,
 // the label column is aligned, sections are grouped.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AgentsInfo } from "../../api";
+import { api, type Scope } from "../../api";
 import { Dropdown } from "../../ui/Dropdown";
 import { Icon, IconToggle } from "../../ui";
 import { GhMark } from "./SkillIndex";
 import { AGENT_NAME, type Act } from "./data";
 import { AgentMark, Card } from "./parts";
+import { Chips } from "../../Autofill";
 import Connect from "./Connect";
 
 /** name/description from a SKILL.md's front matter; the rest is the body. */
@@ -62,6 +64,76 @@ export function ImportSkill({ info, act, setTab }: { info: AgentsInfo; act: Act;
   );
 }
 
+/** Settings → Workspace: the kula.toml fields the audit found with no UI –
+ *  a person never hand-edits them. Values live on the agents info payload
+ *  when the backend serves them; until then each control falls back to its
+ *  config default and still writes through settings_save. */
+export function WorkspaceSection({ info, act }: { info: AgentsInfo; act: Act }) {
+  const a = info as AgentsInfo & Record<string, unknown>;
+  const num = (k: string, d: number) => (typeof a[k] === "number" ? (a[k] as number) : d);
+  const str = (k: string, d: string) => (typeof a[k] === "string" && a[k] ? (a[k] as string) : d);
+  const save = (agents: Record<string, unknown>, done: string) => act("settings_save", { agents }, done).catch(() => {});
+  const [exclude, setExclude] = useState<string[]>((a.exclude as string[]) ?? []);
+  const risks = ["none", "low", "medium", "high"] as const;
+  const risk = risks.includes(str("max_risk", "medium") as (typeof risks)[number]) ? (str("max_risk", "medium") as (typeof risks)[number]) : "medium";
+  return (
+    <Card title="Workspace" sub="indexing, checks and how agents start" className="ag-wide">
+      <div className="ags-row set-row toggle"><span className="set-label">Let a bare agent run without a team <span className="muted ags-desc">allow_solo – teams are the default deploy</span></span><span className="spacer" />
+        <IconToggle checked={a.allow_solo === true} onChange={(v) => save({ allow_solo: v }, v ? "Solo runs allowed" : "Solo runs need a team")} hint="Deploy a single agent from the Workspace" testId="set-solo"
+          icon={(on) => <span className={`set-glyph${on ? " on" : ""}`}><Icon.workflow />{!on && <span className="set-glyph-off" />}</span>} />
+      </div>
+      <div className="ags-row set-row"><span className="set-label">Check risk ceiling <span className="muted ags-desc">kula check refuses plans above it</span></span><span className="spacer" />
+        <div className="seg" role="radiogroup" aria-label="Check risk ceiling" data-testid="set-max-risk">
+          {risks.map((r) => <button key={r} role="radio" aria-checked={risk === r} className={risk === r ? "on" : ""} onClick={() => save({ max_risk: r }, `Check ceiling: ${r}`)}>{r}</button>)}
+        </div>
+      </div>
+      <div className="ags-row set-row"><span className="set-label">Index excludes <span className="muted ags-desc">globs the graph never reads</span></span>
+        <Chips values={exclude} onChange={(v) => { setExclude(v); save({ exclude: v }, "Index excludes saved"); }} placeholder="dist/**" label="Index excludes" as="name" />
+      </div>
+      <div className="ags-row set-row"><span className="set-label">Index file size limit <span className="muted ags-desc">larger files stay out of the graph</span></span><span className="spacer" />
+        <input className="input mono set-num" type="number" min={1} max={100000} value={num("max_file_kb", 512)} aria-label="Max file size in KB" data-testid="set-max-file-kb"
+          onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) save({ max_file_kb: v }, `Files above ${v} KB skipped`); }} />
+      </div>
+      <div className="ags-row set-row"><span className="set-label">Default branch <span className="muted ags-desc">project.default_branch</span></span><span className="spacer" />
+        <input className="input mono set-num" defaultValue={str("default_branch", "main")} aria-label="Default branch" data-testid="set-default-branch"
+          onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== str("default_branch", "main")) save({ default_branch: v }, `Default branch: ${v}`); }} />
+      </div>
+      <div className="ags-row set-row"><span className="set-label">Embed pause <span className="muted ags-desc">ms between embed batches – raise it on busy machines</span></span><span className="spacer" />
+        <input className="input mono set-num" type="number" min={0} max={5000} value={num("pause_ms", 120)} aria-label="Embed pause in milliseconds" data-testid="set-pause-ms"
+          onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v >= 0) save({ pause_ms: v }, `Embed pause ${v} ms`); }} />
+      </div>
+    </Card>
+  );
+}
+
+/** Settings → Scopes: the named graph slices ([[scope]]) as name · about ·
+ *  file count, with Forget. Agents' and teams' @name completions come from
+ *  the same list (GET /api/scopes). */
+export function ScopesSection({ info, act }: { info: AgentsInfo; act: Act }) {
+  const [scopes, setScopes] = useState<Scope[] | null>(null);
+  useEffect(() => { api.scopes().then(setScopes).catch(() => setScopes([])); }, [info]);
+  const forget = (name: string) => api.scopeForget(name)
+    .then(() => { act("settings_save", {}, `Scope ${name} forgotten`); return api.scopes(); })
+    .then((s) => setScopes(s ?? [])).catch(() => {});
+  return (
+    <Card title="Scopes" sub="named graph slices – @name in agents and teams" className="ag-wide">
+      <div data-testid="set-scopes">
+      {(scopes ?? []).length === 0
+        ? <div className="muted ag-empty">No scopes yet – a scope is a named slice of the graph an agent or team works inside.</div>
+        : scopes!.map((s) => (
+          <div key={s.name} className="ags-row set-scopes-row" data-testid={`set-scope-${s.name}`}>
+            <span className="mono set-scope-name">@{s.name}</span>
+            <span className="muted ags-desc set-scope-about">{s.about || s.paths.join(" · ")}</span>
+            <span className="muted mono">{s.paths.length} file{s.paths.length === 1 ? "" : "s"}</span>
+            <span className="spacer" />
+            <button className="btn sm ghost" onClick={() => forget(s.name)} data-testid={`set-scope-forget-${s.name}`}>Forget</button>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export default function Settings({ info, act, setTab }: { info: AgentsInfo; act: Act; setTab: (t: "skills") => void }) {
   const base = { hide_secrets: info.secrets_hidden, memory: info.memory_enabled, docs: info.docs_list };
   const save = (agents: Record<string, unknown>, done: string) => act("settings_save", { agents: { ...base, ...agents } }, done).catch(() => {});
@@ -72,13 +144,13 @@ export default function Settings({ info, act, setTab }: { info: AgentsInfo; act:
   return (
     <div className="ag-grid set-grid">
       <Card title="Policy" sub="[agents] in kula.toml" className="ag-wide">
-        <div className="ags-row set-row"><span className="set-label">Agents may keep memories</span><span className="spacer" />
+        <div className="ags-row set-row toggle"><span className="set-label">Agents may keep memories</span><span className="spacer" />
           <IconToggle checked={info.memory_enabled} onChange={(v) => save({ memory: v }, v ? "Agent memory on" : "Agent memory off")} hint="Let agents remember facts about the code" testId="set-memory"
-            icon={(on) => <Icon.memory />} />
+            icon={(on) => <span className={`set-glyph${on ? " on" : ""}`}><Icon.memory />{!on && <span className="set-glyph-off" />}</span>} />
         </div>
-        <div className="ags-row set-row"><span className="set-label">Hide likely secrets <span className="muted ags-desc">.env, keys, certificates</span></span><span className="spacer" />
+        <div className="ags-row set-row toggle"><span className="set-label">Hide likely secrets <span className="muted ags-desc">.env, keys, certificates</span></span><span className="spacer" />
           <IconToggle checked={info.secrets_hidden} onChange={(v) => save({ hide_secrets: v }, v ? "Secrets hidden from agents" : "Secrets visible to agents")} hint="Keep secrets out of every agent answer" testId="set-secrets"
-            icon={(on) => <Icon.shield />} />
+            icon={(on) => <span className={`set-glyph${on ? " on" : ""}`}><Icon.shield />{!on && <span className="set-glyph-off" />}</span>} />
         </div>
         <div className="ags-row set-row"><span className="set-label">Default agent</span><span className="spacer" />
           {wired.length === 0 ? <button className="btn sm ghost" onClick={toConnect}>Connect one first</button> : (
@@ -88,6 +160,8 @@ export default function Settings({ info, act, setTab }: { info: AgentsInfo; act:
           )}
         </div>
       </Card>
+      <WorkspaceSection info={info} act={act} />
+      <ScopesSection info={info} act={act} />
       <div id="set-connect" className="set-connect">
         <Connect info={info} act={act} />
       </div>

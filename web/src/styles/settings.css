@@ -22,6 +22,14 @@
 .range { width: 100%; min-height: 28px; accent-color: var(--accent); }
 .link { border: 0; background: none; color: var(--accent); font: inherit; letter-spacing: 0; text-transform: none; cursor: pointer; }
 .set-empty { padding: 6px 0; }
+/* icon toggles show two states: the glyph, and a crossed variant when off */
+.set-glyph { position: relative; display: inline-flex; color: var(--text-3); }
+.set-glyph.on { color: var(--accent-ink); }
+.set-glyph-off { position: absolute; left: -2px; right: -2px; top: 50%; height: 1.5px; background: currentColor; transform: rotate(-45deg); }
+.set-num { width: 110px; text-align: right; }
+.set-scopes-row { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid color-mix(in oklab, var(--line) 60%, transparent); }
+.set-scope-name { color: var(--text); }
+.set-scope-about { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dir-colors { display: flex; flex-direction: column; }
 .dir-color { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 4px 0; cursor: pointer; }
 .dir-color .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

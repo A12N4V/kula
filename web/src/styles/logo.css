@@ -56,3 +56,6 @@
 @media (prefers-reduced-motion: reduce) {
   .logo-stage .ag-card-hg, .logo-stage path { animation: none !important; }
 }
+
+.logo-val { font-weight: 400; color: var(--text-2); font-variant-numeric: tabular-nums; margin-left: 6px; }
+.logo-dims-state { min-width: 24px; color: var(--accent); }

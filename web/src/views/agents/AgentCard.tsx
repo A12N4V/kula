@@ -64,22 +64,17 @@ export function CardArt({ name, family = "agent", onStudio = true }: { name: str
     e.stopPropagation();
     openLogoStudio(family, name);
   };
-  // keyboard affordance for the mark: focusable, Enter or Space opens the
-  // studio, matching the team canvas marks. The card button stays the agent.
-  const onKey = (e: React.KeyboardEvent) => {
-    if (!onStudio) return;
-    if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); openLogoStudio(family, name); }
-  };
-  const studioProps = onStudio ? { role: "button" as const, tabIndex: 0, onKeyDown: onKey, "aria-label": `Open logo studio – ${name}` } : {};
+  const studioProps = onStudio ? { type: "button" as const, "aria-label": `Edit logo – ${name}` } : {};
   if (logo) {
     return (
-      <span className={`ag-card-art-svg logo-saved${onStudio ? " logo-click" : ""}`} data-testid={`ag-art-${name}`} data-figure
+      <button className={`ag-card-art-svg logo-saved${onStudio ? " logo-click" : ""}`} data-testid={`ag-art-${name}`} data-figure
         onClick={open} {...studioProps} style={{ display: "block", aspectRatio: "1" }} dangerouslySetInnerHTML={{ __html: logo.svg }} />
     );
   }
   return (
-    <svg className={`ag-card-art-svg${onStudio ? " logo-click" : ""}`} viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" aria-hidden={onStudio ? undefined : true} data-figure data-testid={`ag-art-${name}`}
+    <button className={`ag-card-art-svg${onStudio ? " logo-click" : ""}`} data-testid={`ag-art-${name}`}
       onClick={open} {...studioProps}>
+      <svg viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" aria-hidden={onStudio ? undefined : true} data-figure>
       <defs>
         <mask id={id} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
           <path className="ag-card-hg" d={whole} pathLength={1} fill="none" stroke="#fff" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
@@ -88,7 +83,8 @@ export function CardArt({ name, family = "agent", onStudio = true }: { name: str
       <g mask={`url(#${id})`}>
         {segs.map((g, i) => <path key={i} d={g.d} fill="none" stroke={g.stroke} strokeOpacity={g.opacity} className="ag-card-seg" strokeLinecap="round" strokeLinejoin="round" />)}
       </g>
-    </svg>
+      </svg>
+    </button>
   );
 }
 

@@ -29,7 +29,7 @@ function Studio({ kind, name, onClose }: { kind: MarkFamily; name: string; onClo
   const [yaw, setYaw] = useState<number>(pose.yaw);
   const [pitch, setPitch] = useState<number>(pose.pitch);
   const [density, setDensity] = useState(0.55); // 0–1 → segment count
-  const [lw, setLw] = useState(0.5); // line weight, the stroke width
+  const [lw, setLw] = useState(1); // line weight – the card's own stroke, so the preview is the card
   const [seed, setSeed] = useState(0);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [note, setNote] = useState("");
@@ -85,6 +85,7 @@ function Studio({ kind, name, onClose }: { kind: MarkFamily; name: string; onClo
       footer={
         <div className="logo-actions">
           <button className="btn" data-testid="logo-save" disabled={state === "saving"} onClick={save}>Save logo</button>
+          <button className="btn ghost" data-testid="logo-cancel" onClick={onClose}>Cancel</button>
           {state === "saved" && <span className="mono logo-note" data-testid="logo-saved">saved</span>}
           {state === "error" && note && <span className="mono logo-note logo-note-err">{note}</span>}
         </div>
@@ -98,22 +99,24 @@ function Studio({ kind, name, onClose }: { kind: MarkFamily; name: string; onClo
             </svg>
           </div>
           <div className="logo-ctl">
-            <div className="logo-row" role="group" aria-label="Projection">
+            <div className="logo-row" role="group" aria-label="Projection" data-testid="logo-dims-group">
+              <span className="mono logo-dims-state" data-testid="logo-dims-state">{dims === 2 ? "2D" : "3D"}</span>
               <button className={`btn sm${dims === 2 ? " on" : ""}`} data-testid="logo-dims" aria-pressed={dims === 2} onClick={() => setDims(dims === 2 ? 3 : 2)}>2D</button>
               <button className={`btn sm${dims === 3 ? " on" : ""}`} aria-pressed={dims === 3} onClick={() => setDims(dims === 2 ? 3 : 2)}>3D</button>
               <span className="spacer" />
+              <button className="btn sm ghost" data-testid="logo-reset" title="Back to the mark's own angle" onClick={() => { setDims(3); setYaw(pose.yaw); setPitch(pose.pitch); setDensity(0.55); setLw(1); setSeed(0); setState("idle"); }}>Reset</button>
               <button className="btn sm ghost" data-testid="logo-reroll" title="A different curve from the same name" onClick={() => { setSeed(Math.floor(Math.random() * 100000)); setState("idle"); }}>reroll</button>
             </div>
-            <label className="logo-slider"><span className="mono">yaw</span>
+            <label className="logo-slider"><span className="mono">yaw <b className="logo-val" data-testid="logo-yaw-val">{Math.round(yaw * 180 / Math.PI)}°</b></span>
               <input type="range" min="0" max="6.28" step="0.01" value={yaw} onChange={(e) => setYaw(Number(e.target.value))} aria-label="Yaw" data-testid="logo-yaw" />
             </label>
-            <label className="logo-slider"><span className="mono">pitch</span>
+            <label className="logo-slider"><span className="mono">pitch <b className="logo-val" data-testid="logo-pitch-val">{Math.round(pitch * 180 / Math.PI)}°</b></span>
               <input type="range" min="0" max="1.57" step="0.01" value={pitch} onChange={(e) => setPitch(Number(e.target.value))} aria-label="Pitch" data-testid="logo-pitch" />
             </label>
-            <label className="logo-slider"><span className="mono">density</span>
+            <label className="logo-slider"><span className="mono">density <b className="logo-val" data-testid="logo-density-val">{n}</b></span>
               <input type="range" min="0" max="1" step="0.01" value={density} onChange={(e) => setDensity(Number(e.target.value))} aria-label="Density" data-testid="logo-density" />
             </label>
-            <label className="logo-slider"><span className="mono">line weight</span>
+            <label className="logo-slider"><span className="mono">line weight <b className="logo-val" data-testid="logo-lw-val">{lw.toFixed(2)}</b></span>
               <input type="range" min="0.15" max="1.4" step="0.01" value={lw} onChange={(e) => setLw(Number(e.target.value))} aria-label="Line weight" data-testid="logo-lw" />
             </label>
           </div>
