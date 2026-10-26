@@ -1658,7 +1658,8 @@ test.describe("agents A2", () => {
       json: { ...j, research: [run], workflows: [...j.workflows, { name: "explore", about: "loop", builtin: false, research: { metric: run.metric, goal: "min", budget: 5 } }] },
     })));
     await open(page, "agents/research");
-    await page.getByRole("tab", { name: "explore", exact: true }).click();
+    // U19: loops are cards now – the card opens the loop editor (no tab).
+    await page.locator('[data-testid=rs-card-explore]').click();
     const tries = page.locator(".rf-tries");
     await expect(page.locator(".rf-try")).toHaveCount(5);
     // The timeline shows the run on a time axis with exact values and a legend table.
@@ -2500,6 +2501,10 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid^=pl-row-]")).toHaveCount(3);
     await expect(page.locator("[data-testid^='fc-node-step:']")).toHaveCount(3);
     await page.locator("[data-testid=pl-row-1]").click();
+    // A stale canvas selection no longer implies the block's section – set it
+    // here, where the run's fence comes from, so the scope is deterministic.
+    const sectionSel = page.locator("[data-testid=pl-row-1] [data-testid=pl-section]");
+    if (await sectionSel.count()) await sectionSel.selectOption({ index: 1 });
     await page.locator("[data-testid=pl-task]").fill("tighten the parser");
     await page.locator("[data-testid=ws-run-btn]").click();
     await expect.poll(() => body?.title).toBe("tighten the parser");
@@ -2999,7 +3004,8 @@ test.describe("agents on the flow canvas (A3)", () => {
       json: { ...j, research: [run], workflows: [...j.workflows, { name: "explore", about: "loop", builtin: false, research: { metric: run.metric, goal: "min", budget: 5 } }] },
     })));
     await open(page, "agents/research");
-    await page.getByRole("tab", { name: "explore", exact: true }).click();
+    // U19: loops are cards now – the card opens the loop editor (no tab).
+    await page.locator('[data-testid=rs-card-explore]').click();
     // The pipeline is on the canvas: stages left to right, sub-nodes below –
     // 4 stages + 2 solver circles + 2 attempt circles + 1 frontier record.
     await expect(page.locator(".rf-canvas .react-flow__node")).toHaveCount(9);
@@ -3054,7 +3060,8 @@ test.describe("agents add from the map rail (U3)", () => {
     const wfName = `rail-agent-${Date.now()}`;
     await form.locator("[data-testid=ag-add-name]").fill(wfName);
     await form.locator("[data-testid=ag-add-name]").press("Enter");
-    await expect(page).toHaveURL(/#agents\/workflows/);
+    // The workflows tab is the Agents default, so the address is the bare hash.
+    await expect(page).toHaveURL(/#agents$/);
     await expect(page.locator(".ag-side-head h2")).toHaveText(wfName);
     await expect(page.locator(".wf-edit")).toContainText("src/**");
     // clean up: delete both from their editors
