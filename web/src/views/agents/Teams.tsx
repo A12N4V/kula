@@ -26,8 +26,8 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   // to name (team-tab-<team name>), so the strip's buttons get them here.
   const teamNames = JSON.stringify(teams.map((t) => t.name));
   useEffect(() => {
-    tabrow.current?.querySelectorAll<HTMLButtonElement>(".team-tabs [role=tab]").forEach((b: HTMLButtonElement) => {
-      b.setAttribute("data-testid", `team-tab-${b.textContent?.replace("\u25cf", "").trim() || "unnamed"}`);
+    tabrow.current?.querySelectorAll<HTMLButtonElement>(".team-tabs [role=tab]").forEach((b: HTMLButtonElement, i) => {
+      b.setAttribute("data-testid", `team-tab-${teams[i]?.name || "unnamed"}`);
     });
   }, [teamNames, cur, adding]);
   const toast = useToast();
@@ -167,14 +167,14 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
         <TabStrip label="Teams" addLabel="New team" cur={adding ? "" : String(cur)}
           items={teams.map((x, i) => {
             // nested teams (`under`) read as a breadcrumb, not a flat row:
-            // "kula › core › research" above the tab label
+            // "kula / core / research" above the tab label
             const chain: string[] = [];
             let up = teams.find((y) => y.name === (x as Team).under);
             const seen = new Set<string>([(x as Team).name]);
             while (up && !seen.has(up.name)) { chain.unshift(up.name); seen.add(up.name); up = teams.find((y) => y.name === up!.under); }
             return {
               key: String(i), label: x.name || "unnamed", icon: <Icon.team />, dot: info.team?.name === x.name,
-              depth: chain.length, title: chain.length ? chain.join(" › ") : undefined,
+              depth: chain.length, title: chain.length ? chain.join(" \u203a ") : undefined,
             };
           })}
           onPick={(k) => { setCur(Number(k)); setMember(null); }} />

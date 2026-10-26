@@ -4,7 +4,7 @@
 // segmented control, tidy explicit and undoable, rail add/note/panel.
 // Assert by name – the fixture is per worker.
 import { expect, test, type Page } from "@playwright/test";
-import { explore } from "./explore";
+import { explore, mapSettings } from "./explore";
 
 async function open(page: Page, hash = "map") {
   await page.addInitScript(() => {
@@ -19,6 +19,7 @@ test("the layer toggle exists with the six layers and the contract defaults", as
   await open(page);
   // U11: the layers live in the Explorer's sheet – open it first.
   await explore(page);
+  await mapSettings(page);
   const layers = page.locator("[data-testid=u2-layers]");
   await expect(layers).toBeVisible();
   for (const id of ["blocks", "flows", "chains", "fences", "agents", "runs"])
@@ -65,15 +66,15 @@ test("turning a layer off hides its marks and back on restores them", async ({ p
   // off hides every non-agent wire, on brings wires back (re-queried).
   const edge = page.locator(`[data-testid=map-flow] .react-flow__edge[data-id="${id}"]`);
   await expect(edge).toBeVisible();
-  await explore(page); await page.locator("[data-testid=u2-layer-flows]").click();
+  await explore(page); await mapSettings(page); await page.locator("[data-testid=u2-layer-flows]").click();
   await expect(edge).not.toBeVisible();
   await expect.poll(async () => (await pickEdge()) === null, { timeout: 5_000 }).toBe(true);
-  await explore(page); await page.locator("[data-testid=u2-layer-flows]").click();
+  await explore(page); await mapSettings(page); await page.locator("[data-testid=u2-layer-flows]").click();
   await expect(page.locator("[data-testid=u2-layer-flows]")).toHaveAttribute("aria-pressed", "true");
   await expect.poll(async () => (await pickEdge()) !== null, { timeout: 10_000 }).toBe(true);
   // Runs off hides the last-run dots, never navigates: the canvas stays.
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible();
-  await explore(page); await page.locator("[data-testid=u2-layer-runs]").click();
+  await explore(page); await mapSettings(page); await page.locator("[data-testid=u2-layer-runs]").click();
   await expect(page.locator("[data-testid=map-flow-canvas]")).toBeVisible();
 });
 
@@ -164,8 +165,8 @@ test("tidy is explicit and one undo puts the cards back", async ({ page }) => {
   };
   // Tidy: one confirmation-free click. The seeded drag is snapshot to the
   // undo chip, cleared from the store, and the kit re-lays out.
-  await explore(page); await page.locator("[data-testid=u2-tidy]").click();
-  await explore(page); await expect(page.locator("[data-testid=u2-tidy-undo]")).toBeVisible();
+  await explore(page); await mapSettings(page); await page.locator("[data-testid=u2-tidy]").click();
+  await explore(page); await mapSettings(page); await expect(page.locator("[data-testid=u2-tidy-undo]")).toBeVisible();
   await page.waitForTimeout(700);
   const tidied = await xy();
   expect(Math.abs(tidied!.x - seed!.x) + Math.abs(tidied!.y - seed!.y)).toBeGreaterThan(8);
@@ -174,7 +175,7 @@ test("tidy is explicit and one undo puts the cards back", async ({ page }) => {
   // seeded drag (the kit's hydration re-snaps the absolute during the
   // rebuild, so the transform is asserted by direction and distance, not
   // to the pixel).
-  await explore(page); await page.locator("[data-testid=u2-tidy-undo]").click();
+  await explore(page); await mapSettings(page); await page.locator("[data-testid=u2-tidy-undo]").click();
   await page.waitForTimeout(900);
   const undone = await xy();
   const restored = await page.evaluate((s) =>

@@ -3,7 +3,7 @@ import { GLOBAL_SHORTCUTS } from "../src/nav";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
-import { explore } from "./explore";
+import { explore, mapSettings } from "./explore";
 
 /** Path to e2e/fixture.sh whether the runner was started from web/ or the repo root. */
 function fixtureScript(): string {
@@ -2385,7 +2385,7 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid^=fn-pin-]").first()).toHaveClass(/on/);
     // re-layout is tidy now, one undoable home in the U2 chrome strip (the
     // canvas's plain fc-tidy is hidden on the map) – the map survives it
-    await explore(page); await page.locator("[data-testid=u2-tidy]").click();
+    await explore(page); await mapSettings(page); await page.locator("[data-testid=u2-tidy]").click();
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
 
@@ -2634,7 +2634,7 @@ test.describe("map", () => {
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible({ timeout: 30_000 });
     // U2 layer contract: Flows is off until picked from a list (§5).
-    await explore(page); await page.locator("[data-testid=u2-layer-flows]").click();
+    await explore(page); await mapSettings(page); await page.locator("[data-testid=u2-layer-flows]").click();
     const edge = page.locator("[data-testid=map-flow] .fc-edge").first();
     await expect(edge).toBeAttached();
     const stroke = () => edge.evaluate((el) => {
@@ -2833,13 +2833,13 @@ test.describe("map", () => {
     // the kit controls are present on the map canvas. Tidy has one undoable
     // home since U2 (the chrome strip, contract §5) – the canvas's own plain
     // fc-tidy is hidden there.
-    await explore(page); await expect(page.locator("[data-testid=u2-tidy]")).toBeVisible();
+    await explore(page); await mapSettings(page); await expect(page.locator("[data-testid=u2-tidy]")).toBeVisible();
     await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-fit]")).toBeVisible();
-    await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-minimap-toggle]")).toBeVisible();
-    // the minimap starts hidden and toggles on
+    // X14: the map's minimap switch lives in Map settings; it starts off
     await expect(page.locator("[data-testid=map-flow-canvas] .fc-minimap")).toHaveCount(0);
-    await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-minimap-toggle]").click();
+    await mapSettings(page); await page.locator("[data-testid=map-minimap]").check();
     await expect(page.locator("[data-testid=map-flow-canvas] .fc-minimap")).toBeVisible();
+    await page.keyboard.press("Escape");
     // drag a block card and the position persists to localStorage. Drags
     // inside group frames are not persisted (kit limitation) – the depth-1
     // section cards are unparented, so drag one of those. The landing zoom
@@ -2875,7 +2875,7 @@ test.describe("map", () => {
     });
     expect(persisted).toBe(true);
     // tidy re-runs dagre and clears persisted drags; fit recentres the view
-    await explore(page); await page.locator("[data-testid=u2-tidy]").click();
+    await explore(page); await mapSettings(page); await page.locator("[data-testid=u2-tidy]").click();
     await page.waitForTimeout(600);
     expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("kula.flow.pos.v1.map.")).length)).toBe(0);
     const zoomBefore = Number((await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom]").textContent())?.replace("%", ""));

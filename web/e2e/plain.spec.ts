@@ -7,7 +7,7 @@
 // Assert by name, never by fixture counts (the fixture is per worker).
 import { expect, test, type Page } from "@playwright/test";
 import { FIXTURE } from "../playwright.config";
-import { explore } from "./explore";
+import { explore, mapSettings } from "./explore";
 
 test.use({ baseURL: FIXTURE });
 
@@ -221,7 +221,7 @@ test("T10 an unfenced agent gets the whole-codebase block; the toggle removes ev
   // top directory – more than one means real shares, not a flat block
   expect(await whole.locator('[data-testid="x5-agent-band"] i').count()).toBeGreaterThan(1);
   // agents off ⇒ zero agent marks in the DOM (removed, not hidden)
-  await explore(page); await page.locator('[data-testid="u2-layer-agents"]').click();
+  await explore(page); await mapSettings(page); await page.locator('[data-testid="u2-layer-agents"]').click();
   await expect(page.locator('[data-testid^="fc-node-agent:"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="fc-node-codebase"]')).toHaveCount(0);
 });
