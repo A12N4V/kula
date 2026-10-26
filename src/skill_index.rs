@@ -136,7 +136,18 @@ fn entry(text: &str, fallback: &str, agent: &str, scope: &str, kind: &str, path:
     if description.is_empty() {
         description = body.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#')).unwrap_or("").chars().take(160).collect();
     }
-    Entry { name, description, agent: agent.into(), scope: scope.into(), kind: kind.into(), path, meta: fm, body: cut(&body), plugin, sources: vec![] }
+    Entry {
+        name,
+        description,
+        agent: agent.into(),
+        scope: scope.into(),
+        kind: kind.into(),
+        path,
+        meta: fm,
+        body: cut(&body),
+        plugin,
+        sources: vec![],
+    }
 }
 
 /// Every file git sees in the work tree (tracked + untracked, ignores honoured).
@@ -285,7 +296,13 @@ pub fn index(root: &Path) -> Index {
     let mut merged: Vec<Entry> = Vec::new();
     for e in skills {
         if let Some(row) = merged.iter_mut().find(|r| r.name == e.name && r.plugin == e.plugin) {
-            let src = Source { agent: e.agent.clone(), scope: e.scope.clone(), kind: e.kind.clone(), path: e.path.clone(), plugin: e.plugin.clone() };
+            let src = Source {
+                agent: e.agent.clone(),
+                scope: e.scope.clone(),
+                kind: e.kind.clone(),
+                path: e.path.clone(),
+                plugin: e.plugin.clone(),
+            };
             if !row.sources.iter().any(|s| s.agent == src.agent && s.path == src.path) {
                 row.sources.push(src);
             }
@@ -294,7 +311,13 @@ pub fn index(root: &Path) -> Index {
             }
         } else {
             let mut e = e;
-            e.sources.push(Source { agent: e.agent.clone(), scope: e.scope.clone(), kind: e.kind.clone(), path: e.path.clone(), plugin: e.plugin.clone() });
+            e.sources.push(Source {
+                agent: e.agent.clone(),
+                scope: e.scope.clone(),
+                kind: e.kind.clone(),
+                path: e.path.clone(),
+                plugin: e.plugin.clone(),
+            });
             merged.push(e);
         }
     }

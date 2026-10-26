@@ -710,7 +710,6 @@ fn effective_fences_req(root: &std::path::Path, team: &str, seat: &str) -> anyho
         by: format!("team:{}", t.name),
         workflow: m.workflow.clone(),
         scope,
-        ..Default::default()
     };
     let g = crate::guard::Guards::new(&cfg, Some(task))?;
     let layer = |source: &str| -> &'static str {
@@ -756,7 +755,6 @@ fn settings_save_req(root: &std::path::Path, ag: &crate::config::Agents) -> anyh
 fn agent_scopes(cfg: &crate::config::Config) -> Value {
     json!(crate::workflow::all(cfg).iter().map(|w| json!({ "name": w.name, "about": w.about, "paths": w.scope })).collect::<Vec<_>>())
 }
-
 
 /// What the repository is built with, so templates can offer commands that run here.
 fn stack(root: &std::path::Path) -> Vec<&'static str> {

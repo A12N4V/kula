@@ -2412,11 +2412,9 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 // re-saving keeps what the UI set: prompts, hand-offs.
                 // Seats are keyed by name/workflow now, so `claude` also
                 // matches the seat that service runs.
-                let old = cfg
-                    .teams
-                    .iter()
-                    .find(|t| t.name == name)
-                    .and_then(|t| t.members.iter().find(|x| x.key() == agent.trim() || x.service == agent.trim() || x.agent == agent.trim()).cloned());
+                let old = cfg.teams.iter().find(|t| t.name == name).and_then(|t| {
+                    t.members.iter().find(|x| x.key() == agent.trim() || x.service == agent.trim() || x.agent == agent.trim()).cloned()
+                });
                 members.push(config::Member {
                     agent: agent.trim().into(),
                     workflow: wf.trim().into(),

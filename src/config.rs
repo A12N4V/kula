@@ -469,11 +469,12 @@ fn seat_names(t: &mut Team) {
         })
         .collect();
     // a service named the same as an explicit seat name keeps pointing there
-    let explicit: std::collections::HashSet<&str> = t.members.iter().filter(|m| !m.name.is_empty() && m.name == m.service || m.name == m.agent).map(|m| m.name.as_str()).collect();
+    let explicit: std::collections::HashSet<&str> =
+        t.members.iter().filter(|m| !m.name.is_empty() && m.name == m.service || m.name == m.agent).map(|m| m.name.as_str()).collect();
     renamed.retain(|(old, _)| !explicit.contains(old.as_str()));
     for m in &mut t.members {
         for r in &mut m.hands_off {
-            if let Some((old, new)) = renamed.iter().find(|(o, _)| o == r) {
+            if let Some((_, new)) = renamed.iter().find(|(o, _)| o == r) {
                 *r = new.clone();
             }
         }
@@ -1221,13 +1222,27 @@ mod b3_tests {
                 let names: Vec<&str> = t.members.iter().map(|m| m.key()).collect();
                 let all_seats: Vec<&str> = cfg.teams.iter().flat_map(|x| x.members.iter().map(|m| m.key())).collect();
                 // reports_to is the team's own hierarchy; a hand-off may cross teams
-                assert!(m.reports_to.is_empty() || (names.contains(&m.reports_to.as_str()) && m.reports_to != m.key()), "team {}: reports_to {:?} is not another seat", t.name, m.reports_to);
+                assert!(
+                    m.reports_to.is_empty() || (names.contains(&m.reports_to.as_str()) && m.reports_to != *m.key()),
+                    "team {}: reports_to {:?} is not another seat",
+                    t.name,
+                    m.reports_to
+                );
                 for other in &m.hands_off {
-                    assert!(all_seats.contains(&other.as_str()) && other != &m.key(), "team {}: hands_off {other:?} is not another seat", t.name);
+                    assert!(
+                        all_seats.contains(&other.as_str()) && other != m.key(),
+                        "team {}: hands_off {other:?} is not another seat",
+                        t.name
+                    );
                 }
             }
             if !t.under.is_empty() {
-                assert!(cfg.teams.iter().any(|x| x.name == t.under && x.name != t.name), "team {}: under {:?} is not a team", t.name, t.under);
+                assert!(
+                    cfg.teams.iter().any(|x| x.name == t.under && x.name != t.name),
+                    "team {}: under {:?} is not a team",
+                    t.name,
+                    t.under
+                );
             }
         }
         // every @scope a workflow or seat uses names a [[scope]]
