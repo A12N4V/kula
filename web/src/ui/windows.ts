@@ -60,8 +60,16 @@ export function get(id: string): WinState | undefined {
 /** Open (or focus) a window by stable id. Returns its state. */
 export function open(id: string, size?: { w: number; h: number }): WinState {
   let w = wins[id];
+  const n = Object.values(wins).filter((x) => x.open).length;
   if (!w) {
     w = wins[id] = { ...defaults(id), ...(size ? { w: Math.min(size.w, window.innerWidth - 16), h: size.h } : {}) };
+    if (size) {
+      // the requested size can differ from the default one the cascade was
+      // computed for – re-centre so a wide window never opens off-screen
+      const vw = window.innerWidth, vh = window.innerHeight;
+      w.x = Math.max(0, Math.min(vw - w.w, Math.round(vw * 0.5 - w.w * 0.5 + n * 28)));
+      w.y = Math.max(0, Math.min(vh - w.h, Math.round(vh * 0.5 - w.h * 0.4 + n * 24)));
+    }
   }
   w.open = true;
   if (w.min) w.min = false;

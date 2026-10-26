@@ -40,6 +40,16 @@ async function dragBy(page: Page, win: ReturnType<Page["locator"]>, dx: number, 
 }
 
 test.describe("x13 desktop windows", () => {
+  test("dragging near a viewport edge snaps the window flush to that edge", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page);
+    const win = await openSettings(page);
+    // drag the window toward the left edge – settle() snaps it flush (x = 0)
+    await dragBy(page, win, -(await win.boundingBox())!.x + 12, 0);
+    const box = (await win.boundingBox())!;
+    expect(box.x, "the window snaps flush to the left edge").toBeLessThanOrEqual(1);
+  });
+
   test("drags by the header, keeps data-pane, maximises on double-click, closes", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page);

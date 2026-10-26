@@ -814,7 +814,7 @@ test.describe("agents", () => {
     // Enter creates (the form submits): the full editor opens on the new agent
     await form.locator("[data-testid=ag-add-name]").press("Enter");
     const edit = page.locator(".wf-edit");
-    await expect(page.locator(".ag-side-head h2")).toHaveText("e2e-migrate");
+    await expect(page.locator("[data-testid=ag-side] .win-title")).toHaveText("e2e-migrate");
     // The compact form carried role and fence; the editor takes the rest
     // (lock, memory, steps) – every field editable inline from there.
     await expect(edit.locator(".ff-open")).toContainText("src/store");
@@ -827,7 +827,7 @@ test.describe("agents", () => {
     await edit.getByRole("button", { name: "Save" }).click();
     // The sidebar shows what was saved: name, kula.toml tag, locked chip
     // and the memory segment. The saved workflow keeps its card in the grid.
-    await expect(page.locator(".ag-side-head .mono")).toContainText("kula.toml");
+    await expect(page.locator("[data-testid=ag-side] .mono.muted").first()).toContainText("kula.toml");
     await expect(edit.locator(".ff-locked")).toContainText("Cargo.toml");
     await expect(edit.locator(".seg .on")).toContainText("recall only");
     const card = page.locator(`[data-testid=ag-card-e2e-migrate]`);
@@ -848,7 +848,7 @@ test.describe("agents", () => {
     // opens it once more.
     // the card body opens the agent; the mark on top opens the logo studio (U17)
     await card.locator(".card__t").click();
-    await expect(page.locator(".ag-side-head h2")).toHaveText("e2e-migrate");
+    await expect(page.locator("[data-testid=ag-side] .win-title")).toHaveText("e2e-migrate");
     page.once("dialog", (d) => d.accept());
     await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
     await expect(page.locator(`[data-testid=ag-card-e2e-migrate]`)).toHaveCount(0);
@@ -899,7 +899,7 @@ test.describe("agents", () => {
     await page.keyboard.press("Enter"); // enter creates
     const card = page.locator(`[data-testid=ag-card-${kbd}]`);
     await expect(card).toBeVisible();
-    await expect(page.locator(".ag-side-head h2")).toHaveText(kbd);
+    await expect(page.locator("[data-testid=ag-side] .win-title")).toHaveText(kbd);
     // and it is really in kula.toml – clean up after ourselves
     page.once("dialog", (d) => d.accept());
     await page.locator(".wf-edit").getByRole("button", { name: "Delete" }).click();
@@ -1321,6 +1321,8 @@ test.describe("teams and research (T1)", () => {
     await expect.poll(readToml).toContain("welder");
     // Start (needs a saved team), confirm it is at work, then stand down.
     await crewSide.getByRole("button", { name: "Back to the team" }).click();
+    // the team window overlays the canvas; close it so the button is clickable
+    await crewSide.getByTestId("team-side-close").click();
     await page.getByTestId("team-work").click();
     await expect(page.locator(".tc-live")).toBeVisible();
     await page.getByRole("button", { name: "Stand down" }).click();
@@ -3053,7 +3055,7 @@ test.describe("agents add from the map rail (U3)", () => {
     await form.locator("[data-testid=ag-add-name]").fill(wfName);
     await form.locator("[data-testid=ag-add-name]").press("Enter");
     await expect(page).toHaveURL(/#agents\/workflows/);
-    await expect(page.locator(".ag-side-head h2")).toHaveText(wfName);
+    await expect(page.locator("[data-testid=ag-side] .win-title")).toHaveText(wfName);
     await expect(page.locator(".wf-edit")).toContainText("src/**");
     // clean up: delete both from their editors
     page.once("dialog", (d) => d.accept());
