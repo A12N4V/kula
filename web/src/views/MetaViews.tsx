@@ -178,7 +178,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
   const load = () => api.meta().then(setMeta);
   useEffect(() => { load(); }, [version]);
   const all = meta?.notes ?? [];
-  const notes = all.filter((n) => !q || (n.body + n.target).toLowerCase().includes(q.toLowerCase())).sort((a, b) => b.updated - a.updated);
+  const notes = all.filter((n) => !q || (n.body + n.target).toLowerCase().includes(q.toLowerCase())).sort((a, b) => b.updated - a.updated || b.id - a.id);
   const groups = new Map<string, Note[]>();
   notes.forEach((n) => groups.set(n.target, [...(groups.get(n.target) ?? []), n]));
   const shown = sel ? notes.filter((n) => n.target === sel) : notes;
