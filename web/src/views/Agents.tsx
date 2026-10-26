@@ -98,11 +98,12 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
   const counts: Partial<Record<Tab, number>> = { workflows: info.workflows.length, teams: info.teams?.length, skills: sx.ix?.skills.length, docs: (sx.ix?.instructions.length ?? 0) + outdated };
   const cur = TABS.find((t) => t.id === tab)!;
   return (
-    <div className="split agents ag-split" style={listWidth("agents", 260)}>
+    <div className="split agents ag-split" style={listWidth("agents", 56)}>
       <div className="list ag-menu">
-        <div className="list-head"><h2>Agents</h2><span className="spacer" />
-          <button className="btn sm ghost icon-only" onClick={() => onWorkspace()} title="Open the Workspace – where these agents work" aria-label="Open Workspace" data-testid="ag-to-workspace"><Icon.workspace /></button>
-        </div>
+        {/* X14 – the sub-nav is a thin icon tab bar at every width: the old
+            180–260px text column and its "Agents" title band are gone – the
+            page-head below the strip already names the tab, and Open
+            Workspace rides in the tab row. */}
         <nav className="ag-tabs" role="tablist" aria-label="Agents" aria-orientation="vertical" data-testid="ag-tabs">
           {TABS.map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} aria-label={t.label} className={`ag-mi ${tab === t.id ? "on" : ""}`} onClick={() => setTab(t.id)} title={t.hint}>
@@ -110,9 +111,10 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
               {!!badge[t.id] ? <span className="badge">{badge[t.id]}</span> : counts[t.id] != null && <span className="ag-mi-n">{counts[t.id]}</span>}
             </button>
           ))}
+          <button className="ag-mi" onClick={() => onWorkspace()} title="Open the Workspace – where these agents work" aria-label="Open Workspace" data-testid="ag-to-workspace"><Icon.workspace /></button>
         </nav>
       </div>
-      <Grip id="agents" edge="right" target="prev" min={200} max={420} label="Resize menu" />
+      <Grip id="agents" edge="right" target="prev" min={48} max={420} label="Resize menu" />
       <div className="detail">
         <div className="detail-pad ag-detail">
           <header className="page-head">
