@@ -41,6 +41,24 @@ pub struct Entry {
     /// Plugin name for plugin skills (`/plugin:skill`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin: Option<String>,
+    /// Where this skill was found – one row may be visible to more than one
+    /// agent (Claude and Codex both read `.agents/skills`). The row's other
+    /// fields are the first source's.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<Source>,
+}
+
+/// One place a skill was found: the agent that reads it and where it lives.
+#[derive(Debug, Clone, Serialize)]
+pub struct Source {
+    pub agent: String,
+    /// repo · nested · plugin · user · admin
+    pub scope: String,
+    /// skill · command · rule
+    pub kind: String,
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,7 +136,18 @@ fn entry(text: &str, fallback: &str, agent: &str, scope: &str, kind: &str, path:
     if description.is_empty() {
         description = body.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#')).unwrap_or("").chars().take(160).collect();
     }
-    Entry { name, description, agent: agent.into(), scope: scope.into(), kind: kind.into(), path, meta: fm, body: cut(&body), plugin }
+    Entry {
+        name,
+        description,
+        agent: agent.into(),
+        scope: scope.into(),
+        kind: kind.into(),
+        path,
+        meta: fm,
+        body: cut(&body),
+        plugin,
+        sources: vec![],
+    }
 }
 
 /// Every file git sees in the work tree (tracked + untracked, ignores honoured).
@@ -262,6 +291,37 @@ pub fn index(root: &Path) -> Index {
         searched.push("/etc/codex/skills".into());
         user_dir(admin, "codex", "admin", &|p: &Path| p.display().to_string(), &mut skills);
     }
+    // One row per skill: the same skill found for two agents (Claude and Codex
+    // both read `.agents/skills`) merges into one entry with its sources.
+    let mut merged: Vec<Entry> = Vec::new();
+    for e in skills {
+        if let Some(row) = merged.iter_mut().find(|r| r.name == e.name && r.plugin == e.plugin) {
+            let src = Source {
+                agent: e.agent.clone(),
+                scope: e.scope.clone(),
+                kind: e.kind.clone(),
+                path: e.path.clone(),
+                plugin: e.plugin.clone(),
+            };
+            if !row.sources.iter().any(|s| s.agent == src.agent && s.path == src.path) {
+                row.sources.push(src);
+            }
+            if row.description.is_empty() && !e.description.is_empty() {
+                row.description = e.description;
+            }
+        } else {
+            let mut e = e;
+            e.sources.push(Source {
+                agent: e.agent.clone(),
+                scope: e.scope.clone(),
+                kind: e.kind.clone(),
+                path: e.path.clone(),
+                plugin: e.plugin.clone(),
+            });
+            merged.push(e);
+        }
+    }
+    let mut skills = merged;
     skills.sort_by(|a, b| a.name.cmp(&b.name).then(a.path.cmp(&b.path)));
     Index { skills, instructions, searched }
 }
@@ -342,6 +402,31 @@ mod tests {
         assert!(ins.contains(&("AGENTS.md", "codex", "repo")), "{ins:?}");
         assert!(ins.contains(&("web/CLAUDE.md", "claude", "nested")), "{ins:?}");
         assert_eq!(ix.instructions.iter().find(|i| i.path == "AGENTS.md").unwrap().headline, "How to work here");
+    }
+
+    /// fuse5 B3 · the same skill found for two agents is one row with both
+    /// sources, not two rows.
+    #[test]
+    fn one_row_per_skill_with_its_sources() {
+        let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("KULA_SKILL_HOME", "");
+        let d = repo();
+        // review exists twice: .agents/skills (codex + claude) and a claude copy
+        let w = |p: &str, t: &str| {
+            std::fs::create_dir_all(d.path().join(p).parent().unwrap()).unwrap();
+            std::fs::write(d.path().join(p), t).unwrap();
+        };
+        w(".claude/skills/review/SKILL.md", "---\nname: review\ndescription: Claude's copy\n---\nclaude.");
+        let ix = index(d.path());
+        let rows = ix.skills.iter().filter(|s| s.name == "review").collect::<Vec<_>>();
+        assert_eq!(rows.len(), 1, "one row per skill, not one per source: {:?}", rows);
+        let r = rows[0];
+        assert_eq!(r.sources.len(), 2, "{:?}", r.sources);
+        let mut agents: Vec<&str> = r.sources.iter().map(|s| s.agent.as_str()).collect();
+        agents.sort_unstable();
+        assert_eq!(agents, vec!["claude", "shared"]);
+        // the row still carries the first source's fields, so the page renders
+        assert!(!r.path.is_empty() && !r.agent.is_empty());
     }
 
     #[test]

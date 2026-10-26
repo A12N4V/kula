@@ -843,8 +843,9 @@ fn fences_hold_for_shells_commits_teams_research_and_any_harness() {
         ],
     );
     let p = kula(d, &["team", "prompt", "duo", "cursor"]);
-    assert!(p.contains("Small commits.") && p.contains("You answer to claude.") && p.contains("refactor"), "{p}");
-    assert!(kula(d, &["team", "prompt", "duo", "claude"]).contains("You lead this team. cursor answers to you."));
+    // seats are keyed by name, else workflow (fuse5 B3): the claude seat is "tests"
+    assert!(p.contains("Small commits.") && p.contains("You answer to tests.") && p.contains("refactor"), "{p}");
+    assert!(kula(d, &["team", "prompt", "duo", "claude"]).contains("You lead this team. refactor answers to you."));
     kula(d, &["team", "start", "duo"]);
     let edit = |p: &str| format!(r#"{{"tool_name":"Edit","tool_input":{{"file_path":"{p}"}}}}"#);
     kula_code(d, &["guard", "hook"], Some(&edit("src/api/routes.ts")), 2);
@@ -858,8 +859,8 @@ fn fences_hold_for_shells_commits_teams_research_and_any_harness() {
     // Teams of teams: a team answers to another, its lead reports up, and the nesting cannot loop.
     kula(d, &["team", "save", "steer", "-m", "gemini=tests:planner", "--lead", "gemini"]);
     kula(d, &["team", "save", "duo", "-m", "claude=tests", "-m", "cursor=refactor", "--under", "steer"]);
-    assert!(kula(d, &["team", "prompt", "duo", "claude"]).contains("Your team answers to team steer, led by gemini"));
-    assert!(kula(d, &["team", "prompt", "steer", "gemini"]).contains("Team duo (led by claude) answers to yours"));
+    assert!(kula(d, &["team", "prompt", "duo", "claude"]).contains("Your team answers to team steer, led by tests"));
+    assert!(kula(d, &["team", "prompt", "steer", "gemini"]).contains("Team duo (led by tests) answers to yours"));
     assert!(kula(d, &["team", "list"]).contains("under steer"));
     kula_code(d, &["team", "save", "steer", "-m", "gemini=tests", "--under", "duo"], None, 1);
     kula_code(d, &["team", "save", "duo", "-m", "claude=tests", "--under", "nobody"], None, 1);

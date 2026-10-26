@@ -117,7 +117,7 @@ export function ActorBand({ info, selected, onSelect, fencePaths, editFence, onE
                   ? <ActorCard key={wf.name} info={info} wf={wf} selected={selected === wf.name}
                       onSelect={() => onSelect(selected === wf.name ? null : wf.name)} fencePaths={fencePaths} onAdd={onAdd}
                       onDropBlock={(it) => onDropBlock(wf.name, it)} />
-                  : <span key={m.agent} className="at-team-mono mono" title="agent not in the library">{titleCase(m.workflow || m.agent)}</span>;
+                  : <span key={m.agent ?? m.workflow ?? "?"} className="at-team-mono mono" title="agent not in the library">{titleCase(m.workflow || m.agent || "")}</span>;
               })}
             </div>
           </div>

@@ -62,6 +62,8 @@ export interface AgentsInfo {
   memories: Memory[]; secrets_hidden: boolean; memory_enabled: boolean; default_agent?: string; mcp_registered: boolean; hook_installed: boolean; kula_toml: boolean;
   /** B2 · fuse5: true when a bare agent may be deployed from the Workspace. */
   allow_solo?: boolean;
+  /** fuse5 B3 · one entry per workflow: what the loop is for and the scope its agents may touch. */
+  scopes?: { name: string; about: string; paths: string[] }[];
   workflows: Workflow[]; workflow: Workflow | null; workflow_rules: GuardRule[]; raw_rules: RawRule[]; docs_list: string[];
   connections: Connection[]; docs: AgentDoc[]; suggestions: Suggestion[];
   teams: Team[]; team: { name: string; started: number; by: string } | null; research: ResearchRun[];
@@ -80,7 +82,7 @@ export interface ResearchRun {
 /** A team (kula.toml [[team]]): each agent in its own workflow. */
 export interface Team {
   name: string; about?: string; prompt?: string; under?: string;
-  members: { name?: string; /** fuse5 · the seat's service (was `agent`); the old field still reads, so agent stays required until U18 removes it. */ service?: string; agent: string; model?: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
+  members: { name?: string; /** fuse5 · the seat's service (was `agent`); the old field still reads. */ service?: string; agent?: string; model?: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
   /** Canvas arrangement, workflow → [x, y] (B1: kept in kula.toml under the team). */
   positions?: Record<string, [number, number]>;
   /** B2 · fuse5: the team's own fences, on top of the repository's (shown as inherited there). */
@@ -305,6 +307,8 @@ export interface IndexedSkill {
   scope: "repo" | "nested" | "plugin" | "user" | "admin";
   kind: "skill" | "command" | "rule";
   path: string; meta: Record<string, string>; body: string; plugin?: string;
+  /** fuse5 B3 · one row per skill: every place it was found. */
+  sources?: { agent: string; scope: string; kind: string; path: string; plugin?: string }[];
 }
 export interface InstructionFile { path: string; agent: "claude" | "codex" | "gemini"; scope: "repo" | "nested" | "user"; bytes: number; headline: string }
 export interface SkillIndex { skills: IndexedSkill[]; instructions: InstructionFile[]; searched: string[] }
