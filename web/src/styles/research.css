@@ -25,7 +25,7 @@
 .rs-rename { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .rs-rename .input { min-width: 0; }
 
-.rs-card .card__meta .rs-live { color: var(--accent); }
+.rs-card .card__meta .rs-live { color: var(--accent-text); }
 .rs-tpl.off { opacity: .55; }
 .rs-tpl .card__d { -webkit-line-clamp: 3; }
 

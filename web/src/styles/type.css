@@ -9,13 +9,13 @@ code, pre, .mono { font-size: 11.5px; }
   font-family: var(--mono); font-weight: 700; letter-spacing: -.02em;
 }
 .ov-title h1 { font-size: 28px; line-height: 1; letter-spacing: -.03em; }
-.ov-title h1::before { content: "~/"; color: var(--accent); font-weight: 500; }
+.ov-title h1::before { content: "~/"; color: var(--accent-text); font-weight: 500; }
 .detail h1 { font-size: 24px; line-height: 1.05; }
 .card-head h2, .list-head h2 { font-size: 16px; }
 .settings header h2, .help-head h2 { font-size: 16px; }
 .kpi-cell b, .stat b, .cp-stat b { font-family: var(--display); font-weight: 600; font-size: 24px; line-height: 1; letter-spacing: -.03em; }
 .stat b, .cp-stat b { font-size: 26px; }
-.eyebrow { color: var(--accent); }
+.eyebrow { color: var(--accent-text); }
 .inspector header h2 { font-size: 16px; letter-spacing: -.01em; }
 .brand span { font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase; }
 .hud-stats b, .hc-stats b, .insp-facts b { font-family: var(--mono); font-weight: 600; font-size: 11px; }
@@ -44,5 +44,5 @@ code, pre, kbd, .mono, .diff, .console, .code, input.mono, .kind-badge { font-va
 .stat-table .tone-warn td, .stat-table .tone-review td { color: var(--yellow); }
 .stat-table .tone-hidden td { color: var(--violet); }
 .stat-table .tone-green td { color: var(--green); }
-.stat-table .tone-accent td { color: var(--accent); }
+.stat-table .tone-accent td { color: var(--accent-text); }
 .ov-stats, .ag-stats { margin: 0 0 12px; }

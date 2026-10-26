@@ -1,7 +1,7 @@
 /* overview */
 .overview { height: 100%; overflow: auto; padding: 28px 32px 40px; }
 .overview > * { max-width: 1280px; margin-left: auto; margin-right: auto; }
-.eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+.eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--accent-text); margin-bottom: 4px; }
 .ov-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
 .ov-head h1 { margin: 0 0 6px; font-size: 26px; font-weight: 600; letter-spacing: -.02em; }
 .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 18px; }
@@ -77,7 +77,7 @@
 @media (max-width: 1100px) { .ov-grid { grid-template-columns: 1fr; } }
 
 .kpi-cell:hover { background: var(--accent-soft); }
-.kpi-cell:hover b { color: var(--accent); }
+.kpi-cell:hover b { color: var(--accent-text); }
 .hot-bar i { animation: bar-grow .9s var(--ease) both; transform-origin: left; }
 @keyframes bar-grow { from { transform: scaleX(0); } }
 .hot-row.on { background: var(--accent-soft); }

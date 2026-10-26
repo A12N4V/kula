@@ -29,7 +29,7 @@
 /* Entry "D": left corners take the full radius, right corners 0. */
 .fc-tile.fc-entry .fc-tile-box { border-radius: var(--radius, 8px) 0 0 var(--radius, 8px); }
 .fc-sel .fc-tile-box, .fc-sel .fc-wide-in, .fc-sel .fc-circle-in {
-  border-color: var(--accent); background: var(--accent-soft);
+  border-color: var(--accent-text); background: var(--accent-soft);
 }
 .fc-tile.fc-off, .fc-wide.fc-off { opacity: .4; }
 .fc-tile.fc-off .fc-title { text-decoration: line-through; }
@@ -46,7 +46,7 @@
 .fc-st-run { background: var(--accent); animation: fc-pulse 1.2s var(--ease) infinite; }
 .fc-st-ok { background: var(--green); }
 .fc-st-err { background: var(--red); }
-.fc-st-pin, .fc-st-pinned { background: none; color: var(--accent); }
+.fc-st-pin, .fc-st-pinned { background: none; color: var(--accent-text); }
 @keyframes fc-pulse { 50% { opacity: .35; } }
 
 .fc-wide-in {
@@ -77,7 +77,7 @@
   font-family: var(--font); color: var(--text);
 }
 .fc-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--fc-role, var(--line-2)); }
-.fc-card.fc-sel { border-color: var(--accent); background: var(--accent-soft); }
+.fc-card.fc-sel { border-color: var(--accent-text); background: var(--accent-soft); }
 .fc-card.fc-card-sec { background: color-mix(in srgb, var(--panel) 60%, transparent); padding: 8px 12px 12px; }
 .fc-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .fc-card-role { flex: none; display: grid; place-items: center; }
@@ -103,7 +103,7 @@
 .fc-card-resize { position: absolute; right: 0; bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; touch-action: none; }
 .fc-card-resize::after { content: ""; position: absolute; right: 3px; bottom: 3px; width: 6px; height: 6px;
   border-right: 1px solid var(--text-3); border-bottom: 1px solid var(--text-3); }
-.fc-card-resize:hover::after { border-color: var(--accent); }
+.fc-card-resize:hover::after { border-color: var(--accent-text); }
 @media (pointer: coarse) { .fc-card-resize { width: 40px; height: 40px; } }
 
 /* Group frame – behind its members. */
@@ -130,7 +130,7 @@
   background: var(--bg); color: var(--text-3); font-size: 12px; line-height: 22px;
   text-align: center; cursor: pointer; padding: 0;
 }
-.fc-stub:hover { color: var(--accent); border-color: var(--accent); }
+.fc-stub:hover { color: var(--accent-text); border-color: var(--accent-text); }
 
 /* ---- Edges ---------------------------------------------------------- */
 /* The brightness ladder (n8n §4): text > node border > resting edge.
@@ -176,7 +176,7 @@
   font-family: var(--font); font-size: 16px; cursor: pointer; border-radius: var(--radius-xs, 4px);
 }
 .fc-ctl:hover { background: var(--hover-bg, var(--bg-2)); color: var(--text); }
-.fc-ctl.on { color: var(--accent); }
+.fc-ctl.on { color: var(--accent-text); }
 .fc-zoom { font-size: 10px; color: var(--text-3); text-align: center; }
 
 /* ---- Minimap (bottom-right) ----------------------------------------- */
@@ -192,7 +192,7 @@
   width: 24px; height: 24px; border: 0; background: none; color: var(--text-2);
   font-size: 14px; cursor: pointer; border-radius: var(--radius-xs, 4px); padding: 0;
 }
-.fc-tool:hover { color: var(--accent); }
+.fc-tool:hover { color: var(--accent-text); }
 
 /* ---- Sidebar ---------------------------------------------------------- */
 .fsb { display: flex; flex-direction: column; gap: 16px; padding: 16px; overflow-y: auto; height: 100%;
@@ -284,7 +284,7 @@ html[data-rm="1"] .fc-dot { transition: none; }
 .fc-edge-tools { position: absolute; pointer-events: all; display: flex; gap: 4px; opacity: 0; transition: opacity .12s ease-out; }
 .fc-edge-tools.on { opacity: 1; }
 .fc-edge-tools button { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; background: var(--bg-2); border: 1px solid var(--line-2); color: var(--text-2); font: 600 14px var(--mono); cursor: pointer; }
-.fc-edge-tools button:hover { color: var(--accent); border-color: var(--accent); }
+.fc-edge-tools button:hover { color: var(--accent-text); border-color: var(--accent-text); }
 .fc-edge-tools svg { width: 12px; height: 12px; }
 /* "+" stub as a button. */
 .fc-stub-btn { cursor: pointer; background: var(--bg-2); font: inherit; pointer-events: all; }
@@ -294,7 +294,7 @@ html[data-rm="1"] .fc-dot { transition: none; }
 .react-flow__handle.valid { border-color: var(--green) !important; }
 /* Sticky notes. */
 .fc-sticky { border-radius: 8px; padding: 10px 12px; background: color-mix(in srgb, var(--fc-role) 18%, var(--bg)); border: 1px solid color-mix(in srgb, var(--fc-role) 45%, transparent); overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
-.fc-sticky.fc-sel { border-color: var(--accent); background: var(--accent-soft); }
+.fc-sticky.fc-sel { border-color: var(--accent-text); background: var(--accent-soft); }
 .fc-sticky-title { font-weight: 600; font-size: 13px; color: var(--text); }
 .fc-sticky-body { font-size: 12px; color: var(--text-2); white-space: pre-wrap; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .fc-is-running .fc-tile-box::before, .fc-flow-run { animation: none; } }
@@ -318,7 +318,7 @@ html[data-rm="1"] .fc-dot { transition: none; }
   transform: rotate(45deg);
 }
 .fc-gate-diamond > * { transform: rotate(-45deg); }
-.fc-gate.fc-sel .fc-gate-diamond { border-color: var(--accent); background: var(--accent-soft); }
+.fc-gate.fc-sel .fc-gate-diamond { border-color: var(--accent-text); background: var(--accent-soft); }
 .fc-gate .fc-title { margin-top: 8px; }
 
 /* Agent: a wide softer body with its harmonograph mark; the typed
@@ -330,8 +330,8 @@ html[data-rm="1"] .fc-dot { transition: none; }
   border-radius: var(--radius); position: relative; color: var(--text-2);
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
-.fc-agent.fc-sel .fc-agent-in { border-color: var(--accent); background: var(--accent-soft); }
-.fc-agent-hg { flex: none; color: var(--accent); display: grid; place-items: center; }
+.fc-agent.fc-sel .fc-agent-in { border-color: var(--accent-text); background: var(--accent-soft); }
+.fc-agent-hg { flex: none; color: var(--accent-text); display: grid; place-items: center; }
 
 /* Typed labelled ports (n8n §3): a visible 12 px handle, an 11 px label. */
 .fc-port { position: absolute; display: flex; align-items: center; gap: 4px; z-index: 2; }
@@ -368,7 +368,7 @@ html[data-rm="1"] .fc-dot { transition: none; }
   font-size: 30px; color: var(--text-2);
 }
 .fc-card.fc-stage-1 .fc-card-caption { flex: none; max-width: 100%; margin-top: 8px; text-align: center; font-size: 13px; line-height: 16px; }
-.fc-card.fc-sel .fc-card-tile { border-color: var(--accent); background: var(--accent-soft); }
+.fc-card.fc-sel .fc-card-tile { border-color: var(--accent-text); background: var(--accent-soft); }
 .fc-card-fence-badge { position: absolute; top: -5px; right: -5px; width: 10px; height: 10px; background: var(--accent); border: 2px solid var(--bg); border-radius: 50%; }
 
 /* Region hues (U5, Excalidraw-style): a section frame carries a soft tint of
@@ -446,7 +446,7 @@ html[data-rm="1"] .fm-flow .fc-solid, html[data-rm="1"] .fm-flow .fc-group { ani
   background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--radius-xs, 4px);
   color: var(--text-2); font: 600 13px var(--mono); cursor: pointer;
 }
-.fc-group-fold:hover { color: var(--accent); border-color: var(--accent); }
+.fc-group-fold:hover { color: var(--accent-text); border-color: var(--accent-text); }
 
 /* U8 – readable at far zoom: the child count gets a size step and a touch
    more ink, the open mark a bordered chip so it survives a washed square. */

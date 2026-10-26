@@ -84,6 +84,7 @@ function parseHash() {
   const parts = location.hash.slice(1).split("/").map(decodeURIComponent);
   while (parts.length > 1 && parts[0] === "") parts.shift(); // tolerate a leading slash (#/map/x ≡ #map/x)
   if (parts[0] === "syntagm" || parts[0] === "fmap") parts[0] = "map"; // the tab's old names
+  if (parts[0] === "workspace") parts[0] = "map"; // the map's old name – a deep link keeps its target through the splash
   const [v, a, b, c, d] = parts;
   const view = (v === "flow-lab" ? v : VIEWS.some((x) => x.id === v) ? v : "overview") as View; // F1 · dev-only #flow-lab, not in the nav
   const contrast: Contrast = view === "graph" && a === "contrast" && b && c ? { base: b, head: c, mode: (["overlay", "split", "report"].includes(d) ? d : undefined) as ContrastMode | undefined } : null;
@@ -178,6 +179,14 @@ export default function App() {
 
   // Phones: the sidebar is a drawer, summoned from the top bar.
   const [rail, setRail] = useState(false);
+  // X14 – a rail tooltip must not outlive its click: for a beat after
+  // navigating the tooltips hold off, so no stale label rides into the
+  // new view.
+  const [tipHold, setTipHold] = useState(false);
+  const holdTip = useCallback(() => {
+    setTipHold(true);
+    window.setTimeout(() => setTipHold(false), 350);
+  }, []);
   const go: Go = useCallback((v, t = {}) => {
     if (v === "console") { setDock(true); setDockTab("terminal"); }
     setView(v);
@@ -241,11 +250,11 @@ export default function App() {
         </div>
       </header>
 
-      <nav className="rail" id="rail" aria-label="Views">
+      <nav className={`rail${tipHold ? " tip-hold" : ""}`} id="rail" aria-label="Views">
         {GROUPS.map((g, gi) => (
           g.some((v) => !v.hidden) && <div key={gi} className="rail-group">
             {g.filter((v) => !v.hidden).map((v) => (
-              <button key={v.id} className={view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
+              <button key={v.id} className={view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); holdTip(); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
                 <v.icon />
                 <span className="rail-label">{v.label}</span>
                 {v.id === "map" && mapBusy && <span className="rail-busy" data-testid="map-nav-busy" title="mapping in progress" aria-label="mapping in progress" />}

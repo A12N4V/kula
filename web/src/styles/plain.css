@@ -75,7 +75,7 @@
   color: var(--text-2); font: 500 12px var(--mono); cursor: pointer; transition: border-color .12s, color .12s; }
 .u9-chip svg { width: 13px; height: 13px; }
 .u9-chip:hover { color: var(--text); border-color: var(--text-2); }
-.u9-chip.on { border-color: var(--accent); color: var(--accent); }
+.u9-chip.on { border-color: var(--accent-text); color: var(--accent-text); }
 .u9-chip-n { font-size: 10px; color: var(--text-3); font-weight: 600; }
 .u9-chip.on .u9-chip-n { color: inherit; }
 .u9-dock .u9-panel { flex-direction: column; align-items: stretch; padding: 0; gap: 6px;

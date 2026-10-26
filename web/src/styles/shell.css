@@ -19,7 +19,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; border-right: 1px solid var(--line); background: var(--bg-2); }
 .rail button { position: relative; width: 38px; height: 38px; display: grid; place-items: center; border: 0; border-radius: 0; background: transparent; color: var(--text-3); cursor: pointer; transition: color 0.15s, background 0.15s; }
 .rail button:hover { color: var(--text); background: var(--panel-2); }
-.rail button.on { color: var(--accent); background: var(--accent-soft); }
+.rail button.on { color: var(--accent-text); background: var(--accent-soft); }
 .rail button.on::before { content: ""; position: absolute; left: -9px; top: 9px; bottom: 9px; width: 3px; border-radius: 0; background: var(--accent); }
 .rail .badge { position: absolute; top: 4px; right: 3px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 0; background: var(--accent); color: var(--accent-ink); font-size: 9.5px; font-weight: 700; line-height: 15px; }
 .rail svg { width: 19px; height: 19px; }
@@ -247,3 +247,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
   .brand, .rail-toggle, .topbar .btn.sm, .sb-help { min-width: 40px; min-height: 40px; }
   /* stat rows are navigable targets – keep them at the floor on phones */
 }
+
+/* X14 – for a beat after a rail click the tooltips hold off, so no stale
+   label rides into the new view. */
+.rail.tip-hold [data-tip]:hover::after { display: none; }

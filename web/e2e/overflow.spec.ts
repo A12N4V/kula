@@ -132,14 +132,16 @@ test.describe("overflow", () => {
       await page.setViewportSize({ width, height: 844 });
       await open(page, "graph");
       await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
-      await page.getByTestId("sb-dock").click();
+      // At phone width the sb-help buttons are hidden – open via the global
+      // ctrl+` shortcut, which is how the dock stays reachable.
+      await page.keyboard.press("Control+Backquote");
       await expect(page.locator("[data-testid=dock]")).toBeVisible({ timeout: 5_000 });
       const bad: string[] = [];
       for (const hash of VIEWS) {
         await open(page, hash);
         await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
         if ((await page.locator("[data-testid=dock]").count()) === 0) {
-          await page.getByTestId("sb-dock").click();
+          await page.keyboard.press("Control+Backquote");
           await expect(page.locator("[data-testid=dock]")).toBeVisible({ timeout: 5_000 });
         }
         await page.waitForTimeout(300);

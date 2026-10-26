@@ -6,8 +6,9 @@
 .settings footer { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 11.5px; }
 .set-body { flex: 1; overflow: auto; padding: 4px 14px 16px; }
 .set-sec { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+/* X14 – every settings row puts its control on the same side (right), so
+   Theme and Opening sequence no longer sit on opposite edges. */
 .set-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid color-mix(in oklab, var(--line) 60%, transparent); }
-.set-row:not(.toggle) { grid-template-columns: 1fr; gap: 6px; }
 .set-label { display: flex; flex-direction: column; min-width: 0; }
 .set-label span { color: var(--text); }
 .set-label small { color: var(--text-3); font-size: 11px; }
@@ -17,10 +18,10 @@
 .switch { position: relative; width: 40px; height: 28px; padding: 0; border: 0; background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .switch i { position: relative; width: 30px; height: 18px; border: 1px solid var(--line-2); background: var(--bg-2); transition: background .15s, border-color .15s; }
 .switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-3); transition: transform .15s var(--ease), background .15s; }
-.switch.on i { background: var(--accent); border-color: var(--accent); }
+.switch.on i { background: var(--accent); border-color: var(--accent-text); }
 .switch.on i::after { transform: translateX(12px); background: var(--accent-ink); }
-.range { width: 100%; min-height: 28px; accent-color: var(--accent); }
-.link { border: 0; background: none; color: var(--accent); font: inherit; letter-spacing: 0; text-transform: none; cursor: pointer; }
+.range { width: 100%; min-height: 28px; accent-color: var(--accent-text); }
+.link { border: 0; background: none; color: var(--accent-text); font: inherit; letter-spacing: 0; text-transform: none; cursor: pointer; }
 .set-empty { padding: 6px 0; }
 /* icon toggles show two states: the glyph, and a crossed variant when off */
 .set-glyph { position: relative; display: inline-flex; color: var(--text-3); }
@@ -70,12 +71,16 @@
   background: transparent; color: var(--text-2); cursor: pointer; transition: background .12s var(--ease), color .12s var(--ease); }
 .pane-btn:hover { background: var(--panel-2); color: var(--text); }
 .pane-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.pane-btn[aria-pressed="true"] { color: var(--accent); }
+.pane-btn[aria-pressed="true"] { color: var(--accent-text); }
 .pane-btn .ico { width: 15px; height: 15px; }
 [data-pane][data-max] {
   position: fixed !important; inset: 10px !important; width: auto !important; height: auto !important;
   max-width: none !important; max-height: none !important; min-width: 0 !important; transform: none !important;
-  z-index: 400 !important; border-radius: var(--radius); box-shadow: 0 0 0 100vmax rgb(0 0 0 / .55), 0 20px 60px rgb(0 0 0 / .5);
+  z-index: 400 !important; border-radius: var(--radius);
+  /* X14 – the 100vmax scrim shadow is gone (design rule: no decorative
+     shadow, and a 100vmax paint is not free); the maximised pane is a flat
+     surface on the ground, 1px line only. */
+  box-shadow: none; outline: 1px solid var(--line-2);
 }
 [data-pane][data-max] .grip { display: none !important; }
 /* Full screen must cover the whole window: a transformed ancestor (the view's
@@ -142,7 +147,7 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 
 /* chips + autofill */
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 32px; padding: 3px; border: 1px solid var(--line-2); background: var(--bg); min-width: 0; }
-.chips:focus-within { border-color: var(--accent); }
+.chips:focus-within { border-color: var(--accent-text); }
 .chip-x { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 2px 0 7px; border: 1px solid var(--line); background: var(--panel-2); font-size: 11.5px; max-width: 100%; }
 .chip-x button { width: 18px; height: 18px; border: 0; background: none; color: var(--text-3); cursor: pointer; font-size: 14px; line-height: 1; }
 .chip-x button:hover { color: var(--red); }
@@ -165,7 +170,7 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .here-hint { display: inline-flex; align-items: center; gap: 8px; justify-self: start; max-width: 100%; height: 22px; padding: 0 8px; border: 1px dashed var(--line-2); background: none; color: var(--text-2); cursor: pointer; font-size: 11.5px; overflow: hidden; }
 .here-hint .eyebrow { margin: 0; font-size: 9.5px; }
 .here-hint .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
-.here-hint:hover { border-color: var(--accent); color: var(--text); }
+.here-hint:hover { border-color: var(--accent-text); color: var(--text); }
 
 
 /* Settings, as a dialog: sections on the left, the controls scrolling beside them. */
@@ -183,7 +188,7 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
   .settings.dialog .set-main { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
   .set-nav { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 6px 8px; }
   .set-nav button { white-space: nowrap; border-left: 0; border-bottom: 2px solid transparent; }
-  .set-nav button.on { border-bottom-color: var(--accent); }
+  .set-nav button.on { border-bottom-color: var(--accent-text); }
 }
 
 /* N1: phones – every settings control meets the 40px floor. */
@@ -242,4 +247,12 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 /* Indeterminate state – install and the first embed batch have no total yet.
    A dimmed full-width bar, no fake percentage, no animation. */
 .embed-progress .bar.idle i { background: var(--line-2, #24201d); }
+@media (max-width: 600px) {
+  /* X14 – a phone opens settings as a full-height sheet that reads as a
+     sheet (not a floating window), and row subtitles wrap instead of
+     cutting mid-word. */
+  .win.settings { height: calc(100dvh - 56px); max-height: calc(100dvh - 56px); }
+  .win.settings .set-label small { white-space: normal; overflow: visible; text-overflow: clip; }
+}
+
 @media (prefers-reduced-motion: reduce) { .embed-progress .bar i { transition: none; } }

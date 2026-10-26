@@ -26,7 +26,7 @@ import { focusOf, type Focus } from "./map/chainFocus";
 import { Library, ReviewPanel, RunPanel, fencedSectionsOf, filesOf, sectionAtPoint, sectionOf, stashNewItem, useAgentFence, useLive, useMarks, type Marks } from "./map/workspace";
 // U2 chrome: rail, layers, Map·Runs·Evals, tidy (undoable) – new file, so
 // this diff stays wiring-only.
-import { DEFAULT_LAYERS, EvalsBoard, Explorer, FrameSwitch, LayerBar, type Frame, type LayerId, type Layers } from "./map/chrome";
+import { DEFAULT_LAYERS, DEFAULT_MAP_SETTINGS, EvalsBoard, Explorer, FrameSwitch, MapSettings, type Frame, type LayerId, type Layers, type MapSettingsState } from "./map/chrome";
 import { FenceHull } from "./agents/actors";
 import { AgentHarmonograph } from "../flow/agentMark";
 import { AgentInspector } from "./agents/AgentInspector";
@@ -113,6 +113,23 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
   const [panel, setPanel] = useState(false);
   const [scheme, setScheme] = useState<Scheme>(() => { try { return (localStorage.getItem("kula.map.scheme") as Scheme) || "mono"; } catch { return "mono"; } });
   useEffect(() => { try { localStorage.setItem("kula.map.scheme", scheme); } catch { /* private */ } }, [scheme]);
+  // X14 – the map's settings: edge density, card labels, minimap and snap,
+  // remembered beside the layers and scheme they sit with.
+  const [mset, setMset] = useState<MapSettingsState>(() => {
+    try { return { ...DEFAULT_MAP_SETTINGS, ...JSON.parse(localStorage.getItem("kula.map.settings") ?? "{}") }; } catch { return DEFAULT_MAP_SETTINGS; }
+  });
+  useEffect(() => { try { localStorage.setItem("kula.map.settings", JSON.stringify(mset)); } catch { /* private */ } }, [mset]);
+  const setMsetPatch = useCallback((patch: Partial<MapSettingsState>) => setMset((s) => ({ ...s, ...patch })), []);
+  // Edge density filters the value-flow edges the kit draws: Few keeps the
+  // strongest quarter, Normal half, Full everything the map carries.
+  const dataForKit = useMemo(() => {
+    if (!data || mset.edgeDensity === "full") return data;
+    const flows = (data as NonNullable<typeof data> & { flows?: { from: string; to: string; weight: number }[] }).flows;
+    if (!flows?.length) return data;
+    const sorted = [...flows].sort((a, b) => b.weight - a.weight);
+    const keep = mset.edgeDensity === "few" ? 0.25 : 0.5;
+    return { ...data, flows: sorted.slice(0, Math.max(1, Math.round(sorted.length * keep))) };
+  }, [data, mset.edgeDensity]);
   const [viewSec, setViewSec] = useState<string>("show");
   const ws = useLive(true);
   // U3 – actors on the terrain: the selected agent, its fence, and the R1
@@ -699,10 +716,16 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
   // Chains-off toggle simply stops showing focus, not a navigation.
   const layerCls = (["blocks", "flows", "chains", "fences", "agents", "runs"] as LayerId[])
     .filter((l) => !layers[l]).map((l) => `u2-l-${l}-off`).join(" ");
+  // X14 – the map's settings popover sits in the top strip, beside the Explorer.
+  const mapSettings = <MapSettings layers={layers} onLayer={toggleLayer} scheme={scheme} onScheme={setScheme} st={mset} onSt={setMsetPatch}
+    canUndo={!!tidyUndo} onTidy={tidy} onUndo={undoTidy}
+    onReset={() => { clearPersisted("map", `map-2-${layoutKey}-n`); setTidyUndo(null); setLayoutKey((k) => k + 1); }}
+    onClearPin={() => { setPinned(null); setSelBlock(null); }} />;
   // the key, plain words and Explorer: docked in the map's top strip
   const headTools = <>
               {!insp && <div className="u7-key-dock" data-testid="map-key-dock"><Legend data={data} ringHue={flowPick != null ? flowHue(flowPick) : null} /></div>}
               <div className="u9-dock" data-testid="map-plain-dock"><PlainPanel agents={ws.info?.workflows.filter((w) => !w.builtin).map((w) => w.name)} /></div>
+              {mapSettings}
 <Explorer open={exOpen} onOpen={setExOpen}
                 search={(<>
                   {!searchOpen && <button className="ex-verb ex-find" data-testid="u2-rail-search" title="Search  /" onClick={() => setSearchOpen(true)}><Icon.search /> Search code</button>}
@@ -717,12 +740,10 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
                   <button className={`ex-row${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
                     onClick={() => setRolesOpen((o) => !o)}><Icon.types /> Roles</button>
                 </>}
-                layers={<LayerBar layers={layers} onToggle={toggleLayer} />}
+                layers={null}
                 verbs={<>
                   <button className="ex-verb" data-testid="u2-rail-add" title="Add agent  n" onClick={() => { setExOpen(false); openAgentAdd(); }}><Icon.plus /> Agent</button>
                   <button className="ex-verb" data-testid="u2-rail-note" title="Add sticky note  ⇧S" onClick={() => { setExOpen(false); addSticky(); }}><Icon.doc /> Note</button>
-                  <button className="ex-verb" data-testid="u2-tidy" title="Tidy – re-run the layout (T)" onClick={tidy}><Icon.sweep /> Tidy</button>
-                  {tidyUndo && <button className="ex-verb ex-undo" data-testid="u2-tidy-undo" title="Undo tidy  ⌘Z" onClick={undoTidy}><Icon.rerun /> Undo</button>}
                 </>} />
             </>;
   return (
@@ -763,8 +784,9 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
           ? <BlockCanvas tools={headTools} blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
           : <div className="ws-drop" ref={canvasWrapRef} onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView headTools={headTools}
             onPickFile={(path) => { const hit = Object.entries(data.leaves).find(([, l]) => l.path === path); if (hit) selectLeaf(Number(hit[0])); }}
-            agents={terrainAgents} agentsOn={layers.agents} flowTint={flowTint} marks={fenceMarks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={fenceFocus ?? (layers.chains && chain ? focusOf(data, chain) : null)} selection={selBlock ?? (selAgent ? `agent:${selAgent}` : null)} onSelect={pickOnCanvas} onDrill={(id) => { setSelBlock(id); setInspForced(true); }} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
+            agents={terrainAgents} agentsOn={layers.agents} flowTint={flowTint} marks={fenceMarks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={dataForKit ?? data!} roles={roles} focus={fenceFocus ?? (layers.chains && chain ? focusOf(data, chain) : null)} selection={selBlock ?? (selAgent ? `agent:${selAgent}` : null)} onSelect={pickOnCanvas} onDrill={(id) => { setSelBlock(id); setInspForced(true); }} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
             reveal={reveal}
+            labels={mset.labels} minimap={mset.minimap} snap={mset.snap}
             pinned={pinned && !selStep ? pinned : null}
             onNodeTool={(id, action) => {
               if (action === "open") { drill(id); setSelBlock(id); setInspForced(true); }

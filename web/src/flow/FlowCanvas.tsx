@@ -62,6 +62,11 @@ export type FlowCanvasProps = {
       instead of a fit-everything view. */
   initialFocus?: string | null;
   initialZoom?: number;
+  /** X14 – controlled minimap and grid snap: when minimap is set the canvas
+      shows or hides it from the map's settings popover (its own toggle
+      button only renders when the caller does not control it). */
+  minimap?: boolean;
+  snap?: boolean;
 };
 
 type RfNode = Node<FlowNode>;
@@ -104,7 +109,12 @@ function FlowCanvasInner(props: FlowCanvasProps) {
   // when the frame origin is off the virtualized viewport.
   const [chipAnchor, setChipAnchor] = useState<Record<string, { x: number; y: number }>>({});
   const [locked, setLocked] = useState(false);
-  const [showMini, setShowMini] = useState(false); // default off – rendering 2 600 mini-rects costs the first paint
+  const [showMiniLocal, setShowMini] = useState(false); // default off – rendering 2 600 mini-rects costs the first paint
+  // X14 – the caller (the map's settings popover) may own the minimap; the
+  // canvas keeps its own toggle only where nobody controls it.
+  const miniCtl = props.minimap != null;
+  const showMini = miniCtl ? !!props.minimap : showMiniLocal;
+  const snapOn = props.snap != null ? props.snap : true;
   const [sideOpen, setSideOpen] = useState(false);
   const [internalSel, setInternalSel] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -201,7 +211,15 @@ function FlowCanvasInner(props: FlowCanvasProps) {
           if (fittedKey.current !== layoutKey) {
             fittedKey.current = layoutKey;
             const focusId = props.initialFocus;
-            window.requestAnimationFrame(() => {
+            // X14 – the viewport is remembered per layout key: coming back to
+            // the map restores the zoom and pan the user left, instead of
+            // drilling into the landing zoom again.
+            const saved = (() => {
+              try { return JSON.parse(localStorage.getItem(`kula.flow.vp.v1.${ns}.${layoutKey}`) ?? "null"); } catch { return null; }
+            })() as { x: number; y: number; zoom: number } | null;
+            if (saved && Number.isFinite(saved?.x) && Number.isFinite(saved?.zoom)) {
+              rf.setViewport({ x: saved.x, y: saved.y, zoom: Math.min(2, Math.max(0.1, saved.zoom)) });
+            } else window.requestAnimationFrame(() => {
               const n = focusId ? rf.getNode(focusId) : null;
               if (n) {
                 const d = n.data as FlowNode;
@@ -552,7 +570,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             nodesDraggable={!locked}
             nodesFocusable={false} // keyboard lives on the wrapper; nodes are not tabbable controls
             edgesFocusable={false}
-            snapToGrid
+            snapToGrid={snapOn}
             snapGrid={[16, 16]}
             // Virtualization (the 2 600-node FlowLab canvas needs it) races
             // the late pipeline lane under the map's ~100 nodes: the lane
@@ -570,6 +588,9 @@ function FlowCanvasInner(props: FlowCanvasProps) {
             maxZoom={2}
             defaultEdgeOptions={{ type: "flow-edge" }}
             proOptions={{ hideAttribution: true }}
+            onMoveEnd={() => {
+              try { localStorage.setItem(`kula.flow.vp.v1.${ns}.${layoutKey}`, JSON.stringify({ x: rf.getViewport().x, y: rf.getViewport().y, zoom: rf.getViewport().zoom })); } catch { /* private */ }
+            }}
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={2} color="var(--line)" />
             {showMini && (
@@ -582,7 +603,7 @@ function FlowCanvasInner(props: FlowCanvasProps) {
               <button className="fc-ctl" data-testid="fc-tidy" onClick={tidy} title="Tidy (T)">⌗</button>
               <button className="fc-ctl" data-testid="fc-reset" onClick={resetLayout} title="Reset layout">⟲</button>
               <button className={`fc-ctl${locked ? " on" : ""}`} data-testid="fc-lock" onClick={() => setLocked((v) => !v)} title={locked ? "Unlock drag" : "Lock drag"} aria-pressed={locked}>⊘</button>
-              <button className={`fc-ctl${showMini ? " on" : ""}`} data-testid="fc-minimap-toggle" onClick={() => setShowMini((v) => !v)} title="Minimap" aria-pressed={showMini}><Icon.home /></button>
+              {!miniCtl && <button className={`fc-ctl${showMini ? " on" : ""}`} data-testid="fc-minimap-toggle" onClick={() => setShowMini((v) => !v)} title="Minimap" aria-pressed={showMini}><Icon.home /></button>}
               <span className="fc-zoom mono" data-testid="fc-zoom">{zoomPct}%</span>
             </Panel>
           </ReactFlow>
