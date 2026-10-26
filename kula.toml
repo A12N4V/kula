@@ -16,8 +16,9 @@ reindex = true   # keep the graph current after commit / checkout / merge
 max_risk = "medium"   # CI gate: none | low | medium | high
 
 [agents]
-hide_secrets = true
-memory = true
+hide_secrets = false
+memory = false
+allow_solo = false
 
 [[team]]
 name = "ship"
@@ -40,3 +41,65 @@ name = "polish"
 about = "Small cleanups"
 scope = ["src/**"]
 steps = ["Tidy", "verify"]
+
+[[workflow]]
+name = "u19-loop"
+about = "Seconds the test suite takes; agents may not touch the tests themselves."
+scope = ["src/**"]
+memory = "write"
+steps = ["research: the metric, the baseline, the best so far and every experiment tried", "Form one hypothesis; change only the files in scope", "experiment: kula runs the metric, keeps the change as a commit if it is better, reverts it if not", "remember what worked and what didn't, on the code it was about", "Repeat until the budget is spent; never edit the metric or its inputs"]
+prompt = "Make the test suite faster without changing what it checks. Profile first; one change per experiment."
+
+[workflow.research]
+metric = "echo 41"
+goal = "min"
+budget = 20
+icon = "faster-tests"
+
+[[workflow]]
+name = "u19-open"
+about = "Seconds the test suite takes; agents may not touch the tests themselves."
+scope = ["src/**"]
+memory = "write"
+steps = ["research: the metric, the baseline, the best so far and every experiment tried", "Form one hypothesis; change only the files in scope", "experiment: kula runs the metric, keeps the change as a commit if it is better, reverts it if not", "remember what worked and what didn't, on the code it was about", "Repeat until the budget is spent; never edit the metric or its inputs"]
+prompt = "Make the test suite faster without changing what it checks. Profile first; one change per experiment."
+
+[workflow.research]
+metric = "echo 7"
+goal = "min"
+budget = 20
+icon = "faster-tests"
+
+[[workflow]]
+name = "u19-lint"
+about = "Warnings from the linter; a safe first loop for a new team."
+scope = ["src/**"]
+memory = "write"
+steps = ["research: the metric, the baseline, the best so far and every experiment tried", "Form one hypothesis; change only the files in scope", "experiment: kula runs the metric, keeps the change as a commit if it is better, reverts it if not", "remember what worked and what didn't, on the code it was about", "Repeat until the budget is spent; never edit the metric or its inputs"]
+prompt = "Fix lint warnings without changing behaviour. Group warnings of one kind into one experiment."
+
+[workflow.research]
+metric = "cargo clippy --quiet 2>&1 | grep -c '^warning'"
+goal = "min"
+budget = 40
+icon = "lint"
+
+[[workflow]]
+name = "autoresearch"
+about = "Run experiments in a loop: change, measure, keep what's better"
+memory = "write"
+steps = ["research: the metric, the baseline, the best so far and every experiment tried", "Form one hypothesis; change only the files in scope", "experiment: kula runs the metric, keeps the change as a commit if it is better, reverts it if not", "remember what worked and what didn't, on the code it was about", "Repeat until the budget is spent; never edit the metric or its inputs"]
+
+[[workflow]]
+name = "u19-renamed"
+about = "Seconds the test suite takes; agents may not touch the tests themselves."
+scope = ["src/**"]
+memory = "write"
+steps = ["research: the metric, the baseline, the best so far and every experiment tried", "Form one hypothesis; change only the files in scope", "experiment: kula runs the metric, keeps the change as a commit if it is better, reverts it if not", "remember what worked and what didn't, on the code it was about", "Repeat until the budget is spent; never edit the metric or its inputs"]
+prompt = "Make the test suite faster without changing what it checks. Profile first; one change per experiment."
+
+[workflow.research]
+metric = "echo 4"
+goal = "min"
+budget = 20
+icon = "faster-tests"

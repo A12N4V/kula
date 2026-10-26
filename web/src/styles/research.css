@@ -1,0 +1,61 @@
+/* Research (U19): autoresearch loops and templates as portfolio cards – the
+   same card layout as agents (art on top, mono eyebrow, light display title,
+   italic serif description, accent tags), research-family harmonograph marks.
+   The card internals reuse agents.css's .ag-card / .card__* rules; everything
+   research-specific lives here. */
+
+.rs { display: grid; gap: 18px; align-content: start; padding-bottom: 64px; }
+
+.rs-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+.rs-title { margin: 0; font: 300 clamp(20px, 1.8vw, 26px)/1.1 var(--display); letter-spacing: .03em; text-transform: uppercase; }
+.rs-count { font-size: 11px; letter-spacing: .14em; color: var(--text-3); }
+.rs-restore { display: flex; flex-wrap: wrap; gap: 6px; }
+.rs-restore .btn { color: var(--text-2); }
+
+.rs-sec { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.rs-eyebrow { margin: 0; font: 600 10px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--text-3); }
+.rs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 232px), 1fr)); gap: clamp(14px, 1.4vw, 20px); }
+
+/* the mark region: the research-family harmonograph fills the art band like an
+   agent card's; clicking it opens the logo studio (U17) */
+.rs-card-art { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 3; border-bottom: 1px solid var(--line); background: var(--bg); cursor: pointer; }
+.rs-card-art svg { width: 78%; height: 78%; }
+.rs-card-art:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* rename row: label, editable name and the Rename button on one line */
+.rs-rename { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.rs-rename .input { min-width: 0; }
+
+.rs-card .card__meta .rs-live { color: var(--accent); }
+.rs-tpl.off { opacity: .55; }
+.rs-tpl .card__d { -webkit-line-clamp: 3; }
+
+/* the loop pipeline under the template cards (was inside the old new-loop
+   form; it explains the loop to everyone, so it lives on the surface) */
+.rs-pipeline { margin-top: 4px; }
+
+/* the new-loop form, opened by a template card or the + card */
+.rs-form { max-width: 720px; }
+.rs-form-head { display: flex; align-items: center; gap: 12px; }
+.rs-form-head svg { flex: none; }
+
+/* phone: cards stack, the head wraps, hit targets stay 40px */
+@media (max-width: 760px) {
+  .rs-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 10px; }
+  .rs-card .card__body { padding: 12px; }
+}
+@media (max-width: 600px) {
+  .rs-form { max-width: none; gap: 4px; }
+  /* keep the form compact at 390 (the fixed statusbar overlap is a platform
+     pattern every long page shares – see the X14 audit) */
+  .rs-form-head svg { width: 40px; height: 40px; }
+  .rs-form textarea { height: 40px; }
+  .rs-form .mi-field { gap: 2px; }
+  .rs-form .input { padding-top: 5px; padding-bottom: 5px; }
+}
+@media (max-width: 460px) {
+  .rs-grid { grid-template-columns: 1fr; }
+  .rs-head .rs-title { flex-basis: 100%; }
+  .rs-pipeline { grid-template-columns: 1fr; }
+  .rs-pipeline .loop-step { border-right: 0; border-bottom: 1px solid var(--line); }
+  .rs-pipeline .loop-step:nth-child(4) .loop-arrow { display: none; }
+}

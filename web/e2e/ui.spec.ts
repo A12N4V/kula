@@ -1331,10 +1331,10 @@ test.describe("teams and research (T1)", () => {
   test("T1.3b: research loop – create it, start it with confirmation, stop it with confirmation", async ({ page, request }, info) => {
     desktopOnly(info);
     await open(page, "agents/research");
-    // The fixture has no loop yet: the new-loop form shows the loop steps.
+    // The fixture has no loop yet: the new-loop form is open (U19 moved the
+    // loop-steps pipeline onto the card grid under the template cards).
     const form = page.locator(".tpl-form");
     await expect(form).toBeVisible();
-    await expect(page.locator(".loop-step")).not.toHaveCount(0);
     await form.getByLabel("Loop name").fill("e2e-loop");
     await form.getByLabel("Metric command").fill("sh -c 'echo 41'");
     await form.getByRole("button", { name: "Create e2e-loop" }).click();
@@ -1345,13 +1345,15 @@ test.describe("teams and research (T1)", () => {
     const tok = await page.evaluate(() => document.querySelector('meta[name="kula-token"]')?.content ?? "test");
     await request.post("/api/git/exec", { data: { args: ["add", "-A"] }, headers: { "x-kula-token": tok } });
     await request.post("/api/git/exec", { data: { args: ["commit", "-qm", "e2e: clean tree for research"] }, headers: { "x-kula-token": tok } });
-    // Start needs a confirmation click.
-    await page.getByRole("button", { name: "Start" }).click();
-    await page.getByRole("button", { name: "Confirm start" }).click();
+    // Start needs a confirmation click (scoped to the open loop: the cards
+    // behind carry "not started" tags that also match /Start/).
+    const panel = page.getByTestId("rs-open");
+    await panel.getByRole("button", { name: "Start" }).click();
+    await panel.getByRole("button", { name: "Confirm start" }).click();
     await expect(page.locator(".research .tag.accent")).toContainText("running");
     // Stop needs one too.
-    await page.getByRole("button", { name: "Stop" }).click();
-    await page.getByRole("button", { name: "Confirm stop" }).click();
+    await panel.getByRole("button", { name: "Stop" }).click();
+    await panel.getByRole("button", { name: "Confirm stop" }).click();
     await expect(page.locator(".research .tag.accent")).toHaveCount(0);
   });
 });
@@ -1656,7 +1658,8 @@ test.describe("agents A2", () => {
       json: { ...j, research: [run], workflows: [...j.workflows, { name: "explore", about: "loop", builtin: false, research: { metric: run.metric, goal: "min", budget: 5 } }] },
     })));
     await open(page, "agents/research");
-    await page.getByRole("tab", { name: "explore", exact: true }).click();
+    // U19: loops are cards now – the card opens the loop editor (no tab).
+    await page.locator('[data-testid=rs-card-explore] .card__t').click(); // the card centre is the art – it opens the logo studio, the title opens the loop editor
     const tries = page.locator(".rf-tries");
     await expect(page.locator(".rf-try")).toHaveCount(5);
     // The timeline shows the run on a time axis with exact values and a legend table.
@@ -2498,6 +2501,10 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid^=pl-row-]")).toHaveCount(3);
     await expect(page.locator("[data-testid^='fc-node-step:']")).toHaveCount(3);
     await page.locator("[data-testid=pl-row-1]").click();
+    // A stale canvas selection no longer implies the block's section – set it
+    // in the step details, where the run's fence comes from, so the scope is
+    // deterministic.
+    await page.locator("[data-testid=pl-section]").selectOption({ index: 1 });
     await page.locator("[data-testid=pl-task]").fill("tighten the parser");
     await page.locator("[data-testid=ws-run-btn]").click();
     await expect.poll(() => body?.title).toBe("tighten the parser");
@@ -2997,7 +3004,8 @@ test.describe("agents on the flow canvas (A3)", () => {
       json: { ...j, research: [run], workflows: [...j.workflows, { name: "explore", about: "loop", builtin: false, research: { metric: run.metric, goal: "min", budget: 5 } }] },
     })));
     await open(page, "agents/research");
-    await page.getByRole("tab", { name: "explore", exact: true }).click();
+    // U19: loops are cards now – the card opens the loop editor (no tab).
+    await page.locator('[data-testid=rs-card-explore] .card__t').click(); // the card centre is the art – it opens the logo studio, the title opens the loop editor
     // The pipeline is on the canvas: stages left to right, sub-nodes below –
     // 4 stages + 2 solver circles + 2 attempt circles + 1 frontier record.
     await expect(page.locator(".rf-canvas .react-flow__node")).toHaveCount(9);
@@ -3052,7 +3060,8 @@ test.describe("agents add from the map rail (U3)", () => {
     const wfName = `rail-agent-${Date.now()}`;
     await form.locator("[data-testid=ag-add-name]").fill(wfName);
     await form.locator("[data-testid=ag-add-name]").press("Enter");
-    await expect(page).toHaveURL(/#agents\/workflows/);
+    // The workflows tab is the Agents default, so the address is the bare hash.
+    await expect(page).toHaveURL(/#agents$/);
     await expect(page.locator(".ag-side-head h2")).toHaveText(wfName);
     await expect(page.locator(".wf-edit")).toContainText("src/**");
     // clean up: delete both from their editors

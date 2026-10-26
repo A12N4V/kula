@@ -42,7 +42,11 @@ test.describe("the lean agents menu", () => {
     await open(page, "agents/connect");
     await expect(page).toHaveURL(/#agents\/settings/);
     await open(page, "agents/overview");
-    await expect(page).toHaveURL(/#agents\/workflows/);
+    // The workflows tab is the menu's default, so the address settles on the
+    // bare #agents (X12) – the route must land there, not dead-end.
+    await expect(page).toHaveURL(/#agents$/);
+    await expect(page.getByRole("tab", { name: "Agents", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".roster").first()).toBeVisible();
   });
 
   test("Docs carries the instruction files; Settings carries Connect", async ({ page }) => {

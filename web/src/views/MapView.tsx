@@ -225,7 +225,7 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || (e.target as HTMLElement)?.closest?.("input, textarea, [role=dialog]")) return;
-      if (path.length || selChain) { home(); setSelChain(null); }
+      if (path.length || selChain) { home(); setSelChain(null); setSelBlock(null); }
       else { setSelBlock(null); setInspForcedRef.current(false); } // Esc closes the inspector
     };
     window.addEventListener("keydown", onKey);
