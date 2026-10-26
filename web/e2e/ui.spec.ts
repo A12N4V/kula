@@ -2502,9 +2502,9 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid^='fc-node-step:']")).toHaveCount(3);
     await page.locator("[data-testid=pl-row-1]").click();
     // A stale canvas selection no longer implies the block's section – set it
-    // here, where the run's fence comes from, so the scope is deterministic.
-    const sectionSel = page.locator("[data-testid=pl-row-1] [data-testid=pl-section]");
-    if (await sectionSel.count()) await sectionSel.selectOption({ index: 1 });
+    // in the step details, where the run's fence comes from, so the scope is
+    // deterministic.
+    await page.locator("[data-testid=pl-section]").selectOption({ index: 1 });
     await page.locator("[data-testid=pl-task]").fill("tighten the parser");
     await page.locator("[data-testid=ws-run-btn]").click();
     await expect.poll(() => body?.title).toBe("tighten the parser");
