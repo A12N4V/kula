@@ -1,0 +1,15 @@
+name: Bug
+description: Something broke
+labels: [bug]
+body:
+  - type: textarea
+    id: steps
+    attributes: {label: Steps to reproduce and what you expected}
+    validations: {required: true}
+  - type: textarea
+    id: logs
+    attributes: {label: Output or logs, render: shell}
+  - type: input
+    id: version
+    attributes: {label: kula --version and OS}
+    validations: {required: true}

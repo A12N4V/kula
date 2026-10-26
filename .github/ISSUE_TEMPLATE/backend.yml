@@ -1,0 +1,15 @@
+name: Core or CLI feedback
+description: git commands, the server, MCP tools, agents, install
+labels: [feedback, core]
+body:
+  - type: textarea
+    id: what
+    attributes: {label: What happened or what would you change, description: Screenshots or a short clip help a lot}
+    validations: {required: true}
+  - type: textarea
+    id: repo
+    attributes: {label: Which repo did you try it on, description: "Public link if you can, or language and rough size"}
+  - type: input
+    id: version
+    attributes: {label: kula --version and OS}
+    validations: {required: true}
