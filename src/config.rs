@@ -268,17 +268,17 @@ pub struct Member {
 }
 
 impl Member {
-    /// How the team refers to this seat: its name, else its service (the old
-    /// `agent` spelling counts).
+    /// How the team refers to this seat: its name, else the workflow it works
+    /// in (the old `agent` spelling counts as a last resort, for configs
+    /// written before seats had workflows). Never the service: two seats on
+    /// the same service are two different people.
     pub fn key(&self) -> &str {
-        if self.name.is_empty() {
-            if self.service.is_empty() {
-                &self.agent
-            } else {
-                &self.service
-            }
-        } else {
+        if !self.name.is_empty() {
             &self.name
+        } else if !self.workflow.is_empty() {
+            &self.workflow
+        } else {
+            &self.agent
         }
     }
     /// The service that runs it, for people: `any` when unset. Fuse 5 spells
@@ -318,11 +318,35 @@ pub struct Agents {
     /// Fuse 5: runs go out from teams. When true, a bare agent (no team) may
     /// still be deployed from the Workspace.
     pub allow_solo: bool,
+    /// Settings the agents Settings tab may write into their own sections of
+    /// kula.toml ([check], [index], [project], [embed]); None leaves the
+    /// section alone, so older saves keep working.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_risk: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exclude: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_file_kb: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embed_pause_ms: Option<u64>,
 }
 
 impl Default for Agents {
     fn default() -> Self {
-        Agents { hide_secrets: true, memory: true, docs: vec![], default: String::new(), allow_solo: false }
+        Agents {
+            hide_secrets: true,
+            memory: true,
+            docs: vec![],
+            default: String::new(),
+            allow_solo: false,
+            max_risk: None,
+            exclude: None,
+            max_file_kb: None,
+            default_branch: None,
+            embed_pause_ms: None,
+        }
     }
 }
 
@@ -613,7 +637,7 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
             anyhow::bail!("two teams are called {}", t.name);
         }
         if t.members.iter().any(|m| m.key().trim().is_empty()) {
-            anyhow::bail!("team {}: every member has a name or an agent", t.name);
+            anyhow::bail!("team {}: every member has a name or a workflow", t.name);
         }
         let names: Vec<&str> = t.members.iter().map(|m| m.key()).collect();
         if let Some(d) = names.iter().enumerate().find(|(i, n)| names[..*i].contains(n)).map(|x| x.1) {
@@ -753,6 +777,29 @@ pub fn set_agents(root: &Path, a: &Agents) -> Result<Config> {
             t["default"] = toml_edit::value(&a.default);
         }
         t["allow_solo"] = toml_edit::value(a.allow_solo);
+        // The Settings view may also reach into the neighbouring sections;
+        // left out means unchanged.
+        if let Some(v) = &a.max_risk {
+            let c = d.entry("check").or_insert(toml_edit::table()).as_table_mut().context("[check] must be a table")?;
+            c["max_risk"] = toml_edit::value(v);
+        }
+        if a.exclude.is_some() || a.max_file_kb.is_some() {
+            let i = d.entry("index").or_insert(toml_edit::table()).as_table_mut().context("[index] must be a table")?;
+            if let Some(v) = &a.exclude {
+                i["exclude"] = toml_edit::value(v.iter().collect::<toml_edit::Array>());
+            }
+            if let Some(v) = a.max_file_kb {
+                i["max_file_kb"] = toml_edit::value(v as i64);
+            }
+        }
+        if let Some(v) = &a.default_branch {
+            let p = d.entry("project").or_insert(toml_edit::table()).as_table_mut().context("[project] must be a table")?;
+            p["default_branch"] = toml_edit::value(v);
+        }
+        if let Some(v) = a.embed_pause_ms {
+            let e = d.entry("embed").or_insert(toml_edit::table()).as_table_mut().context("[embed] must be a table")?;
+            e["pause_ms"] = toml_edit::value(v as i64);
+        }
         Ok(())
     })
 }
@@ -979,7 +1026,9 @@ mod b2_tests {
         let seat = &cfg.teams[0].members[0];
         assert_eq!(seat.service, "claude", "the load migration fills service from agent");
         assert_eq!(seat.runner(), "claude");
-        assert_eq!(seat.key(), "claude");
+        // Fuse 5 B3: a seat is keyed by its name, else its workflow – never
+        // its service, so two seats on the same service do not collide.
+        assert_eq!(seat.key(), "tests");
         // saving keeps the old field (older kula builds still read it)
         upsert_team(&dir, &cfg.teams[0]).unwrap();
         let text = std::fs::read_to_string(dir.join("kula.toml")).unwrap();
@@ -988,9 +1037,67 @@ mod b2_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// fuse5 B3 · seats are keyed by name (else workflow), never the service:
+    /// two seats on the same service are allowed and distinct.
+    #[test]
+    fn seats_keyed_by_name_not_service() {
+        let dir = tmp("seats");
+        let t = Team {
+            name: "ship".into(),
+            members: vec![
+                Member { name: "atlas".into(), service: "claude".into(), workflow: "fix".into(), ..Default::default() },
+                Member { name: "bestla".into(), service: "claude".into(), workflow: "polish".into(), ..Default::default() },
+                Member { service: "codex".into(), workflow: "tests".into(), ..Default::default() },
+            ],
+            ..Default::default()
+        };
+        upsert_team(&dir, &t).unwrap();
+        let cfg = Config::load(&dir).unwrap();
+        let got = cfg.teams.iter().find(|t| t.name == "ship").unwrap();
+        let keys: Vec<&str> = got.members.iter().map(|m| m.key()).collect();
+        assert_eq!(keys, vec!["atlas", "bestla", "tests"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// fuse5 B3 · settings_save reaches into the neighbouring sections
+    /// (check/index/project/embed); left out means unchanged.
+    #[test]
+    fn settings_save_writes_cross_section_fields() {
+        let dir = tmp("settings");
+        let a = Agents {
+            hide_secrets: false,
+            memory: false,
+            docs: vec![],
+            default: String::new(),
+            allow_solo: true,
+            max_risk: Some("low".into()),
+            exclude: Some(vec!["vendor/**".into()]),
+            max_file_kb: Some(512),
+            default_branch: Some("trunk".into()),
+            embed_pause_ms: Some(400),
+        };
+        set_agents(&dir, &a).unwrap();
+        let text = std::fs::read_to_string(dir.join("kula.toml")).unwrap();
+        assert!(text.contains("max_risk = \"low\""), "{text}");
+        assert!(text.contains("vendor/**"), "{text}");
+        assert!(text.contains("max_file_kb = 512"), "{text}");
+        assert!(text.contains("default_branch = \"trunk\""), "{text}");
+        assert!(text.contains("pause_ms = 400"), "{text}");
+        assert!(text.contains("allow_solo = true"), "{text}");
+        let cfg = Config::load(&dir).unwrap();
+        assert_eq!(cfg.check.max_risk, "low");
+        assert_eq!(cfg.index.max_file_kb, 512);
+        assert_eq!(cfg.project.default_branch, "trunk");
+        assert_eq!(cfg.embed.pause_ms, 400);
+        // a second save that leaves the fields out keeps them
+        set_agents(&dir, &Agents { hide_secrets: true, memory: false, ..Default::default() }).unwrap();
+        let text = std::fs::read_to_string(dir.join("kula.toml")).unwrap();
+        assert!(text.contains("pause_ms = 400"), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
     /// fuse5 · workflow_delete: a kula.toml workflow goes, a built-in is
     /// hidden and restorable.
-    #[test]
     fn workflow_delete_hides_builtins_and_removes_customs() {
         let dir = tmp("wdel");
         workflow_delete(&dir, "fix").unwrap();

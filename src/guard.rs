@@ -376,6 +376,12 @@ impl Guards {
         self.rules.iter().filter(|c| !c.source.starts_with("workflow")).map(|c| (c.rule.clone(), c.level)).collect()
     }
 
+    /// Every rule in force with its source string, in compile order (repo,
+    /// then workflow, then team). For the effective-fences view.
+    pub fn all_rules(&self) -> Vec<(GuardRule, Level, String)> {
+        self.rules.iter().map(|c| (c.rule.clone(), c.level, c.source.clone())).collect()
+    }
+
     pub fn workflow_rules(&self) -> Vec<(GuardRule, Level)> {
         self.rules.iter().filter(|c| c.source.starts_with("workflow")).map(|c| (c.rule.clone(), c.level)).collect()
     }

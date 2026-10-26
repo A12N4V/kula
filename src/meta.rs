@@ -217,6 +217,11 @@ pub fn proposal_merge(repo: &Repo, id: u64) -> Result<Proposal> {
 
 pub fn note_add(repo: &Repo, target: &str, body: &str) -> Result<Note> {
     let mut m = load(repo)?;
+    // An exact duplicate (same target and body) is the same note – return it
+    // instead of writing a second copy.
+    if let Some(n) = m.notes.iter().find(|n| n.kind.is_empty() && n.target == target && n.body == body) {
+        return Ok(n.clone());
+    }
     let t = now();
     let n = Note {
         id: next(&mut m),
@@ -320,5 +325,34 @@ fn merge_meta(ours: &mut Meta, theirs: Meta) {
             Some(_) => {}
             None => ours.notes.push(n),
         }
+    }
+}
+
+#[cfg(test)]
+mod b3_tests {
+    use super::*;
+
+    /// fuse5 B3 · a temp fixture repo for the note tests.
+    fn fixture() -> (tempfile::TempDir, Repo) {
+        let d = tempfile::tempdir().unwrap();
+        let out = std::process::Command::new("git").args(["init", "-q"]).arg(d.path()).output().unwrap();
+        assert!(out.status.success(), "git init failed: {}", String::from_utf8_lossy(&out.stderr));
+        let repo = Repo { root: d.path().to_path_buf() };
+        (d, repo)
+    }
+
+    /// fuse5 B3 · notes/new returns the existing note for an exact duplicate
+    /// (same target and body) instead of writing a second copy.
+    #[test]
+    fn note_add_returns_existing_duplicate() {
+        let (_d, r) = fixture();
+        let a = note_add(&r, "src/config.rs", "the loader drops comments").unwrap();
+        let b = note_add(&r, "src/config.rs", "the loader drops comments").unwrap();
+        assert_eq!(a.id, b.id, "a duplicate returns the first note");
+        let m = load(&r).unwrap();
+        assert_eq!(m.notes.iter().filter(|n| n.kind.is_empty()).count(), 1);
+        // a different body is a new note; a duplicate memory is still fine
+        let c = note_add(&r, "src/config.rs", "something else").unwrap();
+        assert_ne!(a.id, c.id);
     }
 }
