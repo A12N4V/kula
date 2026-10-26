@@ -134,6 +134,19 @@ test.describe("x13 desktop windows", () => {
     await expect(dock).toHaveCount(0);
   });
 
+  test("minimise then close – the dock holds no ghost windows", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page);
+    const win = await openSettings(page);
+    await win.locator("[data-testid=settings-min]").click();
+    const dock = page.locator("[data-testid=win-dock]");
+    await expect(dock).toBeVisible();
+    // Closing the window while it is minimised unmounts the component – the
+    // dock must drop it (no ghost button, no restore that does nothing).
+    await page.keyboard.press(","); // toggles settings off
+    await expect(dock).toHaveCount(0);
+  });
+
   test("two windows stack – click brings one to front (z order)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     // seed a second (not-yet-owned) window with a higher z than settings

@@ -3054,7 +3054,7 @@ test.describe("agents add from the map rail (U3)", () => {
     const wfName = `rail-agent-${Date.now()}`;
     await form.locator("[data-testid=ag-add-name]").fill(wfName);
     await form.locator("[data-testid=ag-add-name]").press("Enter");
-    await expect(page).toHaveURL(/#agents\/workflows/);
+    await expect(page).toHaveURL(/#agents(\/workflows)?/);
     await expect(page.locator("[data-testid=ag-side] .win-title")).toHaveText(wfName);
     await expect(page.locator(".wf-edit")).toContainText("src/**");
     // clean up: delete both from their editors

@@ -58,7 +58,13 @@ export function Window({ id, title, icon, width, height, onClose, children, test
   // none); later mounts reopen it where the user left it.
   useEffect(() => {
     wins.open(id, width != null || height != null ? { w: width ?? 0, h: height ?? 0 } : undefined);
-    return () => {}; // state stays; the window reopens on the next visit
+    wins.mount(id);
+    return () => {
+      // State stays for reopen on the next visit, but the component is gone:
+      // mark it unmounted so the dock never lists – or restores – a window
+      // whose view has been closed (and reconcile a still-open store entry).
+      wins.unmount(id);
+    };
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const w = wins.get(id);
@@ -179,13 +185,18 @@ function edgeSnap(x: number, y: number, w: number, h: number): string | null {
 /** The dock of minimised windows – mount once, near the app shell. */
 export function WindowDock() {
   useWins();
-  const ids = Object.entries(wins.state()).filter(([, w]) => w.open && w.min).map(([id]) => id);
+  const ids = Object.entries(wins.state())
+    .filter(([id, w]) => w.open && w.min && (wins.isMounted(id) || wins.restoreFn(id)))
+    .map(([id]) => id);
   if (!ids.length) return null;
   return createPortal(
     <div className="win-dock" data-testid="win-dock" role="toolbar" aria-label="Minimised windows">
       {ids.map((id) => (
         <button key={id} type="button" data-testid={`dock-${id}`} title={id} aria-label={`Restore ${id}`}
-          onClick={() => wins.focus(id)}><Icon.expand /></button>
+          onClick={() => {
+            wins.focus(id);
+            if (!wins.isMounted(id)) wins.restoreFn(id)?.();
+          }}><Icon.expand /></button>
       ))}
     </div>,
     layer(),

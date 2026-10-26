@@ -2,6 +2,7 @@ import { CodeProvider } from "./CodePanel";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { PaneControls } from "./resize";
 import { WindowDock } from "./ui/Window";
+import * as wins from "./ui/windows";
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
 import type { ContrastMode, Go, Target, View } from "./nav";
@@ -112,6 +113,9 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const [indexing, setIndexing] = useState(false);
   const [prefs, setPrefs] = useState(false);
+  // Settings lives in a window that can be minimised while its component is
+  // unmounted (a reload, say) – register the dock's restore path for it.
+  useEffect(() => wins.onRestore("settings", () => setPrefs(true)), []);
   const [dock, setDock] = useState(initial.view === "console");
   const [dockTab, setDockTab] = useState<DockTab>("terminal");
   // The server's last error: when set, the shell shows it with a retry instead of a blank page.

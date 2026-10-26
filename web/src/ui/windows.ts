@@ -39,6 +39,7 @@ export function clampAll() {
     const x = clampX(w), y = clampY(w);
     if (x !== w.x || y !== w.y) { w.x = x; w.y = y; moved = true; }
     if (w.w > window.innerWidth - 16) { w.w = window.innerWidth - 16; moved = true; }
+    if (w.h > window.innerHeight - 16) { w.h = window.innerHeight - 16; moved = true; }
   }
   if (moved) { save(); emit(); }
 }
@@ -55,6 +56,45 @@ function defaults(id: string): WinState {
 
 export function get(id: string): WinState | undefined {
   return wins[id];
+}
+
+// Which window components are currently mounted. A window the user closed
+// unmounts its view; the dock must never list – or try to restore – a window
+// whose component is gone, so the dock reads this set, not the store.
+const mounted = new Set<string>();
+
+/** A Window component mounted – the dock may now list it. */
+export function mount(id: string) { mounted.add(id); emit(); }
+
+/** A Window component unmounted – drop it from the dock's view. */
+export function unmount(id: string) {
+  mounted.delete(id);
+  // A real close unmounts the view without the store knowing; reconcile so
+  // no ghost open state (and no reopen on the next visit) is left behind.
+  const w = wins[id];
+  if (w?.open) close(id);
+  emit();
+}
+
+export function isMounted(id: string): boolean {
+  return mounted.has(id);
+}
+
+// How a dock button reopens a window whose component is not mounted (after a
+// reload, say): the view registers a restore callback and the dock calls it
+// after clearing the minimised flag. Windows with no handler and no mounted
+// component are never listed – a dock button must always do something.
+const restore = new Map<string, () => void>();
+
+/** Register how the dock reopens this window when its component is away. */
+export function onRestore(id: string, fn: () => void) {
+  restore.set(id, fn);
+  emit();
+  return () => { restore.delete(id); emit(); };
+}
+
+export function restoreFn(id: string): (() => void) | undefined {
+  return restore.get(id);
 }
 
 /** Open (or focus) a window by stable id. Returns its state. */
