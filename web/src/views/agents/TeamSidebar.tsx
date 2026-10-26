@@ -69,9 +69,9 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
                 return (
                   // a row, not a button: two sibling buttons inside one div
                   <div key={k} className="tc-mcard" data-testid={`tc-member-${k}`}>
-                    <button className="tc-mrow-open" onClick={() => onPickMember(k)} aria-label={`Edit ${m.name || m.agent}`}>
+                    <button className="tc-mrow-open" onClick={() => onPickMember(k)} aria-label={`Edit ${m.name || m.workflow || m.agent}`}>
                       <AgentHarmonograph name={k} size={22} family="team" />
-                      <span className="tc-mcard-name mono">{m.name || m.agent || "any agent"}</span>
+                      <span className="tc-mcard-name mono">{m.name || m.workflow || m.agent || "any agent"}</span>
                       <span className="tc-mcard-sub">{memberKey(m) === leadSeat(team) ? "lead" : titleFor(m.role || "member")}</span>
                     </button>
                     <button className="btn sm ghost icon-only" data-testid={`tc-member-x-${k}`} title={`Remove ${m.name || m.agent} from the team`}
@@ -108,7 +108,7 @@ function TeamSettings({ team, all, onSet, onDelete }: { team: Team; all: Team[];
           onSet({ members: team.members.map((m) => (memberKey(m) === target ? { ...m, reports_to: "" } : !m.reports_to ? { ...m, reports_to: target } : m)) });
         }} aria-label="Team lead">
           <option value="">nobody</option>
-          {team.members.map((m) => <option key={memberKey(m)} value={memberKey(m)}>{m.name || m.agent || "any agent"}</option>)}
+          {team.members.map((m) => <option key={memberKey(m)} value={memberKey(m)}>{m.name || m.workflow || m.agent || "any agent"}</option>)}
         </select>
       </label>
       <label className="mi-field"><span>answers to team</span>

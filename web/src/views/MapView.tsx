@@ -224,7 +224,7 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
   // Esc steps back out to the flow (unless a field or dialog has focus).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || (e.target as HTMLElement)?.closest?.("input, textarea, [role=dialog]")) return;
+      if (e.key !== "Escape" || (e.target as HTMLElement)?.closest?.("input:not([readonly]), textarea, [role=dialog]")) return;
       if (path.length || selChain) { home(); setSelChain(null); setSelBlock(null); }
       else { setSelBlock(null); setInspForcedRef.current(false); } // Esc closes the inspector
     };

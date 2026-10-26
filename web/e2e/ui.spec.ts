@@ -877,6 +877,7 @@ test.describe("agents", () => {
     const readToml = async () => (await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json()).content as string;
     await expect.poll(readToml).toContain('name = "e2e-crew-2"');
     // Delete through the sidebar – the tab and the kula.toml block both go.
+    page.once("dialog", (d) => d.accept());
     await side.getByTestId("team-delete").click();
     await expect(page.getByTestId("team-tab-e2e-crew-2")).toHaveCount(0);
     await expect.poll(readToml).not.toContain('name = "e2e-crew-2"');
@@ -3073,6 +3074,7 @@ test.describe("agents add from the map rail (U3)", () => {
     await page.locator(".team-tabs [role=tab]").filter({ hasText: teamName }).click();
     // the team sidebar carries the settings – delete there (U16 canvas)
     await page.locator("[data-testid=team-side-toggle]").click();
+    page.once("dialog", (d) => d.accept());
     await page.locator("[data-testid=team-delete]").click();
     await expect(page.locator(".team-tabs [role=tab]").filter({ hasText: teamName })).toHaveCount(0);
   });

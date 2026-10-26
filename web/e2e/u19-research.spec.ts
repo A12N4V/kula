@@ -120,7 +120,7 @@ test.describe("research cards", () => {
     // The mark is the studio's door, like on agent cards.
     await page.getByTestId("ag-art-u19-open").click();
     await expect(page.getByTestId("logo-studio")).toBeVisible();
-    await page.getByTestId("logo-close").click();
+    await page.getByTestId("logo-studio-close").click();
     await expect(page.getByTestId("logo-studio")).toHaveCount(0);
   });
 

@@ -26,7 +26,7 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   const teamNames = JSON.stringify(teams.map((t) => t.name));
   useEffect(() => {
     tabrow.current?.querySelectorAll<HTMLButtonElement>(".team-tabs [role=tab]").forEach((b: HTMLButtonElement) => {
-      b.setAttribute("data-testid", `team-tab-${b.textContent?.replace("●", "").trim() || "unnamed"}`);
+      b.setAttribute("data-testid", `team-tab-${b.textContent?.replace("\u25cf", "").trim() || "unnamed"}`);
     });
   }, [teamNames, cur, adding]);
   const toast = useToast();
@@ -99,7 +99,7 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   const addMember = (workflow: string, agent?: string) => {
     if (!t) return;
     act("team_add_member", { name: t.name, workflow, ...(agent ? { agent } : {}) }, `${workflow} joined ${t.name}`).then(() => {
-      setTeams((prev) => prev.map((y, j) => (j === cur && !y.members.some((m) => m.workflow === workflow) ? { ...y, members: [...y.members, { agent: agent ?? "any", workflow }] } : y)));
+      setTeams((prev) => prev.map((y, j) => (j === cur && !y.members.some((m) => m.workflow === workflow) ? { ...y, members: [...y.members, { name: workflow, agent: agent ?? "any", workflow }] } : y)));
     }).catch((e: Error) => toast(e.message, "err"));
   };
   const removeMember = (workflow: string) => {
@@ -120,7 +120,7 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
     ...t,
     members: t.members.map((m) => ({ ...m, agent: m.agent || "any", workflow: m.workflow ?? "" })),
   }), [t]);
-  // TabStrip renders "●" for the running dot inside the label text; the
+  // TabStrip renders a dot for a running team inside the label text; the
   // effect above names tabs from the text, so the dot is stripped first.
   return (
     <div className="tc-view" data-testid="teams-view">
