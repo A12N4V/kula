@@ -2100,7 +2100,7 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                     .collect();
                 println!(
                     "{}",
-                    serde_json::json!({ "rules": rules, "task": g.task(), "files": files.iter().map(|(p, v)| serde_json::json!({ "path": p, "verdict": v })).collect::<Vec<_>>() })
+                    serde_json::json!({ "rules": rules, "scopes": g.scope_fences(&config::Config::load(&repo.root)?), "task": g.task(), "files": files.iter().map(|(p, v)| serde_json::json!({ "path": p, "verdict": v })).collect::<Vec<_>>() })
                 );
                 return Ok(());
             }
@@ -2111,6 +2111,23 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
             for (i, (r, l)) in g.rules().iter().enumerate() {
                 let what = [r.paths.clone(), r.symbols.clone()].concat().join(", ");
                 println!("  {} {}  {}  {}", dim(&format!("#{}", i + 1)), level_tag(*l), bold(&what), dim(&r.reason));
+            }
+            let fences = g.scope_fences(&config::Config::load(&repo.root)?);
+            if !fences.is_empty() {
+                println!("\n  {}", accent("scope fences"));
+            }
+            for f in &fences {
+                let tag = match f.level.as_str() {
+                    "locked" => level_tag(guard::Level::Locked),
+                    "hidden" => level_tag(guard::Level::Hidden),
+                    "review" => level_tag(guard::Level::Review),
+                    "saved" => dim("saved"),
+                    _ => level_tag(guard::Level::Scope),
+                };
+                let what = f.entries.join(", ");
+                let n = if f.resolved != f.entries { format!("  → {} path(s)", f.resolved.len()) } else { String::new() };
+                let on = if f.active { accent(" active") } else { String::new() };
+                println!("  {}  {}  {}{}{}", tag, bold(&f.source), what, dim(&n), on);
             }
             if let Some(t) = g.task() {
                 println!(

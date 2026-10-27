@@ -134,6 +134,19 @@ pub struct Task {
     pub workflow: String,
 }
 
+/// One scope fence as `guard list` shows it.
+#[derive(Serialize, Clone, Debug)]
+pub struct ScopeFence {
+    /// `task "…"`, `workflow tests`, `scope core`.
+    pub source: String,
+    /// scope (may change only this) · locked · hidden · review · saved.
+    pub level: String,
+    /// In force right now (the open task or its workflow).
+    pub active: bool,
+    pub entries: Vec<String>,
+    pub resolved: Vec<String>,
+}
+
 struct Compiled {
     rule: GuardRule,
     globs: GlobSet,
@@ -381,6 +394,47 @@ impl Guards {
     /// then workflow, then team). For the effective-fences view.
     pub fn all_rules(&self) -> Vec<(GuardRule, Level, String)> {
         self.rules.iter().map(|c| (c.rule.clone(), c.level, c.source.clone())).collect()
+    }
+
+    /// Every scope fence, for `guard list`: the open task's scope, the active
+    /// workflow's own fences, each workflow's default scope, and the saved
+    /// `[[scope]]`s. `resolved` is what the entries mean after saved scopes expand.
+    pub fn scope_fences(&self, cfg: &Config) -> Vec<ScopeFence> {
+        let fence = |source: String, level: &str, active: bool, entries: &[String]| ScopeFence {
+            source,
+            level: level.into(),
+            active,
+            entries: entries.to_vec(),
+            resolved: cfg.expand_scope(entries),
+        };
+        let mut out = Vec::new();
+        if let Some(t) = self.task().filter(|t| !t.scope.is_empty()) {
+            out.push(fence(format!("task \"{}\"", t.title), "scope", true, &t.scope));
+        }
+        let active = self.workflow.as_ref().map(|w| w.name.clone()).unwrap_or_default();
+        for w in workflow::all(cfg) {
+            let on = w.name == active;
+            if !w.scope.is_empty() && !(on && self.task().is_some_and(|t| !t.scope.is_empty())) {
+                out.push(fence(format!("workflow {}", w.name), "scope", on, &w.scope));
+            }
+            if on {
+                for (list, level) in [(&w.lock, "locked"), (&w.hide, "hidden"), (&w.review, "review")] {
+                    if !list.is_empty() {
+                        out.push(fence(format!("workflow {}", w.name), level, true, list));
+                    }
+                }
+            }
+        }
+        for sc in &cfg.scopes {
+            out.push(ScopeFence {
+                source: format!("scope {}", sc.name),
+                level: "saved".into(),
+                active: false,
+                entries: sc.select.clone(),
+                resolved: sc.paths.clone(),
+            });
+        }
+        out
     }
 
     pub fn workflow_rules(&self) -> Vec<(GuardRule, Level)> {
@@ -1266,6 +1320,12 @@ mod tests {
             assert_eq!(g.path("src/main.rs").level, Level::Scope);
             assert_eq!(g.path("vendor/x.rs").level, Level::Locked);
         }
+        let t = Task { title: "t".into(), scope: vec![], started: 0, by: "a".into(), workflow: "w".into() };
+        let f = guards(toml, Some(t)).scope_fences(&cfg);
+        let w_scope = f.iter().find(|x| x.source == "workflow w" && x.level == "scope").unwrap();
+        assert!(w_scope.active && w_scope.resolved == vec!["src/core/a.rs", "src/core/b.rs"]);
+        assert!(f.iter().any(|x| x.source == "workflow w" && x.level == "locked" && x.resolved == vec!["vendor/x.rs"]));
+        assert!(f.iter().any(|x| x.source == "scope core" && x.level == "saved" && !x.active));
         // A name that is a path or glob is never taken for a scope.
         assert!(cfg.saved_scope("core").is_some() && cfg.saved_scope("core/**").is_none() && cfg.saved_scope("nope").is_none());
     }
