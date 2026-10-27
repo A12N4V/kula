@@ -143,6 +143,9 @@ enum Cmd {
         /// Don't build the graph at the end.
         #[arg(long)]
         no_index: bool,
+        /// Leave kula's files committable (default: kept local via .git/info/exclude).
+        #[arg(long)]
+        commit: bool,
     },
     /// Build or rebuild the knowledge graph (.kula/graph.db).
     #[command(after_help = "Examples:\n  kula index          ·  kula index --if-stale --quiet   (what the hooks run)")]
@@ -1049,7 +1052,7 @@ fn run(cli: Cli) -> Result<()> {
     if let Cmd::Lang(lc) = cmd {
         return lang_cmd::run(&cwd, lc, json);
     }
-    if let Cmd::Init { yes, hooks, no_hooks, agents, no_agents, ci, no_index } = cmd {
+    if let Cmd::Init { yes, hooks, no_hooks, agents, no_agents, ci, no_index, commit } = cmd {
         let pick = |on: bool, off: bool| {
             if on {
                 Some(true)
@@ -1061,7 +1064,7 @@ fn run(cli: Cli) -> Result<()> {
         };
         return project::init(
             &cwd,
-            project::InitOpts { yes, hooks: pick(hooks, no_hooks), agents: pick(agents, no_agents), ci, index: !no_index },
+            project::InitOpts { yes, hooks: pick(hooks, no_hooks), agents: pick(agents, no_agents), ci, index: !no_index, commit },
         );
     }
     let repo = Repo::discover(&cwd)?;

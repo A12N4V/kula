@@ -19,6 +19,53 @@ pub struct InitOpts {
     pub agents: Option<bool>,
     pub ci: Option<String>,
     pub index: bool,
+    /// Keep kula's files visible to git for committing. Off by default: they
+    /// go in .git/info/exclude so they never ride along in a contributor's PR.
+    pub commit: bool,
+}
+
+/// Untracked paths git sees right now (ignored ones excluded).
+fn untracked(repo: &Repo) -> std::collections::BTreeSet<String> {
+    repo.run(&["status", "--porcelain", "-z", "--untracked-files=all"])
+        .unwrap_or_default()
+        .split('\0')
+        .filter_map(|l| l.strip_prefix("?? "))
+        .map(str::to_string)
+        .collect()
+}
+
+const EXCLUDE_HEADER: &str = "# kula: local files (`kula init --commit` keeps them committable)";
+
+/// Add paths to the repository's own .git/info/exclude (never the shared
+/// .gitignore). Returns how many were new.
+pub fn exclude_local(repo: &Repo, paths: &[String]) -> Result<usize> {
+    if paths.is_empty() {
+        return Ok(0);
+    }
+    let rel = repo.run(&["rev-parse", "--git-path", "info/exclude"])?;
+    let file = repo.root.join(rel.trim());
+    let mut body = std::fs::read_to_string(&file).unwrap_or_default();
+    let have: std::collections::HashSet<String> = body.lines().map(|l| l.trim().to_string()).collect();
+    let add: Vec<String> = paths.iter().map(|p| format!("/{p}")).filter(|l| !have.contains(l)).collect();
+    if add.is_empty() {
+        return Ok(0);
+    }
+    if !body.is_empty() && !body.ends_with('\n') {
+        body.push('\n');
+    }
+    if !have.contains(EXCLUDE_HEADER) {
+        body.push_str(EXCLUDE_HEADER);
+        body.push('\n');
+    }
+    for l in &add {
+        body.push_str(l);
+        body.push('\n');
+    }
+    if let Some(d) = file.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    std::fs::write(&file, body)?;
+    Ok(add.len())
 }
 
 /// Ask a yes/no question on a TTY; take the default otherwise (or with -y).
@@ -75,6 +122,8 @@ pub fn init(dir: &Path, o: InitOpts) -> Result<()> {
         }
     };
     let root = repo.root.clone();
+    let before = untracked(&repo);
+    let commit = o.commit || ask(o.yes, "commit kula's files to this repository (no: keep them local)?", false);
 
     // 2. kula.toml.
     if config::Config::exists(&root) {
@@ -84,7 +133,7 @@ pub fn init(dir: &Path, o: InitOpts) -> Result<()> {
         c.project.name = ask_str(o.yes, "project name", &repo.name());
         c.project.default_branch = ask_str(o.yes, "default branch", &default_branch(&repo, &c));
         std::fs::write(root.join(config::FILE), c.render())?;
-        done(config::FILE, "written – commit it so the team shares one graph");
+        done(config::FILE, if commit { "written – commit it so the team shares one graph" } else { "written" });
     }
     let cfg = Config::load(&root)?;
 
@@ -138,6 +187,16 @@ pub fn init(dir: &Path, o: InitOpts) -> Result<()> {
             done(".kula-ci.yml", "include it from .gitlab-ci.yml");
         }
         _ => {}
+    }
+
+    // 6b. Local by default: whatever init added stays out of `git status`, so
+    // it never lands in a PR to someone else's repository.
+    if !commit {
+        let new: Vec<String> = untracked(&repo).difference(&before).cloned().collect();
+        let n = exclude_local(&repo, &new)?;
+        if n > 0 {
+            done(".git/info/exclude", &format!("{n} file(s) kept local – `kula init --commit` to share them"));
+        }
     }
 
     // 7. The first graph.
@@ -651,4 +710,31 @@ pub fn check_markdown(r: &CheckReport) -> String {
         s += &format!("\n**Imported but not declared:** {}\n", r.undeclared.join(", "));
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn init_files_stay_local_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        assert!(std::process::Command::new("git").arg("-C").arg(root).args(["init", "-q"]).status().unwrap().success());
+        std::fs::write(root.join("mine.txt"), "x").unwrap();
+        let repo = Repo::discover(root).unwrap();
+        let before = untracked(&repo);
+        std::fs::write(root.join("kula.toml"), "").unwrap();
+        std::fs::create_dir_all(root.join(".claude")).unwrap();
+        std::fs::write(root.join(".claude/settings.json"), "{}").unwrap();
+        let new: Vec<String> = untracked(&repo).difference(&before).cloned().collect();
+        assert_eq!(new, vec![".claude/settings.json".to_string(), "kula.toml".to_string()]);
+        assert_eq!(exclude_local(&repo, &new).unwrap(), 2);
+        assert_eq!(exclude_local(&repo, &new).unwrap(), 0, "idempotent");
+        // Only the user's own file is left for git; the shared .gitignore is untouched.
+        assert_eq!(untracked(&repo).into_iter().collect::<Vec<_>>(), vec!["mine.txt".to_string()]);
+        assert!(!root.join(".gitignore").exists());
+        let ex = std::fs::read_to_string(root.join(".git/info/exclude")).unwrap();
+        assert!(ex.contains(EXCLUDE_HEADER) && ex.contains("/kula.toml\n"));
+    }
 }
