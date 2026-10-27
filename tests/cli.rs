@@ -1167,10 +1167,13 @@ fn shell_bypasses_are_refused_in_a_fenced_repo() {
         "find worker -name '*.py'",
         "T=worker; echo x > $T/note.md",
         "cd worker && echo x > note.md",
-        "python3 -c 'print(1)'",
     ] {
         kula_code(d, &["guard", "hook"], Some(&bash(cmd)), 0);
     }
+    // Inline interpreter code can compute any path (`'te'+'sts'`), so with fences
+    // in place it is a person's to run, however harmless it looks.
+    let (_, why) = kula_code(d, &["guard", "hook"], Some(&bash("python3 -c 'print(1)'")), 2);
+    assert!(why.contains("run it as a person"), "{why}");
 }
 
 #[test]

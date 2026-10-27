@@ -2266,7 +2266,15 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                 let hidden = guard::hidden_paths(repo, &g);
                 if !fenced.is_empty() || !hidden.is_empty() {
                     let (more, why) = guard::shell_guard(cmd, &cwd_rel, &fenced, &hidden);
-                    if let Some(why) = why {
+                    if let Some(mut why) = why {
+                        // Say which rule fences it, as the edit-tool refusals do.
+                        if let Some(hit) = why.strip_prefix("kula guard: refused – ").and_then(|r| r.strip_suffix(" is fenced for agents.")) {
+                            let hit = hit.to_string();
+                            if let Some(f) = fenced.iter().find(|f| **f == hit || f.starts_with(&format!("{hit}/")) || hit.starts_with(&format!("{f}/"))) {
+                                let v = g.edit(st.as_ref(), f);
+                                why = format!("kula guard: refused – {hit} is {} for agents – {} ({}).", v.level.as_str(), v.reason, v.rule);
+                            }
+                        }
                         deny(why);
                     }
                     for p in more {
