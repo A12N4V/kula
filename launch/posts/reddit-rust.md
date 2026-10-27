@@ -17,7 +17,7 @@ I've been building kula, a CLI (MIT, Rust 2021) that wraps git and keeps a call/
 
 It also has agent features (an MCP server and edit fences; the hook catches obvious shell writes; scripts, variables and cd-then-write can slip past; CI (`kula check`) is the gate), but for this sub the indexing is the interesting part.
 
-No benchmarks yet; I will post index times and memory once measured.
+Measured on an Apple M4 Mac, release build, shallow clones: sharkdp/bat (69 Rust files, 2,013 symbols, 4,507 edges) indexes in 0.9 s wall with 354 MB peak RSS on `kula init`; colinhacks/zod (477 TypeScript files, 4,060 symbols, 12,014 edges) in 0.35 s and 149 MB. A warm `kula index` with nothing changed is currently slower (2.7 s on bat, 5.5 s on zod) because it reparses everything; incremental re-index is the next fix.
 
 `cargo install kula` builds from source; brew, nix and release binaries also exist.
 
@@ -27,7 +27,7 @@ Question: for Rust specifically, how would you get better call resolution withou
 - Round 2: dropped the MSRV 1.80 claim (no 1.80 toolchain to run `cargo +1.80 check`); said "no benchmarks yet"; replaced "enforced" with the shared hook line.
 - r/rust rule: posts must clearly involve Rust. Title now names the crates and the technique, not just "Announcing kula".
 - Verified versions in Cargo.toml: tree-sitter 0.27, oxigraph 0.5 with default-features = false, rusqlite bundled, axum 0.8, rayon, ignore.
-- Removed "fast" and "blazing"; no benchmark numbers exist yet.
+- Removed "fast" and "blazing"; benchmark numbers come from the bat and zod dry run (Apple M4).
 - Removed a claim that cat-file is "one process per index"; README says "one git cat-file --batch", phrased to match.
 - Called out Rust trait/macro resolution as weak; a r/rust reader would find it in five minutes anyway.
 - Confirmed bench/mapping/gold/miniserde exists before citing it; did not claim a precision number.

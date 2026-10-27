@@ -26,6 +26,7 @@ Known limits:
 - The hook is a speed bump: the hook catches obvious shell writes; scripts, variables and cd-then-write can slip past; CI (`kula check`) is the gate. A fence is only as strong as the hook each agent exposes.
 - Graph edges are name heuristics. Expect false and missing edges with dynamic dispatch, reflection and heavy metaprogramming.
 - Windows gets the 11 built-in languages only; no prebuilt packs yet.
+- Speed, on an Apple M4 (release build): first index of sharkdp/bat (2,013 symbols) takes 0.9 s and 354 MB peak RSS; colinhacks/zod (4,060 symbols) 0.35 s and 149 MB. A no-change re-index is slower today (2.7 s and 5.5 s) because it reparses everything.
 - It is pre-1.0 (0.3) with one maintainer.
 - It does a lot (git UI, graph, issues and notes in git, agent workflows, RDF/SPARQL export). The map and the fences are the parts I would judge it on.
 
@@ -42,4 +43,4 @@ A question for you: if you run agents on a shared codebase, would you rather fen
 - Named SCIP explicitly so the precision limit is stated before a commenter does.
 - Dropped the Stack Overflow survey stats; they read as marketing in an HN comment.
 - Binary size (28 MB) and 11 + 173 languages checked against README "How it works". Resolution order quoted from the same paragraph.
-- Did not claim index speed numbers: none are measured yet (PLAN layer 4). Add them before posting if the bat dry run has finished.
+- Index numbers are from the bat/zod dry run on an Apple M4 (`/usr/bin/time -l`), including the slow warm re-index, stated rather than hidden.
