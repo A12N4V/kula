@@ -408,7 +408,7 @@ pub fn memory_layers(repo: &Repo) -> Result<Vec<MemoryLayer>> {
     let task_scope = crate::guard::Guards::load(repo)?.task().map(|t| t.scope.clone()).unwrap_or_default();
     let mut workflows: Vec<(String, globset::GlobSet)> = vec![];
     for w in crate::workflow::all(&cfg).into_iter().filter(|w| !w.scope.is_empty()) {
-        if let Ok(g) = glob_matcher(&w.scope) {
+        if let Ok(g) = glob_matcher(&cfg.expand_scope(&w.scope)) {
             workflows.push((w.name, g));
         }
     }

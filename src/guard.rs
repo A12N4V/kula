@@ -317,7 +317,8 @@ impl Guards {
                 if pats.is_empty() {
                     continue;
                 }
-                let (paths, symbols): (Vec<String>, Vec<String>) = pats.iter().cloned().partition(|s| looks_like_path(s) || s == "**");
+                let (paths, symbols): (Vec<String>, Vec<String>) =
+                    cfg.expand_scope(pats).into_iter().partition(|s| looks_like_path(s) || s == "**");
                 let reason = format!("the {} workflow {what} this – {}", w.name, w.about);
                 rules.push(Compiled {
                     globs: globset(&paths)?,
@@ -1238,6 +1239,35 @@ mod tests {
         assert_eq!(g.node(&node("login", "src/web.rs")).level, Level::Open);
         assert!(!Level::Scope.editable() && Level::Scope.readable());
         assert!(!Level::Hidden.readable());
+    }
+
+    #[test]
+    fn saved_scopes_work_by_name_in_workflows() {
+        let toml = r#"
+            [[scope]]
+            name = "core"
+            select = ["src/core/**"]
+            paths = ["src/core/a.rs", "src/core/b.rs"]
+            [[scope]]
+            name = "vendor"
+            select = ["vendor/**"]
+            paths = ["vendor/x.rs"]
+            [[workflow]]
+            name = "w"
+            scope = ["core"]
+            lock = ["scope:vendor"]
+        "#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        let w = crate::workflow::find(&cfg, "w").unwrap();
+        for scope in [w.scope.clone(), vec!["@core".into()], vec!["scope:core".into()]] {
+            let t = Task { title: "t".into(), scope, started: 0, by: "a".into(), workflow: "w".into() };
+            let g = guards(toml, Some(t));
+            assert_eq!(g.path("src/core/a.rs").level, Level::Open);
+            assert_eq!(g.path("src/main.rs").level, Level::Scope);
+            assert_eq!(g.path("vendor/x.rs").level, Level::Locked);
+        }
+        // A name that is a path or glob is never taken for a scope.
+        assert!(cfg.saved_scope("core").is_some() && cfg.saved_scope("core/**").is_none() && cfg.saved_scope("nope").is_none());
     }
 
     #[test]

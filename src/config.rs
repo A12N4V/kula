@@ -143,12 +143,32 @@ impl Config {
     pub fn expand_scope(&self, entries: &[String]) -> Vec<String> {
         let mut out = Vec::new();
         for e in entries {
-            match e.strip_prefix('@').and_then(|n| self.scopes.iter().find(|s| s.name == n)) {
+            match self.saved_scope(e) {
+                // A scope that picked no files still fences: its own selectors stand in.
+                Some(s) if s.paths.is_empty() => out.extend(s.select.iter().cloned()),
                 Some(s) => out.extend(s.paths.iter().cloned()),
                 None => out.push(e.clone()),
             }
         }
+        out.dedup();
         out
+    }
+
+    /// The saved `[[scope]]` an entry names: `@auth`, `scope:auth`, or a bare
+    /// `auth` when no file or glob of that shape is meant (no `/`, `*` or `.`).
+    pub fn saved_scope(&self, entry: &str) -> Option<&Scope> {
+        let e = entry.trim();
+        let name = e.strip_prefix('@').or_else(|| e.strip_prefix("scope:")).unwrap_or_else(|| {
+            if e.contains(['/', '*', '.', '?', '[']) {
+                ""
+            } else {
+                e
+            }
+        });
+        if name.is_empty() {
+            return None;
+        }
+        self.scopes.iter().find(|s| s.name == name)
     }
 }
 
