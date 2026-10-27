@@ -205,7 +205,7 @@ const COMMON: &[&str] = &[
     "len",
 ];
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Def {
     name: String,
     kind: &'static str,
@@ -218,7 +218,7 @@ struct Def {
     hash: u64,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct ParsedFile {
     path: String,
     lang: &'static str,
@@ -226,6 +226,100 @@ struct ParsedFile {
     defs: Vec<Def>,
     calls: Vec<(String, usize)>,
     imports: Vec<String>,
+    /// Hash of the raw source and language id; the parse cache key.
+    src_hash: u64,
+}
+
+/// Parsed files from the last stored build, keyed by path. A file whose
+/// content hash matches is reused instead of reparsed.
+type ParseCache = HashMap<String, ParsedFile>;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CachedDef(String, String, u32, u32, usize, usize, Option<String>, u64);
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CachedFile {
+    path: String,
+    lang: String,
+    loc: u32,
+    defs: Vec<CachedDef>,
+    calls: Vec<(String, usize)>,
+    imports: Vec<String>,
+    h: u64,
+}
+
+const CACHE_FILE: &str = "parse-cache-v1.json";
+
+fn static_kind(k: &str) -> &'static str {
+    match k {
+        "method" => "method",
+        "class" => "class",
+        "interface" => "interface",
+        _ => "function",
+    }
+}
+
+/// Load the parse cache; anything unreadable or from an unknown language is dropped.
+fn load_cache(dir: &Path) -> ParseCache {
+    let Ok(raw) = std::fs::read(dir.join(CACHE_FILE)) else { return HashMap::new() };
+    let Ok(list) = serde_json::from_slice::<Vec<CachedFile>>(&raw) else { return HashMap::new() };
+    list.into_iter()
+        .filter_map(|c| {
+            let lang = langs::get(&c.lang)?.id;
+            let defs = c
+                .defs
+                .into_iter()
+                .map(|d| Def {
+                    name: d.0,
+                    kind: static_kind(&d.1),
+                    start_line: d.2,
+                    end_line: d.3,
+                    start_byte: d.4,
+                    end_byte: d.5,
+                    parent_name: d.6,
+                    hash: d.7,
+                })
+                .collect();
+            Some((c.path.clone(), ParsedFile { path: c.path, lang, loc: c.loc, defs, calls: c.calls, imports: c.imports, src_hash: c.h }))
+        })
+        .collect()
+}
+
+fn save_cache(dir: &Path, cache: &ParseCache) {
+    let mut list: Vec<CachedFile> = cache
+        .values()
+        .map(|p| CachedFile {
+            path: p.path.clone(),
+            lang: p.lang.to_string(),
+            loc: p.loc,
+            defs: p
+                .defs
+                .iter()
+                .map(|d| {
+                    CachedDef(
+                        d.name.clone(),
+                        d.kind.to_string(),
+                        d.start_line,
+                        d.end_line,
+                        d.start_byte,
+                        d.end_byte,
+                        d.parent_name.clone(),
+                        d.hash,
+                    )
+                })
+                .collect(),
+            calls: p.calls.clone(),
+            imports: p.imports.clone(),
+            h: p.src_hash,
+        })
+        .collect();
+    list.sort_by(|a, b| a.path.cmp(&b.path));
+    if let Ok(j) = serde_json::to_vec(&list) {
+        let tmp = dir.join(format!("{CACHE_FILE}.tmp-{}", std::process::id()));
+        if std::fs::write(&tmp, j).is_ok() {
+            let _ = std::fs::rename(&tmp, dir.join(CACHE_FILE));
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -235,6 +329,8 @@ pub struct IndexStats {
     pub symbols: usize,
     pub edges: usize,
     pub communities: usize,
+    /// Files actually parsed this run; the rest came from the parse cache.
+    pub reparsed: usize,
     pub millis: u128,
 }
 
@@ -661,16 +757,28 @@ pub type Reader<'a> = &'a (dyn Fn(&str) -> Option<String> + Sync);
 
 /// Build a graph from a file list and a content reader (working tree or git objects).
 pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
-    build_with(files, read, None)
+    build_with(files, read, None, None).0
 }
 
-fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: Option<&'static Progress>) -> Built {
+/// Build, reusing `cache` entries whose source hash still matches. Returns the
+/// graph, the parsed files (the next cache) and how many were actually reparsed.
+fn build_with(
+    files: &[(String, Option<&'static str>)],
+    read: Reader,
+    progress: Option<&'static Progress>,
+    cache: Option<&ParseCache>,
+) -> (Built, ParseCache, usize) {
+    let reparsed = AtomicUsize::new(0);
+    let reparsed_ref = &reparsed;
     let source: Vec<(String, &'static str)> = files.iter().filter_map(|(p, l)| l.map(|l| (p.clone(), l))).collect();
 
     if let Some(p) = progress {
         p.phase(2, source.len());
     }
-    langs::warm(source.iter().map(|(_, l)| *l));
+    // Only languages with a file to reparse need their grammar and queries compiled.
+    let need: Vec<&'static str> =
+        source.iter().filter(|(p, _)| cache.map_or(true, |c| !c.contains_key(p.as_str()))).map(|(_, l)| *l).collect();
+    langs::warm(need);
     // Parse in parallel.
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(16);
     let chunk = source.len().div_ceil(threads).max(1);
@@ -684,11 +792,21 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                     let mut out = Vec::new();
                     for (path, lid) in batch {
                         let Some(src) = read(path) else { continue };
+                        let h = fnv(lid.as_bytes()) ^ fnv(src.as_bytes());
+                        if let Some(hit) = cache.and_then(|c| c.get(path.as_str())).filter(|c| c.src_hash == h) {
+                            out.push(hit.clone());
+                            if let Some(p) = progress {
+                                p.done.fetch_add(1, Relaxed);
+                            }
+                            continue;
+                        }
                         let Some(lang) = langs::get(langs::refine(lid, &src)) else { continue };
                         if parser.set_language(&lang.language).is_err() {
                             continue;
                         }
-                        if let Some(pf) = parse_source(path, &langs::prepare(lang.id, &src), lang, &mut parser) {
+                        reparsed_ref.fetch_add(1, Relaxed);
+                        if let Some(mut pf) = parse_source(path, &langs::prepare(lang.id, &src), lang, &mut parser) {
+                            pf.src_hash = h;
                             out.push(pf);
                         }
                         if let Some(p) = progress {
@@ -875,7 +993,16 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
         p.phase(4, 0);
     }
     let communities = crate::graph::detect_communities(&mut nodes, &edges);
-    Built { nodes, edges, communities, hashes, files: files.len(), parsed: parsed.len() }
+    let nparsed = parsed.len();
+    let next: ParseCache = parsed.into_iter().map(|p| (p.path.clone(), p)).collect();
+    (Built { nodes, edges, communities, hashes, files: files.len(), parsed: nparsed }, next, reparsed.into_inner())
+}
+
+/// Stable fingerprint of a built graph: equal graphs skip the store rewrite,
+/// which keeps the stored map (and its revision) valid.
+fn fingerprint(nodes: &[Node], edges: &[Edge], communities: &[crate::store::Community]) -> String {
+    let j = serde_json::to_vec(&(nodes, edges, communities)).unwrap_or_default();
+    format!("{:016x}-{}", fnv(&j), j.len())
 }
 
 pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
@@ -894,11 +1021,25 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         }
     }
     let read = |p: &str| std::fs::read_to_string(root.join(p)).ok();
-    let Built { nodes, edges, communities, files: nfiles, parsed, .. } = build_with(&files, &read, Some(&PROGRESS));
+    let dir = repo.kula_dir();
+    let live = Store::open(repo).ok().filter(|s| s.meta("indexed_head").is_some());
+    // The parse cache only counts when the graph it fed is still on disk.
+    let cache = if live.is_some() { load_cache(&dir) } else { HashMap::new() };
+    let (Built { nodes, edges, communities, files: nfiles, parsed, .. }, next, reparsed) =
+        build_with(&files, &read, Some(&PROGRESS), Some(&cache));
 
     PROGRESS.phase(5, 0);
-    let store = Store::create(repo)?;
-    store.write_all(&nodes, &edges, &communities)?;
+    let fp = fingerprint(&nodes, &edges, &communities);
+    let unchanged = live.as_ref().is_some_and(|s| s.meta("graph_fp").as_deref() == Some(fp.as_str()));
+    let store = if unchanged {
+        live.unwrap()
+    } else {
+        drop(live);
+        let s = Store::create(repo)?;
+        s.write_all(&nodes, &edges, &communities)?;
+        s.set_meta("graph_fp", &fp)?;
+        s
+    };
     store.set_meta("indexed_head", &repo.head().unwrap_or_default())?;
     store.set_meta(
         "indexed_at",
@@ -911,10 +1052,13 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         symbols: nodes.iter().filter(|n| n.kind != "file" && n.kind != "package").count(),
         edges: edges.len(),
         communities: communities.len(),
+        reparsed,
         millis: t0.elapsed().as_millis(),
     };
     store.set_meta("stats", &serde_json::to_string(&stats)?)?;
     store.publish()?;
+    std::fs::create_dir_all(&dir).ok();
+    save_cache(&dir, &next);
     if !quiet {
         eprintln!();
     }
@@ -1242,5 +1386,44 @@ mod tests {
         assert_eq!(resolve_import("Data.Util", "app/Main.hs", "haskell", &by_stem, &by_dir), vec![1]);
         assert_eq!(resolve_import("./helpers.sh", "lib/x.sh", "bash", &by_stem, &by_dir), vec![2]);
         assert!(resolve_import("kotlin.math.max", "a.kt", "kotlin", &by_stem, &by_dir).is_empty());
+    }
+
+    #[test]
+    fn warm_build_reuses_unchanged_files() {
+        let files: Vec<(String, Option<&'static str>)> = vec![("a.rs".into(), Some("rust")), ("b.rs".into(), Some("rust"))];
+        let src = std::sync::Mutex::new(HashMap::from([
+            ("a.rs".to_string(), "fn alpha() { beta(); }".to_string()),
+            ("b.rs".to_string(), "fn beta() {}".to_string()),
+        ]));
+        let read = |p: &str| src.lock().unwrap().get(p).cloned();
+        let (b1, cache, n1) = build_with(&files, &read, None, None);
+        assert_eq!(n1, 2);
+        let (b2, cache, n2) = build_with(&files, &read, None, Some(&cache));
+        assert_eq!(n2, 0, "unchanged files are not reparsed");
+        assert_eq!(fingerprint(&b1.nodes, &b1.edges, &b1.communities), fingerprint(&b2.nodes, &b2.edges, &b2.communities));
+        src.lock().unwrap().insert("b.rs".into(), "fn beta() {}\nfn gamma() {}".into());
+        let (b3, _, n3) = build_with(&files, &read, None, Some(&cache));
+        assert_eq!(n3, 1, "only the edited file is reparsed");
+        assert!(b3.nodes.iter().any(|n| n.name == "gamma"));
+        assert_ne!(fingerprint(&b1.nodes, &b1.edges, &b1.communities), fingerprint(&b3.nodes, &b3.edges, &b3.communities));
+    }
+
+    #[test]
+    fn parse_cache_round_trips() {
+        let files: Vec<(String, Option<&'static str>)> = vec![("a.rs".into(), Some("rust"))];
+        let read = |_: &str| Some("struct S; impl S { fn m(&self) { self.n(); } fn n(&self) {} }".to_string());
+        let (_, cache, _) = build_with(&files, &read, None, None);
+        let dir = tempfile::tempdir().unwrap();
+        save_cache(dir.path(), &cache);
+        let back = load_cache(dir.path());
+        let (a, b) = (&cache["a.rs"], &back["a.rs"]);
+        assert_eq!(a.src_hash, b.src_hash);
+        assert_eq!(a.calls, b.calls);
+        assert_eq!(
+            a.defs.iter().map(|d| (&d.name, d.kind, &d.parent_name)).collect::<Vec<_>>(),
+            b.defs.iter().map(|d| (&d.name, d.kind, &d.parent_name)).collect::<Vec<_>>()
+        );
+        let (_, _, n) = build_with(&files, &read, None, Some(&back));
+        assert_eq!(n, 0);
     }
 }

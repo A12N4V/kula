@@ -1072,10 +1072,11 @@ fn run(cli: Cli) -> Result<()> {
             if if_stale && Store::freshness(&repo) == "current" {
                 return Ok(());
             }
+            let wall = std::time::Instant::now();
             if !quiet {
                 eprint!("{} indexing {} …", accent("◯"), bold(&repo.name()));
             }
-            let s = index::run(&repo, quiet)?;
+            let mut s = index::run(&repo, quiet)?;
             // Map by default: blocks and chains after the graph builds. The
             // CLI runs it on this thread (run_now) – the process ends when
             // main returns, so a detached thread would be killed mid-run and
@@ -1097,15 +1098,18 @@ fn run(cli: Cli) -> Result<()> {
                     v => eprintln!("  {} embeddings off – {}: {}", crate::term::dim("◆"), v, rep.reasons.join("; ")),
                 }
             }
+            // Report wall time for the whole command (graph, map, embeddings), not just the parse.
+            s.millis = wall.elapsed().as_millis();
             if quiet {
             } else if json {
                 out(&s);
             } else {
                 println!(
-                    "{} {} files · {} parsed · {} symbols · {} edges · {} clusters  {}",
+                    "{} {} files · {} parsed ({} changed) · {} symbols · {} edges · {} clusters  {}",
                     green("✓"),
                     s.files,
                     s.parsed,
+                    s.reparsed,
                     bold(&s.symbols.to_string()),
                     s.edges,
                     s.communities,
