@@ -53,7 +53,8 @@ the last run's state – one canvas, one inspector.
 
 **Layout map (1440×900).** Left-to-right: the top strip (`map-view` header with
 `map-headline` and `map-route`); the flow canvas `map-flow` → `map-flow-canvas`
-filling x 56→1440; a top-right HUD cluster at x 976→1440 (`map-key-dock`,
+filling the region right of the nav rail; a top-right HUD cluster at x 976→1430
+(`map-key-dock`,
 `x5-legend` 82×30, `u9-plain-chip`, `map-hud` 93×30, `map-explorer-btn`);
 the right-docked inspector `map-inspector` / `#map-sidebar` 400×802 at x 1028.
 Inside the canvas: `fc-group` zone containers holding `fc-node` cards, the
@@ -219,7 +220,7 @@ Interaction 6 / Robustness 7 / Polish 7**.
 Three modes over the same camera: `overlay` draws one canvas, `split` draws two
 (`.split-canvas` with `graph-canvas` per pane and Before/After tags), `report`
 draws none and renders the textual analysis. Panel `contrast-panel` docks right,
-360×826 at x 1072 (E16). Measured on `main` → `WORKTREE`: Before 935 nodes,
+360×826 at x 1080 (E16). Measured on `main` → `WORKTREE`: Before 935 nodes,
 After 3,546 nodes, +2427 (E16) – a legible summary of a large working tree.
 
 Rated **Value 8 / Clarity 8 / Density 8 / Consistency 8 / Interaction 7 /
