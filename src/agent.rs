@@ -244,8 +244,12 @@ pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
     let direct: Vec<String> =
         up.hits.iter().filter(|h| h.depth == 1).map(|h| format!("{} ({}:{})", h.node.name, h.node.path, h.node.start_line)).collect();
     let mut src_cache = std::collections::HashMap::new();
-    let mut tests: Vec<String> =
-        up.hits.iter().filter(|h| is_test_node(&repo.root, &h.node, &mut src_cache)).map(|h| format!("{} ({})", h.node.name, h.node.path)).collect();
+    let mut tests: Vec<String> = up
+        .hits
+        .iter()
+        .filter(|h| is_test_node(&repo.root, &h.node, &mut src_cache))
+        .map(|h| format!("{} ({})", h.node.name, h.node.path))
+        .collect();
     tests.dedup();
     let co = co_changes(repo, &n.path, 6);
     let notes: Vec<String> = crate::meta::load(repo)
@@ -292,7 +296,8 @@ pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
     }
     advice.push("After editing, call verify_edit to see what actually moved.".into());
     let direct_caller_refs: Vec<Ref> = up.hits.iter().filter(|h| h.depth == 1).map(|h| r(&h.node)).collect();
-    let mut test_refs: Vec<Ref> = up.hits.iter().filter(|h| is_test_node(&repo.root, &h.node, &mut src_cache)).map(|h| r(&h.node)).collect();
+    let mut test_refs: Vec<Ref> =
+        up.hits.iter().filter(|h| is_test_node(&repo.root, &h.node, &mut src_cache)).map(|h| r(&h.node)).collect();
     test_refs.dedup_by(|a, b| a.name == b.name && a.path == b.path);
     Ok(PreEdit {
         risk: up.risk.clone(),
