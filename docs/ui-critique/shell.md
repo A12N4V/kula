@@ -8,7 +8,10 @@ what the product lacks; this one is about what the product already ships and
 how it fails).
 
 Method: two shared servers, both already running, probed read-only at
-1440x900, 1100x800 and 390x844, dark and light.
+1440x900, 1100x800 and 390x844, dark and light. Light captures are kept for
+the three surfaces whose findings turn on colour (shell, Changes, Proposals);
+every other finding is geometry, tab order or text and holds in both themes, so
+those surfaces were shot dark only.
 
 - `http://localhost:8071` – kula's own repo on `launch-prep` (1 changed file,
   748 files, 3249 symbols, 11032 edges, 661 clusters, 94 branches).
@@ -150,7 +153,7 @@ overlaps `button.sb-help "panel"` and `button.sb-help.sb-keys "? shortcuts"`.
 At 1100 the box's top half scrolls out of `.detail` (`scrollH 814` vs
 `clientH 726`) and its bottom 28px is painted behind the statusbar.
 
-At 1440 the same element measures `[673, 757, 424, 1412]` against a clip
+At 1440 the same element measures `[424, 673, 988, 84]` against a clip
 bottom of 874: `insideClip: true`, no problem. So this is a height-dependent
 bug that a 1440-only review would never catch, and 1100x800 is a normal
 laptop.
@@ -171,6 +174,11 @@ After an in-app navigation (`1` → `2`, then `Back`) the same button works and
 returns to the previous view. The button's `enabled` is `true` in both states –
 there is no disabled or would-leave presentation, and its ARIA is a plain
 button, so a screen reader is told nothing either.
+
+The `about:blank` outcome needs a session whose history holds nothing but
+kula's own entry (a fresh tab, a deep link or a reload); with any earlier page
+in the stack the same click lands on that page instead – still outside kula,
+but not on a blank tab. Either way the control is armed with no way to know.
 
 The cause is the obvious one: it calls `history.back()` with no knowledge of
 whether this app put anything on the stack. A deep link, a bookmark, a
@@ -439,8 +447,8 @@ All 49 screenshots in `docs/ui-critique/shots/`, by group:
   `a4-palette-390x844-dark.png`, `a4-palette-390-typed-dark.png`
 - **Keyboard** – `a4-keys-1-help-dark.png`, `a4-keys-2-palette-dark.png`,
   `a4-keys-3-history-after-j-dark.png`
-- **Review walk** – `a4-review-1-list-dark.png`, `a4-review-2-detail-dark.png`,
-  `a4-review-3-commented-dark.png`
+- **Review walk** – `a4-review-1-list-dark.png` (the list; the detail pane's
+  DOM text is in `walk-review.txt`), `a4-review-3-commented-dark.png`
 - **Issue walk** – `a4-issue-1-list-dark.png`, `a4-issue-2-form-dark.png`,
   `a4-issue-3-filled-dark.png`, `a4-issue-4-created-dark.png`
 - **Note walk** – `a4-note-1-list-dark.png`, `a4-note-2-editor-dark.png`,
