@@ -1186,6 +1186,17 @@ pub fn api_check(repo: &crate::git::Repo, store: &Store) -> Result<serde_json::V
 mod tests {
     use super::*;
 
+    /// `run()` writes the process-global RunState and resets the cancel flag,
+    /// and cargo runs these tests on threads: a test that calls `run()` takes
+    /// this lock so one run's phase is not overwritten by another's before it
+    /// can be read.
+    static RUN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Serialise a test against every other test that drives a run.
+    fn serial_run() -> std::sync::MutexGuard<'static, ()> {
+        RUN_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// A throwaway git repo with a .kula dir, per the clean.rs test pattern.
     fn test_repo(dir: &std::path::Path) -> crate::git::Repo {
         std::process::Command::new("git").args(["init", "-q"]).current_dir(dir).status().unwrap();
@@ -1315,6 +1326,7 @@ mod tests {
 
     #[test]
     fn auto_ok_flips_the_switch_and_runs_the_pipeline() {
+        let _serial = serial_run();
         let dir = tempfile::tempdir().unwrap();
         let repo = test_repo(dir.path());
         std::fs::create_dir_all(repo.kula_dir()).unwrap();
@@ -1375,6 +1387,7 @@ mod tests {
 
     #[test]
     fn run_caches_and_reembeds_only_changed_symbols() {
+        let _serial = serial_run();
         let dir = tempfile::tempdir().unwrap();
         let repo = test_repo(dir.path());
         std::fs::create_dir_all(repo.kula_dir()).unwrap();
@@ -1430,6 +1443,7 @@ mod tests {
 
     #[test]
     fn cancel_between_batches_is_resumable() {
+        let _serial = serial_run();
         let dir = tempfile::tempdir().unwrap();
         let repo = test_repo(dir.path());
         std::fs::create_dir_all(repo.kula_dir()).unwrap();
@@ -1526,6 +1540,7 @@ mod tests {
 
     #[test]
     fn cancel_mid_run_resumes_without_reembedding_done_symbols() {
+        let _serial = serial_run();
         let dir = tempfile::tempdir().unwrap();
         let repo = test_repo(dir.path());
         std::fs::create_dir_all(repo.kula_dir()).unwrap();
@@ -1567,10 +1582,9 @@ mod tests {
         assert_eq!(idx2.vectors.len(), 5);
         assert_eq!(fresh, 5 - landed, "unchanged symbols are never re-embedded after a cancel");
         // RunState carries the progress the UI displays (batch plan and the
-        // paused-for-load flag). status() is process-global and other tests
-        // run concurrently, so only the fields' presence and types are
-        // asserted here, not this run's values – phase is covered by the
-        // serial-in-practice cancel test above.
+        // paused-for-load flag). status() is process-global, so only the
+        // fields' presence and types are asserted here, not this run's
+        // values – the cancel test above holds the run lock and covers phase.
         let planned = 5usize.div_ceil(profile_for(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1), 16.0, &cfg).batch);
         assert_eq!(planned, 3, "ceil(5 / 2) batches planned for the status display");
     }
@@ -1602,6 +1616,7 @@ mod tests {
     #[test]
     #[ignore]
     fn real_model_embeds_and_truncates_to_256() {
+        let _serial = serial_run();
         let dir = tempfile::tempdir().unwrap();
         let repo = test_repo(dir.path());
         std::fs::create_dir_all(repo.kula_dir()).unwrap();
@@ -1645,6 +1660,7 @@ mod tests {
     /// the same path), and the stored map records the embed state.
     #[test]
     fn mock_similarity_rides_the_map_via_similarity_for() {
+        let _serial = serial_run();
         let dir = tempfile::tempdir().unwrap();
         let repo = test_repo(dir.path());
         std::fs::create_dir_all(repo.kula_dir()).unwrap();
