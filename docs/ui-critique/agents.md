@@ -161,12 +161,16 @@ But the graph does not scale. Seeded with 30 extra memories on the fixture
 ```
 GRAPH label="Memory graph: 32 memories on 6 anchors" nodes=40 edges=123
       groups=1 overlaps=39 zoom=0.50
-  node sizes(rendered): 40x40
-  labels: ["REPO\n32\n–","◎","F","F","F","F","F","ƒ","27","5","28","29"] clipped=0
+  node sizes(rendered): 3952x256, 40x40      <- the anchor group rect + one memory
+  labels: ["REPO\n32\n–","◎","F","F","F","F","F","ƒ","71","5","72","73"] clipped=0
+  off-screen nodes=25 leftmost-left=-1434 (vw=1440)
 ```
 
 - **39 overlapping node pairs** among 40 nodes at rest, zoom 0.50. There is no
   measured non-overlap guarantee on this canvas.
+- **One anchor group spans 3952 px**: the `repo` anchor holding all 30 seeded
+  memories lays them out in a single 3952×256 rect, which is the real cause of
+  the off-screen nodes below.
 - **25 of the 40 nodes are off-screen at rest**, the leftmost at `x = −1434` in
   a 1440 px viewport – unclickable without panning (`a3-graph.mjs`
   `a3-graph-n32.log`: `off-screen nodes=25 leftmost-left=-1434 (vw=1440)`).
