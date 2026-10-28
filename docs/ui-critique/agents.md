@@ -8,9 +8,10 @@ named.
 
 Servers: `http://localhost:8071` (kula's own repo, `KULA_TOKEN=probe`) and
 `http://localhost:8072` (the e2e swarm fixture: 9 teams, `x-kula-token: test`).
-Tools: `.kula-team/tools/probe.mjs` and four measurement scripts under
+Tools: `.kula-team/tools/probe.mjs` and the measurement scripts under
 `.kula-team/scratch/` (`a3-teams.mjs`, `a3-drag.mjs`, `a3-persist.mjs`,
-`a3-graph.mjs`, `a3-extra.mjs`, `a3-last.mjs`, `a3-studio3.mjs`). Raw probe
+`a3-dnd.mjs`, `a3-graph.mjs`, `a3-seed.mjs`, `a3-forget.mjs`, `a3-extra.mjs`,
+`a3-last.mjs`, `a3-studio3.mjs`). Raw probe
 text is in `.kula-team/scratch/probes/`; screenshots cited are
 `docs/ui-critique/shots/a3-*.png`.
 
@@ -74,6 +75,13 @@ one-line hint), density good (cards + chips), consistency good.
 Robustness drops for the `sb-help` overlap (below) and because the tab renders
 from a 5 s poll with no error surface of its own.
 
+**Logos sized in cards (measured).** With the token the card path actually
+wants set in `sessionStorage` (see T1), the tab draws **7 `.ag-card`s** in one
+row and the card's logo mark renders **22×22 px** inside a **176×149 px** card
+(`a3-dnd.mjs`; `/api/agent/cards` and `/api/agent/logos` both 200). The mark is
+sized by the card and never overflows it – the sizing is fine; only the fetch is
+dead by default (T1).
+
 ### Teams – 5 / 10
 Features: 9 tinted rectangles in one space (`TeamCanvas.tsx:198` `TeamGroup`,
 `TINTS` `:196`), seats with harmonographs, lead→member edges, drag the block by
@@ -97,6 +105,17 @@ http://localhost:8072 1440 900`):
   own bounding box) is identical to the post-drag one:
   `reload-matches-drag=true` (`a3-persist.mjs`). Absolute on-screen position
   changes because `fitView` re-frames the whole set – see issue T2.
+- **Dragging a member works and persists.** Dragging the seat `tests` inside
+  the team `ship` moved it 64 px across and 18 down and issued exactly one
+  write: `POST /api/agents/team_layout
+  {"name":"ship","positions":{"tests":[190,54]}}` → 200 (`a3-dnd.mjs`). The
+  rectangle grows to fit the seat.
+- **Dropping an agent on a rectangle joins that team.** Dispatching a
+  `{kind:"agent",name:"docs"}` drop on `team-group-graph` took it from 4 to 5
+  members and issued exactly `POST /api/agents/team_add_member
+  {"name":"graph","workflow":"docs"}` → 200 (`a3-dnd.mjs`). Both writes were
+  undone afterwards (`team_remove_member`, and the fixture's `kula.toml` layout
+  restored), so the shared fixture is as it was found.
 - **The logo mark does not reliably open the studio at rest.** A real mouse
   click on `[data-testid^=tc-mark-]` at fit opened no studio (`a3-extra.log`);
   dispatching the click on the same element opens it
@@ -148,14 +167,16 @@ GRAPH label="Memory graph: 32 memories on 6 anchors" nodes=40 edges=123
 
 - **39 overlapping node pairs** among 40 nodes at rest, zoom 0.50. There is no
   measured non-overlap guarantee on this canvas.
-- **The first memory node sits at x = −1410**, i.e. **outside the viewport at
-  rest and unclickable without panning** (`a3-extra.log`).
+- **25 of the 40 nodes are off-screen at rest**, the leftmost at `x = −1434` in
+  a 1440 px viewport – unclickable without panning (`a3-graph.mjs`
+  `a3-graph-n32.log`: `off-screen nodes=25 leftmost-left=-1434 (vw=1440)`).
 - Node labels are bare integers (`27`, `5`, `28`); anchors are `F`/`ƒ`/`◎`.
   You cannot tell two memories apart, or read what they are about, without
   hovering or using the list.
-- Only 2 memories exist on both running servers by default, which is why
-  `Memory` still *looks* clean in a casual probe: at n=2 the probe reports 0
-  layout problems.
+- This is **not** a scale artefact of the seed. On the untouched fixture, at
+  the n=2 default, the same canvas already reports **3 overlapping node pairs
+  among 6 nodes** (`a3-graph.mjs` → `a3-graph-n2.log`); at n=32 it is 39 among
+  40. A fresh install is not clean, it is just small.
 
 `V 8 (a graph is the right first view) · Clarity 4 · Density 3 ·
 Consistency 5 · Interaction 5 · Robustness 2 · Polish 5`
@@ -200,9 +221,11 @@ takes focus. The gap: `nodesFocusable={false}` (`TeamCanvas.tsx:167,326`), so
 individual seats are **not** keyboard reachable – you can reach a team block
 but not a member inside it without the mouse.
 
-**1100 px (pass).** `#agents`, `#agents/teams`, `#agents/docs` all report
-`scrollW == vw == 1100, offscreen=none` (`a3-extra.log`). The breakage is
-strictly below ~500 px.
+**1100 px (no horizontal overflow).** `#agents`, `#agents/teams`, `#agents/docs`
+all report `scrollW == vw == 1100, offscreen=none` (`a3-extra.log`, screenshots
+`a3-agents-1100.png`, `a3-teams-1100.png`). Horizontal overflow only starts
+below ~500 px. The `sb-help` overlap is *not* width-dependent – T5 owns that
+claim, and it reproduces at 1440.
 
 **390 px (fail in five places).** All eight strip buttons are 36–50 × 38
 (< 40). `#agents/docs` overflows horizontally (16 elements off-screen).
@@ -211,7 +234,8 @@ plus a 116×7 header. Memory adds an 11×11 `fc-group-fold`.
 
 **Light mode (pass).** All five tabs sampled render the warm cream ground
 (`body rgb(239,231,220)`, text `rgb(35,29,24)`) with no new console errors –
-the only errors are the 401s of issue T1 (`a3-extra.log`).
+the only errors are the 401s of issue T1 (screenshots
+`a3-agents-light-1440.png`, `a3-docs-light-390.png`; `a3-extra.log`).
 
 **Empty states (mixed).** Present and specific on Skills ("No skills yet…"),
 Agents (`.ag-empty` "No loop is measuring anything – set one up in Research"),
@@ -219,9 +243,11 @@ and Teams (`tc-empty` "… has no members yet – drag an agent onto it").
 Absent on Agents' roster: with no agents configured the tab shows the card
 `Pick a card` rather than an explanation of what a workflow *is*.
 
-**Console.** Two `401 Unauthorized` on the fixture `#agents`, one on `#agents/teams`.
-No page errors, no crashes, no render-loop timeouts on any of the 22 probe
-runs.
+**Console.** Two `401 Unauthorized` per mount of the fixture `#agents` and of
+`#agents/teams` (a light-mode reload of teams showed two, so read it as a
+per-mount count rather than a fixed per-route one; `fx-agents-1440.txt`,
+`fx-agents-teams-1440.txt`, `a3-extra.log:11`). No page errors, no crashes, no
+render-loop timeouts on any of the 22 probe runs.
 
 ---
 
@@ -253,8 +279,11 @@ the mark is 10×12 px. Fix with T2, and/or make the whole seat's mark area a
 larger hit target (`padding` on `.tc-node-mark`, not a bigger glyph).
 
 **T4 · major · the memory graph overlaps itself and draws off-screen.**
-32 memories → 40 nodes, **39 overlapping pairs**, zoom 0.50, first node at
-`x=−1410`. Fix: a non-overlap guarantee like the map's (F2's measured
+32 memories → 40 nodes, **39 overlapping pairs** among 40, zoom 0.50, and
+**25 of 40 nodes off-screen** (leftmost `x=−1434`); the same canvas already
+overlaps **3 pairs among 6 nodes** at the n=2 default. Reproduce with the seed
+in §6 (`a3-seed.mjs` → `a3-graph.mjs` → `a3-forget.mjs`; logs
+`a3-graph-n32.log`, `a3-graph-n2.log`). Fix: a non-overlap guarantee like the map's (F2's measured
 "no overlapping blocks at rest"), a zoom floor, and labels that name the anchor
 (`file:src/kg.rs`) rather than a bare `#27`.
 
@@ -337,10 +366,27 @@ node .kula-team/tools/probe.mjs --hash <route> --url http://localhost:8071 --vie
 node .kula-team/scratch/a3-teams.mjs    http://localhost:8072 1440 900   # rects, overlap, drag
 node .kula-team/scratch/a3-drag.mjs     http://localhost:8072            # the team_layout write
 node .kula-team/scratch/a3-persist.mjs  http://localhost:8072            # reload, normalized
-node .kula-team/scratch/a3-graph.mjs    http://localhost:8072 1440 900   # memory graph at n=32
+node .kula-team/scratch/a3-dnd.mjs      http://localhost:8072            # member drag, agent drop, card logos
 node .kula-team/scratch/a3-extra.mjs    http://localhost:8072            # dock, light, keyboard, 1100
 node .kula-team/scratch/a3-studio3.mjs  http://localhost:8072            # logo studio
 ```
+
+**The memory graph needs a seeded state** – both running servers ship 2
+memories, so any graph claim must seed first and forget after:
+
+```
+node .kula-team/scratch/a3-seed.mjs   http://localhost:8072 30   # POST /api/agents/remember, 30 x, token from the page meta tag
+node .kula-team/scratch/a3-graph.mjs  http://localhost:8072 1440 900   # -> 40 nodes, 39 overlaps, 25 off-screen   (n=32)
+node .kula-team/scratch/a3-forget.mjs http://localhost:8072      # restores /api/agents to 2 memories (ids [4,5])
+```
+
+The seeder sends the header the API expects (`x-kula-token`), read from the
+page's own `<meta name="kula-token">` – a bare `fetch` without it is a 401 and
+seeds nothing. Run `a3-graph.mjs` **before** seeding for the n=2 baseline (6
+nodes, 3 overlaps, `a3-graph-n2.log`). `a3-dnd.mjs` writes to `team_layout` and
+`team_add_member`; undo the member with
+`POST /api/agents/team_remove_member {"name":"graph","workflow":"docs"}` and
+restore the fixture `kula.toml` from a copy taken before the run.
 
 Independent reproduction of the headline numbers
 (`node .kula-team/scratch/a3-verify.mjs`):
@@ -357,9 +403,13 @@ T6 docs@390 offscreen=18 section-title right=528 | sx-list right=528 | sx-row ri
 Screenshots cited (all under `docs/ui-critique/shots/`): `a3-agents-1440.png`,
 `a3-agents-390.png`, `a3-teams-1440.png`, `a3-teams-390.png`,
 `a3-memory-1440.png`, `a3-docs-390.png`, `a3-research-1440.png`,
-`a3-skills-1440.png`, `a3-settings-1440.png`.
+`a3-skills-1440.png`, `a3-settings-1440.png`, plus the width/mode shots the
+brief asks for: `a3-agents-1100.png`, `a3-teams-1100.png`,
+`a3-agents-light-1440.png`, `a3-docs-light-390.png`.
 
-All probe screenshots not cited here were deleted. The 30 stress memories
-seeded on the fixture for T4 were forgotten again (`a3-memgraph` cleanup;
-`/api/agents` back to 2), and the fixture's `kula.toml` layout writes were
-reverted, so the shared fixture is back to its seed state.
+All probe screenshots not cited here were deleted. The 30 stress memories seeded
+on the fixture for T4 were forgotten again (`a3-seed.mjs` / `a3-forget.mjs`;
+`/api/agents` back to 2 memories, ids [4,5]), the member `a3-dnd.mjs` dropped on
+team `graph` was removed, and every `kula.toml` layout write (the team drags and
+the seat drag) was reverted from a copy taken before the run, so the shared
+fixture is back to its seed state.
