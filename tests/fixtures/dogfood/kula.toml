@@ -1,0 +1,77 @@
+# kula's own agentic setup, kept as a fixture so `committed_kula_toml_loads`
+# can prove it parses and every reference resolves. The live `kula.toml` is
+# fenced for agents (a person owns it, and test runs may rewrite it), so the
+# arrangement that must stay valid lives here instead.
+
+[project]
+name = "kula"
+default_branch = "main"
+
+[index]
+exclude = []
+max_file_kb = 1024
+
+[hooks]
+reindex = true
+
+[check]
+max_risk = "medium"
+
+[agents]
+hide_secrets = true
+memory = false
+allow_solo = false
+
+[[team]]
+name = "kula"
+about = "The repo's own society of teams: who ships kula."
+members = [{ name = "steward", service = "claude", workflow = "explore", role = "lead" }]
+
+[[team]]
+name = "engine"
+about = "The Rust core: index, graph, store and the CLI."
+under = "kula"
+members = [
+  { name = "graph", service = "claude", workflow = "fix", role = "lead" },
+  { name = "cli", service = "codex", workflow = "refactor", role = "commands", reports_to = "graph" },
+]
+
+[[team]]
+name = "web"
+about = "The web client under web/: views, canvases and panels."
+under = "kula"
+members = [
+  { name = "shell", service = "cursor", workflow = "fix", role = "lead" },
+  { name = "canvas", service = "claude", workflow = "refactor", role = "map and canvases", reports_to = "shell" },
+  { name = "panels", service = "codex", workflow = "docs", role = "inspectors and docs", reports_to = "shell" },
+]
+
+[[team]]
+name = "agents"
+about = "The agent control plane: guard, workflow, task, memory and MCP."
+under = "kula"
+members = [
+  { name = "guard", service = "codex", workflow = "fix", role = "lead" },
+  { name = "mcp", service = "gemini", workflow = "tests", role = "MCP server and tools", reports_to = "guard" },
+]
+
+[[team]]
+name = "quality"
+about = "Tests, CI and the performance loops."
+under = "kula"
+members = [
+  { name = "suite", service = "claude", workflow = "tests", role = "lead" },
+  { name = "perf", service = "codex", workflow = "autoresearch", role = "loops", reports_to = "suite" },
+]
+
+[[team]]
+name = "release"
+about = "Packaging, install and distribution."
+under = "kula"
+members = [
+  { name = "packaging", service = "claude", workflow = "fix", role = "lead" },
+  { name = "changelog", service = "codex", workflow = "docs", role = "release notes", reports_to = "packaging", hands_off = ["suite"] },
+]
+
+[embed]
+enabled = false

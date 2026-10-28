@@ -1220,20 +1220,15 @@ mod b2_tests {
 mod b3_tests {
     use super::*;
 
-    /// fuse5 B3 · the committed kula.toml (kula's own agentic setup) parses,
-    /// and every reference in it resolves: team tree, seats, @scopes.
-    #[test]
-    fn committed_kula_toml_loads() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let cfg = Config::load(root).unwrap_or_else(|e| panic!("the committed kula.toml does not load: {e}"));
-        assert_eq!(cfg.project.name, "kula");
-        assert_eq!(cfg.teams.len(), 6, "the dogfood setup wires six teams");
+    /// Every reference a config makes resolves: seats, workflows, the team
+    /// tree, hand-offs and @scopes.
+    fn references_resolve(cfg: &Config) {
         for t in &cfg.teams {
             assert!(!t.members.is_empty(), "team {} has no seats", t.name);
             for m in &t.members {
                 assert!(!m.key().trim().is_empty(), "team {}: a seat has an empty name", t.name);
                 assert!(
-                    m.workflow.is_empty() || crate::workflow::all(&cfg).iter().any(|w| w.name == m.workflow),
+                    m.workflow.is_empty() || crate::workflow::all(cfg).iter().any(|w| w.name == m.workflow),
                     "team {}: seat {} works in {}, which is not a workflow",
                     t.name,
                     m.key(),
@@ -1267,12 +1262,30 @@ mod b3_tests {
         }
         // every @scope a workflow or seat uses names a [[scope]]
         let scopes: Vec<&str> = cfg.scopes.iter().map(|s| s.name.as_str()).collect();
-        for w in crate::workflow::all(&cfg) {
+        for w in crate::workflow::all(cfg) {
             for s in &w.scope {
                 if let Some(name) = s.strip_prefix('@') {
                     assert!(scopes.contains(&name), "workflow {} uses @{name}, which is not a [[scope]]", w.name);
                 }
             }
         }
+    }
+
+    /// fuse5 B3 · kula's own agentic setup parses, and every reference in it
+    /// resolves: team tree, seats, @scopes. The dogfood arrangement lives in
+    /// `tests/fixtures/dogfood/kula.toml` because the live `kula.toml` is a
+    /// person's file (fenced for agents, and a test run may rewrite it), so
+    /// this test must not fail on whatever a person last put there. The live
+    /// `kula.toml` still has to parse and resolve.
+    #[test]
+    fn committed_kula_toml_loads() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let fixture = root.join("tests/fixtures/dogfood");
+        let cfg = Config::load(&fixture).unwrap_or_else(|e| panic!("the dogfood kula.toml does not load: {e}"));
+        assert_eq!(cfg.project.name, "kula");
+        assert_eq!(cfg.teams.len(), 6, "the dogfood setup wires six teams");
+        references_resolve(&cfg);
+        let live = Config::load(root).unwrap_or_else(|e| panic!("the committed kula.toml does not load: {e}"));
+        references_resolve(&live);
     }
 }
