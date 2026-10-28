@@ -270,11 +270,13 @@ bottom bar's height in the area's scroll container (padding-bottom) instead of
 letting cards scroll under it.
 
 **T6 · major · `#agents/docs` overflows horizontally at 390.**
-16 elements at `x 28–528` in a 390 px viewport (`fx-agents-docs-390.txt`,
-`a3-docs-390.png`): `.section-title`, `.sx-list`, `.sx-row`, `.sx-head`,
-`.sx-main`, `.sx-name`, `.sx-tags`. The row has a min width from the name +
-description + `tags` + size columns that is never relaxed. Fix: at ≤ 600 px
-drop the `tags`/size column into a second line and let `.sx-main` ellipsise.
+16 elements at `x 28–528` in a 390 px viewport (`fx-agents-docs-390.txt`);
+counting every overflowing element gives 18 (`a3-verify.mjs`). The offenders are
+`.section-title`, `.sx-list`, `.sx-row`, `.sx-head`, `.sx-main`, `.sx-name`,
+`.sx-tags` (screenshot `a3-docs-390.png`). The row has a min width from the
+name + description + `tags` + size columns that is never relaxed. Fix: at
+≤ 600 px drop the `tags`/size column into a second line and let `.sx-main`
+ellipsise.
 
 **T7 · minor · strip targets are under the floor at 390.**
 Eight `button.ag-mi` at 36–50 × 38 (< 40). Fix: at ≤ 600 px raise the strip's
@@ -338,6 +340,18 @@ node .kula-team/scratch/a3-persist.mjs  http://localhost:8072            # reloa
 node .kula-team/scratch/a3-graph.mjs    http://localhost:8072 1440 900   # memory graph at n=32
 node .kula-team/scratch/a3-extra.mjs    http://localhost:8072            # dock, light, keyboard, 1100
 node .kula-team/scratch/a3-studio3.mjs  http://localhost:8072            # logo studio
+```
+
+Independent reproduction of the headline numbers
+(`node .kula-team/scratch/a3-verify.mjs`):
+
+```
+T2 zoom=translate(74px, 301.349px) scale(0.336235) head=196x11 mark=10x12 seat=50x31
+T5 agents@1440: overlaps sb-help -> card ag-card
+T5 agents@390:  overlaps sb-help -> card ag-card
+T5 agents/research@1440: overlaps sb-help -> card ag-card ag-card-add r
+T5 agents/skills@1440:   overlaps sb-help -> sx-row , sx-head
+T6 docs@390 offscreen=18 section-title right=528 | sx-list right=528 | sx-row right=527
 ```
 
 Screenshots cited (all under `docs/ui-critique/shots/`): `a3-agents-1440.png`,
