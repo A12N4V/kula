@@ -9,11 +9,23 @@ changed; this file is the deliverable.
 Method
 - Live probe: `.kula-team/tools/probe.mjs` against the two shared servers –
   `http://localhost:8071` (kula's own repo, launch-prep UI) and
-  `http://localhost:8072` (swarm fixture) – at 1440x900 and 390x844, dark and
-  light. Raw output in `.kula-team/scratch/a1/`.
+  `http://localhost:8072` (swarm fixture) – at **1440x900, 1100x900 and
+  390x844, dark and light**. Raw output in `.kula-team/scratch/a1/`.
 - Stress harness: `.kula-team/scratch/a1/stress.mjs` measures, per class
   family, the live count, min box, long unbreakable label (overflow), off-screen
-  count, hover delta, focus ring and both themes' colours.
+  count, hover delta, focus ring and both themes' colours. It was re-run at
+  **1100x900 dark** and **1440x900 light** for every route
+  (`scratch/a1/out/s1100-dark-*.txt`, `slight-*.txt`,
+  driver `scratch/a1/run-all.sh`).
+- Focus / 200-item harness: `.kula-team/scratch/a1/focus200.mjs <url> <route>
+  <WxH>` presses Tab up to 45 times and records the **focus order** (the empty
+  cycle closes when focus returns to the first element), then injects 200 clones
+  of the first row-like element in place and measures scroll/overlap/overflow.
+  Output `scratch/a1/out/focus-order-*.txt`, `focus-order-agents-teams.txt`.
+- Screenshots of the two headline defects:
+  `shots/a1-card-help-overlap-1440-dark.png` (card x help, 22x28 px
+  intersection measured), `shots/a1-teams-canvas-390-dark.png` (`.tc-canvas`
+  400 px wide in a 390 viewport), `shots/a1-agents-full-1440-dark.png` context.
 - Every rating cites either a counted `file:line` (grep across `web/src`) or a
   measured value (harness/probe). No rating is "felt".
 
@@ -57,6 +69,10 @@ How to read a family
   `none -> rgb(235,228,217)`; focus ring 2px accent (`rgb(249,127,58)` dark,
   `rgb(240,82,1)` light) on every `.btn`. Disabled swaps to `--text-3`
   (`base.css:8`). 200-item behaviour: `.btn` rows lay out without overflow.
+  At **1100 dark** the same numbers hold (40 `.btn` on `#agents`, min 28x28,
+  `clips (261>26)`) – the family is width-invariant 1440→1100. **Focus order**:
+  buttons are reachable in DOM order, but at 1440 the rail duplicates every
+  destination (§18).
 - Rating: Value 8, Clarity 7, Density 7, Consistency 5 (five parallel
   grammars), Interaction 8 (hover/active/disabled/focus all present),
   Robustness 6 (long labels clip), Polish 7.
@@ -85,7 +101,11 @@ How to read a family
   (`graph.css:216`, `settings.css:206`), so touch height is handled but from
   two different files. Focus ring 2px accent on the buttons. Long labels fit
   (buttons size to text). Selected state reads as a filled cell in dark
-  (`bg rgb(20,18,16)` on the `.on` button).
+  (`bg rgb(20,18,16)` on the `.on` button) and light (`bg rgb(235,228,217)`,
+  border `rgb(211,205,194)`). Identical at **1100 dark** (`#graph` 96x28,
+  `#agents` 45x28). Focus order: each `.seg` button is a separate tab stop, so
+  a 3-way seg costs 3 Tabs with no roving `tabindex` and no arrow-key handling
+  (`focus-order-overview.txt` steps 26-28: `all`, `built in`, `kula.toml`).
 - Rating: Value 8, Clarity 8, Density 8, Consistency 5 (override pair +
   4 modifiers), Interaction 7 (no `:active` defined on `.seg button`),
   Robustness 8, Polish 7.
@@ -94,7 +114,8 @@ How to read a family
 
 - Objective: which tab of a multi-pane area is showing. Value function:
   reaching any tab in one click, and always seeing which one is active.
-- Copies: **eight** separate strips, three different active-state grammars:
+- Copies: **seven** separate strips (plus the mobile `.ag-menu` variant), three
+  different active-state grammars:
   - `.ag-tabs` `web/src/styles/agents.css:65-71` (`views/Agents.tsx:104`) –
     active = 2px bottom border, 34px tall, horizontal scroll, and a second
     vertical form `.ag-menu .ag-tabs` `agents.css:487-497` for the phone menu.
@@ -118,8 +139,16 @@ How to read a family
   (`button.ag-mi "Open Workspace"` reported at `x 363-399` on a 390 viewport)
   and every menu row is a small target (36-38px < 40). Hover changes colour
   only in two rule sets (`agents.css:68` and a second hover rule), reported as
-  "borderTop + color shift" by the harness.
-- Rating: Value 8, Clarity 7, Density 7, Consistency 3 (eight copies, three
+  "borderTop + color shift" by the harness. Identical at **1100 dark**
+  (8 buttons, 38px) and at 1440 light (8 buttons, `89-110px`).
+- **Focus order defect (measured, 1440):** the mobile `.ag-menu` buttons are
+  *not hidden at desktop width* – `button.ag-mi` measures 110x38, `display:flex`,
+  `visibility:visible` at 1440 and receives focus at Tab steps 18-25 of
+  `#agents`. Every destination is therefore in the tab order **twice**: once as
+  the left rail (steps 6-17) and again as the phone menu (steps 18-25). A
+  keyboard user Tabs through 19 nav stops to reach the page content.
+  `focus-order-agents.txt`.
+- Rating: Value 8, Clarity 7, Density 7, Consistency 3 (seven copies + the mobile variant, three
   active grammars), Interaction 7, Robustness 5 (off-screen phone menu),
   Polish 6.
 
@@ -128,7 +157,7 @@ How to read a family
 - Objective: a compact token – a label, a filter, a removable value, a status.
   Value function: completeness of the metadata at a glance and one-click
   filtering/removal.
-- Copies: **at least twelve** families:
+- Copies: **fourteen** families (counted below):
   - `.chip` `web/src/styles/shell.css:7` (top-bar branch chip, `App.tsx:244`)
   - `.chip-btn` `system.css:32`
   - `.chip-toggle` `agents-teams.css:82` (`Workflows.tsx:126`,
@@ -150,8 +179,13 @@ How to read a family
   different files (`settings.css:151`, `agents.css:313-314,325`). Long labels:
   `.tc-chip` is `white-space: nowrap` (clips rather than ellipsis). Tones are
   duplicated between `.risk-pill` and `.status-pill` though the class names
-  differ (same three states).
-- Rating: Value 7, Clarity 6, Density 8, Consistency 3 (twelve families),
+  differ (same three states). Light: `.chip` bg `rgb(244,242,238)`, border
+  `rgb(226,221,212)`; identical at 1100 dark. **200-item injection**
+  (`focus200.mjs`): 200 cloned `.chip` into the top-bar strip on `#graph` /
+  `#notes` overflow horizontally (`parentBox 1440x48`, `overflowX true`) – the
+  chip strip **does not wrap**, so a long filter row runs off the right edge
+  instead of wrapping or scrolling.
+- Rating: Value 7, Clarity 6, Density 8, Consistency 3 (fourteen families),
   Interaction 6, Robustness 6, Polish 6.
 
 ## 5 · Cards
@@ -163,10 +197,14 @@ How to read a family
     `view-in` entrance animation, and `:14` animates children 2-5.
   - `web/src/styles/system.css:14` – `border` + `background` only, with
     `.card:hover` / `.card.is-selected` at `:15-16`.
-  `overview.css` is imported after `system.css` (`styles.css:4` then `:6`), so
-  the overview padding + animation leak onto every `.card` anywhere in the app,
-  while `.card:hover` (system.css) still applies. A card on a page that never
-  imported overview styling still animates in.
+  `overview.css` is imported after `system.css` (`styles.css:4` then `:6`).
+  Verified: `padding: 6px 6px 8px`, `border-radius: 0`, `min-width: 0` and the
+  `view-in` animation exist **only** in `overview.css:13-14`, so they leak onto
+  every `.card` app-wide *unconditionally*, whatever the import order; the order
+  decides only the duplicated `border` + `background`, whose values are
+  byte-identical in both files (`1px solid var(--line)`, `var(--panel)`), so the
+  order has **no visible effect**. A card on a page that never imported
+  overview styling still animates in and still carries overview padding.
   Card header/empty/note: `.card-head` `overview.css:16`, `.card-empty`
   `:18`, `.card-note` `:19`.
   KPI cards: `.kpi` `overview.css:8` and `.kpi-strip`/`.kpi-cell`
@@ -180,10 +218,21 @@ How to read a family
   definition; KPIs become `<StatTable>` (already shipped) and the dead `.kpi`
   block is deleted.
 - Stress (measured): `#overview` shows 6 cards, 1280px wide, min 423x114, all
-  fit. `#agents` shows 28 `.card`, min 246x100. **Defect reproduced at 1440px**
+  fit; light bg `rgb(244,242,238)`, border `rgb(226,221,212)` (identical hex to
+  dark modulo theme tokens); at 1100 `#overview` `.card` 996x636, min 996x114.
+  `#agents` shows 28 `.card`, min 246x100. **Defect reproduced at 1440px**
   on 8071 (not only 390 as `map.md` §7 recorded): probe reports
   `overlap: div.card.ag-card "architect kula.toml" x button.sb-help "panel"` on
-  `#agents` both 1440 and 390, and the class collision is worse on the fixture.
+  `#agents` at 1440, **1100** (plus a second overlap with
+  `button.sb-help.sb-keys "? shortcuts"`) and 390, and the class collision is
+  worse on the fixture. Measured intersection at 1440:
+  `div.card.ag-card[data-testid=ag-card-architect]` x `button.sb-help` =
+  **22x28 px** (x 1248-1270, y 874-900) – the card runs under the help button,
+  so the card's own click target is obscured. Image:
+  `shots/a1-card-help-overlap-1440-dark.png`. **200-item injection**
+  (`focus200.mjs`): 200 cloned `.card` on `#agents` lay out with 0 sibling
+  overlaps but the page grows to `scrollH 20840` – no grid cap, the whole page
+  becomes one very long column.
 - Rating: Value 8, Clarity 7, Density 7, Consistency 3 (double definition +
   dead KPI block + 6 card variants), Interaction 6, Robustness 6 (card/help
   overlap), Polish 5.
@@ -356,6 +405,14 @@ How to read a family
   for text.
 - Rating: Value 8, Clarity 8, Density 8, Consistency 5 (5 row types),
   Interaction 7, Robustness 6 (no virtualisation), Polish 7.
+- **200-item injection** (`focus200.mjs`, all measured): 200 cloned `.ov-row`
+  on `#overview` keep `833x49`, 0 sibling overlaps, page scrolls to 10091px;
+  200 `.sym` on `#branches` (491x25) produce horizontal overflow of the rows
+  container (`overflowX true`); 200 `.tc-node` on `#agents/teams` stack to
+  `scrollH 18402` inside a 92px client box with 0 overlaps. Rows never overlap,
+  but nothing is virtualised and `.sym` overflows sideways.
+- Light: `.sym`/`.ov-row` text `rgb(35,29,24)` (dark `rgb(240,235,227)`);
+  identical geometry at 1100 dark (`.sym` 321x25, `.ov-row` 982x49).
 
 ## 15 · Modals
 
@@ -368,9 +425,19 @@ How to read a family
 - Target: `<Modal>` (scrim + centred pane, `Esc`, focus trap) that both the
   palette and help use; `<Pane>` for the drawer.
 - Stress (measured): `shell.css:57` `width: min(640px, 100vw-32px)` collapses
-  correctly at 390; `role="dialog"` is set on help only
-  (`App.tsx:442`); the palette has no `role="dialog"` and no focus trap in
-  source. `Esc` closes via the global keydown (`App.tsx:215`).
+  correctly at 390. Both overlays are hand-built on the palette shell. A
+  re-read of the DOM shows both carry `role="dialog"` (measured: `.palette`
+  and `.palette.help`), correcting the earlier reading that the palette set
+  none; neither sets `aria-modal`. `Esc` closes via the global keydown
+  (`App.tsx:215`).
+- **Focus trap measured** (`/tmp/help.mjs` equivalent, 1440 dark): the palette
+  *does* declare `role="dialog"` (`.palette`, 640x557) but **no `aria-modal`**,
+  and Tab leaves it after one step – `div.results` then `body` then the top bar
+  (`button.brand`, `button.chip`, …). The help overlay (`role="dialog"`, opened
+  with `?`) never takes focus at all: Tab 1 walks straight to `button.brand`
+  **outside** `.palette.help`, so a keyboard user must Tab the entire page
+  behind a modal overlay. Neither modal traps focus; neither sets
+  `aria-modal`; neither moves focus into the dialog on open.
 - Rating: Value 7, Clarity 8, Density 8, Consistency 5 (two bespoke modals),
   Interaction 6 (no focus trap), Robustness 7, Polish 7.
 
@@ -386,7 +453,9 @@ How to read a family
 - Stress (measured): rows are `kbd` + label pairs; the grid reflows at 390;
   no `data-testid` coverage exists for the grid order (the source sets
   `data-testid="help-grid"` but no spec asserts it). One focus ring, one
-  dialog role.
+  dialog role. **Focus order**: opening with `?` does not move focus into the
+  dialog and the dialog does not trap it – Tab 1 lands on `button.brand`
+  outside `.palette.help` (measured, 1440 dark).
 - Rating: Value 7, Clarity 8, Density 8, Consistency 7 (one Kbd, two hosts),
   Interaction 7, Robustness 7, Polish 7.
 
@@ -411,33 +480,125 @@ How to read a family
   inside, so padding/border/selection come from one place. Node types stay,
   but their chrome converges.
 - Stress (measured): `#agents/teams` at 390 – `div.tc-canvas.tc-all` reported
-  **off-screen** at `x 0-400` on a 390 viewport (`div.tc-head` likewise);
-  team group heads `.tg-head` measure 194x17 and `.tc-node-mark.logo-click`
-  10x12 to 15x18 – all far under a 28/40px target; on the swarm fixture the
-  same 15 small-target findings repeat across the 9 teams. At 1440 the canvas
-  fits. `#graph` (sigma) is clean (`PROBLEMS (0)`).
+  **off-screen** at `x 0-400` on a 390 viewport (`div.tc-head` likewise); at
+  1100 dark the `.logo-click` node marks measure **11x13** (16 of them) – the
+  same tiny-target defect persists at desktop width, not only at 390, while at
+  1440 light the same family is 15x18 (`.tc-node` 73x46). Team group heads
+  `.tg-head` measure 194x17 and `.tc-node-mark.logo-click` 10x12 to 15x18 – all
+  far under a 28/40px target; on the swarm fixture the same 15 small-target
+  findings repeat across the 9 teams. Measured canvas width at 390:
+  `.tc-canvas.tc-all` is **400px wide in a 390 viewport** (x 0-400,
+  `document.scrollWidth` 390, so the right 10px is clipped, not scrollable);
+  image `shots/a1-teams-canvas-390-dark.png`. At 1440 the canvas fits.
+  `#graph` (sigma) is clean (`PROBLEMS (0)` at 1440, 1100 and 390).
+  **200-item injection**: 200 cloned `.tc-node` stack to `scrollH 18402` in a
+  92px box with 0 overlaps (no node collision handling, no virtualisation).
 - Rating: Value 9, Clarity 7, Density 6, Consistency 3 (two node kits, four
   toolbars), Interaction 6 (tiny node targets), Robustness 4 (390 canvas
   off-screen), Polish 6.
 
 ---
 
+## 18 · Keyboard focus order, 200 items and light theme (measured)
+
+The brief names three stress dimensions that are per-family but are easiest to
+read once, consolidated. All numbers below are from `focus200.mjs` and the
+re-run `stress.mjs` in `scratch/a1/out/`.
+
+### 18.1 Focus order (Tab, 1440 dark, 8071)
+
+| route | tab stops before the cycle closes | first stop | notable |
+|---|---|---|---|
+| agents | 45+ (no cycle in 45) | `button.brand` | rail (6-17) then the **same destinations again** as `button.ag-mi` (18-25) |
+| agents/teams | 45+ | `button[team-tab-core]` | team tabs → toolbars → canvas |
+| overview | 45+ | `button.brand` | 8 "Contrast" buttons in a row (39-45) is a repeated-stop smell |
+| branches | 45+ | `button.brand` | clean, no duplicate rail |
+| graph | 36 (cycle) | `button.brand` | closes back to `.brand` |
+| notes | 28 (cycle) | `button.brand` | closes back to `.brand` |
+
+The two defects this exposes, both reproducible at 1440:
+1. **The phone menu is in the desktop tab order.** `button.ag-mi` is
+   `display:flex`, `visibility:visible`, 110x38 at 1440 and takes focus at
+   Tab 18-25 on `#agents`, so every nav destination is a tab stop twice
+   (rail + menu). Evidence: `focus-order-agents.txt`.
+2. **Cards are focusable containers.** `div.card.ag-card` has `tabIndex 0`, so
+   each card is a tab stop *and* its own action buttons are separate stops:
+   `#agents` reaches `.ag-card` (30), then `ag-art-explore` (31), then
+   `.ag-card` (32), then `ag-art-fix` (33) – two stops per card where one is
+   enough.
+
+Modals (§15) trap nothing: opening the palette or `?`-help leaves Tab walking
+the page behind the overlay.
+
+### 18.2 200-item injection (measured)
+
+| route | element | 200-item box | parent scrolls | sibling overlaps | horizontal overflow |
+|---|---|---|---|---|---|
+| agents | `.card` | 246x373 | yes (20840px) | 0 | no |
+| overview | `.ov-row` | 833x49 | no | 0 | no |
+| branches | `.sym` | 491x25 | no | 0 | **yes** |
+| graph / notes | `.chip` | 118x28 | no | 0 | **yes** |
+| agents/teams | `.tc-node` | 73x46 | yes (18402px) | 0 | no |
+
+Read: nothing overlaps at 200 items, which is good, but (a) `.sym` rows and
+(b) the top-bar `.chip` strip overflow **horizontally** instead of wrapping,
+and (c) neither `.card` grids nor the teams canvas have any count cap – the
+page/box just grows. The real unbounded list, `#branches` with **2343 `.sym`
+rows**, is the same element as the synthetic case and is unvirtualised.
+
+### 18.3 Light theme (1440 light, 8071)
+
+Every family changes only its theme tokens; geometry is identical to dark.
+
+| family | dark text/bg | light text/bg | light border |
+|---|---|---|---|
+| `.btn` | `rgb(194,185,172)` / none | `rgb(93,88,80)` / none | – |
+| `.seg button.on` | `rgb(240,235,227)` / `rgb(20,18,16)` | `rgb(35,29,24)` / `rgb(235,228,217)` | `rgb(211,205,194)` |
+| `.chip` | `rgb(194,185,172)` / `rgb(12,11,10)` | `rgb(93,88,80)` / `rgb(244,242,238)` | `rgb(226,221,212)` |
+| `.card` | `rgb(240,235,227)` / `rgb(12,11,10)` | `rgb(35,29,24)` / `rgb(244,242,238)` | `rgb(226,221,212)` |
+| `.empty` | `rgb(134,125,115)` | `rgb(106,98,88)` | – |
+| `.sym` / `.ov-row` | `rgb(240,235,227)` | `rgb(35,29,24)` | – |
+| `.ag-tabs button.on` | `rgb(240,235,227)` / accent 8% | `rgb(35,29,24)` / accent 10% | – |
+
+No family is theme-broken; the light values are the same tokens inverted.
+Three families (`card`, `chip`, `seg`) therefore show that the divergence the
+ratings punish is *class and rule duplication*, not colour drift – light and
+dark are consistent, the copies are not.
+
+### 18.4 Screenshots (this pass)
+
+- `shots/a1-card-help-overlap-1440-dark.png` – the 22x28px card x `sb-help`
+  intersection on `#agents`.
+- `shots/a1-agents-full-1440-dark.png` – the same page in context.
+- `shots/a1-teams-canvas-390-dark.png` – `.tc-canvas` 400px in a 390 viewport.
+
+---
+
 ## Measured problem counts (probe, launch-prep)
 
-| route | 1440 problems | 390 problems | dominant finding |
-|---|---|---|---|
-| overview | 0 | 0 | clean |
-| agents | 1 | 11 | card x help overlap; phone menu off-screen + small targets |
-| agents/teams | 21 | 35 | 15+ small node targets; canvas off-screen at 390 |
-| graph | 0 | 0 | clean |
-| changes | 0 | – | clean |
-| branches | 0 | – | 2343 `.sym` rows, no virtualisation |
-| notes | 1 | 0 | `.tgl` 26px tall (under 28) |
-| query | 1 | 0 | `.grip` resize handle 8px wide |
-| contrast | 0 | – | clean |
+| route | 1440 problems | **1100 problems** | 390 problems | dominant finding |
+|---|---|---|---|---|
+| overview | 0 | **0** | 0 | clean |
+| agents | 1 | **8** | 11 | card x help overlap; at 1100 a whole workflow card column is off-screen |
+| agents/teams | 21 | **21** | 35 | small node targets; canvas off-screen at 390 |
+| graph | 0 | **0** | 0 | clean |
+| changes | 0 | **0** | – | clean |
+| branches | 0 | **0** | – | 2343 `.sym` rows, no virtualisation |
+| notes | 1 | **1** | 0 | `.tgl` 26px tall (under 28) |
+| query | 1 | **1** | 0 | `.grip` resize handle 8px wide |
+| contrast | 0 | **0** | – | clean |
 
-(`agents` overlap reproduced at **both** 1440 and 390, and on the 8072
+(`agents` overlap reproduced at **1440, 1100 and 390**, and on the 8072
 fixture; it is not a 390-only defect.)
+
+**1100-only defect (new in this pass, no spec covers 1100).** `#agents` at
+1100x900 reports 8 problems where 1440 reports 1: `div.row "e2e-tester
+kula.toml"` and the workflow card body – `div.wf-about`, `div.wf-fences`,
+`span.guard-tag.review`, `span.muted.wf-mem` – are all measured at
+`x 835-1134` on an 1100 viewport, i.e. a full card column sits **off-screen**
+while `#agents` still reports only the card x help overlap at 1440. The agents
+grid does not reflow between 1440 and 1100. Raw:
+`scratch/a1/out/probe1100-agents.txt`.
 
 ---
 
@@ -445,18 +606,20 @@ fixture; it is not a 390-only defect.)
 
 Payoff = copies removed x (1 - consistency rating) x how many views it heals.
 
-1. **`Tabs`** – collapse 8 tab strips into one component (Consistency 3 of 10;
+1. **`Tabs`** – collapse 7 tab strips (+ the mobile `.ag-menu`) into one component (Consistency 3 of 10;
    touches Agents, Teams, AgentInspector, GraphView, MapView, Workflows,
    SkillIndex, Contrast). Highest copy count in the app. S.
 2. **`Seg`** – one segmented control, delete the `graph.css:10` vs `:187`
    override pair and the 4 modifiers; 14 instantiation sites. M.
 3. **`EmptyState`** – 10 empty families, only one with a heading, nine without
    an action; heals nearly every view. S.
-4. **`Chip`** – 12 chip families with duplicated tones (`.risk-pill` ==
+4. **`Chip`** – 14 chip families with duplicated tones (`.risk-pill` ==
    `.status-pill`). M.
 5. **`Card`/`Panel`** – fix the **double `.card` definition**
    (`overview.css:13` vs `system.css:14`) and delete the dead `.kpi` block;
-   also fixes the `ag-card` x `sb-help` overlap. S.
+   the padding/animation leak is unconditional (only overview declares them),
+   so this also fixes the `ag-card` x `sb-help` overlap measured at 1440, 1100
+   and 390. S.
 6. **`CanvasToolbar` + `Node` shell** – two React Flow node kits and four
    toolbars converge; fixes the tiny node targets and the 390 canvas overflow.
    L.
@@ -486,3 +649,12 @@ Expected named components to carry into F1: `Button`, `Tabs`, `Seg`, `Panel`,
 - Test ids referenced by this audit: `ag-tabs`, `tc-limit-chip`, `ws-tabs`,
   `team-tab-delete`, `at-autonomy`, `at-block-chips`, `map-focus-chain`,
   `theme-seg`, `help-grid`, `win-dock`, `sb-dock`.
+- Three keyboard defects F1 should fold into the `Tabs`/`Modal` work
+  (§18.1): the phone menu `.ag-mi` is visible and focusable at 1440 so the nav
+  is in the tab order twice; `div.card.ag-card` is `tabIndex 0` so each card
+  costs two tab stops; and neither modal moves focus in or traps it (Tab
+  escapes to `button.brand` behind the overlay).
+- F1 should sanity-check its fix at **1100**, not just 1440/390: `#agents` at
+  1100 has 8 probe problems (a whole workflow card column at `x 835-1134`) where
+  1440 has 1. Any consolidation that only preserves 1440 behaviour ships that
+  bug.
