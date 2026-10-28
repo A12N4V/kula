@@ -148,9 +148,9 @@ How to read a family
   the left rail (steps 6-17) and again as the phone menu (steps 18-25). A
   keyboard user Tabs through 19 nav stops to reach the page content.
   `focus-order-agents.txt`.
-- Rating: Value 8, Clarity 7, Density 7, Consistency 3 (seven copies + the mobile variant, three
-  active grammars), Interaction 7, Robustness 5 (off-screen phone menu),
-  Polish 6.
+- Rating: Value 8, Clarity 7, Density 7, Consistency 3 (seven copies + the
+  mobile variant, three active grammars), Interaction 7, Robustness 5
+  (off-screen phone menu), Polish 6.
 
 ## 4 · Chips and badges
 
