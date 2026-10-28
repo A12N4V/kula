@@ -528,7 +528,9 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
     }
     // agents whose home zone has no visible squares go to the end of the band
     const orphans: typeof fenced = [];
-    let prevRight = -Infinity;
+    // The whole-codebase square (x −240, 160 wide) sits at the band's left
+    // end when any agent is unfenced: fenced chips start right of it.
+    let prevRight = agents.some((a) => !a.sections.length) ? -240 + 160 : -Infinity;
     for (const [zid, list] of byZone) {
       const zb = zoneBox.get(zid);
       if (!zb) { orphans.push(...list); continue; }
@@ -575,7 +577,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
         id: "codebase", kind: "block", solid: true, title: "Whole codebase",
         subtitle: "deployed on everything",
         card: { hue: bands[0]?.color ?? "var(--text-3)", glyph: "ALL", dir: "everything" },
-        size: { w: 160, h: 182 }, pos: CB,
+        size: { w: 160, h: AGENT_H + 16 }, pos: CB, // ends above the zone row
         badge: <span className="u6-bands" data-testid="x5-agent-band" aria-hidden="true">
           {bands.map((b, i) => <i key={i} style={{ background: b.color, width: `${b.pct}%` }} />)}
         </span>,
@@ -766,6 +768,9 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
 
   // The landing zoom (R0, readable by default): the busiest section, at a
   // scale where the card labels are legible – fit stays one key away.
+  // An agent's reach is drawn only while that agent is picked: every agent
+  // wired to every fenced section at rest buried the map under ~500 lines.
+  const shownEdges = useMemo(() => edges.filter((e) => !e.id.startsWith("agent:") || e.target === "codebase" || e.source === selection), [edges, selection]);
   const busiest = useMemo(() => {
     const id = busiestSection(data);
     return reps.get(id ?? "") ?? null;
@@ -862,7 +867,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
         minZoom={0.1}
         initialFocus={busiest}
         initialZoom={0.85}
-        nodes={nodes} edges={edges} groups={groups}
+        nodes={nodes} edges={shownEdges} groups={groups}
         selection={selection ?? null} onSelect={select} onOpen={open}
         // the focus state rides the layout key: the kit's layout cache keys on
         // node ids/edges only, so a dim change would otherwise never repaint

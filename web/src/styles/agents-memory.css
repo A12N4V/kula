@@ -38,3 +38,8 @@
 @media (max-width: 900px) {
   .mem-x10 .btn { min-height: 40px; }
 }
+
+/* Graph is the default memory view: give it the room, hide the list. */
+.ag-mem-list-hidden { display: none; }
+.ag-memory .m1-graph .fc-canvas { height: max(420px, calc(100vh - 330px)); }
+@media (max-width: 760px) { .ag-memory .m1-graph .fc-canvas { height: 360px; } }

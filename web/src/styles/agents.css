@@ -673,3 +673,23 @@
    grid on a phone (probe overlap) and earns nothing there: the shortcuts it
    opens are keyboard-only anyway. Hidden ≤ 760px. */
 @media (max-width: 760px) { .sb-keys { display: none; } }
+
+/* One menu: the app rail picks Agents, a horizontal strip picks the section. */
+.ag-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ag-page > .ag-tabs { flex: none; margin: 0; padding: 0 12px; gap: 2px; background: var(--bg); }
+.ag-page > .ag-tabs .grow { flex: 1; }
+.ag-page > .ag-tabs button.ag-mi { flex: none; gap: 7px; height: 38px; padding: 0 12px; }
+.ag-page > .ag-tabs .ag-mi-label { flex: none; overflow: visible; }
+.ag-page > .detail { flex: 1; min-height: 0; overflow: auto; position: relative; }
+.ag-page.ag-full > .detail { overflow: hidden; }
+.ag-page.ag-full .ag-detail, .ag-page.ag-full .ag-panel { height: 100%; }
+@media (max-width: 760px) { .ag-page > .ag-tabs .ag-mi-label { display: none; } .ag-page > .ag-tabs button.ag-mi { padding: 0 11px; } }
+
+/* The mark is a button (U17), so the button fills the art box and the curve
+   fills the button – centred, square, the same size on every card. */
+.card__art { display: grid; place-items: center; }
+.card__art > button.ag-card-art-svg { width: 72%; height: 82%; max-width: none; padding: 0; display: grid; place-items: center; }
+.card__art > button.ag-card-art-svg > svg, .card__art > button.logo-saved svg { width: 100%; height: 100%; display: block; }
+.card__art > button.logo-saved { aspect-ratio: auto !important; }
+@media (max-width: 760px) { .ag-cards .card__art > button.ag-card-art-svg { max-width: none; width: 70%; } }
+.ag-page.ag-full .ag-detail { max-width: none; }

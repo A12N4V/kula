@@ -10,7 +10,7 @@ import { Icon, useToast } from "../../ui";
 import { takeStashedAdd, type Act, type Tab } from "./data";
 import { seatKey } from "../../roster";
 import { TabStrip } from "./parts";
-import TeamCanvas, { CanvasHead } from "./TeamCanvas";
+import { CanvasHead, TeamsCanvas } from "./TeamCanvas";
 import TeamSidebar from "./TeamSidebar";
 
 export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Act; setTab?: (t: Tab) => void }) {
@@ -97,12 +97,13 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
     setCur((c) => (teams[c]?.name === name ? Math.max(0, c - 1) : c));
     setMember(null);
   };
-  const addMember = (workflow: string, agent?: string) => {
-    if (!t) return;
-    act("team_add_member", { name: t.name, workflow, ...(agent ? { agent } : {}) }, `${workflow} joined ${t.name}`).then(() => {
-      setTeams((prev) => prev.map((y, j) => (j === cur && !y.members.some((m) => m.workflow === workflow) ? { ...y, members: [...y.members, { name: workflow, agent: agent ?? "any", workflow }] } : y)));
+  const addMemberTo = (i: number, workflow: string, agent?: string) => {
+    const team = teams[i]; if (!team) return;
+    act("team_add_member", { name: team.name, workflow, ...(agent ? { agent } : {}) }, `${workflow} joined ${team.name}`).then(() => {
+      setTeams((prev) => prev.map((y, j) => (j === i && !y.members.some((m) => m.workflow === workflow) ? { ...y, members: [...y.members, { name: workflow, agent: agent ?? "any", workflow }] } : y)));
     }).catch((e: Error) => toast(e.message, "err"));
   };
+  const addMember = (workflow: string, agent?: string) => addMemberTo(cur, workflow, agent);
   const removeMember = (workflow: string) => {
     if (!t) return;
     act("team_remove_member", { name: t.name, workflow }, `${workflow} left ${t.name}`).then(() => {
@@ -147,11 +148,6 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
     if (!teams.some((y) => y.name === u.team)) { toast(`${u.team} is gone – cannot re-add`, "err"); return; }
     setTeams((prev) => prev.map((y) => (y.name === u.team && !y.members.some((m) => m.workflow === u.seat.workflow) ? { ...y, members: [...y.members, { ...u.seat, agent: u.seat.agent || "any" }] } : y)));
     act("team_add_member", { name: u.team, workflow: u.seat.workflow, ...(u.seat.agent && u.seat.agent !== "any" ? { agent: u.seat.agent } : {}) }, `${u.seat.workflow} rejoined ${u.team}`).catch((e: Error) => toast(e.message, "err"));
-  };
-  const layout = (positions: Record<string, [number, number]>) => {
-    if (!t) return;
-    setTeams((prev) => prev.map((y, j) => (j === cur ? { ...y, positions } : y)));
-    act("team_layout", { name: t.name, positions }, "Layout saved").catch(() => {});
   };
   // The members the canvas knows, with the connected agent filled in when a
   // seat has none: the sidebar's add flow names the seat after its workflow.
@@ -206,19 +202,22 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
             <CanvasHead team={shown} live={info.team?.name === shown.name} sideOpen={side} onSide={() => setSide((v) => !v)}
               onDeploy={() => act("run", { team: { name: shown.name } }, `${shown.name} deployed to the Workspace`).catch((e: Error) => toast(e.message, "err"))}
               onStop={() => act("team_stop", {}, `${shown.name} stood down`).catch(() => {})} />
-            <TeamCanvas key={shown.name} team={shown} info={info} live={info.team?.name === shown.name} onMove={layout} onOpen={(k) => { setSide(true); setMember(k); }}
-              onDropAgent={(name) => addMember(name)}
-              onSeatDrop={(source, target, shift) => {
-                if (!t) return;
+            <TeamsCanvas teams={teams} cur={cur} live={info.team?.name}
+              onPick={(i) => { setCur(i); setMember(null); }}
+              onMove={(i, positions) => {
+                const name = teams[i]?.name; if (!name) return;
+                setTeams((prev) => prev.map((y, j) => (j === i ? { ...y, positions } : y)));
+                act("team_layout", { name, positions }, "Layout saved").catch(() => {});
+              }}
+              onOpen={(i, k) => { setCur(i); setSide(true); setMember(k); }}
+              onDropAgent={(i, name) => { setCur(i); addMemberTo(i, name); }}
+              onSeatDrop={(i, source, target, shift) => {
+                const team = teams[i]; if (!team) return;
                 const tk = seatKey(target);
-                const from = source;
-                if (!from || from === tk) return;
-                const members = t.members.map((m) => {
-                  if (seatKey(m) !== tk) return m;
-                  return shift ? { ...m, hands_off: [...(m.hands_off || []), from] } : { ...m, reports_to: from };
-                });
-                setTeams((prev) => prev.map((y, j) => (j === cur ? { ...y, members } : y)));
-                toast(shift ? `${from} hands off to ${tk}` : `${tk} answers to ${from}`);
+                if (!source || source === tk) return;
+                const members = team.members.map((m) => (seatKey(m) !== tk ? m : shift ? { ...m, hands_off: [...(m.hands_off || []), source] } : { ...m, reports_to: source }));
+                setTeams((prev) => prev.map((y, j) => (j === i ? { ...y, members } : y)));
+                toast(shift ? `${source} hands off to ${tk}` : `${tk} answers to ${source}`);
               }} />
           </div>
           {side && <TeamSidebar team={shown} all={teams} info={info} member={member} act={act} onSet={set}

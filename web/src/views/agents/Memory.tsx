@@ -73,9 +73,10 @@ export default function MemoryTab({ info, act, open }: { info: AgentsInfo; act: 
   const [sort, setSort] = useState<"newest" | "target" | "author">("newest");
   const [target, setTarget] = useState("repo");
   const [text, setText] = useState("");
-  // First screen answers "what does each agent remember and why": grouped by
-  // agent, the graph is a toggle – not the default view.
-  const [graphOn, setGraphOn] = useState(false);
+  // Memory is a knowledge graph first: memories anchored to the code they are
+  // about. The grouped list is the other view; the choice is remembered.
+  const [graphOn, setGraphOnState] = useState(() => { try { return localStorage.getItem("kula.mem.view") !== "list"; } catch { return true; } });
+  const setGraphOn = (on: boolean) => { setGraphOnState(on); try { localStorage.setItem("kula.mem.view", on ? "graph" : "list"); } catch { /* private mode */ } };
   const mems = useMemo(() => info.memories
     .filter((m) => filter === "all" || (filter === "stale" ? m.stale : filter === "agents" ? m.author.startsWith("agent:") : !m.author.startsWith("agent:")))
     .sort((a, b) =>
@@ -97,7 +98,10 @@ export default function MemoryTab({ info, act, open }: { info: AgentsInfo; act: 
     <Card title="Memory" sub="refs/kula/meta" className="ag-memory"
       right={<>
         <ListFilter inputRef={inputRef} value={q} onChange={setQ} label="Filter memories" placeholder="/ search memories" />
-        <button className={`btn sm ghost${graphOn ? " on" : ""}`} data-testid="mem-graph-toggle" aria-pressed={graphOn} onClick={() => setGraphOn(!graphOn)}><Icon.graph /> Graph</button>
+        <div className="seg" role="group" aria-label="Memory view">
+          <button className={graphOn ? "on" : ""} data-testid="mem-graph-toggle" aria-pressed={graphOn} onClick={() => setGraphOn(true)}><Icon.graph /> Graph</button>
+          <button className={graphOn ? "" : "on"} data-testid="mem-list-toggle" aria-pressed={!graphOn} onClick={() => setGraphOn(false)}>List</button>
+        </div>
         <div className="seg">{(["all", "stale", "agents", "people"] as const).map((f) => <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>{f} {n(f)}</button>)}</div>
       </>}>
       <TencentBanner />
@@ -105,7 +109,7 @@ export default function MemoryTab({ info, act, open }: { info: AgentsInfo; act: 
         ? <div className="muted ag-empty">No memories yet – agents remember facts about this code here. An agent writes one with <code>kula memory add &lt;target&gt; "one fact" --by agent:&lt;name&gt;</code>, or anchor one yourself below.</div>
         : <>
           {graphOn && <MemoryGraph mems={shown} allMems={info.memories} sel={sel} onPickMem={setSel} onOpen={open} />}
-          <div {...navProps}>
+          <div {...navProps} className={graphOn ? "ag-mem-list-hidden" : undefined}>
             {byAuthor.map(([author, list]) => (
               <div key={author} className="ag-mem-group">
                 <div className="ag-mem-author"><AgentMark id={author.replace(/^agent:/, "")} /><span className="mono">{author}</span><span className="muted ag-meta">{list.length} memor{list.length === 1 ? "y" : "ies"}</span></div>

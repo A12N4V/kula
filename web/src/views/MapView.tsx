@@ -227,11 +227,21 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
     }
   }, [data, path, openRoot]);
 
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const drill = useCallback((id: string) => {
     setPath((p) => {
-      // Clicking an open ancestor pops back to it; a new block descends.
+      // The path is always the block's real ancestry, root first: clicking a
+      // block anywhere (not just a child of the last crumb) must not append it
+      // to whatever was open before.
+      const blocks = dataRef.current?.blocks;
+      const chain: string[] = [];
+      for (let cur: string | null | undefined = id, n = 0; cur && n < 64; n++) {
+        chain.unshift(cur);
+        cur = blocks?.[cur]?.parent;
+      }
       const at = p.indexOf(id);
-      const next = at >= 0 ? p.slice(0, at + 1) : [...p, id];
+      const next = blocks?.[id] ? chain : at >= 0 ? p.slice(0, at + 1) : [id];
       if (`#map/${next.join("/")}` !== location.hash) history.replaceState(null, "", `#map/${next.join("/")}`);
       return next;
     });
