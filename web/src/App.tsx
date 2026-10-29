@@ -94,7 +94,9 @@ function parseHash() {
   if (view === "proposals" && Number(a)) target.proposal = Number(a);
   if (view === "history" && a) target.sha = a;
   if (view === "agents" && a) target.tab = a;
-  if (view === "map" && a) target.block = a;
+  // #map/<root>/…/<block>: the drill path's last block is the target (MapView
+  // re-opens its real ancestry); the first segment alone dropped the drill.
+  if (view === "map" && a) target.block = parts.slice(1).filter(Boolean).pop();
   if (view === "graph" && a === "fences") target.fences = b ?? "";
   return { view, contrast, focus, target };
 }
