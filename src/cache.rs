@@ -104,7 +104,7 @@ fn fingerprint(root: &Path) -> Vec<(PathBuf, u64, u64, i64)> {
     }
     for d in DIRS {
         let dir = root.join(d);
-        walk(&dir, &mut out, 0);
+        walk_capped(&dir, &mut out);
     }
     for g in git_dirs(root) {
         for f in ["HEAD", "index", "packed-refs"] {
@@ -112,11 +112,20 @@ fn fingerprint(root: &Path) -> Vec<(PathBuf, u64, u64, i64)> {
             let (mtime, hash, size) = stamp(&p);
             out.push((p, mtime, hash, size));
         }
-        walk(&g.join("refs"), &mut out, 0);
+        walk_capped(&g.join("refs"), &mut out);
         // `kula hook install` writes here; agents_info reports it
-        walk(&g.join("hooks"), &mut out, 0);
+        walk_capped(&g.join("hooks"), &mut out);
     }
     out
+}
+
+/// Walk one watched directory with its own entry budget: a shared budget let
+/// a big `.claude` or `.kula` crowd out `refs/`, so commits and new branches
+/// never moved the fingerprint and cached git log / branches went stale.
+fn walk_capped(dir: &Path, out: &mut Vec<(PathBuf, u64, u64, i64)>) {
+    let mut own = Vec::new();
+    walk(dir, &mut own, 0);
+    out.extend(own);
 }
 
 /// Cap: per directory 2000 entries and 3 levels deep – enough for skills,
@@ -207,6 +216,36 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A watched dir with more files than the walk cap must not hide refs/:
+    /// a new branch has to move the fingerprint of a cached_json entry.
+    #[test]
+    fn big_watched_dir_does_not_hide_refs() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        let git = |a: &[&str]| {
+            let ok = std::process::Command::new("git").arg("-C").arg(root).args(["-c", "user.name=t", "-c", "user.email=t@t"]).args(a).output().unwrap().status.success();
+            assert!(ok, "git {a:?}");
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["commit", "-q", "--allow-empty", "-m", "one"]);
+        std::fs::create_dir_all(root.join(".claude/skills")).unwrap();
+        for i in 0..MAX_ENTRIES + 50 {
+            std::fs::write(root.join(format!(".claude/skills/f{i}.md")), "x").unwrap();
+        }
+        let n = std::cell::Cell::new(0u32);
+        let build = || {
+            n.set(n.get() + 1);
+            Ok(serde_json::json!(n.get()))
+        };
+        let key = format!("test-refs-{}", std::process::id());
+        cached_json(&key, root, build).unwrap();
+        cached_json(&key, root, build).unwrap();
+        assert_eq!(n.get(), 1, "unchanged repo answers from cache");
+        git(&["branch", "other"]);
+        cached_json(&key, root, build).unwrap();
+        assert_eq!(n.get(), 2, "a new ref must invalidate");
+    }
 
     #[test]
     fn reuses_and_rebuilds_on_change() {
