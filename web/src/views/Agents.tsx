@@ -34,7 +34,7 @@ import Settings, { ImportSkill } from "./agents/Settings";
 const TABS = [
   { id: "workflows", label: "Agents", icon: Icon.workflow, hint: "Work modes: role, scope, steps" },
   { id: "teams", label: "Teams", icon: Icon.team, hint: "Agents that work together" },
-  { id: "research", label: "Research", icon: Icon.flask, hint: "Research loops" },
+  { id: "research", label: "Research", icon: Icon.flask, hint: "Measure, change one thing, keep what wins" },
   { id: "skills", label: "Skills", icon: Icon.box, hint: "Every SKILL.md an agent loads" },
   { id: "memory", label: "Memory", icon: Icon.memory, hint: "What agents remember" },
   { id: "docs", label: "Docs", icon: Icon.doc, hint: "Docs and instruction files" },

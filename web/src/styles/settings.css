@@ -9,6 +9,10 @@
 /* X14 – every settings row puts its control on the same side (right), so
    Theme and Opening sequence no longer sit on opposite edges. */
 .set-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid color-mix(in oklab, var(--line) 60%, transparent); }
+/* A spacer is a flex idiom: in this grid it took the auto column and pushed the
+   control onto its own full-width row. The last child holds the right edge. */
+.set-row > .spacer { display: none; }
+.set-row > :last-child:not(:first-child) { margin-left: auto; justify-self: end; }
 .set-label { display: flex; flex-direction: column; min-width: 0; }
 .set-label span { color: var(--text); }
 .set-label small { color: var(--text-3); font-size: 11px; }

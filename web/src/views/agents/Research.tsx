@@ -56,7 +56,6 @@ export default function ResearchTab({ info, act, open, go }: { info: AgentsInfo;
   return (
     <div className="rs">
       <div className="rs-head">
-        <h2 className="rs-title">Research</h2>
         <span className="mono rs-count">{loops.length} loop{loops.length === 1 ? "" : "s"}</span>
         {info.research.some((r) => r.active) && <span className="tag accent">a loop is running</span>}
         <span className="spacer" />
