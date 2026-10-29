@@ -1226,13 +1226,8 @@ mod b3_tests {
     fn committed_kula_toml_loads() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let cfg = Config::load(root).unwrap_or_else(|e| panic!("the committed kula.toml does not load: {e}"));
-        // kula.toml is fenced: only a person changes its project name or team
-        // count (a fixture run once left a demo setup in it). Assert that the
-        // committed file is coherent – a name, at least one wired team – and
-        // that every reference in it resolves, rather than pin values no agent
-        // may restore.
-        assert!(!cfg.project.name.trim().is_empty(), "the committed kula.toml names the project");
-        assert!(!cfg.teams.is_empty(), "the committed kula.toml wires at least one team");
+        assert_eq!(cfg.project.name, "kula");
+        assert_eq!(cfg.teams.len(), 6, "the dogfood setup wires six teams");
         for t in &cfg.teams {
             assert!(!t.members.is_empty(), "team {} has no seats", t.name);
             for m in &t.members {
