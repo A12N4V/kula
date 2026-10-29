@@ -262,3 +262,6 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 @media (max-width: 760px) {
   .split[data-side="detail"] > .split-back { display: inline-flex; position: absolute; top: 4px; left: 8px; z-index: 5; height: 32px; background: var(--bg); border: 1px solid var(--line); }
 }
+
+/* the comment box stays in reach at the bottom of a long PR or issue */
+.composer { position: sticky; bottom: 0; z-index: 2; display: grid; gap: 8px; padding: 10px 0 12px; background: var(--bg); border-top: 1px solid var(--line); }

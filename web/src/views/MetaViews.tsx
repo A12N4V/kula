@@ -20,13 +20,16 @@ function Thread({ comments, onSend }: { comments: { author: string; body: string
     <div className="stack" style={{ marginTop: 18 }}>
       <div className="section-title">Discussion <span className="count">{comments.length}</span></div>
       {comments.map((c, i) => (
-        <div key={i} style={{ padding: "10px 14px", border: "1px solid var(--line)", borderRadius: 10, background: "var(--panel)" }}>
+        <div key={i} style={{ padding: "10px 14px", border: "1px solid var(--line)", background: "var(--panel)" }}>
           <div className="row" style={{ marginBottom: 4 }}><b style={{ fontWeight: 600 }}>{c.author}</b><span className="muted">{relTime(c.at)}</span></div>
           <Md text={c.body} />
         </div>
       ))}
-      <textarea className="textarea" placeholder="Leave a comment…" value={b} onChange={(e) => setB(e.target.value)} />
-      <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn primary" disabled={!b.trim()} onClick={() => onSend(b).then(() => setB(""))}>Comment</button></div>
+      <div className="composer">
+        <textarea className="textarea" placeholder="Leave a comment…  ⌘↵ sends" value={b} onChange={(e) => setB(e.target.value)}
+          onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && b.trim()) { e.preventDefault(); onSend(b).then(() => setB("")); } }} />
+        <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn primary" disabled={!b.trim()} onClick={() => onSend(b).then(() => setB(""))}>Comment</button></div>
+      </div>
     </div>
   );
 }
