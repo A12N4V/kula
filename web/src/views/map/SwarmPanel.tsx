@@ -13,7 +13,10 @@ export function SwarmPanel({ info, picked, access, onPick }: {
   info: AgentsInfo; picked: string | null; access: Record<string, Access>;
   onPick: (workflow: string | null, label: string | null) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  // Shut by default: open, the panel sits over the canvas's left edge and
+  // hides cards there. The choice is remembered per browser.
+  const [open, setOpenRaw] = useState(() => { try { return localStorage.getItem("kula.swarm.open") === "1"; } catch { return false; } });
+  const setOpen = (f: (o: boolean) => boolean) => setOpenRaw((o) => { const n = f(o); try { localStorage.setItem("kula.swarm.open", n ? "1" : "0"); } catch { /* private */ } return n; });
   const [seat, setSeat] = useState<string | null>(null);
   const tree = useMemo(() => {
     const kids = new Map<string, Team[]>();
