@@ -67,10 +67,12 @@
 /* a3 – agents tab on the flow canvas: React Flow's transparent edge
    hit-areas (20 px invisible stroke) render above nodes and group frames
    and eat their clicks. Edge clicks are not a capability in any agents
-   view, so within the four agents canvases the hit-area yields. */
+   view, so within the agents canvases (the team org chart too, whose
+   reporting lines cross seats) the hit-area yields. */
 .org .react-flow__edge-interaction,
 .wf-graph .react-flow__edge-interaction,
 .m1-graph .react-flow__edge-interaction,
-.rf-canvas .react-flow__edge-interaction {
+.rf-canvas .react-flow__edge-interaction,
+.tc-canvas .react-flow__edge-interaction {
   pointer-events: none;
 }
