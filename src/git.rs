@@ -16,6 +16,9 @@ pub struct Repo {
 impl Repo {
     /// Locate the repository containing `start`.
     pub fn discover(start: &Path) -> Result<Repo> {
+        if let Some(root) = Self::discover_fs(start) {
+            return Ok(Repo { root });
+        }
         let out = Command::new("git")
             .arg("-C")
             .arg(start)
@@ -29,12 +32,82 @@ impl Repo {
         Ok(Repo { root: PathBuf::from(root) })
     }
 
+    /// The plain case – a work tree with a `.git` dir or file above `start` –
+    /// found without spawning git; anything unusual is left to git itself.
+    fn discover_fs(start: &Path) -> Option<PathBuf> {
+        const ENV: [&str; 5] = ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM"];
+        if ENV.iter().any(|v| std::env::var_os(v).is_some()) {
+            return None;
+        }
+        let start = std::fs::canonicalize(start).ok()?;
+        if start.components().any(|c| c.as_os_str() == ".git") {
+            return None;
+        }
+        for dir in start.ancestors() {
+            let dot = dir.join(".git");
+            let m = match std::fs::metadata(&dot) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            let ok = if m.is_dir() {
+                dot.join("HEAD").is_file()
+            } else {
+                std::fs::read_to_string(&dot).map(|s| s.starts_with("gitdir:")).unwrap_or(false)
+            };
+            return ok.then(|| dir.to_path_buf());
+        }
+        None
+    }
+
     pub fn name(&self) -> String {
         self.root.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "repo".into())
     }
 
     pub fn kula_dir(&self) -> PathBuf {
         self.root.join(".kula")
+    }
+
+    /// This work tree's git directory, found without spawning git; None when
+    /// git's environment overrides apply – callers fall back to git.
+    pub fn git_dir_fs(&self) -> Option<PathBuf> {
+        if std::env::var_os("GIT_DIR").is_some() || std::env::var_os("GIT_COMMON_DIR").is_some() {
+            return None;
+        }
+        let dot = self.root.join(".git");
+        if dot.is_dir() {
+            return Some(dot);
+        }
+        let s = std::fs::read_to_string(&dot).ok()?;
+        let p = PathBuf::from(s.strip_prefix("gitdir:")?.trim());
+        Some(if p.is_absolute() { p } else { self.root.join(p) })
+    }
+
+    /// The git directory shared by all worktrees, found without spawning git.
+    fn common_dir(&self) -> Option<PathBuf> {
+        let gitdir = self.git_dir_fs()?;
+        match std::fs::read_to_string(gitdir.join("commondir")) {
+            Ok(c) => {
+                let p = PathBuf::from(c.trim());
+                Some(if p.is_absolute() { p } else { gitdir.join(p) })
+            }
+            Err(_) => Some(gitdir),
+        }
+    }
+
+    /// A full ref's commit id read straight from the ref store (loose, then
+    /// packed); None when it cannot be read that way – callers fall back to git.
+    pub fn ref_id_fs(&self, name: &str) -> Option<String> {
+        let common = self.common_dir()?;
+        let ok = |s: &str| s.len() >= 40 && s.bytes().all(|b| b.is_ascii_hexdigit());
+        if let Ok(s) = std::fs::read_to_string(common.join(name)) {
+            let s = s.trim();
+            return ok(s).then(|| s.to_string());
+        }
+        let packed = std::fs::read_to_string(common.join("packed-refs")).ok()?;
+        packed.lines().find_map(|l| {
+            let (id, r) = l.split_once(' ')?;
+            (r == name && ok(id)).then(|| id.to_string())
+        })
     }
 
     fn cmd(&self) -> Command {
@@ -399,4 +472,35 @@ pub struct Branch {
     pub track: String,
     pub current: bool,
     pub subject: String,
+}
+
+#[cfg(test)]
+mod fs_lookup_tests {
+    use super::*;
+
+    /// The spawn-free lookups must agree with git itself.
+    #[test]
+    fn fs_lookups_match_git() {
+        let here = std::env::current_dir().unwrap();
+        let Ok(git) = Repo::discover(&here).and_then(|_| {
+            let out = Command::new("git").arg("-C").arg(&here).args(["rev-parse", "--show-toplevel"]).output()?;
+            Ok(PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()))
+        }) else {
+            return; // not in a git checkout
+        };
+        let fs = Repo::discover_fs(&here.join("src")).expect("plain work tree");
+        assert_eq!(fs.canonicalize().unwrap(), git.canonicalize().unwrap());
+        let repo = Repo { root: fs };
+        let head = repo.run(&["symbolic-ref", "-q", "HEAD"]).unwrap_or_default();
+        if !head.trim().is_empty() {
+            if let Some(id) = repo.ref_id_fs(head.trim()) {
+                assert_eq!(id, repo.run(&["rev-parse", head.trim()]).unwrap().trim());
+            }
+        }
+        let gp = repo.run(&["rev-parse", "--git-path", "kula"]).unwrap();
+        let gp = PathBuf::from(gp.trim());
+        let gp = if gp.is_absolute() { gp } else { repo.root.join(gp) };
+        let mine = repo.git_dir_fs().unwrap().join("kula");
+        assert_eq!(mine.parent().unwrap().canonicalize().unwrap(), gp.parent().unwrap().canonicalize().unwrap());
+    }
 }

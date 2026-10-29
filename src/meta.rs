@@ -88,8 +88,32 @@ pub fn now() -> i64 {
 }
 
 pub fn load(repo: &Repo) -> Result<Meta> {
-    match repo.run(&["show", &format!("{REF}:{FILE}")]) {
-        Ok(s) => Ok(serde_json::from_str(&s)?),
+    // The document is immutable per commit: cache it under the ref's id so a
+    // read costs a file read, not a `git show` spawn.
+    let id = repo.ref_id_fs(REF);
+    let cache = repo.git_dir_fs().map(|d| d.join("kula").join("meta.cache"));
+    if let (Some(id), Some(cache)) = (&id, &cache) {
+        if let Ok(s) = std::fs::read_to_string(&cache) {
+            if let Some(json) = s.strip_prefix(id.as_str()).and_then(|r| r.strip_prefix('\n')) {
+                if let Ok(m) = serde_json::from_str(json) {
+                    return Ok(m);
+                }
+            }
+        }
+    }
+    let rev = id.as_deref().unwrap_or(REF);
+    match repo.run(&["show", &format!("{rev}:{FILE}")]) {
+        Ok(s) => {
+            let m = serde_json::from_str(&s)?;
+            if let (Some(id), Some(cache)) = (id, cache) {
+                let _ = std::fs::create_dir_all(cache.parent().unwrap_or(&cache));
+                let tmp = cache.with_extension(format!("cache.{}", std::process::id()));
+                if std::fs::write(&tmp, format!("{id}\n{s}")).is_ok() {
+                    let _ = std::fs::rename(&tmp, &cache);
+                }
+            }
+            Ok(m)
+        }
         Err(_) => Ok(Meta::default()),
     }
 }
