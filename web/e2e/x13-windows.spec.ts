@@ -56,12 +56,13 @@ test.describe("x13 desktop windows", () => {
     const win = await openSettings(page);
     await expect(win).toHaveAttribute("data-pane", /.*/);
 
-    // drag by the header moves the window (up-right, clear of the clamps)
+    // drag by the header moves the window (down-left: it opens docked to the
+    // right edge under the top bar, so that is the way clear of the clamps)
     const before = (await win.boundingBox())!;
-    await dragBy(page, win, 200, -80);
+    await dragBy(page, win, -200, 80);
     const after = (await win.boundingBox())!;
-    expect(Math.abs(after.x - before.x - 200)).toBeLessThan(40);
-    expect(Math.abs(after.y - before.y + 80)).toBeLessThan(40);
+    expect(Math.abs(after.x - before.x + 200)).toBeLessThan(40);
+    expect(Math.abs(after.y - before.y - 80)).toBeLessThan(40);
 
     // double-click the header maximises; the pane-ctl pair restores (u10 contract)
     const head = win.locator("[data-testid=settings-head]");
@@ -111,10 +112,11 @@ test.describe("x13 desktop windows", () => {
     const win = await openSettings(page);
     await win.locator("[data-testid=settings-head]").focus();
     const before = (await win.boundingBox())!;
-    await page.keyboard.press("ArrowRight");
+    // the window opens docked right, so it moves left (and down)
+    await page.keyboard.press("ArrowLeft");
     await page.keyboard.press("ArrowDown");
     const moved = (await win.boundingBox())!;
-    expect(moved.x).toBeGreaterThan(before.x + 10);
+    expect(moved.x).toBeLessThan(before.x - 10);
     expect(moved.y).toBeGreaterThan(before.y + 10);
     await page.keyboard.press("Alt+ArrowRight");
     const grown = (await win.boundingBox())!;
@@ -154,7 +156,7 @@ test.describe("x13 desktop windows", () => {
       try {
         sessionStorage.setItem("kula.opened", "1");
         localStorage.setItem("kula.settings.v1", JSON.stringify({ opening: false }));
-        localStorage.setItem("kula.windows.v1", JSON.stringify({
+        localStorage.setItem("kula.windows.v2", JSON.stringify({
           "code-panel": { x: 200, y: 200, w: 500, h: 400, z: 5, open: true },
           settings: { x: 300, y: 300, w: 700, h: 500, z: 3, open: true },
         }));
@@ -165,12 +167,12 @@ test.describe("x13 desktop windows", () => {
     const win = page.locator("[data-testid=settings]");
     await expect(win).toBeVisible();
     // opening a window brings it to front: its z must pass the seeded sibling
-    const sib = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v1")!)["code-panel"].z);
-    const mine = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v1")!)["settings"].z);
+    const sib = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v2")!)["code-panel"].z);
+    const mine = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v2")!)["settings"].z);
     expect(mine).toBeGreaterThan(sib);
     // and a click on a front window keeps it front (idempotent focus)
     await win.click();
-    const again = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v1")!)["settings"].z);
+    const again = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v2")!)["settings"].z);
     expect(again).toBe(mine);
   });
 
@@ -179,9 +181,9 @@ test.describe("x13 desktop windows", () => {
     await open(page);
     const win = await openSettings(page);
     const before = (await win.boundingBox())!;
-    await dragBy(page, win, 160, 80);
+    await dragBy(page, win, -160, 80);
     const after = (await win.boundingBox())!;
-    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v1")!)["settings"]);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.windows.v2")!)["settings"]);
     expect(saved.x).toBeCloseTo(after.x, 0);
     expect(saved.y).toBeCloseTo(after.y, 0);
     // close, reopen – the window comes back where it was left
