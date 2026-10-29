@@ -49,7 +49,7 @@ test("graph, impact, fences and a path", async ({ page }) => {
   await settled(page);
   await shot(page, "graph");
   await inspect(page, "context_pack");
-  await page.locator(".inspector .tabs").getByRole("button", { name: "Impact" }).click();
+  await page.locator(".inspector .tabs").getByRole("tab", { name: "Impact" }).click();
   await page.waitForTimeout(1200);
   await shot(page, "impact");
   await page.keyboard.press("Escape");

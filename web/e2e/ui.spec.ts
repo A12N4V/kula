@@ -256,6 +256,10 @@ test.describe("overview + code panel", () => {
     await expect(panel).toBeVisible();
     await expect(panel.locator(".cp-code > div.lit").first()).toBeVisible();
     await page.screenshot({ path: "test-results/code-panel.png" });
+    // the code window opens docked right, over the inspector – close it to
+    // reach the row's locate button again
+    await page.locator("[data-testid=cp-close]").click();
+    await expect(panel).toHaveCount(0);
     const before = page.url();
     await row.hover();
     await row.locator(".sym-locate").click();
@@ -396,7 +400,7 @@ test.describe("agent checks, for people", () => {
     await page.keyboard.press("ControlOrMeta+k");
     await page.keyboard.type("parseHash");
     await page.locator(".palette").getByText("parseHash", { exact: true }).first().click();
-    await page.getByRole("button", { name: "Pre-edit" }).click();
+    await page.getByRole("tab", { name: "Pre-edit" }).click();
     const ac = page.locator(".inspector .ac");
     await expect(ac.locator(".risk")).toHaveText(/low|medium|high/);
     await expect(ac.locator(".ac-advice li").first()).toBeVisible();
@@ -1077,7 +1081,7 @@ test.describe("agents", () => {
     await page.locator(".palette").getByText("publish", { exact: true }).first().click();
     const insp = page.locator(".inspector");
     await expect(insp.locator(".insp-guard.locked")).toContainText("atomic index swap");
-    await insp.getByRole("button", { name: "Pre-edit" }).click();
+    await insp.getByRole("tab", { name: "Pre-edit" }).click();
     await expect(insp.locator(".ac-advice")).toContainText("Do not edit");
     await expect(insp.locator(".note.mem")).toContainText("Unlink, never truncate");
   });
@@ -1178,7 +1182,7 @@ test("the inspector's tabs all fit at its default width", async ({ page }) => {
   await page.keyboard.type("context_pack");
   await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
   const tabs = page.locator(".inspector .tabs");
-  await expect(tabs.getByRole("button")).toHaveCount(6);
+  await expect(tabs.getByRole("tab")).toHaveCount(6);
   expect(await tabs.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
 });
 
@@ -1290,13 +1294,15 @@ test.describe("teams and research (T1)", () => {
     const canvas = page.getByTestId("team-canvas");
     // unnamed seats take their workflow's name (b3): claude's seat is "tests"
     await expect(canvas).toContainText("tests");
-    await expect(canvas).toContainText("cursor");
-    // The sidebar reads the hand-offs: cursor hands off to codex (seat "explore") – no hovering.
+    // seats are named by role; the provider rides the sub line ("· on Cursor")
+    await expect(canvas).toContainText(/on Cursor/);
+    // The sidebar reads the hand-offs: cursor hands off to codex – a seat named
+    // by its role, "Review" (it runs the explore workflow) – no hovering.
     await page.getByTestId("team-side-toggle").click();
     const side = page.getByTestId("team-side");
     await expect(side).toBeVisible();
     await side.getByTestId("tc-member-cursor").click();
-    await expect(side.locator(".chip-toggle").filter({ hasText: "explore" })).toHaveAttribute("aria-pressed", "true");
+    await expect(side.locator(".chip-toggle").filter({ hasText: "Review" })).toHaveAttribute("aria-pressed", "true");
     // Back to the team: ship answers to steer (teams of teams).
     await side.getByRole("button", { name: "Back to the team" }).click();
     await expect(side.getByLabel("Answers to team")).toHaveValue("steer");
@@ -1326,7 +1332,9 @@ test.describe("teams and research (T1)", () => {
     // the team window overlays the canvas; close it so the button is clickable
     await crewSide.getByTestId("team-side-close").click();
     await page.getByTestId("team-work").click();
-    await expect(page.locator(".tc-live")).toBeVisible();
+    // the org canvas marks the live team's frame "at work"
+    await expect(page.getByTestId("team-group-e2e-crew")).toHaveClass(/live/);
+    await expect(page.getByTestId("team-group-e2e-crew")).toContainText("at work");
     await page.getByRole("button", { name: "Stand down" }).click();
     await page.getByRole("button", { name: "Confirm stand down" }).click();
     await expect(page.getByTestId("team-work")).toBeVisible();
@@ -2961,11 +2969,13 @@ test.describe("agents on the flow canvas (A3)", () => {
     await open(page, "agents/teams");
     // Select a seat on the canvas (U16): the square is the DOM contract; the
     // team sidebar opens on the seat's fields.
-    const node = page.locator('[data-testid="team-canvas"] .react-flow__node').nth(1);
+    // (seat nodes only – every team also draws a group frame on the org canvas)
+    const node = page.locator('[data-testid="team-canvas"] .react-flow__node-tc').nth(1);
     await expect(node).toBeVisible();
     // The seat key is read at click time: canvas re-renders can reorder the
     // squares, so a late read would name a different seat than the one picked.
-    const seat = await node.getAttribute("data-id");
+    // Seat node ids are "<team index>|<seat key>".
+    const seat = (await node.getAttribute("data-id"))?.split("|").pop();
     await node.click();
     const side = page.locator('[data-testid="team-side"]');
     await expect(side).toBeVisible();
