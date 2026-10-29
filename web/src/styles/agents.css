@@ -483,22 +483,9 @@
 /* Agents as a menu + listing (Flows-style split): the menu on the left.
    Icon tabs: the mark is the primary read, the label appears only when the
    menu column is wide enough (container query, labels never wrap or clip). */
-.ag-menu { container-type: inline-size; container-name: ag-menu; }
-.ag-menu .ag-tabs { display: flex; flex-direction: column; gap: 1px; border: 0; margin: 0; padding: 6px 8px 16px; overflow: visible; }
-.ag-menu .ag-tabs button.ag-mi { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 10px; border: 0; margin: 0; background: none; color: var(--text-2); font-size: 13px; text-align: left; }
-.ag-menu .ag-tabs button.ag-mi:hover { background: var(--panel-2); color: var(--text); }
-.ag-menu .ag-tabs button.ag-mi.on { background: var(--accent-soft); color: var(--text); }
-.ag-menu .ag-tabs button.ag-mi.on svg { color: var(--accent-text); }
 .ag-mi svg { width: 15px; height: 15px; flex: none; }
 .ag-mi-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-mi-n { font: 11px var(--mono); color: var(--text-3); }
-@container ag-menu (max-width: 84px) {
-  /* Icons only: hide the label before it can clip, keep badge and count. */
-  .ag-menu .ag-tabs button.ag-mi { padding: 0 10px; gap: 0; justify-content: center; }
-  .ag-menu .ag-tabs button.ag-mi .ag-mi-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .ag-menu .ag-tabs { padding: 4px 8px 16px; gap: 2px; }
-  .ag-menu .ag-tabs button.ag-mi { height: 36px; width: 44px; padding: 0; }
-}
 /* Phone: the strip stays horizontal, icons only when tight. */
 .ag-detail { max-width: 1100px; }
 .ag-detail .page-head { margin-bottom: 16px; }

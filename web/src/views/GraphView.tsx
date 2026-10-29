@@ -1009,9 +1009,9 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
           </div>
         )}
       </header>
-      <div className="tabs">
+      <div className="tabs" role="tablist" aria-label="Symbol">
         {(["context", "impact", "edit", "history", "source", "notes"] as const).map((t) => (
-          <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
+          <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
             {t === "edit" ? "Pre-edit" : t === "notes" ? "Notes" : t[0].toUpperCase() + t.slice(1)}{t === "notes" && ctx && ctx.notes.length + (ctx.memories?.length ?? 0) ? ` ${ctx.notes.length + (ctx.memories?.length ?? 0)}` : ""}
           </button>
         ))}
