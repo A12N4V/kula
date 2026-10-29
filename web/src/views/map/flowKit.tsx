@@ -357,7 +357,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   const markOf = (secId: string, first: boolean): Partial<FlowNode> => {
     const mk = marks?.[secId];
     if (!mk) return {};
-    const ring = mk.drop ? "drop" : mk.fence ? "fence" : mk.changed ? "hot" : undefined;
+    const ring = mk.drop ? "drop" : mk.fence ? "fence" : mk.review ? "review" : mk.changed ? "hot" : undefined;
     const badge = first && (mk.agent || mk.changed)
       ? <span className={`fc-badge-in${mk.agent ? " agent" : ""}`} data-testid={`ws-badge-${secId}`}>{mk.agent ?? ""}{mk.changed ? <span className="fc-badge-n">{mk.changed}</span> : null}</span>
       : undefined;
@@ -770,7 +770,14 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   // scale where the card labels are legible – fit stays one key away.
   // An agent's reach is drawn only while that agent is picked: every agent
   // wired to every fenced section at rest buried the map under ~500 lines.
-  const shownEdges = useMemo(() => edges.filter((e) => !e.id.startsWith("agent:") || e.target === "codebase" || e.source === selection), [edges, selection]);
+  // With an agent picked (the access lens), wires into faded nodes go too, so
+  // only the code it may touch keeps its connections.
+  const shownEdges = useMemo(() => {
+    const lens = selection?.startsWith("agent:");
+    const faded = lens ? new Set(nodes.filter((n) => (n as { dim?: boolean }).dim).map((n) => n.id)) : null;
+    return edges.filter((e) => (!e.id.startsWith("agent:") || e.target === "codebase" || e.source === selection)
+      && !(faded && (faded.has(e.source) || faded.has(e.target))));
+  }, [edges, nodes, selection]);
   const busiest = useMemo(() => {
     const id = busiestSection(data);
     return reps.get(id ?? "") ?? null;

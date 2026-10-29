@@ -678,3 +678,32 @@ body:has([data-testid=map-inspector]) .fm-strip-tools .ex-wrap { right: auto; }
    it, so its buttons never sit on top of the flow canvas (probe overlap). */
 .ws-drop { padding-bottom: 68px; }
 @media (max-width: 640px) { .ws-drop { padding-bottom: 76px; } }
+
+/* access lens: open sections ring solid accent, review ones dashed amber,
+   the rest fade (the kit's .fc-dim) – no wires */
+.fc-ring-fence .fc-tile-box, .fc-ring-fence .fc-wide-in, .fc-card.fc-ring-fence { outline: 1.5px solid var(--accent); outline-offset: 4px; }
+.fc-ring-review .fc-tile-box, .fc-ring-review .fc-wide-in, .fc-card.fc-ring-review { outline: 1.5px dashed var(--yellow); outline-offset: 4px; }
+.map-main.at-lens .fc-dim { opacity: .14; filter: grayscale(1); }
+.ws-drop.at-lens .fc-dim { opacity: .14; filter: grayscale(1); }
+
+/* the swarm org panel, docked on the canvas's left */
+.swarm { position: absolute; left: 12px; top: 56px; bottom: 56px; z-index: 6; width: 272px; display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--bg-2); }
+.swarm.shut { bottom: auto; }
+.sw-head { display: flex; align-items: baseline; gap: 8px; height: 36px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.swarm.shut .sw-head { border-bottom: 0; }
+.sw-lens { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 11.5px; color: var(--text-2); }
+.sw-k { display: inline-block; width: 10px; height: 10px; }
+.sw-k.open { border: 1.5px solid var(--accent); }
+.sw-k.review { border: 1.5px dashed var(--yellow); }
+.sw-k.out { background: var(--line-2); }
+.sw-body { overflow: auto; padding: 6px 0 10px; }
+.sw-team { padding: 6px 8px 2px; border-left: 1px solid var(--line); margin-top: 2px; }
+.sw-team-name { padding: 2px 4px 4px; font-size: 11.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-seat { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; grid-template-areas: "m who wf" "m role wf"; column-gap: 8px; align-items: center; width: 100%; padding: 4px 6px; border: 1px solid transparent; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.sw-seat > :first-child { grid-area: m; }
+.sw-seat:hover { background: var(--panel-2); }
+.sw-seat.on { border-color: var(--accent); background: var(--accent-soft); }
+.sw-who { grid-area: who; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-role { grid-area: role; font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-wf { grid-area: wf; font-size: 10.5px; color: var(--text-3); }
+@media (max-width: 760px) { .swarm { left: 8px; right: 8px; width: auto; bottom: auto; max-height: 45%; } }
