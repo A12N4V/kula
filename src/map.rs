@@ -1651,6 +1651,8 @@ pub fn file_rev(store: &Store) -> Result<String> {
 
 fn store_stored(store: &Store, s: &Syntagm, rev: &str) -> Result<()> {
     ensure_schema(store)?;
+    // One transaction: autocommit paid a journal create, fsync and unlink per row.
+    let tx = store.conn.unchecked_transaction()?;
     store.conn.execute("DELETE FROM syntagm_blocks", [])?;
     store.conn.execute("DELETE FROM syntagm_chains", [])?;
     store.conn.execute("DELETE FROM syntagm_families", [])?;
@@ -1716,6 +1718,7 @@ fn store_stored(store: &Store, s: &Syntagm, rev: &str) -> Result<()> {
         store.conn.execute("INSERT OR REPLACE INTO syntagm_roles VALUES (?1,?2)", rusqlite::params![node, role])?;
     }
     store.set_meta("syntagm_rev", rev)?;
+    tx.commit()?;
     Ok(())
 }
 
