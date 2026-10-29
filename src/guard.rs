@@ -637,6 +637,10 @@ pub fn hidden_paths(repo: &Repo, g: &Guards) -> Vec<String> {
 const SESSION_TTL: i64 = 1800;
 
 fn session_path(repo: &Repo) -> std::path::PathBuf {
+    // `kula` is per-worktree, so --git-path names <git dir>/kula: skip the spawn.
+    if let Some(d) = repo.git_dir_fs() {
+        return d.join("kula").join("session");
+    }
     let rel = repo.run(&["rev-parse", "--git-path", "kula"]).unwrap_or_default();
     let p = std::path::PathBuf::from(rel.trim());
     let base = if p.is_absolute() { p } else { repo.root.join(p) };
