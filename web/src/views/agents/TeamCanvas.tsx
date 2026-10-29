@@ -10,6 +10,7 @@ import { AgentHarmonograph, agentGradient } from "../../flow/agentMark";
 import { openLogoStudio } from "./LogoStudio";
 import { Icon } from "../../ui";
 import { seatKey, titleFor } from "../../roster";
+import { seatName, seatProvider } from "./parts";
 import type { AgentsInfo, Team } from "../../api";
 
 const W = 148, H = 92; // the agent square
@@ -54,7 +55,7 @@ function SquareNode({ data }: { data: { member: Member; live: boolean; lead: boo
       {/* the handles are what an edge anchors to – hidden, the square is the anchor */}
       <Handle type="target" position={Position.Top} isConnectable={false} />
       <Handle type="source" position={Position.Bottom} isConnectable={false} />
-      <div className="tc-node-mark logo-click" role="button" tabIndex={0} aria-label={`Open the logo studio for ${m.name || m.agent || "any agent"}`}
+      <div className="tc-node-mark logo-click" role="button" tabIndex={0} aria-label={`Open the logo studio for ${seatName(m)}`}
         data-testid={`tc-mark-${key(m)}`} onClick={(e) => { e.stopPropagation(); openLogoStudio("team", key(m)); }}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); openLogoStudio("team", key(m)); } }}>
         <AgentHarmonograph name={key(m)} size={30} family="team" />
@@ -62,8 +63,9 @@ function SquareNode({ data }: { data: { member: Member; live: boolean; lead: boo
       <div className="tc-node-body">
         {/* the seat's role only: the name and the mark already say which agent
             this is, and a duplicated workflow line made every label truncate */}
-        <span className="tc-node-name mono">{m.name || m.agent || "any agent"}</span>
-        <span className="tc-node-sub">{isLead ? "lead" : titleFor(m.role || "member")}</span>
+        <span className="tc-node-name mono">{seatName(m)}</span>
+        {/* the seat is its job; workflow and provider are its settings */}
+        <span className="tc-node-sub" title={seatProvider(m) ? `runs on ${seatProvider(m)} – change it in the seat's settings` : "any provider"}>{[m.workflow, seatProvider(m) && `on ${seatProvider(m)}`].filter(Boolean).join(" · ") || (isLead ? "lead" : titleFor(m.role || "member"))}</span>
       </div>
     </div>
   );
@@ -219,17 +221,50 @@ function AllCanvas({ teams, cur, live, onPick, onMove, onOpen, onDropAgent, onSe
   const sig = JSON.stringify(teams.map((t) => [t.name, t.members, t.positions ?? null]));
   // Per team: seat positions relative to the rectangle, its size and corner.
   const frames = useMemo(() => {
-    let nextX = 0;
-    return teams.map((t) => {
+    const sized = teams.map((t) => {
       const raw = { ...defaultLayout(t.members), ...(t.positions ?? {}) };
       const pts = t.members.map((m) => raw[key(m)] ?? [0, H + GAP]);
       const minX = Math.min(0, ...pts.map((p) => p[0])), minY = Math.min(0, ...pts.map((p) => p[1]));
       const maxX = Math.max(0, ...pts.map((p) => p[0])), maxY = Math.max(0, ...pts.map((p) => p[1]));
       const w = Math.max(W + 2 * PAD, maxX - minX + W + 2 * PAD), h = Math.max(H + 2 * PAD, maxY - minY + H + 2 * PAD) + HEAD;
-      const at = (t.positions?.[TEAM_AT] as [number, number] | undefined) ?? [nextX, 0];
-      nextX = Math.max(nextX, at[0] + w + TEAM_GAP);
-      return { t, raw, minX, minY, w, h, at };
+      return { t, raw, minX, minY, w, h };
     });
+    // Unplaced teams sit as an org chart: each team under the team it answers
+    // to (`under`), children centred below their parent, one row per level –
+    // a tidy tree, so a swarm of teams of teams reads as an organisation.
+    const byName = new Map(sized.map((f, i) => [f.t.name, i]));
+    const kids = new Map<number, number[]>();
+    const roots: number[] = [];
+    sized.forEach((f, i) => { const p = f.t.under ? byName.get(f.t.under) : undefined; if (p == null || p === i) roots.push(i); else kids.set(p, [...(kids.get(p) ?? []), i]); });
+    const rowH = new Map<number, number>();
+    const depthOf = new Map<number, number>();
+    const span = new Map<number, number>();
+    const measure = (i: number, d: number, seen: Set<number>): number => {
+      seen.add(i); depthOf.set(i, d); rowH.set(d, Math.max(rowH.get(d) ?? 0, sized[i].h));
+      const ks = (kids.get(i) ?? []).filter((k) => !seen.has(k));
+      const inner = ks.reduce((n, k) => n + measure(k, d + 1, seen), 0) + Math.max(0, ks.length - 1) * TEAM_GAP;
+      const w = Math.max(sized[i].w, inner);
+      span.set(i, w);
+      return w;
+    };
+    const seen = new Set<number>();
+    roots.forEach((r) => measure(r, 0, seen));
+    sized.forEach((_, i) => { if (!seen.has(i)) { roots.push(i); measure(i, 0, seen); } });
+    const rowY: number[] = [];
+    for (let d = 0, y = 0; rowH.has(d); d++) { rowY[d] = y; y += (rowH.get(d) ?? 0) + TEAM_GAP * 2; }
+    const tree = new Map<number, [number, number]>();
+    const place = (i: number, x0: number) => {
+      const w = span.get(i) ?? sized[i].w;
+      tree.set(i, [Math.round(x0 + (w - sized[i].w) / 2), rowY[depthOf.get(i) ?? 0] ?? 0]);
+      let x = x0;
+      const ks = kids.get(i) ?? [];
+      const inner = ks.reduce((n, k) => n + (span.get(k) ?? 0), 0) + Math.max(0, ks.length - 1) * TEAM_GAP;
+      x += (w - inner) / 2;
+      for (const k of ks) { place(k, x); x += (span.get(k) ?? 0) + TEAM_GAP; }
+    };
+    let rx = 0;
+    for (const r of roots) { place(r, rx); rx += (span.get(r) ?? 0) + TEAM_GAP * 2; }
+    return sized.map((f, i) => ({ ...f, at: (f.t.positions?.[TEAM_AT] as [number, number] | undefined) ?? tree.get(i) ?? [0, 0] }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig]);
   const nodes = useMemo<Node[]>(() => frames.flatMap((f, i) => {
@@ -259,7 +294,13 @@ function AllCanvas({ teams, cur, live, onPick, onMove, onOpen, onDropAgent, onSe
     return t.members.flatMap((m) => {
       const src = m.reports_to ? resolve(m.reports_to) : lead && m !== lead ? key(lead) : null;
       return src && src !== key(m) ? [{ id: `${i}|${src}->${key(m)}`, source: `${i}|${src}`, target: `${i}|${key(m)}`, style: { stroke: "var(--line-2)" } }] : [];
-    });
+    }).concat((() => {
+      // The reporting line between teams: the parent team's lead to this team's lead.
+      const p = t.under ? teams.findIndex((x) => x.name === t.under) : -1;
+      const pl = p >= 0 ? teams[p].members.find((m) => !m.reports_to) : undefined;
+      if (p < 0 || p === i || !pl || !lead) return [];
+      return [{ id: `org:${p}->${i}`, source: `${p}|${key(pl)}`, target: `${i}|${key(lead)}`, type: "smoothstep", style: { stroke: "var(--accent)", strokeDasharray: "4 4", strokeWidth: 1.25 } }];
+    })());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [sig]);
   const [rfNodes, setRfNodes, onNodesState] = useNodesState<Node>([]);

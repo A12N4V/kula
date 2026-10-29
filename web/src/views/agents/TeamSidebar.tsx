@@ -13,7 +13,7 @@ import { Window } from "../../ui/Window";
 import { AgentHarmonograph } from "../../flow/agentMark";
 import { seatKey, titleFor } from "../../roster";
 import { AGENT_IDS, AGENT_NAME, MODELS, type Act } from "./data";
-import { keyName } from "./parts";
+import { keyName, seatName, seatProvider } from "./parts";
 import type { AgentsInfo, RawRule, Team } from "../../api";
 import type { Member } from "./TeamCanvas";
 import { memberKey } from "./TeamCanvas";
@@ -69,13 +69,13 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
                 return (
                   // a row, not a button: two sibling buttons inside one div
                   <div key={k} className="tc-mcard" data-testid={`tc-member-${k}`}>
-                    <button className="tc-mrow-open" onClick={() => onPickMember(k)} aria-label={`Edit ${m.name || m.workflow || m.agent}`}>
+                    <button className="tc-mrow-open" onClick={() => onPickMember(k)} aria-label={`Edit ${seatName(m)}`}>
                       <AgentHarmonograph name={k} size={22} family="team" />
-                      <span className="tc-mcard-name mono">{m.name || m.workflow || m.agent || "any agent"}</span>
+                      <span className="tc-mcard-name mono">{seatName(m)}</span>
                       <span className="tc-mcard-sub">{memberKey(m) === leadSeat(team) ? "lead" : titleFor(m.role || "member")}</span>
                     </button>
-                    <button className="btn sm ghost icon-only" data-testid={`tc-member-x-${k}`} title={`Remove ${m.name || m.agent} from the team`}
-                      aria-label={`Remove ${m.name || m.agent}`} onClick={() => onRemove(m.workflow || k)}><Icon.minus /></button>
+                    <button className="btn sm ghost icon-only" data-testid={`tc-member-x-${k}`} title={`Remove ${seatName(m)} from the team`}
+                      aria-label={`Remove ${seatName(m)}`} onClick={() => onRemove(m.workflow || k)}><Icon.minus /></button>
                   </div>
                 );
               })}
@@ -108,7 +108,7 @@ function TeamSettings({ team, all, onSet, onDelete }: { team: Team; all: Team[];
           onSet({ members: team.members.map((m) => (memberKey(m) === target ? { ...m, reports_to: "" } : !m.reports_to ? { ...m, reports_to: target } : m)) });
         }} aria-label="Team lead">
           <option value="">nobody</option>
-          {team.members.map((m) => <option key={memberKey(m)} value={memberKey(m)}>{m.name || m.workflow || m.agent || "any agent"}</option>)}
+          {team.members.map((m) => <option key={memberKey(m)} value={memberKey(m)}>{seatName(m)}</option>)}
         </select>
       </label>
       <label className="mi-field"><span>answers to team</span>
@@ -259,7 +259,7 @@ function MemberEdit({ team, idx, info, act, onSet, onClose }: {
   const others = team.members.filter((y) => memberKey(y) !== k).map(memberKey).filter(Boolean);
   const svc = (m as { service?: string }).service ?? (m.agent === "any" ? "" : m.agent);
   return (
-    <section className="tc-member-edit" aria-label={`Edit ${m.name || m.agent}`}>
+    <section className="tc-member-edit" aria-label={`Edit ${seatName(m)}`}>
       <div className="mi-kind"><AgentHarmonograph name={k} size={16} family="team" /> {k === leadSeat(team) ? "lead" : titleFor(m.role || "member")}<span className="spacer" />
         <button className="btn sm ghost icon-only" onClick={onClose} aria-label="Back to the team"><Icon.close /></button>
       </div>

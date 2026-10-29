@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import type { AgentsInfo, Team } from "../../api";
 import { AgentHarmonograph } from "../../flow/agentMark";
+import { seatName, seatProvider } from "../agents/parts";
 import type { Access } from "./workspace";
 
-type Seat = { team: string; who: string; role: string; workflow: string };
+type Seat = { team: string; who: string; role: string; workflow: string; key: string };
 
 /** The swarm as an organisation on the Workspace canvas: teams nested under
  *  the teams they answer to, each seat one row. Picking a seat turns on the
@@ -33,7 +34,7 @@ export function SwarmPanel({ info, picked, access, onPick }: {
     return c;
   }, [access]);
   const pick = (s: Seat) => {
-    const key = `${s.team}/${s.who}/${s.role}`;
+    const key = s.key;
     if (seat === key) { setSeat(null); onPick(null, null); return; }
     setSeat(key); onPick(s.workflow, `${s.who} · ${s.role} in ${s.team}`);
   };
@@ -41,8 +42,8 @@ export function SwarmPanel({ info, picked, access, onPick }: {
     const on = seat === key || (!seat && picked === s.workflow && s.team === "");
     return (
       <button key={key} type="button" className={`sw-seat${on ? " on" : ""}`} aria-pressed={on} onClick={() => pick(s)}
-        title={`${s.who} works under the ${s.workflow} fence – click to light what it may change`} data-testid="sw-seat">
-        <AgentHarmonograph name={s.who} size={16} />
+        title={`${s.who} (${s.role}) works under the ${s.workflow} fence – click to light what it may change`} data-testid="sw-seat">
+        <AgentHarmonograph name={s.key} size={16} />
         <span className="sw-who">{s.who}</span>
         <span className="sw-role">{s.role}</span>
         <span className="sw-wf mono">{s.workflow}</span>
@@ -67,14 +68,14 @@ export function SwarmPanel({ info, picked, access, onPick }: {
           <div key={team.name} className="sw-team" style={{ marginLeft: depth * 12 }}>
             <div className="sw-team-name"><span className="mono">{team.name}</span>{team.about && <span className="muted"> – {team.about}</span>}</div>
             {team.members.map((m, i) => {
-              const who = m.service ?? m.agent ?? m.name ?? "agent";
-              return row({ team: team.name, who, role: m.role ?? "member", workflow: m.workflow ?? "" }, `${team.name}/${who}/${m.role ?? "member"}`);
+              const who = seatName(m), prov = seatProvider(m);
+              return row({ team: team.name, who, role: prov ? `on ${prov}` : "any provider", workflow: m.workflow ?? "", key: `${team.name}/${i}` }, `${team.name}/${i}`);
             })}
           </div>
         ))}
         {solo.length > 0 && <div className="sw-team">
           <div className="sw-team-name"><span className="mono">workflows</span><span className="muted"> – solo agents</span></div>
-          {solo.map((w) => row({ team: "", who: w.name, role: "solo", workflow: w.name }, `/${w.name}/solo`))}
+          {solo.map((w) => row({ team: "", who: w.name, role: "solo", workflow: w.name, key: `/${w.name}` }, `/${w.name}`))}
         </div>}
       </div>}
     </aside>
