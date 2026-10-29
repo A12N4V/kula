@@ -7,14 +7,23 @@ use axum::extract::{Path, Query, State};
 use serde::Deserialize;
 
 /// GET /api/map – blocks, families, loops, leaves, flows and stats.
-pub(crate) async fn map_all(State(s): State<AppState>) -> ApiResult {
-    blocking(move || {
+pub(crate) async fn map_all(State(s): State<AppState>) -> Result<axum::response::Response, crate::server::ApiErr> {
+    // The map only moves with the store, the embedding cache (.kula) or git
+    // state – answer repeat loads from the fingerprinted cache.
+    crate::server::blocking_raw(move || {
+        let root = s.repo.root.clone();
+        crate::cache::cached_json("map", &root, move || map_build(&s))
+    })
+    .await
+}
+
+fn map_build(s: &AppState) -> anyhow::Result<serde_json::Value> {
+    {
         let store = crate::store::Store::open(&s.repo)?;
         let (idx, embed_state) = crate::embed::similarity_for(&s.repo, &store);
         let sim = idx.as_ref().map(|i| i as &dyn map::Similarity);
         map::all_json_with(&s.repo, &store, sim, embed_state)
-    })
-    .await
+    }
 }
 
 #[derive(Deserialize)]

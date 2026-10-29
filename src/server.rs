@@ -86,6 +86,16 @@ where
     Ok(Json(v))
 }
 
+/// [`blocking`] for handlers that already hold serialised JSON (see
+/// `cache::cached_json`): no `Value` round trip on the way out.
+pub(crate) async fn blocking_raw<F>(f: F) -> Result<Response, ApiErr>
+where
+    F: FnOnce() -> anyhow::Result<axum::body::Bytes> + Send + 'static,
+{
+    let b = tokio::task::spawn_blocking(f).await.map_err(|e| anyhow!(e))??;
+    Ok(([(axum::http::header::CONTENT_TYPE, "application/json")], b).into_response())
+}
+
 fn random_token() -> String {
     let mut buf = [0u8; 16];
     let ok = std::fs::File::open("/dev/urandom").and_then(|mut f| std::io::Read::read_exact(&mut f, &mut buf)).is_ok();
@@ -211,14 +221,14 @@ async fn index_progress() -> Json<Value> {
     Json(index::PROGRESS.json())
 }
 
-async fn graph_data(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
-    blocking(move || {
+async fn graph_data(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> Result<Response, ApiErr> {
+    blocking_raw(move || {
         let root = s.repo.root.clone();
         let level = q.get("level").map(String::as_str).unwrap_or("symbol").to_string();
         let limit = q.get("limit").and_then(|l| l.parse().ok()).unwrap_or(4000);
         // P1: the exported graph only changes when the store or HEAD does –
         // cache it per (level, limit) instead of re-exporting every poll.
-        crate::cache::cached(&format!("graph:{level}:{limit}"), &root, move || {
+        crate::cache::cached_json(&format!("graph:{level}:{limit}"), &root, move || {
             let st = Store::open(&s.repo)?;
             let mut out = json!(graph::export(&st, &level, limit)?);
             out["churn"] = json!(graph::churn(&s.repo, 90));
@@ -326,8 +336,12 @@ async fn scopes_action(State(s): State<AppState>, Path(action): Path<String>, Js
     .await
 }
 
-async fn flows(State(s): State<AppState>) -> ApiResult {
-    blocking(move || Ok(json!(graph::flows(&Store::open(&s.repo)?, 25)?))).await
+async fn flows(State(s): State<AppState>) -> Result<Response, ApiErr> {
+    blocking_raw(move || {
+        let root = s.repo.root.clone();
+        crate::cache::cached_json("flows", &root, move || Ok(json!(graph::flows(&Store::open(&s.repo)?, 25)?)))
+    })
+    .await
 }
 
 /// GET /api/syntagm – blocks, chains, leaves and stats.
@@ -461,23 +475,28 @@ async fn git_status(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!({ "branch": s.repo.branch(), "files": s.repo.status()? }))).await
 }
 
-async fn git_log(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
-    blocking(move || {
-        let limit = q.get("limit").and_then(|l| l.parse().ok()).unwrap_or(300);
+async fn git_log(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> Result<Response, ApiErr> {
+    blocking_raw(move || {
+        let limit: usize = q.get("limit").and_then(|l| l.parse().ok()).unwrap_or(300);
         let rev = q.get("rev").cloned();
         if let Some(r) = &rev {
             validate_rev(r)?;
         }
-        Ok(json!(s.repo.log(limit, rev.as_deref())?))
+        // History only moves with HEAD or refs, both fingerprinted.
+        let key = format!("log:{limit}:{}", rev.as_deref().unwrap_or(""));
+        crate::cache::cached_json(&key, &s.repo.root.clone(), || Ok(json!(s.repo.log(limit, rev.as_deref())?)))
     })
     .await
 }
 
-async fn git_branches(State(s): State<AppState>) -> ApiResult {
-    blocking(move || {
-        let tags: Vec<String> = s.repo.run(&["tag", "--sort=-creatordate"]).unwrap_or_default().lines().map(String::from).collect();
-        let stashes: Vec<String> = s.repo.run(&["stash", "list"]).unwrap_or_default().lines().map(String::from).collect();
-        Ok(json!({ "branches": s.repo.branches()?, "tags": tags, "stashes": stashes }))
+async fn git_branches(State(s): State<AppState>) -> Result<Response, ApiErr> {
+    blocking_raw(move || {
+        // Branches, tags and stashes all live under refs/ (fingerprinted).
+        crate::cache::cached_json("branches", &s.repo.root.clone(), || {
+            let tags: Vec<String> = s.repo.run(&["tag", "--sort=-creatordate"]).unwrap_or_default().lines().map(String::from).collect();
+            let stashes: Vec<String> = s.repo.run(&["stash", "list"]).unwrap_or_default().lines().map(String::from).collect();
+            Ok(json!({ "branches": s.repo.branches()?, "tags": tags, "stashes": stashes }))
+        })
     })
     .await
 }
@@ -1491,6 +1510,9 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/meta/{kind}/{action}", post(meta_action))
         .fallback(static_file)
         .layer(middleware::from_fn_with_state(state.clone(), guard))
+        // gzip at the fastest level: the map and graph payloads are ~1 MB of
+        // JSON and shrink ~10x; SSE and images are skipped by the predicate.
+        .layer(tower_http::compression::CompressionLayer::new().gzip(true).quality(tower_http::CompressionLevel::Fastest))
         .with_state(state)
 }
 
