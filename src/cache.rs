@@ -14,6 +14,9 @@ use std::sync::Mutex;
 
 /// One fingerprint entry per cache key.
 static CACHE: Mutex<Option<HashMap<String, Cached>>> = Mutex::new(None);
+/// Serialised payloads for [`cached_json`].
+type Fingerprint = Vec<(PathBuf, u64, u64, i64)>;
+static RAW: Mutex<Option<HashMap<String, (Fingerprint, axum::body::Bytes)>>> = Mutex::new(None);
 
 struct Cached {
     fingerprint: Vec<(PathBuf, u64, u64, i64)>,
@@ -146,6 +149,9 @@ pub fn clear() {
     if let Some(map) = CACHE.lock().unwrap().as_mut() {
         map.clear();
     }
+    if let Some(map) = RAW.lock().unwrap().as_mut() {
+        map.clear();
+    }
 }
 
 /// Answer `build()` from cache while the fingerprint of `root`'s watched paths
@@ -171,6 +177,31 @@ where
         }
     }
     Ok(value)
+}
+
+/// Like [`cached`], but keeps the serialised JSON: the heavy endpoints (map,
+/// graph, flows) are ~1 MB, and re-serialising a cloned `Value` on every hit
+/// cost more than building the fingerprint. A hit is a refcount bump.
+pub fn cached_json<F>(key: &str, root: &Path, build: F) -> Result<axum::body::Bytes>
+where
+    F: FnOnce() -> Result<Value>,
+{
+    let fp = fingerprint(root);
+    if let Some((f, b)) = RAW.lock().unwrap().get_or_insert_with(HashMap::new).get(key) {
+        if *f == fp {
+            return Ok(b.clone());
+        }
+    }
+    let body = axum::body::Bytes::from(serde_json::to_vec(&build()?)?);
+    let mut guard = RAW.lock().unwrap();
+    let map = guard.get_or_insert_with(HashMap::new);
+    if map.len() >= 16 && !map.contains_key(key) {
+        if let Some(k) = map.keys().next().cloned() {
+            map.remove(&k);
+        }
+    }
+    map.insert(key.to_string(), (fp, body.clone()));
+    Ok(body)
 }
 
 #[cfg(test)]
