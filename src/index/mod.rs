@@ -1512,11 +1512,7 @@ mod tests {
     fn calls_between(b: &Built) -> HashSet<(String, String)> {
         let name = |id: i64| {
             let n = &b.nodes[id as usize];
-            format!(
-                "{}::{}",
-                b.nodes.get(n.parent.unwrap_or(-1).max(0) as usize).filter(|p| p.kind == "class").map(|p| p.name.as_str()).unwrap_or(""),
-                n.name
-            )
+            format!("{}::{}", b.nodes.get(n.parent.unwrap_or(-1).max(0) as usize).filter(|p| p.kind == "class").map(|p| p.name.as_str()).unwrap_or(""), n.name)
         };
         b.edges.iter().filter(|e| e.kind == "CALLS").map(|e| (name(e.src), name(e.dst))).collect()
     }

@@ -820,8 +820,7 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
             }
         }
         // archive extraction lands in -C/-d or the cwd
-        let extracts = (name == "tar"
-            && ws.get(1).is_some_and(|w| w.starts_with('-') && w.contains('x') || !w.starts_with('-') && w.contains('x')))
+        let extracts = (name == "tar" && ws.get(1).is_some_and(|w| w.starts_with('-') && w.contains('x') || !w.starts_with('-') && w.contains('x')))
             || ws.iter().any(|w| w == "--extract")
             || name == "unzip";
         if extracts && name != "sed" {
@@ -928,9 +927,7 @@ fn opaque_writer(name: &str, ws: &[String]) -> Option<String> {
         || (matches!(name, "npm" | "pnpm" | "yarn" | "bun") && rest.first().is_some_and(|w| matches!(*w, "run" | "run-script" | "exec")))
         || (name == "go" && rest.first() == Some(&"generate"))
     {
-        return Some(format!(
-            "`{name}` runs build steps that can write anywhere, and fenced paths exist here – run it via CI or as a person"
-        ));
+        return Some(format!("`{name}` runs build steps that can write anywhere, and fenced paths exist here – run it via CI or as a person"));
     }
     if interp {
         if rest.iter().any(|w| matches!(*w, "-c" | "-e" | "-E" | "-r" | "-p" | "-i") || w.starts_with("-pi") || w.starts_with("-i")) {
@@ -947,9 +944,7 @@ fn opaque_writer(name: &str, ws: &[String]) -> Option<String> {
     }
     let check = has("--check") || has("--diff") || has("-l") || has("--list-different") || has("-d");
     let fmt = match name {
-        "cargo" => {
-            (rest.first() == Some(&"fmt") && !check) || rest.first() == Some(&"fix") || (rest.first() == Some(&"clippy") && has("--fix"))
-        }
+        "cargo" => (rest.first() == Some(&"fmt") && !check) || rest.first() == Some(&"fix") || (rest.first() == Some(&"clippy") && has("--fix")),
         "eslint" => has("--fix"),
         "prettier" => has("--write") || has("-w"),
         "black" | "rustfmt" | "isort" | "autopep8" => !check,
@@ -957,7 +952,7 @@ fn opaque_writer(name: &str, ws: &[String]) -> Option<String> {
         "ruff" => rest.first() == Some(&"format") && !check || has("--fix"),
         "clang-format" => has("-i"),
         "npx" | "pnpm" | "yarn" | "bunx" => {
-            (rest.contains(&"prettier") && (has("--write") || has("-w"))) || (rest.contains(&"eslint") && has("--fix"))
+            (rest.iter().any(|w| *w == "prettier") && (has("--write") || has("-w"))) || (rest.iter().any(|w| *w == "eslint") && has("--fix"))
         }
         _ => false,
     };
