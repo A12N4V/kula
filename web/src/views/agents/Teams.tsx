@@ -5,7 +5,8 @@
 // marks – lives in TeamCanvas and TeamSidebar.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AgentsInfo, Team } from "../../api";
+import { api, type AgentsInfo, type Team } from "../../api";
+import { generateOrg, type OrgPlan } from "./orgGen";
 import { Icon, useToast } from "../../ui";
 import { takeStashedAdd, type Act, type Tab } from "./data";
 import { seatKey } from "../../roster";
@@ -65,16 +66,19 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
       return prev.map((y, j) => (j === cur ? { ...y, ...x } : x.name !== undefined && y.under === was ? { ...y, under: x.name } : y));
     });
   };
+  const sent = useRef(new Map<string, string>());
   // Settings and member fields save on their own: shortly after they stop
   // changing, every touched team (found by index, so a rename still matches
   // its row) goes through team_save – no Save button, the canvas and the
   // sidebar are one source of truth.
   useEffect(() => {
     if (adding) return;
-    const touched = teams.filter((y, i) => norm(y) !== norm(info.teams[i]));
+    // Saved content is remembered: if the server stores a team in a slightly
+    // different shape, the same content is never re-sent (that looped forever).
+    const touched = teams.filter((y, i) => norm(y) !== norm(info.teams[i]) && sent.current.get(y.name) !== norm(y));
     if (!touched.length) return;
     const id = window.setTimeout(() => {
-      touched.forEach((y) => act("team_save", { team: y }, `${y.name} saved`).catch((e: Error) => toast(e.message, "err")));
+      touched.forEach((y) => { sent.current.set(y.name, norm(y)); act("team_save", { team: y }, `${y.name} saved`).catch((e: Error) => toast(e.message, "err")); });
     }, 600);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,6 +91,17 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
       setAdding(false);
       setNewName("");
     }).catch((e: Error) => toast(e.message, "err"));
+  };
+  // Generate an organisation from the code map (orgGen): preview, then create.
+  const [plan, setPlan] = useState<OrgPlan | null>(null);
+  const draft = () => api.map().then((m) => setPlan(generateOrg(m, { existing: [...teams.map((t) => t.name), ...info.workflows.map((w) => w.name)] })))
+    .catch((e: Error) => toast(e.message, "err"));
+  const adopt = async (p: OrgPlan) => {
+    try {
+      await act("workflows_save", { workflows: [...info.workflows.filter((w) => !w.builtin), ...p.workflows] }, `${p.workflows.length} fenced workflows added`);
+      await act("teams_save", { teams: [...teams, ...p.teams] }, `${p.teams.length} teams created`);
+      setPlan(null); // the new teams arrive with the server's copy
+    } catch (e) { toast((e as Error).message, "err"); }
   };
   const remove = (name: string) => {
     if (!confirm(`Delete the ${name} team from kula.toml?`)) return;
@@ -174,6 +189,8 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
             };
           })}
           onPick={(k) => { setCur(Number(k)); setMember(null); }} />
+        <button className="btn sm ghost tc-gen" data-testid="team-generate" title="Draft an organisation for this codebase from its map: one team per division, fenced to its code"
+          onClick={draft}><Icon.team /> Generate org</button>
         <button className={`team-tab-add${adding ? " on" : ""}`} data-testid="team-tab-add" aria-label="New team" title="New team"
           onClick={() => { setAdding(true); setNewName(""); }}><Icon.plus /></button>
         {!adding && shown && <button className="team-tab-del" data-testid="team-tab-delete" aria-label={`Delete ${shown.name}`} title={`Delete ${shown.name}`}
@@ -183,6 +200,24 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
         <div className="tc-undo" role="status" data-testid="team-remove-undo">
           <span>{undo.seat.workflow} left {undo.team}</span>
           <button className="btn sm ghost" onClick={undoRemove} data-testid="team-remove-undo-btn">Undo</button>
+        </div>
+      )}
+      {plan && (
+        <div className="tc-plan" role="dialog" aria-label="Generated organisation" data-testid="team-plan">
+          <div className="tc-plan-head"><b>Proposed organisation</b>
+            <span className="muted">{plan.teams.length} teams · {plan.teams.reduce((n, t) => n + t.members.length, 0)} seats · {plan.workflows.length} fenced workflows · any provider</span>
+            <span className="spacer" />
+            <button className="btn sm ghost" onClick={() => setPlan(null)}>Discard</button>
+            <button className="btn sm primary" data-testid="team-plan-adopt" onClick={() => adopt(plan)}>Create teams</button>
+          </div>
+          <ul className="tc-plan-list">
+            {plan.teams.map((t) => (
+              <li key={t.name} style={{ paddingLeft: t.under ? 16 : 0 }}>
+                <span className="mono">{t.name}</span> <span className="muted">– {t.about}</span>
+                <div className="tc-plan-seats">{t.members.map((m) => <span key={m.name} className="tag">{m.role} <i className="muted mono">{m.workflow}</i></span>)}</div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {adding ? (

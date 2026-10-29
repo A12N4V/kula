@@ -49,7 +49,8 @@ export function Card({ title, sub, right, children, className = "" }: { title: s
  *  setting of the seat (`seatProvider`), not its identity. */
 export const seatName = (m: { name?: string; workflow?: string; agent?: string; service?: string; role?: string }) => {
   // a name that only repeats the provider or the workflow is a default, not a name
-  const own = m.name && ![m.agent, m.service, m.workflow].includes(m.name) && !(m.name in AGENT_NAME) ? m.name : "";
+  const own = m.name && ![m.agent, m.service, m.workflow].includes(m.name) && !(m.name in AGENT_NAME)
+    && m.name !== m.role?.replace(/\s+/g, "-") ? m.name : ""; // a name that spells the role reads as the role
   return own || (m.role ? m.role[0].toUpperCase() + m.role.slice(1) : "") || m.workflow || "seat";
 };
 /** The provider a seat runs on (claude, codex, a plugin…) – shown as a setting, never as its name. */

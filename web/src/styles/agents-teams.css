@@ -552,3 +552,11 @@ input.mi-title { font: 600 14px var(--mono); }
 .tg-dot { width: 8px; height: 8px; background: var(--tg); flex: none; }
 .tg-n { color: var(--text-3); font-weight: 400; }
 .tg-head .tag { margin-left: auto; }
+
+/* generated organisation: a preview the person adopts or discards */
+.tc-gen { margin-left: 6px; flex: none; }
+.tc-plan { position: absolute; top: 84px; right: 16px; z-index: 20; width: min(560px, calc(100% - 32px)); max-height: 70%; display: flex; flex-direction: column; border: 1px solid var(--line-2); background: var(--bg-2); }
+.tc-plan-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.tc-plan-list { list-style: none; margin: 0; padding: 8px 12px 12px; overflow: auto; display: grid; gap: 10px; }
+.tc-plan-seats { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tc-plan-seats i { font-style: normal; font-size: 10.5px; }
