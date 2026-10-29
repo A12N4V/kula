@@ -216,7 +216,7 @@ export default function App() {
       if (e.key === "/") { e.preventDefault(); setPalette(true); }
       if (e.key === "?") setHelp((h) => !h);
       if (e.key === ",") setPrefs((p) => !p);
-      if (e.key === "Escape") { setHelp(false); setFocus(null); setRail(false); }
+      if (e.key === "Escape") { setPalette(false); setHelp(false); setFocus(null); setRail(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -424,13 +424,14 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
             if (e.key === "Enter") scored[k]?.run();
           }} />
         <div className="results" ref={list}>
-          {scored.map((it, j) => (
-            <div key={it.key}>
-              {!seenGroups.has(it.group) && <div className="grp">{it.group}</div>}
-              {seenGroups.add(it.group)}
+          {scored.map((it, j) => {
+            const head = !seenGroups.has(it.group);
+            seenGroups.add(it.group);
+            return <div key={it.key}>
+              {head && <div className="grp">{it.group}</div>}
               <div className={`res ${k === j ? "on" : ""}`} onMouseEnter={() => setI(j)} onClick={it.run}>{it.el}</div>
-            </div>
-          ))}
+            </div>;
+          })}
           {!scored.length && <div className="empty">No matches</div>}
         </div>
         <footer><span><kbd>↑↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>#</kbd> issues</span><span><kbd>@</kbd> branches</span><span><kbd>&gt;</kbd> commands</span><span className="spacer" /><span><kbd>esc</kbd></span></footer>
