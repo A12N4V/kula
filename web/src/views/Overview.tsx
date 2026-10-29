@@ -5,6 +5,7 @@ import type { Go } from "../nav";
 import Coupling from "../Coupling";
 import { useCode } from "../CodePanel";
 import AsciiMark from "../AsciiMark";
+import Inbox from "./Inbox";
 
 type Props = { repo: RepoInfo | null; version: number; go: Go };
 
@@ -44,6 +45,8 @@ export default function Overview({ repo, version, go }: Props) {
         </div>
       </header>
 
+
+      <Inbox o={o} version={version} go={go} onChanged={() => api.overview().then(setO).catch(() => {})} />
 
       <StatTable className="ov-stats" label="Repository at a glance" rows={([
           ["Proposals", o.proposals.length, highRisk ? `${highRisk} high risk` : o.proposals.length ? "none high risk" : "queue empty", () => go("proposals"), highRisk ? "bad" : ""],
