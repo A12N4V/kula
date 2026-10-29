@@ -221,9 +221,18 @@ function FlowCanvasInner(props: FlowCanvasProps) {
               rf.setViewport({ x: saved.x, y: saved.y, zoom: Math.min(2, Math.max(0.1, saved.zoom)) });
             } else window.requestAnimationFrame(() => {
               const n = focusId ? rf.getNode(focusId) : null;
+              // Land on as much of the map as stays legible: the whole map when it
+              // fits at 45% or more, otherwise 45% (not the old fixed 85%, which
+              // left 78 of 95 cards off-screen on kula's own repo).
+              const frame = document.querySelector(`[data-testid="${testId}"] .react-flow`)?.getBoundingClientRect();
+              const all = rf.getNodes().filter((m) => !m.parentId);
+              const bb = all.length ? rf.getNodesBounds(all) : null;
+              const fitZ = frame && bb && bb.width > 0 ? Math.min(frame.width / bb.width, frame.height / bb.height) * 0.88 : 1;
+              const want = props.initialZoom ?? 0.85;
+              if (fitZ >= Math.min(0.45, want)) { rf.fitView({ padding: 0.12, maxZoom: want, duration: reduced.current ? 0 : 120 }); return; }
               if (n) {
                 const d = n.data as FlowNode;
-                const z = props.initialZoom ?? 0.85;
+                const z = Math.min(want, Math.max(0.45, fitZ));
                 // Section members are positioned relative to their frame:
                 // walk the parent chain for the canvas position.
                 const abs = { ...n.position };
