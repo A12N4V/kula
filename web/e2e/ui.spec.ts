@@ -1706,7 +1706,7 @@ test.describe("agents A2", () => {
     await open(page, "agents/teams");
     // The team canvas (U16): a seat is a square on the map; clicking it opens
     // the team sidebar on the seat's fields.
-    const seat = page.locator('[data-testid="team-canvas"] .react-flow__node').filter({ hasText: "explore" }).first();
+    const seat = page.locator('[data-testid="team-canvas"] .react-flow__node-tc').filter({ hasText: "explore" }).first();
     await seat.click();
     const side = page.locator('[data-testid="team-side"]');
     await expect(side).toBeVisible();
@@ -2099,22 +2099,23 @@ test.describe("map", () => {
   test("drill in and out with the breadcrumb, deep link restores the path", async ({ page }) => {
     await open(page, "map");
     await blocksView(page);
-    // blocksView drills one level: the map's depth-0 section tree, one crumb
-    // beyond "repo"
+    // blocksView opens the deepest clear square: the crumbs carry its real
+    // ancestry (2325e5e), so count levels from wherever it landed
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
     const top = await page.locator(".sy-grid .sy-box").count();
     expect(top).toBeGreaterThan(0);
-    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+    const base = await page.locator("[data-testid=map-breadcrumb] .crumb-link").count();
+    expect(base).toBeGreaterThanOrEqual(2);
     // drill: click a section box that nests further (a single-file section
     // shows only leaves), walking boxes until the next level renders
     let drilled = -1;
     for (let i = 0; i < Math.min(6, top); i++) {
       await page.locator(".sy-box-title").nth(i).click();
-      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(3);
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(base + 1);
       if ((await page.locator(".sy-grid .sy-box").count()) > 0) { drilled = i; break; }
       // back one level (to the section), not to the map root
-      await page.locator("[data-testid=map-breadcrumb] .crumb-link").nth(1).click();
-      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+      await page.locator("[data-testid=map-breadcrumb] .crumb-link").nth(base - 1).click();
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(base);
     }
     expect(drilled).toBeGreaterThanOrEqual(0);
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
@@ -2123,7 +2124,7 @@ test.describe("map", () => {
     // drill deeper until leaf rows appear (the tree's depth varies by repo)
     for (let i = 0; i < 5 && (await page.locator(".sy-leaf-row").count()) === 0; i++) {
       await page.locator(".sy-box-title").first().click();
-      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(3 + i + 1);
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(base + 1 + i + 1);
     }
     await expect(page.locator(".sy-leaf-row").first()).toBeVisible();
     // breadcrumb climbs back out one level – the parent crumb is the
@@ -2134,7 +2135,8 @@ test.describe("map", () => {
     // hash tracks the drill path – after the climb it may be back at the top
     // (no sub-path), so the slash is optional here
     await expect(page).toHaveURL(/#map(\/|$)/);
-    // deep link restores the path (the route is #map[/blockId], one level)
+    // deep link restores the path (#map/<root>/…/<blockId>: the last block
+    // re-opens with its ancestry)
     const h = await page.evaluate(() => location.hash);
     const crumbsAt = await page.locator("[data-testid=map-breadcrumb] .crumb-link").count();
     await page.goto("/?fresh=1");
@@ -2299,10 +2301,11 @@ test.describe("map", () => {
     await expect(page.locator(".fc-card").first()).toBeVisible();
     await expect(page.locator(".fc-card .fc-card-name").first()).not.toBeEmpty();
     // readable by default: the landing zoom shows legible labels, not the
-    // old 12% fit – the zoom readout stays above 50% on desktop
+    // old 12% fit – the zoom readout never drops under the 45% floor
     test.skip(info.project.name !== "desktop", "a phone fits legitimately lower");
     const zoomText = page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom]");
-    await expect.poll(async () => Number((await zoomText.textContent())?.replace("%", ""))).toBeGreaterThan(50);
+    // (358b3c2: the map lands fitted, with a 45% legibility floor)
+    await expect.poll(async () => Number((await zoomText.textContent())?.replace("%", ""))).toBeGreaterThanOrEqual(45);
     // long names truncate with an ellipsis and a full-name title – on a card
     // that is actually in the viewport (React Flow cannot scroll, so an
     // off-canvas card is never hoverable)
@@ -2384,10 +2387,14 @@ test.describe("map", () => {
     // toolbar floats above it (n8n §4, nothing on the node face). Hover a card
     // that is actually in the viewport – React Flow cannot scroll, so an
     // off-canvas card is never hoverable.
+    // ...and clear of the Swarm panel's head (shut, it still floats over the
+    // canvas's top-left), toolbar band above the card included
     const hoverTid = await page.evaluate(() => {
+      const sw = document.querySelector("[data-testid=swarm]")?.getBoundingClientRect();
       const el = [...document.querySelectorAll("[data-testid=map-flow] .fc-card:not(.fc-card-sec)")].find((e) => {
         const r = e.getBoundingClientRect();
-        return r.top > 70 && r.left > 70 && r.bottom < innerHeight - 60 && r.right < innerWidth - 40;
+        const underSwarm = !!sw && r.left < sw.right && r.right > sw.left && r.top - 48 < sw.bottom && r.bottom > sw.top;
+        return r.top > 70 && r.left > 70 && r.bottom < innerHeight - 60 && r.right < innerWidth - 40 && !underSwarm;
       });
       return (el?.closest("[data-testid^=fc-node-]") as HTMLElement)?.dataset.testid ?? null;
     });
