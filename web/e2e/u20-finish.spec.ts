@@ -111,11 +111,13 @@ test.describe("agent cards", () => {
 });
 
 test.describe("memory", () => {
-  test("one list grouped by agent, the graph behind a toggle", async ({ page, fx }) => {
+  test("the graph first, one list grouped by agent behind a toggle", async ({ page, fx }) => {
     await open(page, fx, "agents/memory", "mem-graph-toggle");
     await expect(page.getByTestId("mem-graph-toggle")).toBeVisible();
-    // the graph is not the default view
-    await expect(page.locator(".m1-wrap, svg[aria-label^='Memory graph']").first()).toHaveCount(0);
+    // memory is a knowledge graph first (fb2224b); the grouped list is the other view
+    await expect(page.locator("svg[aria-label^='Memory graph']").first()).toBeVisible();
+    await page.getByTestId("mem-list-toggle").click();
+    await expect(page.locator("svg[aria-label^='Memory graph']")).toHaveCount(0);
     // the fixture seeds two memories by agent:e2e, so grouping is real
     await expect(page.locator(".ag-mem-group").first()).toBeVisible();
     await expect(page.locator(".ag-mem-author").first()).toContainText("agent:e2e");

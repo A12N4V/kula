@@ -134,23 +134,23 @@ test.describe("light-theme contrast", () => {
 });
 
 test.describe("the agents sub-nav", () => {
-  test("the menu is a thin icon rail – labels clipped away, the tab named in the page head", async ({ page }) => {
+  test("the menu is one thin horizontal tab strip – the tab named in the page head", async ({ page }) => {
     await open(page, "agents", FIXTURE);
     await page.waitForTimeout(800);
-    const rail = page.locator(".ag-menu");
-    const w = (await rail.boundingBox())?.width ?? 999;
-    expect(w).toBeLessThanOrEqual(72);
-    // the icon rail carries every tab, labels hidden from sight but kept for
-    // screen readers (aria-label)
-    await expect(page.getByTestId("ag-tabs")).toBeVisible();
+    // fb2224b: the vertical icon rail became one horizontal strip above the view
+    const strip = page.getByTestId("ag-tabs");
+    await expect(strip).toBeVisible();
+    await expect(strip).toHaveAttribute("aria-orientation", "horizontal");
+    const h = (await strip.boundingBox())?.height ?? 999;
+    expect(h).toBeLessThanOrEqual(56);
     for (const name of ["Teams", "Research", "Memory"]) {
       await expect(page.getByRole("tab", { name, exact: true })).toBeAttached();
     }
-    // the title band is gone – the page head names the tab
-    await page.getByRole("tab", { name: "Teams", exact: true }).click();
-    await expect(page.locator(".page-head h1")).toHaveText("Teams");
+    // no title band of its own – the page head names the tab
+    await page.getByRole("tab", { name: "Research", exact: true }).click();
+    await expect(page.locator(".page-head h1")).toHaveText("Research");
     // Open Workspace rides in the tab row
-    await expect(page.getByTestId("ag-to-workspace")).toBeVisible();
+    await expect(strip.getByTestId("ag-to-workspace")).toBeVisible();
   });
 
   test("#agents/teams clicking Agents keeps the URL and the view in step", async ({ page }) => {
