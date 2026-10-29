@@ -71,7 +71,9 @@ async function aBlock(page: Page) {
 
 test("T1 captions show plain names by default, never dir · code-name", async ({ page }) => {
   await opened(page);
-  const caption = page.locator('[data-testid="x5-plain-caption"]').first();
+  // the map lands fitted: earlier hydration-stage copies sit off-view with an
+  // empty box, so read the first caption actually on screen
+  const caption = page.locator('[data-testid="x5-plain-caption"]:visible').first();
   await expect(caption).toBeVisible();
   const words = (await caption.textContent())?.trim().split(/\s+/) ?? [];
   expect(words.length).toBeGreaterThan(0);
