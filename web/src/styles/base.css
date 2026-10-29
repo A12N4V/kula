@@ -16,7 +16,7 @@
 .btn.sm { height: var(--ctl-h-sm); padding: 0 var(--ctl-pad-sm); font-size: var(--ctl-font); }
 .input, .textarea, select.input { width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 0; background: var(--bg); outline: none; transition: border-color var(--dur); }
 .textarea { height: auto; min-height: 84px; padding: 8px 10px; resize: vertical; line-height: 1.5; }
-.input:focus, .textarea:focus { border-color: var(--accent-text); }
+.input:focus, .textarea:focus { border-color: var(--accent); }
 .input:hover:not(:focus), .textarea:hover:not(:focus) { border-color: var(--hover-line); }
 .input:disabled, .textarea:disabled { color: var(--text-3); border-color: var(--line); background: var(--panel); cursor: not-allowed; }
 .muted { color: var(--text-3); }

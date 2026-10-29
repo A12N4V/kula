@@ -152,6 +152,8 @@ export default function App() {
   // Keep the URL shareable, and make back/forward walk through where you have been:
   // each new place is a history entry; popping one restores it.
   const popping = useRef(false);
+  // How many kula entries sit behind this one: Back is armed only when it stays in kula.
+  const [depth, setDepth] = useState<number>(() => (history.state as any)?.d ?? 0);
   useEffect(() => {
     const enc = encodeURIComponent;
     let h = view as string;
@@ -163,14 +165,16 @@ export default function App() {
     else if (view === "agents" && target.tab && target.tab !== "workflows") h += `/${target.tab}`;
     else if (view === "map" && target.block) h += `/${target.block}`;
     if (`#${h}` === location.hash) return;
-    if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
-    else history.pushState(null, "", `#${h}`);
+    const d = (history.state as any)?.d ?? 0;
+    if (popping.current || !location.hash) history.replaceState({ d }, "", `#${h}`);
+    else { history.pushState({ d: d + 1 }, "", `#${h}`); setDepth(d + 1); }
     popping.current = false;
   }, [view, focus, contrast, target]);
   useEffect(() => {
     const onPop = () => {
       const p = parseHash();
       popping.current = true;
+      setDepth((history.state as any)?.d ?? 0);
       setView(p.view); setTarget(p.target); setContrast(p.contrast); setFocus(p.focus);
     };
     window.addEventListener("popstate", onPop);
@@ -204,7 +208,7 @@ export default function App() {
       if (e.defaultPrevented) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
       if (e.ctrlKey && e.key === "`") { e.preventDefault(); setDock((d) => !d); return; }
-      if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") history.back(); else history.forward(); return; }
+      if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") { if (((history.state as any)?.d ?? 0) > 0) history.back(); } else history.forward(); return; }
       const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       const v = VIEWS.find((x) => x.key === e.key);
@@ -244,7 +248,7 @@ export default function App() {
         <button className="chip" onClick={() => go("branches")} title="Current branch"><Icon.branches /><b className="mono">{repo?.branch ?? "…"}</b></button>
         <span className="spacer" />
         <div className="top-actions">
-          <button className="btn sm ghost icon-only" aria-label="Back" title="Back  ⌥←" onClick={() => history.back()}><Icon.back /></button>
+          <button className="btn sm ghost icon-only" aria-label="Back" title={depth > 0 ? "Back in kula  ⌥←" : "Nothing to go back to in kula"} disabled={depth === 0} aria-disabled={depth === 0} onClick={() => { if (depth > 0) history.back(); }}><Icon.back /></button>
           <button className="btn sm ghost top-search" aria-label="Search" title="Search symbols, issues, branches, commands  ⌘K" onClick={() => setPalette(true)}><Icon.search /><kbd>⌘K</kbd></button>
           <button className="btn sm ghost icon-only" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.gear /></button>
         </div>

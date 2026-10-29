@@ -36,10 +36,13 @@
 .chip-btn:disabled { color: var(--text-3); border-color: var(--line); cursor: not-allowed; }
 
 /* ---------- keyboard focus ---------- */
-/* One visible focus style everywhere. Inputs focus with a border shift;
+/* One visible focus style everywhere. Inputs focus with an inset 1px ring;
    everything else keeps the global outline from base.css. */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.input:focus-visible, .textarea:focus-visible { outline: none; }
+/* Fields show focus on any focus (a click lands you there to type), as a 1px
+   inset accent ring: an outline, so no per-view border rule can cancel it. */
+input:focus, textarea:focus, select:focus, [contenteditable]:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+input[type="checkbox"]:focus:not(:focus-visible), input[type="radio"]:focus:not(:focus-visible) { outline: none; }
 
 /* ---------- tooltips ---------- */
 /* The D1 tooltip: delayed, informative, 1px border instead of a shadow.

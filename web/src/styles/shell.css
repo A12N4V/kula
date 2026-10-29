@@ -71,7 +71,12 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 
 @media (max-width: 760px) {
   .split { grid-template-columns: 1fr; }
-  .split > .detail { display: none; }
+  /* panes swap (ui/splitPane.ts): the list until a row is tapped, then the detail */
+  .split { position: relative; }
+  .split > .detail, .split[data-side="detail"] > .list, .split[data-side="detail"] > .grip { display: none; }
+  .split[data-side="detail"] { grid-template-rows: minmax(0, 1fr); }
+  .split[data-side="detail"] > .detail { display: block; grid-row: 1 / -1; grid-column: 1; padding-top: 40px; }
+  .split.no-swap > .detail { display: block; }
   .inspector { left: 12px; width: auto; }
   .search-trigger { width: 32px; flex: none; justify-content: center; padding: 0; }
   .search-trigger .st-label { display: none; }
@@ -251,3 +256,9 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 /* X14 – for a beat after a rail click the tooltips hold off, so no stale
    label rides into the new view. */
 .rail.tip-hold [data-tip]:hover::after { display: none; }
+
+/* the phone's way back from a split detail to its list */
+.split-back { display: none; }
+@media (max-width: 760px) {
+  .split[data-side="detail"] > .split-back { display: inline-flex; position: absolute; top: 4px; left: 8px; z-index: 5; height: 32px; background: var(--bg); border: 1px solid var(--line); }
+}
