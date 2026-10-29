@@ -222,6 +222,13 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
   useEffect(() => {
     if (!data) return;
     if (path.length && !data.blocks[path[0]]) setPath([]);
+    // A deep link names one block: open its real ancestry so the crumbs and
+    // the drilled canvas match what an in-canvas drill would show.
+    else if (path.length === 1 && data.blocks[path[0]]?.parent) {
+      const chain: string[] = [];
+      for (let cur: string | null | undefined = path[0], n = 0; cur && n < 64; n++) { chain.unshift(cur); cur = data.blocks[cur]?.parent; }
+      setPath(chain);
+    }
     if (!openRoot.length) {
       setOpenRoot(Object.values(data.blocks).filter((b) => b.depth === 0).map((b) => b.id));
     }
@@ -242,11 +249,11 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
       }
       const at = p.indexOf(id);
       const next = blocks?.[id] ? chain : at >= 0 ? p.slice(0, at + 1) : [id];
-      if (`#map/${next.join("/")}` !== location.hash) history.replaceState(null, "", `#map/${next.join("/")}`);
+      if (`#map/${next.join("/")}` !== location.hash) history.replaceState(history.state, "", `#map/${next.join("/")}`);
       return next;
     });
   }, []);
-  const home = useCallback(() => { setPath([]); history.replaceState(null, "", "#map"); }, []);
+  const home = useCallback(() => { setPath([]); history.replaceState(history.state, "", "#map"); }, []);
 
   // Esc steps back out to the flow (unless a field or dialog has focus).
   useEffect(() => {
