@@ -56,7 +56,6 @@ export default function ResearchTab({ info, act, open, go }: { info: AgentsInfo;
   return (
     <div className="rs">
       <div className="rs-head">
-        <h2 className="rs-title">Research</h2>
         <span className="mono rs-count">{loops.length} loop{loops.length === 1 ? "" : "s"}</span>
         {info.research.some((r) => r.active) && <span className="tag accent">a loop is running</span>}
         <span className="spacer" />
@@ -264,6 +263,7 @@ function MetricEdit({ w, save }: { w: Workflow; save: (x: Partial<Workflow>) => 
       <div className="row">
         <div className="seg">{(["min", "max"] as const).map((g) => <button key={g} type="button" className={(r.goal || "min") === g ? "on" : ""} onClick={() => setR({ ...r, goal: g })}>{g === "min" ? "lower" : "higher"}</button>)}</div>
         <input className="input mono research-budget" type="number" min={0} value={r.budget ?? 0} onChange={(e) => setR({ ...r, budget: Math.max(0, Number(e.target.value) || 0) })} aria-label="Budget" title="budget: experiments, 0 for no limit" />
+        <input className="input mono research-timeout" type="number" min={0} value={r.timeout ?? 0} onChange={(e) => { const v = Number(e.target.value); setR({ ...r, timeout: Number.isFinite(v) && v > 0 ? v : undefined }); }} aria-label="Timeout" title="timeout: seconds per experiment, 0 for no limit" data-testid="rs-timeout" />
         <span className="spacer" /><button className="btn sm primary" disabled={!dirty} onClick={() => save({ research: r })}>Save</button>
       </div>
     </div>
@@ -281,12 +281,13 @@ function NewLoop({ info, act, tpl, done, cancel }: { info: AgentsInfo; act: Act;
   const [metric, setMetric] = useState(metricFor(start, stack).cmd);
   const [goal, setGoal] = useState<"min" | "max">(start.goal);
   const [budget, setBudget] = useState(start.budget);
+  const [timeoutSec, setTimeoutSec] = useState<number | undefined>(undefined);
   const [scope, setScope] = useState<string[]>(start.scope);
   const [prompt, setPrompt] = useState(start.prompt);
   const [icon, setIcon] = useState(GLYPHS[start.id] ? start.id : "");
   const save = () => {
     const b = info.workflows.find((w) => w.name === name) ?? { ...blank(), name, about: start.about };
-    const w: Workflow = { ...blank(), ...b, builtin: undefined, scope, prompt, steps: b.steps?.length ? b.steps : info.workflows.find((x) => x.name === "autoresearch")?.steps ?? [], research: { metric, goal, budget, ...(icon ? { icon } : {}) } };
+    const w: Workflow = { ...blank(), ...b, builtin: undefined, scope, prompt, steps: b.steps?.length ? b.steps : info.workflows.find((x) => x.name === "autoresearch")?.steps ?? [], research: { metric, goal, budget, ...(timeoutSec ? { timeout: timeoutSec } : {}), ...(icon ? { icon } : {}) } };
     act("research_template_save", { workflows: [w] }, `${name} saved`).then(() => done(name)).catch(() => {});
   };
   return (
@@ -300,6 +301,7 @@ function NewLoop({ info, act, tpl, done, cancel }: { info: AgentsInfo; act: Act;
       <label className="mi-field"><span>metric – the last number it prints</span><textarea className="input mono" rows={3} value={metric} onChange={(e) => setMetric(e.target.value)} placeholder="cmd whose last number is the score" aria-label="Metric command" /></label>
       <div className="row"><div className="seg">{(["min", "max"] as const).map((g) => <button key={g} type="button" className={goal === g ? "on" : ""} onClick={() => setGoal(g)}>{g === "min" ? "lower" : "higher"}</button>)}</div>
         <input className="input mono research-budget" type="number" min={0} value={budget} onChange={(e) => setBudget(Math.max(0, Number(e.target.value) || 0))} aria-label="Budget" title="experiments before it stops; 0 for no limit" /><span className="muted">tries</span></div>
+      <div className="mi-field"><span>timeout</span><input className="input mono research-timeout" type="number" min={0} value={timeoutSec ?? ""} onChange={(e) => { const v = Number(e.target.value); setTimeoutSec(Number.isFinite(v) && v > 0 ? v : undefined); }} aria-label="Timeout" title="seconds per experiment; empty for no limit" data-testid="rs-timeout-new" /><span className="muted">s per experiment</span></div>
       <div className="mi-field"><span>may edit – the rest is fenced</span><Chips values={scope} onChange={setScope} placeholder="src/**" label="Scope" /></div>
       <label className="mi-field"><span>system prompt</span><textarea className="input" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label="System prompt" /></label>
       <div className="row"><span className="spacer" /><button className="btn sm primary" disabled={!name || !metric.trim()}>Create {name}</button></div>

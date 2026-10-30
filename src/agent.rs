@@ -39,6 +39,34 @@ pub fn is_test_path(p: &str) -> bool {
         || l.contains("/e2e/")
 }
 
+/// A test function living outside a test path: Rust `#[test]` in a `mod
+/// tests`, `test_*` functions, `@Test` methods. Reads the lines just above the
+/// definition for a test attribute; `files` caches sources across calls.
+pub fn is_test_node(root: &std::path::Path, n: &Node, files: &mut std::collections::HashMap<String, Vec<String>>) -> bool {
+    if is_test_path(&n.path) {
+        return true;
+    }
+    if !matches!(n.kind.as_str(), "function" | "method") {
+        return false;
+    }
+    if n.name.starts_with("test_") {
+        return true;
+    }
+    let lines = files.entry(n.path.clone()).or_insert_with(|| {
+        std::fs::read_to_string(root.join(&n.path)).map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default()
+    });
+    let start = (n.start_line as usize).saturating_sub(1);
+    let from = start.saturating_sub(4);
+    lines.get(from..=start.min(lines.len().saturating_sub(1))).unwrap_or(&[]).iter().any(|l| {
+        let t = l.trim();
+        (t.starts_with("#[") && (t.contains("test]") || t.contains("::test") || t.contains("rstest") || t.contains("test(")))
+            || t.starts_with("@Test")
+            || t.starts_with("@pytest")
+            || t.starts_with("[Test")
+            || t.starts_with("[Fact")
+    })
+}
+
 /// A structured row: the same thing the strings say, without parsing.
 #[derive(Serialize, Clone)]
 pub struct Ref {
@@ -215,8 +243,9 @@ pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
     let up = graph::impact(store, n.id, true, 6)?;
     let direct: Vec<String> =
         up.hits.iter().filter(|h| h.depth == 1).map(|h| format!("{} ({}:{})", h.node.name, h.node.path, h.node.start_line)).collect();
+    let mut src_cache = std::collections::HashMap::new();
     let mut tests: Vec<String> =
-        up.hits.iter().filter(|h| is_test_path(&h.node.path)).map(|h| format!("{} ({})", h.node.name, h.node.path)).collect();
+        up.hits.iter().filter(|h| is_test_node(&repo.root, &h.node, &mut src_cache)).map(|h| format!("{} ({})", h.node.name, h.node.path)).collect();
     tests.dedup();
     let co = co_changes(repo, &n.path, 6);
     let notes: Vec<String> = crate::meta::load(repo)
@@ -263,7 +292,7 @@ pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
     }
     advice.push("After editing, call verify_edit to see what actually moved.".into());
     let direct_caller_refs: Vec<Ref> = up.hits.iter().filter(|h| h.depth == 1).map(|h| r(&h.node)).collect();
-    let mut test_refs: Vec<Ref> = up.hits.iter().filter(|h| is_test_path(&h.node.path)).map(|h| r(&h.node)).collect();
+    let mut test_refs: Vec<Ref> = up.hits.iter().filter(|h| is_test_node(&repo.root, &h.node, &mut src_cache)).map(|h| r(&h.node)).collect();
     test_refs.dedup_by(|a, b| a.name == b.name && a.path == b.path);
     Ok(PreEdit {
         risk: up.risk.clone(),

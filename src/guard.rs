@@ -134,6 +134,19 @@ pub struct Task {
     pub workflow: String,
 }
 
+/// One scope fence as `guard list` shows it.
+#[derive(Serialize, Clone, Debug)]
+pub struct ScopeFence {
+    /// `task "…"`, `workflow tests`, `scope core`.
+    pub source: String,
+    /// scope (may change only this) · locked · hidden · review · saved.
+    pub level: String,
+    /// In force right now (the open task or its workflow).
+    pub active: bool,
+    pub entries: Vec<String>,
+    pub resolved: Vec<String>,
+}
+
 struct Compiled {
     rule: GuardRule,
     globs: GlobSet,
@@ -317,7 +330,8 @@ impl Guards {
                 if pats.is_empty() {
                     continue;
                 }
-                let (paths, symbols): (Vec<String>, Vec<String>) = pats.iter().cloned().partition(|s| looks_like_path(s) || s == "**");
+                let (paths, symbols): (Vec<String>, Vec<String>) =
+                    cfg.expand_scope(pats).into_iter().partition(|s| looks_like_path(s) || s == "**");
                 let reason = format!("the {} workflow {what} this – {}", w.name, w.about);
                 rules.push(Compiled {
                     globs: globset(&paths)?,
@@ -374,6 +388,53 @@ impl Guards {
     /// kula.toml's rules (the active workflow's are in `workflow_rules`).
     pub fn rules(&self) -> Vec<(GuardRule, Level)> {
         self.rules.iter().filter(|c| !c.source.starts_with("workflow")).map(|c| (c.rule.clone(), c.level)).collect()
+    }
+
+    /// Every rule in force with its source string, in compile order (repo,
+    /// then workflow, then team). For the effective-fences view.
+    pub fn all_rules(&self) -> Vec<(GuardRule, Level, String)> {
+        self.rules.iter().map(|c| (c.rule.clone(), c.level, c.source.clone())).collect()
+    }
+
+    /// Every scope fence, for `guard list`: the open task's scope, the active
+    /// workflow's own fences, each workflow's default scope, and the saved
+    /// `[[scope]]`s. `resolved` is what the entries mean after saved scopes expand.
+    pub fn scope_fences(&self, cfg: &Config) -> Vec<ScopeFence> {
+        let fence = |source: String, level: &str, active: bool, entries: &[String]| ScopeFence {
+            source,
+            level: level.into(),
+            active,
+            entries: entries.to_vec(),
+            resolved: cfg.expand_scope(entries),
+        };
+        let mut out = Vec::new();
+        if let Some(t) = self.task().filter(|t| !t.scope.is_empty()) {
+            out.push(fence(format!("task \"{}\"", t.title), "scope", true, &t.scope));
+        }
+        let active = self.workflow.as_ref().map(|w| w.name.clone()).unwrap_or_default();
+        for w in workflow::all(cfg) {
+            let on = w.name == active;
+            if !w.scope.is_empty() && !(on && self.task().is_some_and(|t| !t.scope.is_empty())) {
+                out.push(fence(format!("workflow {}", w.name), "scope", on, &w.scope));
+            }
+            if on {
+                for (list, level) in [(&w.lock, "locked"), (&w.hide, "hidden"), (&w.review, "review")] {
+                    if !list.is_empty() {
+                        out.push(fence(format!("workflow {}", w.name), level, true, list));
+                    }
+                }
+            }
+        }
+        for sc in &cfg.scopes {
+            out.push(ScopeFence {
+                source: format!("scope {}", sc.name),
+                level: "saved".into(),
+                active: false,
+                entries: sc.select.clone(),
+                resolved: sc.paths.clone(),
+            });
+        }
+        out
     }
 
     pub fn workflow_rules(&self) -> Vec<(GuardRule, Level)> {
@@ -631,7 +692,9 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
     // segments split on ; && || and newlines, each with its own cwd
     let mut cd = cwd_rel.trim_matches('/').to_string();
     let mut vars: std::collections::HashMap<String, String> = Default::default();
-    for seg in unquoted.split([';', '\n']).flat_map(|s| s.split("&&")).map(str::trim).filter(|s| !s.is_empty()) {
+    // segments: ; newlines && || | and subshell parens all start a new command
+    let flat: String = unquoted.chars().map(|c| if matches!(c, '(' | ')' | '\n' | '|') { ';' } else { c }).collect();
+    for seg in flat.split(';').flat_map(|s| s.split("&&")).map(str::trim).filter(|s| !s.is_empty()) {
         let ws = words(seg);
         let mut k = 0;
         // assignments and identity scrubbing
@@ -657,9 +720,17 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
             }
         }
         let ws = &ws[k.min(ws.len())..];
+        if ws.first().is_some_and(|w| w == "env") {
+            for (i, w) in ws.iter().enumerate() {
+                if w == "-u" && ws.get(i + 1).is_some_and(|n| IDENTITY_VARS.contains(&n.as_str())) {
+                    return (extra, refuse("an agent does not decide whether it is an agent – identity vars are not yours to unset"));
+                }
+            }
+        }
+        let ws = strip_wrappers(ws);
         let Some(name) = ws.first().map(|w| w.rsplit('/').next().unwrap_or(w)) else { continue };
         // `cd` before a write: the target's cwd is where it lands
-        let is_cd = name == "cd";
+        let is_cd = name == "cd" || name == "pushd";
         if is_cd {
             if let Some(d) = ws.get(1) {
                 cd = expand(d, &vars, cwd_rel);
@@ -698,6 +769,19 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
                     return (extra, refuse("`find -delete` would remove fenced files"));
                 }
             }
+            if let Some(i) = ws.iter().position(|w| w == "-exec" || w == "-execdir" || w == "-ok") {
+                let inner = strip_wrappers(&ws[i + 1..]);
+                let iname = inner.first().map(|w| w.rsplit('/').next().unwrap_or(w).to_string()).unwrap_or_default();
+                let writes = XARGS_WRITERS.contains(&iname.as_str())
+                    || (iname == "sed" && inner.iter().any(|w| w.starts_with("-i")))
+                    || opaque_writer(&iname, inner).is_some();
+                let from: Vec<&str> = ws.iter().skip(1).take_while(|w| !w.starts_with('-')).map(String::as_str).collect();
+                let roots: Vec<String> =
+                    if from.is_empty() { vec![cd.clone()] } else { from.iter().map(|f| join_rel(cd.as_str(), f)).collect() };
+                if writes && roots.iter().any(|r| overlaps(r, fenced)) {
+                    return (extra, refuse(&format!("`find -exec {iname}` would write fenced files")));
+                }
+            }
             continue;
         }
         if name == "patch" {
@@ -729,6 +813,47 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
         if name == "git" {
             continue;
         }
+        // things the hook cannot see through: refuse while anything is fenced
+        if !fenced.is_empty() {
+            if let Some(why) = opaque_writer(name, ws) {
+                return (extra, refuse(&why));
+            }
+        }
+        // archive extraction lands in -C/-d or the cwd
+        let extracts = (name == "tar" && ws.get(1).is_some_and(|w| w.starts_with('-') && w.contains('x') || !w.starts_with('-') && w.contains('x')))
+            || ws.iter().any(|w| w == "--extract")
+            || name == "unzip";
+        if extracts && name != "sed" {
+            let flag = if name == "unzip" { "-d" } else { "-C" };
+            let dest = ws.iter().position(|w| w == flag).and_then(|i| ws.get(i + 1)).map(|d| join_rel(&cd, &expand(d, &vars, cwd_rel)));
+            let dest = dest.unwrap_or_else(|| cd.clone());
+            if overlaps(&dest, fenced) {
+                return (extra, refuse(&format!("`{name}` would extract over fenced files")));
+            }
+        }
+        if name == "dd" {
+            if let Some(t) = ws.iter().find_map(|w| w.strip_prefix("of=")) {
+                if let Some(why) = check_target(t, &cd, &vars, cwd_rel, fenced, &mut extra) {
+                    return (extra, Some(why));
+                }
+            }
+        }
+        // plain file writers, resolved against the tracked cd and variables
+        let in_place = name == "sed" && ws.iter().skip(1).any(|w| w == "-i" || w.starts_with("-i") || w.starts_with("--in-place"));
+        if in_place || matches!(name, "tee" | "touch" | "rm" | "truncate" | "cp" | "mv" | "ln" | "install" | "rsync") {
+            let args: Vec<&str> = ws.iter().skip(1).filter(|w| !w.starts_with('-')).map(String::as_str).collect();
+            let targets: Vec<&str> = match name {
+                // the first operand is sed's script unless -e/-f gave one
+                "sed" if !ws.iter().any(|w| w == "-e" || w == "-f") => args.iter().skip(1).copied().collect(),
+                "cp" | "mv" | "ln" | "install" | "rsync" => args.last().copied().into_iter().collect(),
+                _ => args,
+            };
+            for t in targets {
+                if let Some(why) = check_target(t, &cd, &vars, cwd_rel, fenced, &mut extra) {
+                    return (extra, Some(why));
+                }
+            }
+        }
         // redirections in this segment: > and >> targets
         if let Some(t) = redirect_target(seg) {
             if let Some(why) = check_target(&t, &cd, &vars, cwd_rel, fenced, &mut extra) {
@@ -746,6 +871,92 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
         let _ = name;
     }
     (extra, None)
+}
+
+const INTERPRETERS: &[&str] =
+    &["python", "python3", "python2", "node", "deno", "bun", "ruby", "perl", "php", "sh", "bash", "zsh", "lua", "Rscript"];
+const XARGS_WRITERS: &[&str] = &[
+    "sed", "tee", "rm", "cp", "mv", "touch", "truncate", "perl", "ruby", "python", "python3", "node", "sh", "bash", "zsh", "dd", "ln",
+    "install", "chmod", "awk", "prettier", "black", "gofmt", "rustfmt",
+];
+
+/// Wrappers that run the command after them: sudo, env, nice, time, command.
+fn strip_wrappers(ws: &[String]) -> &[String] {
+    let mut k = 0;
+    while let Some(w) = ws.get(k) {
+        let base = w.rsplit('/').next().unwrap_or(w);
+        if !matches!(base, "sudo" | "env" | "nice" | "time" | "command" | "nohup" | "exec" | "doas" | "timeout" | "stdbuf") {
+            break;
+        }
+        k += 1;
+        while let Some(a) = ws.get(k) {
+            let assign = a.contains('=') && a.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_');
+            if a.starts_with('-') {
+                k += 1;
+                // flags that take a value
+                if matches!(a.as_str(), "-u" | "-n" | "-g" | "-C" | "-o" | "-e" | "-i") && ws.get(k).is_some_and(|v| !v.starts_with('-')) {
+                    k += 1;
+                }
+            } else if assign || (base == "timeout" && a.chars().next().is_some_and(|c| c.is_ascii_digit())) {
+                k += 1;
+            } else {
+                break;
+            }
+        }
+    }
+    &ws[k.min(ws.len())..]
+}
+
+/// Whether writing under `dir` could touch a fenced path (the repo root always can).
+fn overlaps(dir: &str, fenced: &[String]) -> bool {
+    let d = dir.trim_matches('/');
+    d.is_empty() || fenced.iter().any(|f| f == d || f.starts_with(&format!("{d}/")) || d.starts_with(&format!("{f}/")))
+}
+
+/// Commands whose write targets the hook cannot resolve: scripts, `xargs`
+/// feeding a writer, and formatters that rewrite whatever they find.
+fn opaque_writer(name: &str, ws: &[String]) -> Option<String> {
+    let rest: Vec<&str> = ws.iter().skip(1).map(String::as_str).collect();
+    let has = |f: &str| rest.contains(&f);
+    let interp = INTERPRETERS.contains(&name)
+        || name.starts_with("python")
+        || matches!(name, "tsx" | "ts-node")
+        || (name == "uv" && rest.first() == Some(&"run"))
+        || (matches!(name, "npx" | "bunx" | "pnpx") && rest.iter().any(|w| matches!(*w, "tsx" | "ts-node")));
+    if matches!(name, "make" | "gmake" | "just")
+        || (matches!(name, "npm" | "pnpm" | "yarn" | "bun") && rest.first().is_some_and(|w| matches!(*w, "run" | "run-script" | "exec")))
+        || (name == "go" && rest.first() == Some(&"generate"))
+    {
+        return Some(format!("`{name}` runs build steps that can write anywhere, and fenced paths exist here – run it via CI or as a person"));
+    }
+    if interp {
+        if rest.iter().any(|w| matches!(*w, "-c" | "-e" | "-E" | "-r" | "-p" | "-i") || w.starts_with("-pi") || w.starts_with("-i")) {
+            return Some(format!("`{name} -c/-e` code can write any path, and fenced paths exist here – run it as a person"));
+        }
+        if rest.iter().any(|w| !w.starts_with('-')) {
+            return Some(format!("a `{name}` script can write any path, and fenced paths exist here – run it as a person"));
+        }
+    }
+    if name == "xargs" {
+        if let Some(w) = rest.iter().find(|w| XARGS_WRITERS.contains(&w.rsplit('/').next().unwrap_or(w))) {
+            return Some(format!("`xargs {w}` writes paths the hook cannot see, and fenced paths exist here"));
+        }
+    }
+    let check = has("--check") || has("--diff") || has("-l") || has("--list-different") || has("-d");
+    let fmt = match name {
+        "cargo" => (rest.first() == Some(&"fmt") && !check) || rest.first() == Some(&"fix") || (rest.first() == Some(&"clippy") && has("--fix")),
+        "eslint" => has("--fix"),
+        "prettier" => has("--write") || has("-w"),
+        "black" | "rustfmt" | "isort" | "autopep8" => !check,
+        "gofmt" | "goimports" => has("-w"),
+        "ruff" => rest.first() == Some(&"format") && !check || has("--fix"),
+        "clang-format" => has("-i"),
+        "npx" | "pnpm" | "yarn" | "bunx" => {
+            (rest.iter().any(|w| *w == "prettier") && (has("--write") || has("-w"))) || (rest.iter().any(|w| *w == "eslint") && has("--fix"))
+        }
+        _ => false,
+    };
+    fmt.then(|| format!("`{name}` rewrites files across the tree, fenced ones included – run the formatter as a person"))
 }
 
 /// `git …` within `shell_guard`: the subcommands that rewrite history or trees
@@ -1085,6 +1296,41 @@ mod tests {
     }
 
     #[test]
+    fn saved_scopes_work_by_name_in_workflows() {
+        let toml = r#"
+            [[scope]]
+            name = "core"
+            select = ["src/core/**"]
+            paths = ["src/core/a.rs", "src/core/b.rs"]
+            [[scope]]
+            name = "vendor"
+            select = ["vendor/**"]
+            paths = ["vendor/x.rs"]
+            [[workflow]]
+            name = "w"
+            scope = ["core"]
+            lock = ["scope:vendor"]
+        "#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        let w = crate::workflow::find(&cfg, "w").unwrap();
+        for scope in [w.scope.clone(), vec!["@core".into()], vec!["scope:core".into()]] {
+            let t = Task { title: "t".into(), scope, started: 0, by: "a".into(), workflow: "w".into() };
+            let g = guards(toml, Some(t));
+            assert_eq!(g.path("src/core/a.rs").level, Level::Open);
+            assert_eq!(g.path("src/main.rs").level, Level::Scope);
+            assert_eq!(g.path("vendor/x.rs").level, Level::Locked);
+        }
+        let t = Task { title: "t".into(), scope: vec![], started: 0, by: "a".into(), workflow: "w".into() };
+        let f = guards(toml, Some(t)).scope_fences(&cfg);
+        let w_scope = f.iter().find(|x| x.source == "workflow w" && x.level == "scope").unwrap();
+        assert!(w_scope.active && w_scope.resolved == vec!["src/core/a.rs", "src/core/b.rs"]);
+        assert!(f.iter().any(|x| x.source == "workflow w" && x.level == "locked" && x.resolved == vec!["vendor/x.rs"]));
+        assert!(f.iter().any(|x| x.source == "scope core" && x.level == "saved" && !x.active));
+        // A name that is a path or glob is never taken for a scope.
+        assert!(cfg.saved_scope("core").is_some() && cfg.saved_scope("core/**").is_none() && cfg.saved_scope("nope").is_none());
+    }
+
+    #[test]
     fn workflows_bring_their_own_fences() {
         let t = |wf: &str| Some(Task { title: "t".into(), scope: vec![], started: 0, by: "a".into(), workflow: wf.into() });
         let g = guards("", t("refactor"));
@@ -1158,6 +1404,104 @@ mod shell_guard_tests {
             assert!(why.is_some() || !more.is_empty(), "{cmd} -> no refusal, no extra targets");
         }
         assert!(shell_guard("cat tests/login.test.ts | grep -n salt", "", &fenced, &[]).1.is_none());
+    }
+
+    #[test]
+    fn shell_guard_tracks_vars_cd_and_refuses_opaque_writers() {
+        let fenced = vec![f("tests/t.rs")];
+        for cmd in [
+            "F=tests; sed -i s/x/y/ $F/t.rs",
+            "cd tests; sed -i s/x/y/ t.rs",
+            "cd tests && sed -i '' s/x/y/ t.rs",
+            "xargs -I{} sed -i s/x/y/ {} < list.txt",
+            "python3 -c \"open('te'+'sts/t.rs','w')\"",
+            "python3 w.py",
+            "node -e 'x'",
+            "perl -pi -e s/x/y/ tests/t.rs",
+            "cargo fmt",
+            "cargo fmt --all",
+            "prettier --write .",
+            "npx prettier -w src",
+            "black .",
+            "gofmt -w .",
+            "D=tests; cd $D; tee t.rs",
+            "cd tests; rm t.rs",
+            "cd tests; cp /tmp/x t.rs",
+        ] {
+            let (_, why) = shell_guard(cmd, "", &fenced, &[]);
+            assert!(why.is_some(), "{cmd} -> not refused");
+        }
+        for cmd in [
+            "cat tests/t.rs",
+            "grep -rn x tests",
+            "ls tests",
+            "cargo test",
+            "cargo fmt --check",
+            "black --check .",
+            "gofmt -l .",
+            "prettier --check .",
+            "cd src; sed -i s/x/y/ a.rs",
+            "F=src; sed -i s/x/y/ $F/a.rs",
+            "sed -n 1,5p tests/t.rs",
+            "xargs grep x < list.txt",
+            "python3 --version",
+        ] {
+            let (_, why) = shell_guard(cmd, "", &fenced, &[]);
+            assert!(why.is_none(), "{cmd} -> refused: {why:?}");
+        }
+        for cmd in [
+            "ls | sed -i s/x/y/ tests/t.rs",
+            "true || sed -i s/x/y/ tests/t.rs",
+            "(cd tests; sed -i s/x/y/ t.rs)",
+            "sudo sed -i s/x/y/ tests/t.rs",
+            "env A=1 sed -i s/x/y/ tests/t.rs",
+            "nice -n 5 python3 w.py",
+            "time cargo fmt",
+            "command tee tests/t.rs",
+            "find tests -name '*.rs' -exec sed -i s/x/y/ {} +",
+            "find . -execdir rm {} ;",
+            "dd if=/dev/zero of=tests/t.rs",
+            "rsync -a /tmp/x/ tests/",
+            "tar -xf a.tar",
+            "tar xzf a.tgz -C tests",
+            "unzip a.zip",
+            "cargo fix",
+            "cargo clippy --fix",
+            "eslint --fix .",
+            "npx eslint --fix src",
+            "python3.12 w.py",
+            "uv run w.py",
+            "npx tsx w.ts",
+            "pushd tests; sed -i s/x/y/ t.rs",
+            "make",
+            "npm run build",
+            "go generate ./...",
+        ] {
+            let (_, why) = shell_guard(cmd, "", &fenced, &[]);
+            assert!(why.is_some(), "{cmd} -> not refused");
+        }
+        for cmd in [
+            "ls tests | grep t",
+            "sudo ls tests",
+            "find tests -name '*.rs' -exec cat {} +",
+            "dd if=tests/t.rs of=/tmp/x",
+            "rsync -a tests/ /tmp/x/",
+            "tar -tf a.tar",
+            "tar -xf a.tar -C build",
+            "unzip a.zip -d build",
+            "cargo clippy",
+            "eslint .",
+            "pushd src; sed -i s/x/y/ a.rs",
+            "npm test",
+            "go build ./...",
+        ] {
+            let (_, why) = shell_guard(cmd, "", &fenced, &[]);
+            assert!(why.is_none(), "{cmd} -> refused: {why:?}");
+        }
+        // nothing locked: scripts and formatters run freely
+        for cmd in ["python3 -c 'print(1)'", "python3 w.py", "cargo fmt", "xargs sed -i s/x/y/ < l"] {
+            assert!(shell_guard(cmd, "", &[], &[]).1.is_none(), "{cmd}");
+        }
     }
 }
 

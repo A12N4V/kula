@@ -97,12 +97,19 @@ test("a fenced agent sits over the zone it covers; an unfenced agent sits beside
 
 test("a fenced agent's gradient wires drop into its fenced squares", async ({ page }) => {
   await opened(page);
+  // an agent's reach is drawn only while it is picked (fb2224b: at rest every
+  // agent wired to every fence buried the map) – pick polish first
+  // (the map lands at a 45% floor on the busiest section; fit to bring the
+  // agent band, left of the zones, into view)
+  await page.locator('[data-testid="map-flow"] [data-testid="fc-fit"]').first().click();
+  await page.waitForTimeout(300);
+  await page.locator('[data-testid="fc-node-agent:polish"]:visible').first().click();
   // assert by name: the dashed wires out of the polish agent's square –
   // react-flow renders each edge as an svg path whose id is the edge id
-  const n = await page.evaluate(() =>
+  await expect.poll(() => page.evaluate(() =>
     [...document.querySelectorAll('[data-testid="map-flow"] path[id]')]
-      .filter((el) => (el.getAttribute("id") ?? "").startsWith("agent:polish>")).length);
-  expect(n, "a wire from agent:polish into its fenced square").toBeGreaterThan(0);
+      .filter((el) => (el.getAttribute("id") ?? "").startsWith("agent:polish>")).length),
+  { message: "a wire from agent:polish into its fenced square" }).toBeGreaterThan(0);
 });
 
 test("dropping a block on an agent square fences it – the square lights as the drop target", async ({ page }) => {

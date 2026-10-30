@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { FIXTURE } from "../playwright.config";
-import { explore } from "./explore";
+import { explore, mapSettings } from "./explore";
 
 // Fused-canvas acceptance tests – the contract in docs/design/fused-canvas.md
 // §8. Every test here is test.fixme until the U module that owns it lands the
@@ -270,6 +270,7 @@ test("one layer toggle with the six layers and defaults, plus the Map Runs Evals
   await opened(page, "map");
   // U11: the layers live in the Explorer's sheet – open it first.
   await explore(page);
+  await mapSettings(page);
   const toggle = page.locator('[data-testid="u2-layers"]');
   await expect(toggle).toBeVisible();
   for (const id of ["blocks", "flows", "chains", "fences", "agents", "runs"])
@@ -533,7 +534,8 @@ test.fixme("keyboard map works and never spends keys 1/2/3", async ({ page }) =>
   await expect(page.locator('[data-testid="canvas-node"]').first()).toBeVisible({ timeout: 10_000 });
   await page.keyboard.press("f");
   await page.keyboard.press("m");
-  await expect(page.locator('[data-testid="map-minimap"], [data-testid="map-zoombar"] [aria-pressed=true]')).toBeVisible();
+  await mapSettings(page);
+  await mapSettings(page); await expect(page.locator('[data-testid="map-minimap"], [data-testid="map-zoombar"] [aria-pressed=true]')).toBeVisible();
   await page.keyboard.press("l");
   await expect(page.locator('[data-testid="map-layers"]')).toBeVisible();
   await page.keyboard.press("Escape");

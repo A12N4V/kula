@@ -234,7 +234,9 @@ function LocalList({ ix, shown, cur, setSel, code, shared, addShared }: {
         {shown.map((s) => {
           const open = cur?.path === s.path;
           return (
-            <div key={s.path} role="listitem" className={`sx-row ${open ? "on" : ""}`}>
+            <div key={s.path} role="listitem" className={`sx-row ${open ? "on" : ""}`} draggable
+              onDragStart={(e) => { try { e.dataTransfer.setData("application/x-kula-drag", JSON.stringify({ kind: "skill", name: s.name })); e.dataTransfer.setData("text/plain", s.name); } catch { /* */ } }}
+              title="Drag onto an agent card to attach it">
               <button className="sx-head" aria-expanded={open} onClick={() => setSel(open ? null : s.path)} data-testid={`sx-row-${s.name}`}>
                 <span className="sx-mark" title={WHO[s.agent]}>{s.agent === "shared" ? <Icon.box /> : <AgentMark id={s.agent} size={14} />}</span>
                 <span className="sx-main">

@@ -23,7 +23,6 @@ import Docs from "./agents/Docs";
 import SkillIndex, { Instructions, useSkillIndex } from "./agents/SkillIndex";
 import Skills from "./agents/Skills";
 import Settings, { ImportSkill } from "./agents/Settings";
-import { Grip, listWidth } from "../resize";
 
 // A menu, not a dashboard: configure first – the agents, their teams, the
 // skills and docs they load, memory, and the settings that wire it together –
@@ -35,7 +34,7 @@ import { Grip, listWidth } from "../resize";
 const TABS = [
   { id: "workflows", label: "Agents", icon: Icon.workflow, hint: "Work modes: role, scope, steps" },
   { id: "teams", label: "Teams", icon: Icon.team, hint: "Agents that work together" },
-  { id: "research", label: "Research", icon: Icon.flask, hint: "Research loops" },
+  { id: "research", label: "Research", icon: Icon.flask, hint: "Measure, change one thing, keep what wins" },
   { id: "skills", label: "Skills", icon: Icon.box, hint: "Every SKILL.md an agent loads" },
   { id: "memory", label: "Memory", icon: Icon.memory, hint: "What agents remember" },
   { id: "docs", label: "Docs", icon: Icon.doc, hint: "Docs and instruction files" },
@@ -97,28 +96,26 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
 
   const counts: Partial<Record<Tab, number>> = { workflows: info.workflows.length, teams: info.teams?.length, skills: sx.ix?.skills.length, docs: (sx.ix?.instructions.length ?? 0) + outdated };
   const cur = TABS.find((t) => t.id === tab)!;
+  // One menu: the app rail picks Agents, this horizontal strip picks the
+  // section. Teams and Memory are canvases, so they take the whole view.
+  const full = tab === "teams";
   return (
-    <div className="split agents ag-split" style={listWidth("agents", 260)}>
-      <div className="list ag-menu">
-        <div className="list-head"><h2>Agents</h2><span className="spacer" />
-          <button className="btn sm ghost icon-only" onClick={() => onWorkspace()} title="Open the Workspace – where these agents work" aria-label="Open Workspace" data-testid="ag-to-workspace"><Icon.workspace /></button>
-        </div>
-        <nav className="ag-tabs" role="tablist" aria-label="Agents" aria-orientation="vertical" data-testid="ag-tabs">
-          {TABS.map((t) => (
-            <button key={t.id} role="tab" aria-selected={tab === t.id} aria-label={t.label} className={`ag-mi ${tab === t.id ? "on" : ""}`} onClick={() => setTab(t.id)} title={t.hint}>
-              <t.icon /><span className="ag-mi-label">{t.label}</span>
-              {!!badge[t.id] ? <span className="badge">{badge[t.id]}</span> : counts[t.id] != null && <span className="ag-mi-n">{counts[t.id]}</span>}
-            </button>
-          ))}
-        </nav>
-      </div>
-      <Grip id="agents" edge="right" target="prev" min={200} max={420} label="Resize menu" />
+    <div className={`agents ag-page ${full ? "ag-full" : ""}`}>
+      <nav className="ag-tabs" role="tablist" aria-label="Agents" aria-orientation="horizontal" data-testid="ag-tabs">
+        {TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={tab === t.id} aria-label={t.label} className={`ag-mi ${tab === t.id ? "on" : ""}`} onClick={() => setTab(t.id)} title={t.hint}>
+            <t.icon /><span className="ag-mi-label">{t.label}</span>
+            {!!badge[t.id] ? <span className="badge">{badge[t.id]}</span> : counts[t.id] != null && <span className="ag-mi-n">{counts[t.id]}</span>}
+          </button>
+        ))}
+        <span className="grow" />
+        <button className="ag-mi" onClick={() => onWorkspace()} title="Open the Workspace – where these agents work" aria-label="Open Workspace" data-testid="ag-to-workspace"><Icon.workspace /><span className="ag-mi-label">Workspace</span></button>
+      </nav>
       <div className="detail">
-        <div className="detail-pad ag-detail">
-          <header className="page-head">
+        <div className={`ag-detail ${full ? "" : "detail-pad"}`}>
+          {!full && <header className="page-head">
             <div><h1>{cur.label}</h1><div className="muted">{cur.hint}</div></div>
-            {tab === "workflows" && <button className="btn sm" onClick={() => onWorkspace()}><Icon.workspace /> Open Workspace</button>}
-          </header>
+          </header>}
           <div className="ag-panel" key={tab}>
             {/* Overview lost its menu entry – its roster and stats live here,
                 under the Agents list, so nothing the agents page knew is gone. */}

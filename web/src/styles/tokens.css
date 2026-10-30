@@ -11,6 +11,7 @@
   --text-2: #c2b9ac;
   --text-3: #867d73;
   --accent: #f97f3a;
+  --accent-text: var(--accent);
   --accent-ink: #1a0f07;
   --accent-soft: rgba(249, 127, 58, 0.08);
   --green: #8fd694;
@@ -53,14 +54,14 @@
    public names onto them, so the palette cannot drift between triggers. */
 :root {
   --lt-bg: #efe7dc; --lt-bg-2: #e8dfd2; --lt-edge: rgba(60, 50, 40, 0.14); --lt-node-faded: #e2ddd4; --lt-panel: #f4f2ee; --lt-panel-2: #ebe4d9; --lt-line: #e2ddd4; --lt-line-2: #d3cdc2;
-  --lt-text: #231d18; --lt-text-2: #5d5850; --lt-text-3: #938c81; --lt-accent: #F05201; --lt-accent-ink: #fff;
+  --lt-text: #231d18; --lt-text-2: #5d5850; --lt-text-3: #6a6258; --lt-accent: #F05201; --lt-accent-ink: #fff; --lt-accent-text: #a83a00;
   --lt-accent-soft: rgba(212, 100, 44, 0.1); --lt-green: #2f8a44; --lt-red: #c2453b; --lt-yellow: #a67c00; --lt-blue: #2f6fcf; --lt-violet: #8a4fb0;
   --lt-add-bg: rgba(47, 138, 68, 0.08); --lt-del-bg: rgba(194, 69, 59, 0.08);
   --lt-active-bg: #ddd5c8;
 }
 :root[data-theme="light"] {
   --bg: var(--lt-bg); --bg-2: var(--lt-bg-2); --edge: var(--lt-edge); --node-faded: var(--lt-node-faded); --panel: var(--lt-panel); --panel-2: var(--lt-panel-2); --line: var(--lt-line); --line-2: var(--lt-line-2);
-  --text: var(--lt-text); --text-2: var(--lt-text-2); --text-3: var(--lt-text-3); --accent: var(--lt-accent); --accent-ink: var(--lt-accent-ink);
+  --text: var(--lt-text); --text-2: var(--lt-text-2); --text-3: var(--lt-text-3); --accent: var(--lt-accent); --accent-ink: var(--lt-accent-ink); --accent-text: var(--lt-accent-text);
   --accent-soft: var(--lt-accent-soft); --green: var(--lt-green); --red: var(--lt-red); --yellow: var(--lt-yellow); --blue: var(--lt-blue); --violet: var(--lt-violet);
   --add-bg: var(--lt-add-bg); --del-bg: var(--lt-del-bg);
   --hover-bg: var(--panel-2);
@@ -70,7 +71,7 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     --bg: var(--lt-bg); --bg-2: var(--lt-bg-2); --edge: var(--lt-edge); --node-faded: var(--lt-node-faded); --panel: var(--lt-panel); --panel-2: var(--lt-panel-2); --line: var(--lt-line); --line-2: var(--lt-line-2);
-    --text: var(--lt-text); --text-2: var(--lt-text-2); --text-3: var(--lt-text-3); --accent: var(--lt-accent); --accent-ink: var(--lt-accent-ink);
+    --text: var(--lt-text); --text-2: var(--lt-text-2); --text-3: var(--lt-text-3); --accent: var(--lt-accent); --accent-ink: var(--lt-accent-ink); --accent-text: var(--lt-accent-text);
     --accent-soft: var(--lt-accent-soft); --green: var(--lt-green); --red: var(--lt-red); --yellow: var(--lt-yellow); --blue: var(--lt-blue); --violet: var(--lt-violet);
     --add-bg: var(--lt-add-bg); --del-bg: var(--lt-del-bg);
     --hover-bg: var(--panel-2);

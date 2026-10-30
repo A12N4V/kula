@@ -20,13 +20,16 @@ function Thread({ comments, onSend }: { comments: { author: string; body: string
     <div className="stack" style={{ marginTop: 18 }}>
       <div className="section-title">Discussion <span className="count">{comments.length}</span></div>
       {comments.map((c, i) => (
-        <div key={i} style={{ padding: "10px 14px", border: "1px solid var(--line)", borderRadius: 10, background: "var(--panel)" }}>
+        <div key={i} style={{ padding: "10px 14px", border: "1px solid var(--line)", background: "var(--panel)" }}>
           <div className="row" style={{ marginBottom: 4 }}><b style={{ fontWeight: 600 }}>{c.author}</b><span className="muted">{relTime(c.at)}</span></div>
           <Md text={c.body} />
         </div>
       ))}
-      <textarea className="textarea" placeholder="Leave a comment…" value={b} onChange={(e) => setB(e.target.value)} />
-      <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn primary" disabled={!b.trim()} onClick={() => onSend(b).then(() => setB(""))}>Comment</button></div>
+      <div className="composer">
+        <textarea className="textarea" placeholder="Leave a comment…  ⌘↵ sends" value={b} onChange={(e) => setB(e.target.value)}
+          onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && b.trim()) { e.preventDefault(); onSend(b).then(() => setB("")); } }} />
+        <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn primary" disabled={!b.trim()} onClick={() => onSend(b).then(() => setB(""))}>Comment</button></div>
+      </div>
     </div>
   );
 }
@@ -178,10 +181,13 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
   const load = () => api.meta().then(setMeta);
   useEffect(() => { load(); }, [version]);
   const all = meta?.notes ?? [];
-  const notes = all.filter((n) => !q || (n.body + n.target).toLowerCase().includes(q.toLowerCase())).sort((a, b) => b.updated - a.updated);
+  const notes = all.filter((n) => !q || (n.body + n.target).toLowerCase().includes(q.toLowerCase())).sort((a, b) => b.updated - a.updated || b.id - a.id);
   const groups = new Map<string, Note[]>();
   notes.forEach((n) => groups.set(n.target, [...(groups.get(n.target) ?? []), n]));
   const shown = sel ? notes.filter((n) => n.target === sel) : notes;
+  // The detail side shows the graph plus the newest note of the picked target –
+  // the old grouped card column duplicated the list, so it is gone.
+  const selNote = shown[0];
 
   const afterWrite = async () => { await load(); onChanged(); };
   const openNote = (n: Note) => code.open({
@@ -242,27 +248,20 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
       <div className="detail" style={{ padding: 0 }}>
         <div className="notes-split" style={graphOn ? undefined : { gridTemplateColumns: "1fr" }}>
           {graphOn && <NotesGraph notes={all} sel={sel} onPick={setSel} onOpenNote={openNote} />}
-          <aside className="notes-side detail-pad" style={graphOn ? undefined : { borderLeft: 0, maxWidth: 980 }}>
-            <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{shown.length}</span><span className="spacer" />{sel && <button className="btn sm ghost" onClick={() => setSel("")}>All</button>}<Toggle label="Graph" checked={graphOn} onChange={toggleGraph} hint="Show notes as a graph beside the list" testId="notes-graph-toggle" className="sm" /></div>
-            {shown.length === 0 && <Empty title={sel ? "No notes here" : "No notes yet"}>{sel ? "Write one – the target is filled in." : "Annotate the repo, any file, symbol, commit or cluster."}</Empty>}
-            {[...groups.entries()].filter(([t]) => !sel || t === sel).map(([t, list]) => (
-              <div key={t} style={{ marginBottom: 18 }}>
-                <div className="row" style={{ marginBottom: 6 }}>
-                  <button className="btn sm ghost mono" onClick={() => { setSel(t === sel ? "" : t); t !== "repo" && openByName(t, openSymbol); }}>{t.startsWith("file:") ? <Icon.doc /> : t.startsWith("symbol:") ? "ƒ" : t.startsWith("commit:") ? <Icon.history /> : <Icon.box />} {t}</button>
+          <aside className="notes-side detail-pad">
+            <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{all.length}</span><span className="spacer" />{sel && <button className="btn sm ghost" onClick={() => setSel("")}>All</button>}<Toggle label="Graph" checked={graphOn} onChange={toggleGraph} hint="Show notes as a graph beside the list" testId="notes-graph-toggle" className="sm" /></div>
+            {!graphOn && <Empty title="Graph off">Turn the graph back on to see how notes anchor to the repo.</Empty>}
+            {selNote && (
+              <div className="note" data-testid={`u14-card-${selNote.id}`}>
+                <Md text={selNote.body} onSymbol={(s) => openByName(s, openSymbol)} />
+                <div className="row" style={{ marginTop: 8, fontSize: 11.5 }}>
+                  {selNote.kind === "memory" && <span className="tag accent" title="An agent memory – see Agents">memory</span>}
+                  <span className="muted">#{selNote.id} · {selNote.author} · {relTime(selNote.updated)}</span><span className="spacer" />
+                  <button className="btn sm ghost" data-testid={`u14-edit-${selNote.id}`} onClick={() => openNote(selNote)}>Edit</button>
+                  <button className="btn sm ghost danger" onClick={async () => { if (confirm("Delete this note?")) { await api.metaAction("notes", selNote.id, { status: "deleted" }); await afterWrite(); } }}>Delete</button>
                 </div>
-                {list.map((n) => (
-                  <div key={n.id} className={`note ${n.kind === "memory" ? "mem" : ""}`} data-testid={`u14-card-${n.id}`}>
-                    <Md text={n.body} onSymbol={(s) => openByName(s, openSymbol)} />
-                    <div className="row" style={{ marginTop: 8, fontSize: 11.5 }}>
-                      {n.kind === "memory" && <span className="tag accent" title="An agent memory – see Agents">memory</span>}
-                      <span className="muted">#{n.id} · {n.author} · {relTime(n.updated)}</span><span className="spacer" />
-                      <button className="btn sm ghost" data-testid={`u14-edit-${n.id}`} onClick={() => openNote(n)}>Edit</button>
-                      <button className="btn sm ghost danger" onClick={async () => { if (confirm("Delete this note?")) { await api.metaAction("notes", n.id, { status: "deleted" }); await afterWrite(); } }}>Delete</button>
-                    </div>
-                  </div>
-                ))}
               </div>
-            ))}
+            )}
           </aside>
         </div>
       </div>

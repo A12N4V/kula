@@ -24,7 +24,7 @@
 
 .sy-chain { flex-direction: column; align-items: flex-start; gap: 1px; padding: 5px 10px; }
 .sy-chain-name { font-size: 12px; color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sy-chain.on .sy-chain-name { color: var(--accent); }
+.sy-chain.on .sy-chain-name { color: var(--accent-text); }
 .sy-section-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); padding: 8px 10px 2px; }
 
 .sy-block { gap: 2px; }
@@ -37,7 +37,7 @@
 .sy-block-name { min-height: 28px; display: flex; align-items: center; gap: 6px; min-width: 0; border: 0; background: none; color: inherit; cursor: pointer; padding: 0; flex: 1; }
 .sy-bname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sy-kind { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); flex: none; }
-.sy-glyph { flex: none; width: 14px; text-align: center; color: var(--accent); }
+.sy-glyph { flex: none; width: 14px; text-align: center; color: var(--accent-text); }
 
 .sy-leaf { gap: 6px; padding-left: 48px; }
 .sy-leaf-name { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -49,8 +49,8 @@
 .sy-bread-sep svg { width: 12px; height: 12px; transform: rotate(-90deg); }
 .crumb-link { border: 0; background: none; color: var(--text-2); cursor: pointer; padding: 2px 8px; min-height: 28px; }
 .crumb-link:hover { background: var(--hover-bg); color: var(--text); }
-.crumb-link.on { color: var(--accent); }
-.sy-bread-chain { margin-left: auto; font-size: 11px; color: var(--accent); }
+.crumb-link.on { color: var(--accent-text); }
+.sy-bread-chain { margin-left: auto; font-size: 11px; color: var(--accent-text); }
 
 .sy-canvas-scroll { flex: 1; overflow: auto; padding: 14px; }
 .sy-path { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
@@ -69,12 +69,12 @@
 .sy-box-meta { font-size: 10.5px; color: var(--text-3); flex: none; }
 .sy-box-block { border-radius: 6px; }
 .sy-box-sub { border-radius: 4px; background: var(--bg-2); }
-.sy-on-chain { border-color: var(--accent); }
+.sy-on-chain { border-color: var(--accent-text); }
 
 .sy-box-kids { padding: 8px; display: grid; gap: 6px; }
 .sy-kid { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); background: none; color: var(--text-2); cursor: pointer; padding: 5px 8px; border-radius: 4px; min-height: 28px; transition: background var(--dur), border-color var(--dur); }
 .sy-kid:hover { background: var(--hover-bg); border-color: var(--hover-line); color: var(--text); }
-.sy-kid.sy-on-chain { border-color: var(--accent); }
+.sy-kid.sy-on-chain { border-color: var(--accent-text); }
 .sy-kid-more { justify-content: center; color: var(--text-3); }
 .sy-kname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -82,13 +82,13 @@
 .sy-leaf-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 0 8px; border: 0; background: none; color: var(--text-2); cursor: pointer; text-align: left; transition: background var(--dur); }
 .sy-leaf-row:hover { background: var(--hover-bg); color: var(--text); }
 .sy-leaf-row .sy-glyph { color: var(--text-3); }
-.sy-leaf-row:hover .sy-glyph { color: var(--accent); }
+.sy-leaf-row:hover .sy-glyph { color: var(--accent-text); }
 .sy-more { color: var(--text-3); justify-content: center; }
 
 .sy-steps { position: relative; z-index: 4; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 2px; }
 .sy-step { min-height: 28px; height: 28px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text-2); cursor: pointer; padding: 3px 8px; border-radius: 4px; font-size: 11px; max-width: 100%; }
 .sy-step:hover { background: var(--hover-bg); color: var(--text); }
-.sy-step-n { color: var(--accent); }
+.sy-step-n { color: var(--accent-text); }
 
 /* – readout – */
 .sy-readout-wrap { border-left: 1px solid var(--line); background: var(--bg-2); overflow: auto; min-width: 0; }
@@ -105,7 +105,7 @@
 .sy-embed-chip.embed-stale { border-color: var(--yellow); color: var(--yellow); }
 .sy-embed { margin-top: 10px; display: grid; gap: 8px; }
 .sy-embed-reasons { font-size: 11px; color: var(--yellow); }
-.sy-embed-msg { font-size: 11.5px; color: var(--accent); }
+.sy-embed-msg { font-size: 11.5px; color: var(--accent-text); }
 .sy-confirm { display: grid; gap: 6px; font-size: 11.5px; }
 .sy-confirm > div { display: flex; gap: 8px; }
 .embed-verdict-ok { color: var(--green); }
@@ -157,12 +157,12 @@
 .sy-lens { display: flex; align-items: center; gap: 8px; padding: 8px 14px 0; }
 .sy-lens-group { display: inline-flex; gap: 4px; }
 .sy-lens-btn { min-height: 28px; padding: 2px 10px; }
-.sy-lens-prog { font-size: 10.5px; color: var(--accent); margin-left: auto; }
+.sy-lens-prog { font-size: 10.5px; color: var(--accent-text); margin-left: auto; }
 
 /* family rows in the CHAINS section: source → terminal, count, length range */
 .sy-family { gap: 2px; }
 .sy-fam-name { font-size: 11.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.sy-family.on .sy-fam-name { color: var(--accent); }
+.sy-family.on .sy-fam-name { color: var(--accent-text); }
 .sy-chain-load { color: var(--text-3); padding-left: 34px; }
 .sy-chain-load:hover .sy-row-meta { color: var(--text); }
 
@@ -179,7 +179,7 @@
    members, and off-screen loop boxes then overlap each other. */
 .sy-loops { display: grid; gap: 12px; align-items: start; max-width: 760px; position: relative; z-index: 1; margin-top: 12px; }
 .sy-loop { background: var(--bg-2); border-style: dashed; content-visibility: visible; contain-intrinsic-size: auto; }
-.sy-loop-glyph { color: var(--accent); font-size: 13px; flex: none; }
+.sy-loop-glyph { color: var(--accent-text); font-size: 13px; flex: none; }
 .sy-step-loop { border-style: dashed; }
 
 /* progress state: shown while the map runs, never an empty view */
@@ -242,10 +242,10 @@
 .fm-band-row { display: flex; flex-wrap: wrap; gap: 12px; }
 .fm-band .fm-flow-box { width: 220px; }
 .fm-flow-box { position: relative; background: var(--bg-2, #0a0908); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px 6px; }
-.fm-flow-box.hot { border-color: var(--accent); }
+.fm-flow-box.hot { border-color: var(--accent-text); }
 .fm-role-entry { border-left: 2px solid var(--accent); }
 .fm-flow-title { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: 0; padding: 0; color: var(--text); cursor: pointer; text-align: left; font: 600 12px var(--mono); }
-.fm-flow-title:hover .fm-flow-name { color: var(--accent); }
+.fm-flow-title:hover .fm-flow-name { color: var(--accent-text); }
 .fm-flow-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fm-flow-sub { display: block; margin: 2px 0 0 18px; font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fm-flow-fns { display: flex; flex-direction: column; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 4px; }
@@ -256,7 +256,7 @@
 
 /* mapping in progress: strip on the view, mark on the nav entry */
 .fm-strip { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 6px 16px; border-bottom: 1px solid var(--line); font: 400 11.5px var(--mono); color: var(--text-2); }
-.fm-strip-k { text-transform: uppercase; letter-spacing: .12em; font-size: 10.5px; color: var(--accent); }
+.fm-strip-k { text-transform: uppercase; letter-spacing: .12em; font-size: 10.5px; color: var(--accent-text); }
 .fm-strip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: fm-pulse 1.2s ease-in-out infinite; }
 .fm-strip-bar { position: relative; flex: 1; min-width: 80px; max-width: 240px; height: 2px; background: var(--line); }
 .fm-strip-bar > span { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
@@ -285,13 +285,13 @@
 
 /* m2 – flow canvas: group frames, focus, capabilities lanes, subway strip */
 .fm-section { position: relative; background: color-mix(in srgb, var(--panel) 60%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 0; }
-.fm-section.sel, .fm-section:has(.fm-flow-box.sel) { border-color: var(--accent); }
+.fm-section.sel, .fm-section:has(.fm-flow-box.sel) { border-color: var(--accent-text); }
 .fm-section-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
-.fm-section-head:hover .fm-section-name { color: var(--accent); }
+.fm-section-head:hover .fm-section-name { color: var(--accent-text); }
 .fm-section-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); }
 .fm-section-body { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
 .fm-section .fm-flow-box { border-radius: 6px; }
-.fm-flow-box.sel { border-color: var(--accent); background: var(--accent-soft); }
+.fm-flow-box.sel { border-color: var(--accent-text); background: var(--accent-soft); }
 .fm-section.dim, .fm-flow-box.dim, .fm-lane.dim, .fm-arrow.dim { opacity: .25; }
 .fm-headline-tools { margin-left: auto; display: flex; gap: 8px; }
 /* The flow canvas has no scrollbar to reserve, so the headline clears the
@@ -316,7 +316,7 @@
 .fm-lane-track { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
 .fm-lane-track::after { content: ""; flex: none; width: 24px; height: 1px; }
 .fm-lane-stop { flex: none; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; background: var(--bg-2, #0a0908); color: var(--text-2); cursor: pointer; max-width: 200px; scroll-snap-align: start; }
-button.fm-lane-stop:hover, .fm-lane-stop.sel { border-color: var(--accent); color: var(--text); }
+button.fm-lane-stop:hover, .fm-lane-stop.sel { border-color: var(--accent-text); color: var(--text); }
 span.fm-lane-stop { cursor: default; }
 .fm-lane-stop-name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fm-lane-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -339,10 +339,10 @@ span.fm-lane-stop { cursor: default; }
 /* mini bar – the flow-weight gauge in the sidebar table */
 .fm-minibar { display: inline-flex; gap: 2px; margin-left: 6px; vertical-align: middle; }
 .fm-minibar i { width: 8px; height: 8px; border: 1px solid var(--line-2); }
-.fm-minibar i.on { background: var(--accent); border-color: var(--accent); }
+.fm-minibar i.on { background: var(--accent); border-color: var(--accent-text); }
 .fm-top-chains .sy-section-label { display: block; margin: 10px 0 4px; }
 .sy-t-like { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; border-bottom: 1px dashed var(--line); padding: 4px 0; color: var(--text-2); font-size: 11.5px; cursor: pointer; text-align: left; }
-.sy-t-like:hover { color: var(--accent); }
+.sy-t-like:hover { color: var(--accent-text); }
 
 /* focused walk animation – frozen under prefers-reduced-motion */
 @media (prefers-reduced-motion: no-preference) {
@@ -367,7 +367,7 @@ span.fm-lane-stop { cursor: default; }
 .u4-plan { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
 .u4-plan-bar { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); display: flex; gap: 10px; align-items: center;
   background: var(--panel, #121110); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 6px 10px; pointer-events: auto; }
-.u4-plan-k { color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.u4-plan-k { color: var(--accent-text); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
 .u4-plan-txt { font-size: 12px; color: var(--text-2); }
 .u4-mark { position: absolute; border-radius: var(--radius); cursor: pointer; padding: 0; background: transparent; }
 .u4-write { background: color-mix(in srgb, var(--accent) 26%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); }
@@ -379,7 +379,7 @@ span.fm-lane-stop { cursor: default; }
   background: var(--panel, #121110); border: 1px solid var(--line-2); border-left: 2px solid var(--accent); border-radius: var(--radius); padding: 8px 12px; pointer-events: auto; }
 .u4-ask-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
 .u4-ask-txt { font-size: 12.5px; color: var(--text); }
-.u4-ask-txt code { color: var(--accent); }
+.u4-ask-txt code { color: var(--accent-text); }
 .u4-ask kbd { margin-left: 6px; opacity: .7; }
 .btn.danger { border-color: var(--red); color: var(--red); }
 
@@ -388,17 +388,17 @@ span.fm-lane-stop { cursor: default; }
   background: var(--red); clip-path: polygon(0 0, 100% 0, 100% 100%); border-radius: 0; }
 .u4-badge { position: absolute; display: inline-flex; gap: 3px; align-items: center; z-index: 7; cursor: pointer;
   background: var(--panel, #121110); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 1px 6px; font-size: 11px; color: var(--text); }
-.u4-badge .mono { color: var(--accent); }
+.u4-badge .mono { color: var(--accent-text); }
 
 /* Step detail: decision line, conflicts, the diff with its acknowledgement. */
 .u4-decision { color: var(--text); }
-.u4-decision b { color: var(--accent); }
+.u4-decision b { color: var(--accent-text); }
 .u4-conflict-flag { display: inline-block; width: 8px; height: 8px; background: var(--red); clip-path: polygon(0 0, 100% 0, 100% 100%); }
 .u4-ndv-conflicts, .u4-ndv-changes { margin: 4px 0 8px; }
 .u4-change-add { color: var(--green); }
 .u4-change-del { color: var(--red); }
 .u4-change-add .btn, .u4-change-del .btn { margin-left: 10px; }
-.tp-plan-on { border-color: var(--accent); color: var(--accent); }
+.tp-plan-on { border-color: var(--accent-text); color: var(--accent-text); }
 
 /* Value-flow hues (U5): each flow's swatch matches its ring and wires on the map. */
 .vf-swatch { width: 10px; height: 10px; flex: none; background: var(--vf-hue); border-radius: var(--radius-sm, 2px); }
@@ -490,3 +490,15 @@ span.fm-lane-stop { cursor: default; }
 /* Phone: no room for a floating key beside the layer column – the key lives
    in the panel's legend instead. */
 /* phones keep the key in the top strip, icon-only (workspace.css) */
+
+/* X14 – the map's settings popover: one gear in the top strip, the same
+   dropdown language as Agents Settings. */
+.mset-wrap { position: relative; }
+.mset-sheet { width: 268px; max-height: min(560px, 78vh); overflow: auto; }
+.mset-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.mset-row input { accent-color: var(--accent); }
+
+/* X14 – touch targets on a phone: the HUD toggles meet the 40px floor. */
+@media (max-width: 760px) {
+  .ex-btn, .u2-frame, [data-testid="u7-legend-head"], [data-testid="u9-chip"], .u2-tidy-btn, .mset-wrap .ex-btn { min-height: 40px; min-width: 40px; }
+}

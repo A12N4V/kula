@@ -77,14 +77,26 @@ test.describe("map value flows", () => {
 async function cardInView(page: import("@playwright/test").Page) {
   // nested-squares map: wait for the squares, and keep clear of the right column
   await page.locator(".fc-solid").first().waitFor({ state: "attached", timeout: 30_000 });
-  const id = await page.evaluate(() => {
+  // the camera settles first (the landing fit animates), then the exact card
+  // found on screen is tagged – earlier layout stages keep off-view copies
+  // of the same node id in the DOM, so a lookup by id can hit the wrong one
+  let last = "";
+  await expect.poll(async () => {
+    const t = await page.evaluate(() => document.querySelector("[data-testid=map-flow] .react-flow__viewport")?.getAttribute("style") ?? "");
+    const same = t === last; last = t; return same;
+  }, { intervals: [300] }).toBe(true);
+  const found = await page.evaluate(() => {
     const c = document.querySelector("[data-testid=map-flow] .react-flow")?.getBoundingClientRect();
-    if (!c) return null;
+    if (!c) return false;
     const el = [...document.querySelectorAll(".fc-card:not(.fc-card-sec)")].find((e) => {
       const r = e.getBoundingClientRect();
-      return r.left > c.left + 20 && r.top > c.top + 60 && r.right < c.right - 170 && r.bottom < c.bottom - 90;
+      if (!(r.left > c.left + 20 && r.top > c.top + 60 && r.right < c.right - 170 && r.bottom < c.bottom - 90)) return false;
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return !!hit && e.contains(hit);
     });
-    return (el?.closest("[data-testid^=fc-node-]") as HTMLElement | null)?.dataset.testid ?? null;
+    if (!el) return false;
+    el.setAttribute("data-e2e-pick", "1");
+    return true;
   });
-  return id ? page.locator(`[data-testid=${id}]`) : page.locator(".fc-card").first();
+  return found ? page.locator("[data-e2e-pick]") : page.locator(".fc-card:visible").first();
 }

@@ -23,7 +23,7 @@ export type Template =
   | { kind: "loop"; id: string; name: string; about: string; workflow: string; metric: string };
 
 /** Per-section overlay marks the canvas draws: an agent badge, a fence ring, changed files. */
-export type Marks = Record<string, { agent?: string; fence?: boolean; changed?: number; drop?: boolean }>;
+export type Marks = Record<string, { agent?: string; fence?: boolean; review?: boolean; changed?: number; drop?: boolean }>;
 
 
 /* ---- Map ↔ files ------------------------------------------------------ */
@@ -157,6 +157,33 @@ export function fencedSectionsOf(data: MapData | null, paths: string[]): string[
     }
   }
   return hits;
+}
+
+/** What one agent may do to each top-level section of the map, the way the
+ *  guard decides it: inside its workflow scope (no scope = everywhere) and not
+ *  locked or hidden – by the workflow or by a repo-wide guard – is `open`; a
+ *  review guard makes it `review`; the rest is `out`. A section is open when
+ *  any of its files is; locked only when all of them are. */
+export type Access = "open" | "review" | "out";
+export function accessOf(data: MapData | null, info: AgentsInfo | null, workflow: string | null): Record<string, Access> {
+  const out: Record<string, Access> = {};
+  if (!data || !info || !workflow) return out;
+  const wf = info.workflows.find((w) => w.name === workflow);
+  const scope = wf?.scope ?? [];
+  const deny = [...(wf?.lock ?? []), ...(wf?.hide ?? []), ...info.rules.filter((r) => r.level === "locked" || r.level === "hidden").flatMap((r) => r.paths)];
+  const review = [...(wf?.review ?? []), ...info.rules.filter((r) => r.level === "review").flatMap((r) => r.paths)];
+  for (const b of Object.values(data.blocks)) {
+    if (!(b.depth === 0 && b.parent !== null)) continue;
+    let best: Access = "out";
+    for (const f of filesOf(data, b.id)) {
+      if (scope.length && !scopeHits(scope, f)) continue;
+      if (scopeHits(deny, f)) continue;
+      if (scopeHits(review, f)) { best = "review"; continue; }
+      best = "open"; break;
+    }
+    out[b.id] = best;
+  }
+  return out;
 }
 
 /* ---- Templates -------------------------------------------------------- */

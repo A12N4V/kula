@@ -28,7 +28,7 @@
   flex: none;
 }
 .at-team-head { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); display: flex; gap: 6px; align-items: center; }
-.at-team-glyph { color: var(--accent); }
+.at-team-glyph { color: var(--accent-text); }
 .at-team-n { color: var(--text-3); }
 .at-team-members { display: flex; gap: 8px; height: calc(100% - 22px); }
 .at-team-mono { align-self: center; color: var(--text-3); font-size: 11px; }
@@ -45,11 +45,11 @@
   transition: none;
 }
 .at-card:hover { border-color: var(--text-3); }
-.at-card.sel { border-color: var(--accent); background: var(--accent-soft, var(--bg-raised)); }
-.at-card.over { border-color: var(--accent); border-style: dashed; }
+.at-card.sel { border-color: var(--accent-text); background: var(--accent-soft, var(--bg-raised)); }
+.at-card.over { border-color: var(--accent-text); border-style: dashed; }
 .at-card.missing { border-color: var(--red); }
 .at-card-head { display: flex; align-items: center; gap: 6px; }
-.at-mark { color: var(--accent); display: grid; place-items: center; flex: none; }
+.at-mark { color: var(--accent-text); display: grid; place-items: center; flex: none; }
 .at-name { font-size: 12px; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .at-sel-dot { margin-left: auto; width: 6px; height: 6px; background: var(--accent); }
 .at-missing {
@@ -61,7 +61,7 @@
 .at-missing.lg { width: 10px; height: 10px; }
 .at-role { font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .at-meta { display: flex; gap: 10px; font-size: 10.5px; color: var(--text-3); }
-.at-run { color: var(--accent); }
+.at-run { color: var(--accent-text); }
 .at-run::before, .at-team-glyph {
   content: ""; display: inline-block; width: 6px; height: 6px;
   margin-right: 5px; background: var(--accent); vertical-align: 1px;
@@ -90,7 +90,7 @@
 .at-hull-label {
   position: absolute; top: -18px; left: 0;
   font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
-  color: var(--accent); background: var(--bg);
+  color: var(--accent-text); background: var(--bg);
   padding: 1px 6px; border: 1px solid var(--accent); border-radius: var(--radius);
   white-space: nowrap;
 }
@@ -117,7 +117,7 @@
 .at-insp { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; }
 .at-insp-summary { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--text-2); line-height: 1.45; }
 .at-tabs { display: flex; gap: 2px; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 0; }
-.at-tabs .tab-btn.on { background: var(--bg-raised, var(--bg)); color: var(--text); border-bottom-color: transparent; }
+.at-tabs .tab-btn.on { color: var(--text); border-bottom: 2px solid var(--accent); } /* one active grammar for every tab strip: the accent underline */
 .at-pane { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
 .at-field { display: flex; flex-direction: column; gap: 4px; }
 .at-field input, .at-field textarea { background: var(--bg-raised, var(--bg)); border: 1px solid var(--line-2); border-radius: 4px; padding: 5px 8px; color: var(--text); font-size: 12px; }
@@ -138,9 +138,9 @@
 .at-steps { font-size: 12px; color: var(--text-2); margin: 0; padding-left: 18px; }
 .at-run-row { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--text-2); }
 .at-err { color: var(--red); font-size: 11.5px; }
-.at-ok { color: var(--accent); font-size: 11.5px; }
+.at-ok { color: var(--accent-text); font-size: 11.5px; }
 .at-actions { align-items: center; gap: 10px; }
-.at-edit.on { border-color: var(--accent); color: var(--accent); }
+.at-edit.on { border-color: var(--accent-text); color: var(--accent-text); }
 
 /* Fence focus: fenced blocks stay bright, everything else is dimmed to at
    most 35% (contract §8.5) – the canvas root carries the flag, the flow kit

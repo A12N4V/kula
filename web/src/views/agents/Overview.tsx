@@ -113,7 +113,7 @@ export default function Overview({ info, act, setTab, onGraph, open }: { info: A
             <button key={t.name} className="loop-row" onClick={() => setTab("teams")} title={`open ${t.name} in Teams`}>
               <b className="mono">{t.name}</b>
               {info.team?.name === t.name ? <span className="tag accent">at work</span> : <span className="tag">saved</span>}
-              <span className="muted">{t.members.length} seat{t.members.length === 1 ? "" : "s"} · {[...new Set(t.members.map((m) => AGENT_NAME[m.agent] ?? m.agent))].join(", ")}</span>
+              <span className="muted">{t.members.length} seat{t.members.length === 1 ? "" : "s"} · {[...new Set(t.members.map((m) => AGENT_NAME[m.agent ?? ""] ?? m.agent ?? m.workflow ?? ""))].join(", ")}</span>
             </button>
           ))}
           {!info.teams.length && <div className="muted ag-empty">No teams.</div>}

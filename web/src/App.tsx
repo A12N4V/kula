@@ -84,6 +84,7 @@ function parseHash() {
   const parts = location.hash.slice(1).split("/").map(decodeURIComponent);
   while (parts.length > 1 && parts[0] === "") parts.shift(); // tolerate a leading slash (#/map/x ≡ #map/x)
   if (parts[0] === "syntagm" || parts[0] === "fmap") parts[0] = "map"; // the tab's old names
+  if (parts[0] === "workspace") parts[0] = "map"; // the map's old name – a deep link keeps its target through the splash
   const [v, a, b, c, d] = parts;
   const view = (v === "flow-lab" ? v : VIEWS.some((x) => x.id === v) ? v : "overview") as View; // F1 · dev-only #flow-lab, not in the nav
   const contrast: Contrast = view === "graph" && a === "contrast" && b && c ? { base: b, head: c, mode: (["overlay", "split", "report"].includes(d) ? d : undefined) as ContrastMode | undefined } : null;
@@ -93,7 +94,9 @@ function parseHash() {
   if (view === "proposals" && Number(a)) target.proposal = Number(a);
   if (view === "history" && a) target.sha = a;
   if (view === "agents" && a) target.tab = a;
-  if (view === "map" && a) target.block = a;
+  // #map/<root>/…/<block>: the drill path's last block is the target (MapView
+  // re-opens its real ancestry); the first segment alone dropped the drill.
+  if (view === "map" && a) target.block = parts.slice(1).filter(Boolean).pop();
   if (view === "graph" && a === "fences") target.fences = b ?? "";
   return { view, contrast, focus, target };
 }
@@ -151,6 +154,8 @@ export default function App() {
   // Keep the URL shareable, and make back/forward walk through where you have been:
   // each new place is a history entry; popping one restores it.
   const popping = useRef(false);
+  // How many kula entries sit behind this one: Back is armed only when it stays in kula.
+  const [depth, setDepth] = useState<number>(() => (history.state as any)?.d ?? 0);
   useEffect(() => {
     const enc = encodeURIComponent;
     let h = view as string;
@@ -162,14 +167,16 @@ export default function App() {
     else if (view === "agents" && target.tab && target.tab !== "workflows") h += `/${target.tab}`;
     else if (view === "map" && target.block) h += `/${target.block}`;
     if (`#${h}` === location.hash) return;
-    if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
-    else history.pushState(null, "", `#${h}`);
+    const d = (history.state as any)?.d ?? 0;
+    if (popping.current || !location.hash) history.replaceState({ d }, "", `#${h}`);
+    else { history.pushState({ d: d + 1 }, "", `#${h}`); setDepth(d + 1); }
     popping.current = false;
   }, [view, focus, contrast, target]);
   useEffect(() => {
     const onPop = () => {
       const p = parseHash();
       popping.current = true;
+      setDepth((history.state as any)?.d ?? 0);
       setView(p.view); setTarget(p.target); setContrast(p.contrast); setFocus(p.focus);
     };
     window.addEventListener("popstate", onPop);
@@ -178,6 +185,14 @@ export default function App() {
 
   // Phones: the sidebar is a drawer, summoned from the top bar.
   const [rail, setRail] = useState(false);
+  // X14 – a rail tooltip must not outlive its click: for a beat after
+  // navigating the tooltips hold off, so no stale label rides into the
+  // new view.
+  const [tipHold, setTipHold] = useState(false);
+  const holdTip = useCallback(() => {
+    setTipHold(true);
+    window.setTimeout(() => setTipHold(false), 350);
+  }, []);
   const go: Go = useCallback((v, t = {}) => {
     if (v === "console") { setDock(true); setDockTab("terminal"); }
     setView(v);
@@ -195,7 +210,7 @@ export default function App() {
       if (e.defaultPrevented) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
       if (e.ctrlKey && e.key === "`") { e.preventDefault(); setDock((d) => !d); return; }
-      if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") history.back(); else history.forward(); return; }
+      if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") { if (((history.state as any)?.d ?? 0) > 0) history.back(); } else history.forward(); return; }
       const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       const v = VIEWS.find((x) => x.key === e.key);
@@ -203,7 +218,7 @@ export default function App() {
       if (e.key === "/") { e.preventDefault(); setPalette(true); }
       if (e.key === "?") setHelp((h) => !h);
       if (e.key === ",") setPrefs((p) => !p);
-      if (e.key === "Escape") { setHelp(false); setFocus(null); setRail(false); }
+      if (e.key === "Escape") { setPalette(false); setHelp(false); setFocus(null); setRail(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -235,17 +250,17 @@ export default function App() {
         <button className="chip" onClick={() => go("branches")} title="Current branch"><Icon.branches /><b className="mono">{repo?.branch ?? "…"}</b></button>
         <span className="spacer" />
         <div className="top-actions">
-          <button className="btn sm ghost icon-only" aria-label="Back" title="Back  ⌥←" onClick={() => history.back()}><Icon.back /></button>
+          <button className="btn sm ghost icon-only" aria-label="Back" title={depth > 0 ? "Back in kula  ⌥←" : "Nothing to go back to in kula"} disabled={depth === 0} aria-disabled={depth === 0} onClick={() => { if (depth > 0) history.back(); }}><Icon.back /></button>
           <button className="btn sm ghost top-search" aria-label="Search" title="Search symbols, issues, branches, commands  ⌘K" onClick={() => setPalette(true)}><Icon.search /><kbd>⌘K</kbd></button>
           <button className="btn sm ghost icon-only" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.gear /></button>
         </div>
       </header>
 
-      <nav className="rail" id="rail" aria-label="Views">
+      <nav className={`rail${tipHold ? " tip-hold" : ""}`} id="rail" aria-label="Views">
         {GROUPS.map((g, gi) => (
           g.some((v) => !v.hidden) && <div key={gi} className="rail-group">
             {g.filter((v) => !v.hidden).map((v) => (
-              <button key={v.id} className={view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
+              <button key={v.id} className={view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); holdTip(); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
                 <v.icon />
                 <span className="rail-label">{v.label}</span>
                 {v.id === "map" && mapBusy && <span className="rail-busy" data-testid="map-nav-busy" title="mapping in progress" aria-label="mapping in progress" />}
@@ -311,7 +326,7 @@ export default function App() {
         <span className="mono">{repo?.head?.slice(0, 8)}</span>
         <span className="sb-user">{repo?.user}</span>
         <button className="sb-help" data-testid="sb-dock" onClick={() => setDock((d) => !d)} title="Terminal and run log  ctrl+`"><Icon.console /> panel</button>
-        <button className="sb-help" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
+        <button className="sb-help sb-keys" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
       </footer>
 
       {palette && <Palette meta={meta} onClose={() => setPalette(false)} go={(v, t) => { setPalette(false); go(v, t); }} onReindex={() => { setPalette(false); reindex(); }} onSettings={() => { setPalette(false); setPrefs(true); }} />}
@@ -411,13 +426,14 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
             if (e.key === "Enter") scored[k]?.run();
           }} />
         <div className="results" ref={list}>
-          {scored.map((it, j) => (
-            <div key={it.key}>
-              {!seenGroups.has(it.group) && <div className="grp">{it.group}</div>}
-              {seenGroups.add(it.group)}
+          {scored.map((it, j) => {
+            const head = !seenGroups.has(it.group);
+            seenGroups.add(it.group);
+            return <div key={it.key}>
+              {head && <div className="grp">{it.group}</div>}
               <div className={`res ${k === j ? "on" : ""}`} onMouseEnter={() => setI(j)} onClick={it.run}>{it.el}</div>
-            </div>
-          ))}
+            </div>;
+          })}
           {!scored.length && <div className="empty">No matches</div>}
         </div>
         <footer><span><kbd>↑↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>#</kbd> issues</span><span><kbd>@</kbd> branches</span><span><kbd>&gt;</kbd> commands</span><span className="spacer" /><span><kbd>esc</kbd></span></footer>

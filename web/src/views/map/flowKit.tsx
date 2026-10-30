@@ -35,11 +35,18 @@ const hue = (id: string) => { let h = 0; for (let i = 0; i < id.length; i++) h =
 
 /** No block ever mounts all its functions: this frame caps the expansion. */
 export const FN_CAP = 40;
+/** X14 – card labels density: how many function names a block card draws. */
+const FN_CAPS: Record<string, number> = { few: 0, normal: 6, many: 40 };
 
 type Flow = { from: string; to: string; weight: number };
 type Props = {
   /** Controls docked at the right of the top strip (key, plain words, Explorer). */
   headTools?: ReactNode;
+  /** X14 – the map's settings popover controls: how many function labels a
+      card draws, the minimap and grid snap on the canvas. */
+  labels?: "few" | "normal" | "many";
+  minimap?: boolean;
+  snap?: boolean;
   /** A file picked in the route menu's file tree. */
   onPickFile?: (path: string) => void;
   data: MapData & { flows?: Flow[] };
@@ -210,7 +217,7 @@ function fnIcon(kind: string) {
     degree, the flows and chains it belongs to); sections render as frames
     holding their cards. Selection is single-writer (the kit); a focused
     chain dims everything it does not cross through the kit's `dim` flag. */
-export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal, agents = [], agentsOn = false, headTools, onPickFile }: Props) {
+export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect, onDrill, onLeaf, onClearFocus, depth = 2, layoutKey = 0, marks, steps = [], onStepTool, scheme = "role", canvas, onNodeTool, pinned, reveal, agents = [], agentsOn = false, headTools, onPickFile, labels = "normal", minimap, snap }: Props) {
   const { sections, layers, band, flows, headline, secOf } = useMemo(() => mapFlowLayout(data), [data]);
   // The meaning layout (meaning.ts): sections grouped into intent zones by
   // what they do and how work flows between them – not by directory or
@@ -341,7 +348,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
         files: b.files, symbols: fnIds.length,
         inDeg: meta.inDeg.get(sec), outDeg: meta.outDeg.get(sec),
         flows: meta.flowNames.get(sec), chains: meta.chainNames.get(sec),
-        functions: fnIds.slice(0, FN_CAP).map((id) => ({ name: data.leaves[id].name, kind: data.leaves[id].kind })),
+        functions: fnIds.slice(0, FN_CAPS[labels] ?? FN_CAP).map((id) => ({ name: data.leaves[id].name, kind: data.leaves[id].kind })),
       },
     };
   };
@@ -350,7 +357,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
   const markOf = (secId: string, first: boolean): Partial<FlowNode> => {
     const mk = marks?.[secId];
     if (!mk) return {};
-    const ring = mk.drop ? "drop" : mk.fence ? "fence" : mk.changed ? "hot" : undefined;
+    const ring = mk.drop ? "drop" : mk.fence ? "fence" : mk.review ? "review" : mk.changed ? "hot" : undefined;
     const badge = first && (mk.agent || mk.changed)
       ? <span className={`fc-badge-in${mk.agent ? " agent" : ""}`} data-testid={`ws-badge-${secId}`}>{mk.agent ?? ""}{mk.changed ? <span className="fc-badge-n">{mk.changed}</span> : null}</span>
       : undefined;
@@ -521,7 +528,9 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
     }
     // agents whose home zone has no visible squares go to the end of the band
     const orphans: typeof fenced = [];
-    let prevRight = -Infinity;
+    // The whole-codebase square (x −240, 160 wide) sits at the band's left
+    // end when any agent is unfenced: fenced chips start right of it.
+    let prevRight = agents.some((a) => !a.sections.length) ? -240 + 160 : -Infinity;
     for (const [zid, list] of byZone) {
       const zb = zoneBox.get(zid);
       if (!zb) { orphans.push(...list); continue; }
@@ -568,7 +577,7 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
         id: "codebase", kind: "block", solid: true, title: "Whole codebase",
         subtitle: "deployed on everything",
         card: { hue: bands[0]?.color ?? "var(--text-3)", glyph: "ALL", dir: "everything" },
-        size: { w: 160, h: 182 }, pos: CB,
+        size: { w: 160, h: AGENT_H + 16 }, pos: CB, // ends above the zone row
         badge: <span className="u6-bands" data-testid="x5-agent-band" aria-hidden="true">
           {bands.map((b, i) => <i key={i} style={{ background: b.color, width: `${b.pct}%` }} />)}
         </span>,
@@ -759,6 +768,16 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
 
   // The landing zoom (R0, readable by default): the busiest section, at a
   // scale where the card labels are legible – fit stays one key away.
+  // An agent's reach is drawn only while that agent is picked: every agent
+  // wired to every fenced section at rest buried the map under ~500 lines.
+  // With an agent picked (the access lens), wires into faded nodes go too, so
+  // only the code it may touch keeps its connections.
+  const shownEdges = useMemo(() => {
+    const lens = selection?.startsWith("agent:");
+    const faded = lens ? new Set(nodes.filter((n) => (n as { dim?: boolean }).dim).map((n) => n.id)) : null;
+    return edges.filter((e) => (!e.id.startsWith("agent:") || e.target === "codebase" || e.source === selection)
+      && !(faded && (faded.has(e.source) || faded.has(e.target))));
+  }, [edges, nodes, selection]);
   const busiest = useMemo(() => {
     const id = busiestSection(data);
     return reps.get(id ?? "") ?? null;
@@ -855,11 +874,12 @@ export function FlowKitView({ flowTint, data, roles, focus, selection, onSelect,
         minZoom={0.1}
         initialFocus={busiest}
         initialZoom={0.85}
-        nodes={nodes} edges={edges} groups={groups}
+        nodes={nodes} edges={shownEdges} groups={groups}
         selection={selection ?? null} onSelect={select} onOpen={open}
         // the focus state rides the layout key: the kit's layout cache keys on
         // node ids/edges only, so a dim change would otherwise never repaint
         layoutKey={`map-${depth}-${layoutKey}-${focus?.chain ? `f${focus.chain.id}` : "n"}`} ns="map" testId="map-flow-canvas"
+        minimap={minimap} snap={snap}
       />
       {focus?.chain && <FocusBadge n={focus.on.size} onClear={() => onClearFocus?.()} still={focus.still} />}
     </div>

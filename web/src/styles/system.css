@@ -36,10 +36,13 @@
 .chip-btn:disabled { color: var(--text-3); border-color: var(--line); cursor: not-allowed; }
 
 /* ---------- keyboard focus ---------- */
-/* One visible focus style everywhere. Inputs focus with a border shift;
+/* One visible focus style everywhere. Inputs focus with an inset 1px ring;
    everything else keeps the global outline from base.css. */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.input:focus-visible, .textarea:focus-visible { outline: none; }
+/* Fields show focus on any focus (a click lands you there to type), as a 1px
+   inset accent ring: an outline, so no per-view border rule can cancel it. */
+input:focus, textarea:focus, select:focus, [contenteditable]:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+input[type="checkbox"]:focus:not(:focus-visible), input[type="radio"]:focus:not(:focus-visible) { outline: none; }
 
 /* ---------- tooltips ---------- */
 /* The D1 tooltip: delayed, informative, 1px border instead of a shadow.
@@ -65,7 +68,7 @@
 .tgl-label svg { width: 14px; height: 14px; flex: none; }
 .tgl-count { color: var(--text-3); font-variant-numeric: tabular-nums; }
 .tgl-track { position: relative; flex: none; width: 26px; height: 14px; border: 1px solid var(--line-2); background: var(--bg-2); transition: background var(--dur), border-color var(--dur); }
-.tgl.on .tgl-track { background: var(--accent); border-color: var(--accent); }
+.tgl.on .tgl-track { background: var(--accent); border-color: var(--accent-text); }
 .tgl-thumb { position: absolute; top: 1px; left: 1px; width: 10px; height: 10px; background: var(--text-3); transition: transform var(--dur) var(--ease), background var(--dur); }
 .tgl.on .tgl-thumb { transform: translateX(12px); background: var(--panel); }
 .tgl:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

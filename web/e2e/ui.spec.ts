@@ -3,7 +3,7 @@ import { GLOBAL_SHORTCUTS } from "../src/nav";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
-import { explore } from "./explore";
+import { explore, mapSettings } from "./explore";
 
 /** Path to e2e/fixture.sh whether the runner was started from web/ or the repo root. */
 function fixtureScript(): string {
@@ -256,6 +256,10 @@ test.describe("overview + code panel", () => {
     await expect(panel).toBeVisible();
     await expect(panel.locator(".cp-code > div.lit").first()).toBeVisible();
     await page.screenshot({ path: "test-results/code-panel.png" });
+    // the code window opens docked right, over the inspector – close it to
+    // reach the row's locate button again
+    await page.locator("[data-testid=cp-close]").click();
+    await expect(panel).toHaveCount(0);
     const before = page.url();
     await row.hover();
     await row.locator(".sym-locate").click();
@@ -396,7 +400,7 @@ test.describe("agent checks, for people", () => {
     await page.keyboard.press("ControlOrMeta+k");
     await page.keyboard.type("parseHash");
     await page.locator(".palette").getByText("parseHash", { exact: true }).first().click();
-    await page.getByRole("button", { name: "Pre-edit" }).click();
+    await page.getByRole("tab", { name: "Pre-edit" }).click();
     const ac = page.locator(".inspector .ac");
     await expect(ac.locator(".risk")).toHaveText(/low|medium|high/);
     await expect(ac.locator(".ac-advice li").first()).toBeVisible();
@@ -765,7 +769,7 @@ test.describe("agents", () => {
 
   test("@responsive the task, its workflow and the agent loop, and what needs a person", async ({ page }, info) => {
     await open(page, "agents/overview");
-    await expect(page.locator(".ag-menu .list-head h2")).toHaveText("Agents");
+    await expect(page.locator(".ag-detail .page-head h1")).toHaveText("Agents");
     await expect(page.locator(".ag-task-title")).toHaveText("harden the MCP server");
     await expect(page.locator(".ag-now .ag-chips .tag")).toHaveText(["fix", "src/mcp.rs", "src/agent.rs"]);
     await expect(page.locator(".loop-step")).toHaveCount(6);
@@ -1077,7 +1081,7 @@ test.describe("agents", () => {
     await page.locator(".palette").getByText("publish", { exact: true }).first().click();
     const insp = page.locator(".inspector");
     await expect(insp.locator(".insp-guard.locked")).toContainText("atomic index swap");
-    await insp.getByRole("button", { name: "Pre-edit" }).click();
+    await insp.getByRole("tab", { name: "Pre-edit" }).click();
     await expect(insp.locator(".ac-advice")).toContainText("Do not edit");
     await expect(insp.locator(".note.mem")).toContainText("Unlink, never truncate");
   });
@@ -1178,7 +1182,7 @@ test("the inspector's tabs all fit at its default width", async ({ page }) => {
   await page.keyboard.type("context_pack");
   await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
   const tabs = page.locator(".inspector .tabs");
-  await expect(tabs.getByRole("button")).toHaveCount(6);
+  await expect(tabs.getByRole("tab")).toHaveCount(6);
   expect(await tabs.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
 });
 
@@ -1288,14 +1292,17 @@ test.describe("teams and research (T1)", () => {
     await expect(page.getByTestId("team-tab-steer")).toBeVisible();
     await page.getByTestId("team-tab-ship").click();
     const canvas = page.getByTestId("team-canvas");
-    await expect(canvas).toContainText("claude");
-    await expect(canvas).toContainText("cursor");
-    // The sidebar reads the hand-offs: cursor hands off to codex – no hovering.
+    // unnamed seats take their workflow's name (b3): claude's seat is "tests"
+    await expect(canvas).toContainText("tests");
+    // seats are named by role; the provider rides the sub line ("· on Cursor")
+    await expect(canvas).toContainText(/on Cursor/);
+    // The sidebar reads the hand-offs: cursor hands off to codex – a seat named
+    // by its role, "Review" (it runs the explore workflow) – no hovering.
     await page.getByTestId("team-side-toggle").click();
     const side = page.getByTestId("team-side");
     await expect(side).toBeVisible();
     await side.getByTestId("tc-member-cursor").click();
-    await expect(side.locator(".chip-toggle").filter({ hasText: "codex" })).toHaveAttribute("aria-pressed", "true");
+    await expect(side.locator(".chip-toggle").filter({ hasText: "Review" })).toHaveAttribute("aria-pressed", "true");
     // Back to the team: ship answers to steer (teams of teams).
     await side.getByRole("button", { name: "Back to the team" }).click();
     await expect(side.getByLabel("Answers to team")).toHaveValue("steer");
@@ -1325,7 +1332,9 @@ test.describe("teams and research (T1)", () => {
     // the team window overlays the canvas; close it so the button is clickable
     await crewSide.getByTestId("team-side-close").click();
     await page.getByTestId("team-work").click();
-    await expect(page.locator(".tc-live")).toBeVisible();
+    // the org canvas marks the live team's frame "at work"
+    await expect(page.getByTestId("team-group-e2e-crew")).toHaveClass(/live/);
+    await expect(page.getByTestId("team-group-e2e-crew")).toContainText("at work");
     await page.getByRole("button", { name: "Stand down" }).click();
     await page.getByRole("button", { name: "Confirm stand down" }).click();
     await expect(page.getByTestId("team-work")).toBeVisible();
@@ -1371,7 +1380,8 @@ test.describe("g1 – graph, inspector and git by keyboard", () => {
     // 3 s: the card waits a beat by design, and under three workers the beat
     // can stretch – 1.5 s turned timing into a flaky failure.
     await expect(card).toBeVisible({ timeout: 3_000 });
-    await expect(card.locator(".hc-name")).toHaveText(a.label);
+    // a hub carries its "hub" badge inside the name row
+    await expect(card.locator(".hc-name")).toHaveText(new RegExp(`^${a.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(hub)?$`));
     // path:line – a real location, not a bare path.
     await expect(card.locator(".hc-path")).toHaveText(/:\d+$/);
     await expect(card.locator(".hc-stats b.in")).toHaveText(/^\d+$/);
@@ -1696,7 +1706,7 @@ test.describe("agents A2", () => {
     await open(page, "agents/teams");
     // The team canvas (U16): a seat is a square on the map; clicking it opens
     // the team sidebar on the seat's fields.
-    const seat = page.locator('[data-testid="team-canvas"] .react-flow__node').filter({ hasText: "codex" }).first();
+    const seat = page.locator('[data-testid="team-canvas"] .react-flow__node-tc').filter({ hasText: "explore" }).first();
     await seat.click();
     const side = page.locator('[data-testid="team-side"]');
     await expect(side).toBeVisible();
@@ -1815,6 +1825,7 @@ test.describe("memory graph M1", () => {
   test("fixture memories are graph nodes; click selects the list row", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
     await open(page, "agents/memory");
+    await page.getByTestId("mem-graph-toggle").click(); // U20: the graph sits behind a toggle
     // the fixture memories, each with a DOM node counterpart on the graph –
     // the fixture is shared per worker, so other tests may have added more
     const nodes = page.locator(".m1-node");
@@ -1839,6 +1850,7 @@ test.describe("memory graph M1", () => {
   test("stale memory renders hollow (DOM class), fresh one does not", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
     await open(page, "agents/memory");
+    await page.getByTestId("mem-graph-toggle").click(); // U20: the graph sits behind a toggle
     const stale = page.locator(".m1-node.stale");
     await expect(stale).toHaveCount(1);
     await expect(stale).toHaveText("#5");
@@ -1851,6 +1863,7 @@ test.describe("memory graph M1", () => {
   test("the list filter (`/`) narrows the graph too", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
     await open(page, "agents/memory");
+    await page.getByTestId("mem-graph-toggle").click(); // U20: the graph sits behind a toggle
     const input = page.getByLabel("Filter memories");
     await input.fill("SPARQL");
     await expect(page.locator(".m1-node")).toHaveCount(1);
@@ -2086,22 +2099,23 @@ test.describe("map", () => {
   test("drill in and out with the breadcrumb, deep link restores the path", async ({ page }) => {
     await open(page, "map");
     await blocksView(page);
-    // blocksView drills one level: the map's depth-0 section tree, one crumb
-    // beyond "repo"
+    // blocksView opens the deepest clear square: the crumbs carry its real
+    // ancestry (2325e5e), so count levels from wherever it landed
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
     const top = await page.locator(".sy-grid .sy-box").count();
     expect(top).toBeGreaterThan(0);
-    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+    const base = await page.locator("[data-testid=map-breadcrumb] .crumb-link").count();
+    expect(base).toBeGreaterThanOrEqual(2);
     // drill: click a section box that nests further (a single-file section
     // shows only leaves), walking boxes until the next level renders
     let drilled = -1;
     for (let i = 0; i < Math.min(6, top); i++) {
       await page.locator(".sy-box-title").nth(i).click();
-      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(3);
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(base + 1);
       if ((await page.locator(".sy-grid .sy-box").count()) > 0) { drilled = i; break; }
       // back one level (to the section), not to the map root
-      await page.locator("[data-testid=map-breadcrumb] .crumb-link").nth(1).click();
-      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+      await page.locator("[data-testid=map-breadcrumb] .crumb-link").nth(base - 1).click();
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(base);
     }
     expect(drilled).toBeGreaterThanOrEqual(0);
     await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
@@ -2110,7 +2124,7 @@ test.describe("map", () => {
     // drill deeper until leaf rows appear (the tree's depth varies by repo)
     for (let i = 0; i < 5 && (await page.locator(".sy-leaf-row").count()) === 0; i++) {
       await page.locator(".sy-box-title").first().click();
-      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(3 + i + 1);
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(base + 1 + i + 1);
     }
     await expect(page.locator(".sy-leaf-row").first()).toBeVisible();
     // breadcrumb climbs back out one level – the parent crumb is the
@@ -2121,7 +2135,8 @@ test.describe("map", () => {
     // hash tracks the drill path – after the climb it may be back at the top
     // (no sub-path), so the slash is optional here
     await expect(page).toHaveURL(/#map(\/|$)/);
-    // deep link restores the path (the route is #map[/blockId], one level)
+    // deep link restores the path (#map/<root>/…/<blockId>: the last block
+    // re-opens with its ancestry)
     const h = await page.evaluate(() => location.hash);
     const crumbsAt = await page.locator("[data-testid=map-breadcrumb] .crumb-link").count();
     await page.goto("/?fresh=1");
@@ -2286,10 +2301,11 @@ test.describe("map", () => {
     await expect(page.locator(".fc-card").first()).toBeVisible();
     await expect(page.locator(".fc-card .fc-card-name").first()).not.toBeEmpty();
     // readable by default: the landing zoom shows legible labels, not the
-    // old 12% fit – the zoom readout stays above 50% on desktop
+    // old 12% fit – the zoom readout never drops under the 45% floor
     test.skip(info.project.name !== "desktop", "a phone fits legitimately lower");
     const zoomText = page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom]");
-    await expect.poll(async () => Number((await zoomText.textContent())?.replace("%", ""))).toBeGreaterThan(50);
+    // (358b3c2: the map lands fitted, with a 45% legibility floor)
+    await expect.poll(async () => Number((await zoomText.textContent())?.replace("%", ""))).toBeGreaterThanOrEqual(45);
     // long names truncate with an ellipsis and a full-name title – on a card
     // that is actually in the viewport (React Flow cannot scroll, so an
     // off-canvas card is never hoverable)
@@ -2371,10 +2387,14 @@ test.describe("map", () => {
     // toolbar floats above it (n8n §4, nothing on the node face). Hover a card
     // that is actually in the viewport – React Flow cannot scroll, so an
     // off-canvas card is never hoverable.
+    // ...and clear of the Swarm panel's head (shut, it still floats over the
+    // canvas's top-left), toolbar band above the card included
     const hoverTid = await page.evaluate(() => {
+      const sw = document.querySelector("[data-testid=swarm]")?.getBoundingClientRect();
       const el = [...document.querySelectorAll("[data-testid=map-flow] .fc-card:not(.fc-card-sec)")].find((e) => {
         const r = e.getBoundingClientRect();
-        return r.top > 70 && r.left > 70 && r.bottom < innerHeight - 60 && r.right < innerWidth - 40;
+        const underSwarm = !!sw && r.left < sw.right && r.right > sw.left && r.top - 48 < sw.bottom && r.bottom > sw.top;
+        return r.top > 70 && r.left > 70 && r.bottom < innerHeight - 60 && r.right < innerWidth - 40 && !underSwarm;
       });
       return (el?.closest("[data-testid^=fc-node-]") as HTMLElement)?.dataset.testid ?? null;
     });
@@ -2385,7 +2405,7 @@ test.describe("map", () => {
     await expect(page.locator("[data-testid^=fn-pin-]").first()).toHaveClass(/on/);
     // re-layout is tidy now, one undoable home in the U2 chrome strip (the
     // canvas's plain fc-tidy is hidden on the map) – the map survives it
-    await explore(page); await page.locator("[data-testid=u2-tidy]").click();
+    await explore(page); await mapSettings(page); await page.locator("[data-testid=u2-tidy]").click();
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
   });
 
@@ -2634,7 +2654,7 @@ test.describe("map", () => {
     await open(page, "map");
     await expect(page.locator("[data-testid=map-flow]")).toBeVisible({ timeout: 30_000 });
     // U2 layer contract: Flows is off until picked from a list (§5).
-    await explore(page); await page.locator("[data-testid=u2-layer-flows]").click();
+    await explore(page); await mapSettings(page); await page.locator("[data-testid=u2-layer-flows]").click();
     const edge = page.locator("[data-testid=map-flow] .fc-edge").first();
     await expect(edge).toBeAttached();
     const stroke = () => edge.evaluate((el) => {
@@ -2833,13 +2853,13 @@ test.describe("map", () => {
     // the kit controls are present on the map canvas. Tidy has one undoable
     // home since U2 (the chrome strip, contract §5) – the canvas's own plain
     // fc-tidy is hidden there.
-    await explore(page); await expect(page.locator("[data-testid=u2-tidy]")).toBeVisible();
+    await explore(page); await mapSettings(page); await expect(page.locator("[data-testid=u2-tidy]")).toBeVisible();
     await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-fit]")).toBeVisible();
-    await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-minimap-toggle]")).toBeVisible();
-    // the minimap starts hidden and toggles on
+    // X14: the map's minimap switch lives in Map settings; it starts off
     await expect(page.locator("[data-testid=map-flow-canvas] .fc-minimap")).toHaveCount(0);
-    await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-minimap-toggle]").click();
+    await mapSettings(page); await page.locator("[data-testid=map-minimap]").check();
     await expect(page.locator("[data-testid=map-flow-canvas] .fc-minimap")).toBeVisible();
+    await page.keyboard.press("Escape");
     // drag a block card and the position persists to localStorage. Drags
     // inside group frames are not persisted (kit limitation) – the depth-1
     // section cards are unparented, so drag one of those. The landing zoom
@@ -2875,7 +2895,7 @@ test.describe("map", () => {
     });
     expect(persisted).toBe(true);
     // tidy re-runs dagre and clears persisted drags; fit recentres the view
-    await explore(page); await page.locator("[data-testid=u2-tidy]").click();
+    await explore(page); await mapSettings(page); await page.locator("[data-testid=u2-tidy]").click();
     await page.waitForTimeout(600);
     expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("kula.flow.pos.v1.map.")).length)).toBe(0);
     const zoomBefore = Number((await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom]").textContent())?.replace("%", ""));
@@ -2956,11 +2976,13 @@ test.describe("agents on the flow canvas (A3)", () => {
     await open(page, "agents/teams");
     // Select a seat on the canvas (U16): the square is the DOM contract; the
     // team sidebar opens on the seat's fields.
-    const node = page.locator('[data-testid="team-canvas"] .react-flow__node').nth(1);
+    // (seat nodes only – every team also draws a group frame on the org canvas)
+    const node = page.locator('[data-testid="team-canvas"] .react-flow__node-tc').nth(1);
     await expect(node).toBeVisible();
     // The seat key is read at click time: canvas re-renders can reorder the
     // squares, so a late read would name a different seat than the one picked.
-    const seat = await node.getAttribute("data-id");
+    // Seat node ids are "<team index>|<seat key>".
+    const seat = (await node.getAttribute("data-id"))?.split("|").pop();
     await node.click();
     const side = page.locator('[data-testid="team-side"]');
     await expect(side).toBeVisible();
@@ -2982,6 +3004,7 @@ test.describe("agents on the flow canvas (A3)", () => {
   test("A3.3 memory: a canvas node fills the sidebar and the list row follows", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
     await open(page, "agents/memory");
+    await page.getByTestId("mem-graph-toggle").click(); // U20: the graph sits behind a toggle
     const node = page.locator('.react-flow__node[data-id^="mem:"]').first();
     await expect(node).toBeVisible();
     await node.click();

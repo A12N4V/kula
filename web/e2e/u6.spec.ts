@@ -7,7 +7,7 @@
 // anywhere. Assert by name, never counts.
 import { expect, test, type Page } from "@playwright/test";
 import { FIXTURE } from "../playwright.config";
-import { explore } from "./explore";
+import { explore, mapSettings } from "./explore";
 
 test.use({ baseURL: FIXTURE });
 
@@ -50,11 +50,11 @@ test("agents layer off → no agent marks anywhere, on → the agent squares app
   await expect(page.locator('[data-testid="fc-node-agent:polish"]')).toBeVisible();
   await expect(page.locator('[data-testid="fc-node-agent:everywhere"]')).toBeVisible();
   // off: removed from the DOM, not hidden
-  await explore(page); await page.locator('[data-testid="u2-layer-agents"]').click();
+  await explore(page); await mapSettings(page); await page.locator('[data-testid="u2-layer-agents"]').click();
   await expect(page.locator('[data-testid^="fc-node-agent:"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="fc-node-codebase"]')).toHaveCount(0);
   // back on for the rest of the checks
-  await explore(page); await page.locator('[data-testid="u2-layer-agents"]').click();
+  await explore(page); await mapSettings(page); await page.locator('[data-testid="u2-layer-agents"]').click();
   await expect(page.locator('[data-testid="fc-node-agent:polish"]')).toBeVisible();
 });
 

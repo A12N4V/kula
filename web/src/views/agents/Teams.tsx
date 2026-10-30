@@ -5,11 +5,13 @@
 // marks – lives in TeamCanvas and TeamSidebar.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AgentsInfo, Team } from "../../api";
+import { api, type AgentsInfo, type Team } from "../../api";
+import { generateOrg, type OrgPlan } from "./orgGen";
 import { Icon, useToast } from "../../ui";
 import { takeStashedAdd, type Act, type Tab } from "./data";
+import { seatKey } from "../../roster";
 import { TabStrip } from "./parts";
-import TeamCanvas, { CanvasHead } from "./TeamCanvas";
+import { CanvasHead, TeamsCanvas } from "./TeamCanvas";
 import TeamSidebar from "./TeamSidebar";
 
 export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Act; setTab?: (t: Tab) => void }) {
@@ -25,8 +27,8 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   // to name (team-tab-<team name>), so the strip's buttons get them here.
   const teamNames = JSON.stringify(teams.map((t) => t.name));
   useEffect(() => {
-    tabrow.current?.querySelectorAll<HTMLButtonElement>(".team-tabs [role=tab]").forEach((b: HTMLButtonElement) => {
-      b.setAttribute("data-testid", `team-tab-${b.textContent?.replace("\u25cf", "").trim() || "unnamed"}`);
+    tabrow.current?.querySelectorAll<HTMLButtonElement>(".team-tabs [role=tab]").forEach((b: HTMLButtonElement, i) => {
+      b.setAttribute("data-testid", `team-tab-${teams[i]?.name || "unnamed"}`);
     });
   }, [teamNames, cur, adding]);
   const toast = useToast();
@@ -64,16 +66,19 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
       return prev.map((y, j) => (j === cur ? { ...y, ...x } : x.name !== undefined && y.under === was ? { ...y, under: x.name } : y));
     });
   };
+  const sent = useRef(new Map<string, string>());
   // Settings and member fields save on their own: shortly after they stop
   // changing, every touched team (found by index, so a rename still matches
   // its row) goes through team_save – no Save button, the canvas and the
   // sidebar are one source of truth.
   useEffect(() => {
     if (adding) return;
-    const touched = teams.filter((y, i) => norm(y) !== norm(info.teams[i]));
+    // Saved content is remembered: if the server stores a team in a slightly
+    // different shape, the same content is never re-sent (that looped forever).
+    const touched = teams.filter((y, i) => norm(y) !== norm(info.teams[i]) && sent.current.get(y.name) !== norm(y));
     if (!touched.length) return;
     const id = window.setTimeout(() => {
-      touched.forEach((y) => act("team_save", { team: y }, `${y.name} saved`).catch((e: Error) => toast(e.message, "err")));
+      touched.forEach((y) => { sent.current.set(y.name, norm(y)); act("team_save", { team: y }, `${y.name} saved`).catch((e: Error) => toast(e.message, "err")); });
     }, 600);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,6 +92,17 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
       setNewName("");
     }).catch((e: Error) => toast(e.message, "err"));
   };
+  // Generate an organisation from the code map (orgGen): preview, then create.
+  const [plan, setPlan] = useState<OrgPlan | null>(null);
+  const draft = () => api.map().then((m) => setPlan(generateOrg(m, { existing: [...teams.map((t) => t.name), ...info.workflows.map((w) => w.name)] })))
+    .catch((e: Error) => toast(e.message, "err"));
+  const adopt = async (p: OrgPlan) => {
+    try {
+      await act("workflows_save", { workflows: [...info.workflows.filter((w) => !w.builtin), ...p.workflows] }, `${p.workflows.length} fenced workflows added`);
+      await act("teams_save", { teams: [...teams, ...p.teams] }, `${p.teams.length} teams created`);
+      setPlan(null); // the new teams arrive with the server's copy
+    } catch (e) { toast((e as Error).message, "err"); }
+  };
   const remove = (name: string) => {
     if (!confirm(`Delete the ${name} team from kula.toml?`)) return;
     act("team_delete", { name }, `${name} deleted`).catch((e: Error) => toast(e.message, "err"));
@@ -96,12 +112,13 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
     setCur((c) => (teams[c]?.name === name ? Math.max(0, c - 1) : c));
     setMember(null);
   };
-  const addMember = (workflow: string, agent?: string) => {
-    if (!t) return;
-    act("team_add_member", { name: t.name, workflow, ...(agent ? { agent } : {}) }, `${workflow} joined ${t.name}`).then(() => {
-      setTeams((prev) => prev.map((y, j) => (j === cur && !y.members.some((m) => m.workflow === workflow) ? { ...y, members: [...y.members, { name: workflow, agent: agent ?? "any", workflow }] } : y)));
+  const addMemberTo = (i: number, workflow: string, agent?: string) => {
+    const team = teams[i]; if (!team) return;
+    act("team_add_member", { name: team.name, workflow, ...(agent ? { agent } : {}) }, `${workflow} joined ${team.name}`).then(() => {
+      setTeams((prev) => prev.map((y, j) => (j === i && !y.members.some((m) => m.workflow === workflow) ? { ...y, members: [...y.members, { name: workflow, agent: agent ?? "any", workflow }] } : y)));
     }).catch((e: Error) => toast(e.message, "err"));
   };
+  const addMember = (workflow: string, agent?: string) => addMemberTo(cur, workflow, agent);
   const removeMember = (workflow: string) => {
     if (!t) return;
     act("team_remove_member", { name: t.name, workflow }, `${workflow} left ${t.name}`).then(() => {
@@ -109,10 +126,43 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
       setMember(null);
     }).catch((e: Error) => toast(e.message, "err"));
   };
-  const layout = (positions: Record<string, [number, number]>) => {
-    if (!t) return;
-    setTeams((prev) => prev.map((y, j) => (j === cur ? { ...y, positions } : y)));
-    act("team_layout", { name: t.name, positions }, "Layout saved").catch(() => {});
+  // Drag gestures on the tab rail (u20): a seat dropped on the tab row leaves
+  // its team (with an Undo chip); an agent card dropped on a specific tab
+  // joins that team. Both have keyboard equivalents: the sidebar's member
+  // remove control and the add search box.
+  const [undo, setUndo] = useState<{ team: string; seat: Team["members"][number] } | null>(null);
+  useEffect(() => { if (!undo) return; const id = setTimeout(() => setUndo(null), 8000); return () => clearTimeout(id); }, [undo]);
+  const tabrowDragOver = (e: React.DragEvent) => { if (e.dataTransfer.types.includes("application/x-kula-drag")) e.preventDefault(); };
+  const tabrowDrop = (e: React.DragEvent) => {
+    let raw = "";
+    try { raw = e.dataTransfer.getData("application/x-kula-drag"); } catch { return; }
+    if (!raw) return;
+    let p: { kind: string; name?: string; member?: string };
+    try { p = JSON.parse(raw); } catch { return; }
+    if (p.kind === "seat" && p.member && t) {
+      const seat = t.members.find((m) => seatKey(m) === p.member);
+      if (!seat || !seat.workflow) return;
+      e.preventDefault(); e.stopPropagation();
+      setTeams((prev) => prev.map((y, j) => (j === cur ? { ...y, members: y.members.filter((m) => seatKey(m) !== p.member) } : y)));
+      act("team_remove_member", { name: t.name, workflow: seat.workflow }, `${seat.workflow} left ${t.name}`).catch((er: Error) => toast(er.message, "err"));
+      setUndo({ team: t.name, seat });
+    } else if (p.kind === "agent" && p.name) {
+      // the tab under the pointer takes the agent, not the whole rail
+      const tab = (e.target as HTMLElement).closest("[role=tab]") as HTMLElement | null;
+      if (!tab?.parentElement) return;
+      const tabs = Array.from(tab.parentElement.querySelectorAll<HTMLElement>("[role=tab]"));
+      const team = teams[tabs.indexOf(tab)];
+      if (!team) return;
+      e.preventDefault(); e.stopPropagation();
+      addMember(team.name, p.name);
+    }
+  };
+  const undoRemove = () => {
+    const u = undo; if (!u) return;
+    setUndo(null);
+    if (!teams.some((y) => y.name === u.team)) { toast(`${u.team} is gone – cannot re-add`, "err"); return; }
+    setTeams((prev) => prev.map((y) => (y.name === u.team && !y.members.some((m) => m.workflow === u.seat.workflow) ? { ...y, members: [...y.members, { ...u.seat, agent: u.seat.agent || "any" }] } : y)));
+    act("team_add_member", { name: u.team, workflow: u.seat.workflow, ...(u.seat.agent && u.seat.agent !== "any" ? { agent: u.seat.agent } : {}) }, `${u.seat.workflow} rejoined ${u.team}`).catch((e: Error) => toast(e.message, "err"));
   };
   // The members the canvas knows, with the connected agent filled in when a
   // seat has none: the sidebar's add flow names the seat after its workflow.
@@ -124,15 +174,52 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
   // effect above names tabs from the text, so the dot is stripped first.
   return (
     <div className="tc-view" data-testid="teams-view">
-      <div className="tc-tabrow" ref={tabrow}>
+      <div className="tc-tabrow" ref={tabrow} onDragOver={tabrowDragOver} onDrop={tabrowDrop}>
         <TabStrip label="Teams" addLabel="New team" cur={adding ? "" : String(cur)}
-          items={teams.map((x, i) => ({ key: String(i), label: x.name || "unnamed", icon: <Icon.team />, dot: info.team?.name === x.name }))}
+          items={teams.map((x, i) => {
+            // nested teams (`under`) read as a breadcrumb, not a flat row:
+            // "kula / core / research" above the tab label
+            const chain: string[] = [];
+            let up = teams.find((y) => y.name === (x as Team).under);
+            const seen = new Set<string>([(x as Team).name]);
+            while (up && !seen.has(up.name)) { chain.unshift(up.name); seen.add(up.name); up = teams.find((y) => y.name === up!.under); }
+            return {
+              key: String(i), label: x.name || "unnamed", icon: <Icon.team />, dot: info.team?.name === x.name,
+              depth: chain.length, title: chain.length ? chain.join(" \u203a ") : undefined,
+            };
+          })}
           onPick={(k) => { setCur(Number(k)); setMember(null); }} />
+        <button className="btn sm ghost tc-gen" data-testid="team-generate" title="Draft an organisation for this codebase from its map: one team per division, fenced to its code"
+          onClick={draft}><Icon.team /> Generate org</button>
         <button className={`team-tab-add${adding ? " on" : ""}`} data-testid="team-tab-add" aria-label="New team" title="New team"
           onClick={() => { setAdding(true); setNewName(""); }}><Icon.plus /></button>
         {!adding && shown && <button className="team-tab-del" data-testid="team-tab-delete" aria-label={`Delete ${shown.name}`} title={`Delete ${shown.name}`}
           onClick={() => remove(shown.name)}><Icon.close /></button>}
       </div>
+      {undo && (
+        <div className="tc-undo" role="status" data-testid="team-remove-undo">
+          <span>{undo.seat.workflow} left {undo.team}</span>
+          <button className="btn sm ghost" onClick={undoRemove} data-testid="team-remove-undo-btn">Undo</button>
+        </div>
+      )}
+      {plan && (
+        <div className="tc-plan" role="dialog" aria-label="Generated organisation" data-testid="team-plan">
+          <div className="tc-plan-head"><b>Proposed organisation</b>
+            <span className="muted">{plan.teams.length} teams · {plan.teams.reduce((n, t) => n + t.members.length, 0)} seats · {plan.workflows.length} fenced workflows · any provider</span>
+            <span className="spacer" />
+            <button className="btn sm ghost" onClick={() => setPlan(null)}>Discard</button>
+            <button className="btn sm primary" data-testid="team-plan-adopt" onClick={() => adopt(plan)}>Create teams</button>
+          </div>
+          <ul className="tc-plan-list">
+            {plan.teams.map((t) => (
+              <li key={t.name} style={{ paddingLeft: t.under ? 16 : 0 }}>
+                <span className="mono">{t.name}</span> <span className="muted">– {t.about}</span>
+                <div className="tc-plan-seats">{t.members.map((m) => <span key={m.name} className="tag">{m.role} <i className="muted mono">{m.workflow}</i></span>)}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {adding ? (
         <div className="tc-add" data-testid="team-add-form">
           <input className="input mono" autoFocus data-testid="team-add-name" value={newName} placeholder="team name – e.g. research-crew"
@@ -150,7 +237,23 @@ export default function Teams({ info, act, setTab }: { info: AgentsInfo; act: Ac
             <CanvasHead team={shown} live={info.team?.name === shown.name} sideOpen={side} onSide={() => setSide((v) => !v)}
               onDeploy={() => act("run", { team: { name: shown.name } }, `${shown.name} deployed to the Workspace`).catch((e: Error) => toast(e.message, "err"))}
               onStop={() => act("team_stop", {}, `${shown.name} stood down`).catch(() => {})} />
-            <TeamCanvas key={shown.name} team={shown} info={info} live={info.team?.name === shown.name} onMove={layout} onOpen={(k) => { setSide(true); setMember(k); }} />
+            <TeamsCanvas teams={teams} cur={cur} live={info.team?.name}
+              onPick={(i) => { setCur(i); setMember(null); }}
+              onMove={(i, positions) => {
+                const name = teams[i]?.name; if (!name) return;
+                setTeams((prev) => prev.map((y, j) => (j === i ? { ...y, positions } : y)));
+                act("team_layout", { name, positions }, "Layout saved").catch(() => {});
+              }}
+              onOpen={(i, k) => { setCur(i); setSide(true); setMember(k); }}
+              onDropAgent={(i, name) => { setCur(i); addMemberTo(i, name); }}
+              onSeatDrop={(i, source, target, shift) => {
+                const team = teams[i]; if (!team) return;
+                const tk = seatKey(target);
+                if (!source || source === tk) return;
+                const members = team.members.map((m) => (seatKey(m) !== tk ? m : shift ? { ...m, hands_off: [...(m.hands_off || []), source] } : { ...m, reports_to: source }));
+                setTeams((prev) => prev.map((y, j) => (j === i ? { ...y, members } : y)));
+                toast(shift ? `${source} hands off to ${tk}` : `${tk} answers to ${source}`);
+              }} />
           </div>
           {side && <TeamSidebar team={shown} all={teams} info={info} member={member} act={act} onSet={set}
             onAdd={addMember} onRemove={removeMember} onPickMember={setMember}

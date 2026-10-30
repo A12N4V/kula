@@ -18,6 +18,8 @@ import { blank, takeStashedAdd, type Act, type Tab } from "./data";
 import { SuggestionRow } from "./parts";
 import { AddForm } from "./AddForm";
 import AgentCard, { AddCard, fetchCards, toCard, type CardData } from "./AgentCard";
+import { agentDragStart } from "./dnd";
+import { Icon } from "../../ui";
 import AgentSidebar from "./AgentSidebar";
 
 const BUILTIN = ["explore", "fix", "refactor", "tests", "docs", "autoresearch"];
@@ -87,12 +89,33 @@ export default function Workflows({ info, act, onGraph }: { info: AgentsInfo; ac
   const [remote, setRemote] = useState<CardData[] | null>(null);
   useEffect(() => { fetchCards().then(setRemote); }, [info]);
   const agents = info.workflows.filter((w) => !w.research);
-  const cards: (CardData | null)[] = (remote ?? agents.map(toCard)).filter((c) => c && agents.some((w) => w.name === c.name));
+  // built-in agents and agents saved to kula.toml are one filter away
+  const [srcFilter, setSrcFilter] = useState<"all" | "builtin" | "toml">("all");
+  const cardsAll: (CardData | null)[] = (remote ?? agents.map(toCard)).filter((c) => c && agents.some((w) => w.name === c.name));
+  const cards = cardsAll.filter((c) => c && (srcFilter === "all" || (srcFilter === "builtin" ? c.builtin : !c.builtin)));
   return (
     <div className="wf-tabs">
       {sugg.map((s) => <SuggestionRow key={s.id} s={s} act={act} />)}
+      <div className="row ag-head" data-testid="ag-head">
+        <div className="seg" aria-label="Filter agents" data-testid="ag-src-filter">
+          {(["all", "builtin", "toml"] as const).map((f) => (
+            <button key={f} className={srcFilter === f ? "on" : ""} onClick={() => setSrcFilter(f)}>{f === "toml" ? "kula.toml" : f === "builtin" ? "built in" : "all"}</button>
+          ))}
+        </div>
+        <span className="spacer" />
+        <button className="btn sm primary" data-testid="ag-new" onClick={() => { setDraft(null); setOrig(null); setAdding(true); }}><Icon.plus /> New agent</button>
+      </div>
       <div className="cards ag-cards" aria-label="Agents">
-        {cards.map((c) => c && <AgentCard key={c.name} card={c} live={info.workflow?.name === c.name} onOpen={() => openCard(c.name)} />)}
+        {cards.map((c) => c && <AgentCard key={c.name} card={c} live={info.workflow?.name === c.name} onOpen={() => openCard(c.name)}
+          onDelete={c.builtin ? undefined : () => { if (confirm(`Delete the ${c.name} agent?`)) act("workflows_save", { workflows: own.filter((w) => w.name !== c.name) }, `Deleted ${c.name}`).catch(() => {}); }}
+          onDragStart={agentDragStart}
+          onDropPayload={(p) => {
+            if (p.kind === "skill") act("skill_adopt", { agent: c.name, name: p.name }, `${p.name} attached to ${c.name}`).catch(() => {});
+            // memory_edit takes only body/target today – the agent key is
+            // dropped server-side (B3 asked for the field), so the gesture
+            // must not claim a save it cannot make.
+            if (p.kind === "memory") act("memory_edit", { id: p.id, agent: c.name }, `not saved yet – scoping a memory to an agent needs the agent field on memory_edit`).catch(() => {});
+          }} />)}
         <AddCard onClick={() => { setDraft(null); setOrig(null); setAdding(true); }} />
       </div>
       {adding && <AddForm kind="agent" info={info} onCreate={createFrom} onCancel={() => setAdding(false)} />}

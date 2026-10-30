@@ -66,18 +66,15 @@ test.describe("the lean agents menu", () => {
       await t.click();
       await expect(t).toHaveAttribute("aria-checked", before === "true" ? "false" : "true");
     }
-    // The global settings panel holds the theme switch: sun for light, moon
-    // for dark, morphing between the two.
+    // The global settings panel holds the theme switch: a three-way
+    // Light / Dark / System segment (X14) – the choice is stated, not guessed.
     await page.keyboard.press(",");
-    const theme = page.getByTestId("theme-toggle");
-    await expect(theme.locator(".sun-moon")).toBeVisible();
-    const before = await theme.getAttribute("aria-checked");
-    await theme.click();
-    await expect(theme).toHaveAttribute("aria-checked", before === "true" ? "false" : "true");
-    // Once off "system", a small reset brings follow-the-OS back from the panel.
-    await expect(page.getByTestId("theme-system")).toBeVisible();
+    await expect(page.getByTestId("theme-seg")).toBeVisible();
+    await page.getByTestId("theme-dark").click();
+    await expect(page.getByTestId("theme-dark")).toHaveAttribute("aria-checked", "true");
+    // System stays reachable from the segment itself.
     await page.getByTestId("theme-system").click();
-    await expect(page.getByTestId("theme-system")).toHaveCount(0);
+    await expect(page.getByTestId("theme-system")).toHaveAttribute("aria-checked", "true");
   });
 
   test("the fluid dropdown on the default agent answers keyboard and pointer", async ({ page }) => {

@@ -41,7 +41,7 @@
 .ag-mem-body { margin: 6px 0 0; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; }
 .ag-mem-actions { gap: 6px; }
 .ag-target { padding: 0; border: 0; background: none; color: var(--text); font-size: 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; min-height: 28px; }
-.ag-target:hover { color: var(--accent); }
+.ag-target:hover { color: var(--accent-text); }
 .ag-tool { display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); gap: 12px; padding: 4px 0; font-size: 12px; border-bottom: 1px dashed var(--line); }
 .ti { position: relative; }
 .ti-pop { position: absolute; top: 36px; left: 0; right: 0; z-index: 6; padding: 4px; background: var(--panel); border: 1px solid var(--line-2); }
@@ -49,7 +49,10 @@
 .snippet pre.code { margin: 0; padding: 10px 72px 10px 12px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 11.5px; border: 1px solid var(--line); background: var(--bg); }
 .snippet-copy { position: absolute; top: 6px; right: 6px; height: 22px; font-size: 11px; }
 @media (max-width: 900px) {
-  .ag-grid { grid-template-columns: 1fr; }
+  /* minmax(0, …): a loop row's fixed parts must not widen the column past
+     the phone; the row wraps its meta instead */
+  .ag-grid { grid-template-columns: minmax(0, 1fr); }
+  .loop-row { flex-wrap: wrap; row-gap: 2px; }
   .ag-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ag-strip .kpi-cell:nth-child(n+4) { border-top: 1px solid var(--line); }
   .ag-remember { grid-template-columns: 1fr; }
@@ -66,7 +69,7 @@
 .ag-tabs::-webkit-scrollbar { display: none; }
 .ag-tabs button { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; color: var(--text-3); cursor: pointer; white-space: nowrap; font-size: 12px; letter-spacing: .02em; }
 .ag-tabs button:hover { color: var(--text-2); }
-.ag-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.ag-tabs button.on { color: var(--text); border-bottom-color: var(--accent-text); }
 .ag-tabs button svg { width: 14px; height: 14px; }
 .ag-tabs .badge { color: var(--text-3); font: 11px var(--mono); }
 .ag-panel { animation: view-in .25s var(--ease) both; }
@@ -87,7 +90,7 @@
 .loop-step.gate { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in oklab, var(--red) 9%, transparent) 6px 7px); }
 .loop-step.gate b { color: var(--red); }
 .loop-arrow { position: absolute; left: -5px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-top: 1px solid var(--line-2); border-right: 1px solid var(--line-2); background: var(--bg); transform: rotate(45deg); }
-.loop-n { font: 600 9.5px var(--mono); letter-spacing: .1em; color: var(--accent); }
+.loop-n { font: 600 9.5px var(--mono); letter-spacing: .1em; color: var(--accent-text); }
 .ag-steps { margin: 0 0 12px; padding: 0 0 0 22px; font-size: 12px; color: var(--text-2); display: grid; gap: 3px; }
 .ag-steps li::marker { color: var(--text-3); font-size: 11px; }
 
@@ -109,7 +112,7 @@
 .wf-tile { position: relative; display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg-2); min-width: 0; text-align: left; transition: border-color .12s, background .12s; }
 .wf-tile[role="button"] { cursor: pointer; }
 .wf-tile[role="button"]:hover { border-color: var(--line-2); }
-.wf-tile.on { border-color: var(--accent); background: var(--panel); }
+.wf-tile.on { border-color: var(--accent-text); background: var(--panel); }
 .wf-tile.active { background: var(--bg-3); }
 .wf-tile b { font-size: 13px; }
 .wf-src { font-size: 10.5px; white-space: nowrap; }
@@ -125,7 +128,7 @@
 .wf-tile:hover .wf-preview, .wf-preview:focus-visible { opacity: 1; }
 .wf-pick { display: flex; flex-wrap: wrap; gap: 4px; }
 .wf-pick button { height: 26px; padding: 0 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text-2); cursor: pointer; font: inherit; font-size: 12px; }
-.wf-pick button.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+.wf-pick button.on { border-color: var(--accent-text); color: var(--text); background: var(--accent-soft); }
 
 /* workflow editor */
 .wf-split { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: 12px; align-items: start; }
@@ -163,7 +166,7 @@
 .fence-what { display: grid; gap: 4px; min-width: 0; }
 .fence-level { height: 32px; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); cursor: pointer; padding: 3px 0; }
-.toggle input { accent-color: var(--accent); }
+.toggle input { accent-color: var(--accent-text); }
 .ag-rule-src { margin-left: auto; font-size: 10.5px; flex: none; }
 
 /* docs */
@@ -172,7 +175,7 @@
 .docs-list .section-title:first-child { margin-top: 0; }
 .doc-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 8px 10px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text); cursor: pointer; text-align: left; font: inherit; }
 .doc-item .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.doc-item.on { border-color: var(--accent); background: var(--panel); }
+.doc-item.on { border-color: var(--accent-text); background: var(--panel); }
 .doc-readers { grid-column: 1 / -1; font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-add { margin-top: 4px; }
 .doc-add .af { flex: 1; }
@@ -265,7 +268,7 @@
 .mod { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg-2); font-size: 11.5px; line-height: 1.5; }
 .mod.on { background: var(--bg-3); }
 .mod-mark { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); color: var(--text); background: var(--bg); }
-.mod-mark:hover { border-color: var(--accent); }
+.mod-mark:hover { border-color: var(--accent-text); }
 .mod-body { display: grid; gap: 3px; min-width: 0; }
 .mod-body .row { gap: 8px; min-height: 22px; }
 .mod-name { font-weight: 600; font-size: 12.5px; color: var(--text); text-decoration: none; }
@@ -281,14 +284,14 @@
 
 /* the workspace rail's add buttons and harmonograph marks – flat, square, obvious */
 .lib-add { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border: 1px solid var(--line); background: none; color: var(--text-2); font: 11.5px var(--mono); cursor: pointer; flex: none; }
-.lib-add:hover { border-color: var(--accent); color: var(--text); }
+.lib-add:hover { border-color: var(--accent-text); color: var(--text); }
 .lib-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--line); color: var(--text); background: var(--bg); flex: none; }
 
 /* ================================================================ A1: agents tabs – tables, keyboard navigation, path test */
 /* Keyboard navigation (j/k/enter/esc) marks the roving selection on list
    rows – selection is a fill, like every list in the design. */
 .kb-sel { background: var(--bg-3); }
-.wf-tile.kb-sel, .doc-item.kb-sel { border-color: var(--accent); }
+.wf-tile.kb-sel, .doc-item.kb-sel { border-color: var(--accent-text); }
 
 /* sortable lists */
 .seg.ag-sort { margin-left: 8px; }
@@ -356,7 +359,7 @@
 .roster-wired { display: flex; flex-wrap: wrap; gap: 4px; }
 .roster-num { display: inline-flex; align-items: center; gap: 4px; font: 11.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 28px; }
 .roster-num .ico { width: 11px; height: 11px; color: var(--text-3); }
-.roster-row:hover .roster-num { color: var(--accent); }
+.roster-row:hover .roster-num { color: var(--accent-text); }
 .roster-hint { padding: 6px 8px 2px; }
 .ag-list-filter { height: 24px; width: 110px; font-size: 11.5px; }
 .roster .ag-list-filter { margin: 0 0 0 8px; }
@@ -395,7 +398,7 @@
 .rf-legend-table th[scope="row"] { display: inline-flex; align-items: center; gap: 6px; color: var(--text); white-space: nowrap; }
 .rf-legend-table .num { text-align: right; white-space: nowrap; }
 .rf-legend-table i { display: inline-block; width: 9px; height: 9px; border: 1px solid var(--text-3); }
-.rf-legend-table i.kept { background: var(--accent); border-color: var(--accent); }
+.rf-legend-table i.kept { background: var(--accent); border-color: var(--accent-text); }
 .rf-legend-table i.fenced { background: var(--red); border-color: var(--red); }
 .rf-legend-table i.failed { border-color: var(--yellow); }
 .rf-legend-table i.base { border-style: dashed; }
@@ -434,7 +437,7 @@
    opening the compact form in place (agents tabs, roster header, Workspace HUD) */
 .ag-add { flex: none; }
 .ag-add-form { display: grid; align-content: start; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-2); background: var(--bg-2); margin: 0 0 10px; min-width: 0; }
-.ag-add-kind { font: 600 10.5px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--accent); }
+.ag-add-kind { font: 600 10.5px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--accent-text); }
 .ag-add-err { color: var(--red); font-size: 12px; }
 .ag-add-actions { flex-wrap: wrap; gap: 6px; border-top: 1px dashed var(--line); padding-top: 8px; }
 .ag-add-form .mi-field { min-width: 0; }
@@ -483,22 +486,9 @@
 /* Agents as a menu + listing (Flows-style split): the menu on the left.
    Icon tabs: the mark is the primary read, the label appears only when the
    menu column is wide enough (container query, labels never wrap or clip). */
-.ag-menu { container-type: inline-size; container-name: ag-menu; }
-.ag-menu .ag-tabs { display: flex; flex-direction: column; gap: 1px; border: 0; margin: 0; padding: 6px 8px 16px; overflow: visible; }
-.ag-menu .ag-tabs button.ag-mi { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 10px; border: 0; margin: 0; background: none; color: var(--text-2); font-size: 13px; text-align: left; }
-.ag-menu .ag-tabs button.ag-mi:hover { background: var(--panel-2); color: var(--text); }
-.ag-menu .ag-tabs button.ag-mi.on { background: var(--accent-soft); color: var(--text); }
-.ag-menu .ag-tabs button.ag-mi.on svg { color: var(--accent); }
 .ag-mi svg { width: 15px; height: 15px; flex: none; }
 .ag-mi-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-mi-n { font: 11px var(--mono); color: var(--text-3); }
-@container ag-menu (max-width: 84px) {
-  /* Icons only: hide the label before it can clip, keep badge and count. */
-  .ag-menu .ag-tabs button.ag-mi { padding: 0 10px; gap: 0; justify-content: center; }
-  .ag-menu .ag-tabs button.ag-mi .ag-mi-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .ag-menu .ag-tabs { padding: 4px 8px 16px; gap: 2px; }
-  .ag-menu .ag-tabs button.ag-mi { height: 36px; width: 44px; padding: 0; }
-}
 /* Phone: the strip stays horizontal, icons only when tight. */
 .ag-detail { max-width: 1100px; }
 .ag-detail .page-head { margin-bottom: 16px; }
@@ -516,7 +506,7 @@
 .set-grid { gap: 8px; }
 .set-row { gap: 8px; padding: 4px 8px; min-height: 32px; }
 .set-row .set-label { flex: 0 0 190px; min-width: 190px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 760px) { .set-row .set-label { flex-basis: auto; min-width: 0; } }
+@media (max-width: 760px) { .set-row .set-label { flex-basis: auto; min-width: 0; white-space: normal; overflow: visible; text-overflow: clip; } }
 
 /* the agents (workflows) list */
 .wf-list { display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--panel); }
@@ -524,9 +514,9 @@
 .wf-row:last-child { border-bottom: 0; }
 .wf-row:hover { background: var(--panel-2); }
 .wf-row.on { background: var(--accent-soft); }
-.wf-row.on .wf-row-name { color: var(--accent); }
+.wf-row.on .wf-row-name { color: var(--accent-text); }
 .wf-dot { width: 7px; height: 7px; flex: none; border: 1px solid var(--line-2); }
-.wf-dot.live { background: var(--accent); border-color: var(--accent); }
+.wf-dot.live { background: var(--accent); border-color: var(--accent-text); }
 .wf-row-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .wf-row-name { font-size: 13px; }
 .wf-row-about { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -545,7 +535,7 @@
 .sx-n { font: 11px var(--mono); color: var(--text-3); }
 .sx-agents { display: flex; gap: 2px; }
 .sx-agent { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--line); background: var(--panel); color: var(--text-2); cursor: pointer; }
-.sx-agent.on { border-color: var(--accent); background: var(--accent-soft); }
+.sx-agent.on { border-color: var(--accent-text); background: var(--accent-soft); }
 .sx-agent svg { width: 14px; height: 14px; }
 .sx-list { display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--panel); }
 .sx-row { border-bottom: 1px solid var(--line); }
@@ -597,10 +587,10 @@
 .card__body { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; padding: 16px 16px 18px; }
 .card__meta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font: 11px var(--mono); letter-spacing: .14em; color: var(--text-3); }
 .card__meta .mono { letter-spacing: .14em; }
-.ag-card-live { color: var(--accent); }
+.ag-card-live { color: var(--accent-text); }
 .card__t { font: 300 clamp(18px, 1.5vw, 23px)/1.08 var(--display); text-transform: uppercase; letter-spacing: .03em; overflow-wrap: anywhere; }
 .card__d { color: var(--text-2); flex: 1; font: italic 15px/1.55 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.card__fmt { margin-top: 10px; color: var(--accent); font: 11px/1.6 var(--mono); letter-spacing: .16em; text-transform: uppercase; }
+.card__fmt { margin-top: 10px; color: var(--accent-text); font: 11px/1.6 var(--mono); letter-spacing: .16em; text-transform: uppercase; }
 .ag-card-add .card__art { display: grid; place-items: center; color: var(--text-3); border-bottom-style: dashed; }
 .ag-card-add { border-style: dashed; color: var(--text-2); }
 .ag-card-add .card__art svg { width: 22px; height: 22px; }
@@ -630,7 +620,7 @@
 .sx-gh { display: grid; gap: 8px; }
 .sx-gh-note { font-size: 12px; padding: 2px 0; }
 .sx-link { color: var(--text-3); text-decoration: none; font-size: 13px; padding: 2px 4px; flex: none; }
-.sx-link:hover { color: var(--accent); }
+.sx-link:hover { color: var(--accent-text); }
 /* The pane is portaled to document.body (same rule as every sidebar in this
    run – a transformed view-enter ancestor must not be its containing block). */
 .sx-pane { position: fixed; top: 49px; right: 27px; bottom: 27px; width: min(460px, 62vw); z-index: 8; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); }
@@ -651,3 +641,45 @@
   .sx-mode button, .sx-link { min-height: 40px; }
   .sx-pane { width: 100%; }
 }
+.mem-x10-closed .mem-x10-badge { color: var(--text-2); }
+/* u20 · memory grouped by author, agent-card overflow */
+.ag-mem-group { margin-bottom: 8px; }
+.ag-mem-author { display: flex; align-items: center; gap: 8px; padding: 8px 0 2px; border-bottom: 1px solid var(--line); }
+.ag-mem-author .muted { margin-left: auto; }
+.ag-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+@media (max-width: 760px) {
+  /* 2-column compact cards with smaller marks at 390 – one phone breakpoint
+     (760) across the agents surfaces, matching logo.css */
+  .ag-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ag-cards .ag-card-art-svg, .ag-cards .card__art svg { max-width: 96px; }
+}
+
+/* X14 – the agent grid must not scroll under the statusbar on a phone
+   (cartographer probe: ag-card × sb-help). */
+@media (max-width: 760px) { .ag-split { padding-bottom: 28px; } }
+@media (max-width: 760px) { .ag-split .detail, .ag-detail { padding-bottom: 28px; } }
+
+/* X14 space audit – the "? shortcuts" statusbar button sits under the agent
+   grid on a phone (probe overlap) and earns nothing there: the shortcuts it
+   opens are keyboard-only anyway. Hidden ≤ 760px. */
+@media (max-width: 760px) { .sb-keys { display: none; } }
+
+/* One menu: the app rail picks Agents, a horizontal strip picks the section. */
+.ag-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ag-page > .ag-tabs { flex: none; margin: 0; padding: 0 12px; gap: 2px; background: var(--bg); }
+.ag-page > .ag-tabs .grow { flex: 1; }
+.ag-page > .ag-tabs button.ag-mi { flex: none; gap: 7px; height: 38px; padding: 0 12px; }
+.ag-page > .ag-tabs .ag-mi-label { flex: none; overflow: visible; }
+.ag-page > .detail { flex: 1; min-height: 0; overflow: auto; position: relative; }
+.ag-page.ag-full > .detail { overflow: hidden; }
+.ag-page.ag-full .ag-detail, .ag-page.ag-full .ag-panel { height: 100%; }
+@media (max-width: 760px) { .ag-page > .ag-tabs .ag-mi-label { display: none; } .ag-page > .ag-tabs button.ag-mi { padding: 0 11px; } }
+
+/* The mark is a button (U17), so the button fills the art box and the curve
+   fills the button – centred, square, the same size on every card. */
+.card__art { display: grid; place-items: center; }
+.card__art > button.ag-card-art-svg { width: 72%; height: 82%; max-width: none; padding: 0; display: grid; place-items: center; }
+.card__art > button.ag-card-art-svg > svg, .card__art > button.logo-saved svg { width: 100%; height: 100%; display: block; }
+.card__art > button.logo-saved { aspect-ratio: auto !important; }
+@media (max-width: 760px) { .ag-cards .card__art > button.ag-card-art-svg { max-width: none; width: 70%; } }
+.ag-page.ag-full .ag-detail { max-width: none; }

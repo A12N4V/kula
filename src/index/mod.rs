@@ -205,7 +205,7 @@ const COMMON: &[&str] = &[
     "len",
 ];
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Def {
     name: String,
     kind: &'static str,
@@ -218,14 +218,110 @@ struct Def {
     hash: u64,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct ParsedFile {
     path: String,
     lang: &'static str,
     loc: u32,
     defs: Vec<Def>,
-    calls: Vec<(String, usize)>,
+    /// Called name, byte offset, receiver: `self` (self./Self::/this.), `.` (some
+    /// other value's method) or a type name (`Type::f`).
+    calls: Vec<(String, usize, Option<String>)>,
     imports: Vec<String>,
+    /// Hash of the raw source and language id; the parse cache key.
+    src_hash: u64,
+}
+
+/// Parsed files from the last stored build, keyed by path. A file whose
+/// content hash matches is reused instead of reparsed.
+type ParseCache = HashMap<String, ParsedFile>;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CachedDef(String, String, u32, u32, usize, usize, Option<String>, u64);
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CachedFile {
+    path: String,
+    lang: String,
+    loc: u32,
+    defs: Vec<CachedDef>,
+    calls: Vec<(String, usize, Option<String>)>,
+    imports: Vec<String>,
+    h: u64,
+}
+
+const CACHE_FILE: &str = "parse-cache-v2.json";
+
+fn static_kind(k: &str) -> &'static str {
+    match k {
+        "method" => "method",
+        "class" => "class",
+        "interface" => "interface",
+        _ => "function",
+    }
+}
+
+/// Load the parse cache; anything unreadable or from an unknown language is dropped.
+fn load_cache(dir: &Path) -> ParseCache {
+    let Ok(raw) = std::fs::read(dir.join(CACHE_FILE)) else { return HashMap::new() };
+    let Ok(list) = serde_json::from_slice::<Vec<CachedFile>>(&raw) else { return HashMap::new() };
+    list.into_iter()
+        .filter_map(|c| {
+            let lang = langs::get(&c.lang)?.id;
+            let defs = c
+                .defs
+                .into_iter()
+                .map(|d| Def {
+                    name: d.0,
+                    kind: static_kind(&d.1),
+                    start_line: d.2,
+                    end_line: d.3,
+                    start_byte: d.4,
+                    end_byte: d.5,
+                    parent_name: d.6,
+                    hash: d.7,
+                })
+                .collect();
+            Some((c.path.clone(), ParsedFile { path: c.path, lang, loc: c.loc, defs, calls: c.calls, imports: c.imports, src_hash: c.h }))
+        })
+        .collect()
+}
+
+fn save_cache(dir: &Path, cache: &ParseCache) {
+    let mut list: Vec<CachedFile> = cache
+        .values()
+        .map(|p| CachedFile {
+            path: p.path.clone(),
+            lang: p.lang.to_string(),
+            loc: p.loc,
+            defs: p
+                .defs
+                .iter()
+                .map(|d| {
+                    CachedDef(
+                        d.name.clone(),
+                        d.kind.to_string(),
+                        d.start_line,
+                        d.end_line,
+                        d.start_byte,
+                        d.end_byte,
+                        d.parent_name.clone(),
+                        d.hash,
+                    )
+                })
+                .collect(),
+            calls: p.calls.clone(),
+            imports: p.imports.clone(),
+            h: p.src_hash,
+        })
+        .collect();
+    list.sort_by(|a, b| a.path.cmp(&b.path));
+    if let Ok(j) = serde_json::to_vec(&list) {
+        let tmp = dir.join(format!("{CACHE_FILE}.tmp-{}", std::process::id()));
+        if std::fs::write(&tmp, j).is_ok() {
+            let _ = std::fs::rename(&tmp, dir.join(CACHE_FILE));
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -235,6 +331,8 @@ pub struct IndexStats {
     pub symbols: usize,
     pub edges: usize,
     pub communities: usize,
+    /// Files actually parsed this run; the rest came from the parse cache.
+    pub reparsed: usize,
     pub millis: u128,
 }
 
@@ -399,7 +497,7 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
                     });
                 } else if cname == "call" {
                     if !text.is_empty() && text.len() <= 100 && !text.contains('\n') {
-                        pf.calls.push((text, node.start_byte()));
+                        pf.calls.push((text, node.start_byte(), receiver(node, bytes)));
                     }
                 } else if cname == "import" {
                     let t = text.trim();
@@ -413,6 +511,50 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
     }
     pf.defs.sort_by_key(|d| (d.start_byte, std::cmp::Reverse(d.end_byte)));
     Some(pf)
+}
+
+/// What a call is made on: `self` for self./Self::/this./@, `.` for another
+/// value's method, a type name for `Type::f`, None for a bare call. Works on
+/// the common grammar shapes (field/member/attribute/selector expressions,
+/// scoped paths) and on Rust macro token trees (`assert!(x.f())`).
+fn receiver(name: tree_sitter::Node, bytes: &[u8]) -> Option<String> {
+    let text = |n: tree_sitter::Node| n.utf8_text(bytes).unwrap_or("").trim().to_string();
+    let selfish = |t: &str| matches!(t, "self" | "Self" | "this" | "cls" | "static" | "@");
+    let typeish = |t: &str| {
+        let last = t.rsplit("::").next().unwrap_or(t).rsplit('.').next().unwrap_or(t);
+        let last = last.split('<').next().unwrap_or(last).trim();
+        (last.chars().next().is_some_and(|c| c.is_ascii_uppercase()) && last.chars().all(|c| c.is_alphanumeric() || c == '_'))
+            .then(|| last.to_string())
+    };
+    let parent = name.parent()?;
+    if parent.kind() == "token_tree" {
+        // Rust macro body: tokens only. Look at the separator before the name.
+        let sep = name.prev_sibling()?;
+        let before = sep.prev_sibling().map(text).unwrap_or_default();
+        return match sep.kind() {
+            "." if selfish(&before) => Some("self".into()),
+            "." => Some(".".into()),
+            "::" if selfish(&before) => Some("self".into()),
+            "::" => typeish(&before),
+            _ => None,
+        };
+    }
+    for f in ["value", "object", "receiver", "operand", "argument"] {
+        if let Some(v) = parent.child_by_field_name(f) {
+            if v.id() == name.id() {
+                continue;
+            }
+            let t = text(v);
+            return Some(if selfish(&t) { "self".into() } else { ".".into() });
+        }
+    }
+    for f in ["path", "scope", "namespace"] {
+        if let Some(v) = parent.child_by_field_name(f) {
+            let t = text(v);
+            return if selfish(&t) { Some("self".into()) } else { typeish(&t) };
+        }
+    }
+    None
 }
 
 /// For grammars without `def_kinds`: the nearest ancestor that reads like a
@@ -661,16 +803,28 @@ pub type Reader<'a> = &'a (dyn Fn(&str) -> Option<String> + Sync);
 
 /// Build a graph from a file list and a content reader (working tree or git objects).
 pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
-    build_with(files, read, None)
+    build_with(files, read, None, None).0
 }
 
-fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: Option<&'static Progress>) -> Built {
+/// Build, reusing `cache` entries whose source hash still matches. Returns the
+/// graph, the parsed files (the next cache) and how many were actually reparsed.
+fn build_with(
+    files: &[(String, Option<&'static str>)],
+    read: Reader,
+    progress: Option<&'static Progress>,
+    cache: Option<&ParseCache>,
+) -> (Built, ParseCache, usize) {
+    let reparsed = AtomicUsize::new(0);
+    let reparsed_ref = &reparsed;
     let source: Vec<(String, &'static str)> = files.iter().filter_map(|(p, l)| l.map(|l| (p.clone(), l))).collect();
 
     if let Some(p) = progress {
         p.phase(2, source.len());
     }
-    langs::warm(source.iter().map(|(_, l)| *l));
+    // Only languages with a file to reparse need their grammar and queries compiled.
+    let need: Vec<&'static str> =
+        source.iter().filter(|(p, _)| cache.map_or(true, |c| !c.contains_key(p.as_str()))).map(|(_, l)| *l).collect();
+    langs::warm(need);
     // Parse in parallel.
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(16);
     let chunk = source.len().div_ceil(threads).max(1);
@@ -684,11 +838,21 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                     let mut out = Vec::new();
                     for (path, lid) in batch {
                         let Some(src) = read(path) else { continue };
+                        let h = fnv(lid.as_bytes()) ^ fnv(src.as_bytes());
+                        if let Some(hit) = cache.and_then(|c| c.get(path.as_str())).filter(|c| c.src_hash == h) {
+                            out.push(hit.clone());
+                            if let Some(p) = progress {
+                                p.done.fetch_add(1, Relaxed);
+                            }
+                            continue;
+                        }
                         let Some(lang) = langs::get(langs::refine(lid, &src)) else { continue };
                         if parser.set_language(&lang.language).is_err() {
                             continue;
                         }
-                        if let Some(pf) = parse_source(path, &langs::prepare(lang.id, &src), lang, &mut parser) {
+                        reparsed_ref.fetch_add(1, Relaxed);
+                        if let Some(mut pf) = parse_source(path, &langs::prepare(lang.id, &src), lang, &mut parser) {
+                            pf.src_hash = h;
                             out.push(pf);
                         }
                         if let Some(p) = progress {
@@ -742,6 +906,8 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
     let mut hashes: Vec<u64> = vec![0; nodes.len()];
     let mut sym_ids: Vec<Vec<usize>> = Vec::with_capacity(parsed.len());
     let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
+    // Owner type (impl/class/trait) per node id, for method resolution.
+    let mut owner_of: Vec<Option<String>> = vec![None; nodes.len()];
     for pf in &parsed {
         let fid = file_id[&pf.path];
         let mut ids = Vec::new();
@@ -759,6 +925,7 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                 community: 0,
             });
             by_name.entry(d.name.clone()).or_default().push(id);
+            owner_of.push(d.parent_name.clone());
             hashes.push(d.hash);
             ids.push(id);
         }
@@ -801,6 +968,7 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                             community: 0,
                         });
                         hashes.push(0);
+                        owner_of.push(None);
                         nodes.len() - 1
                     });
                     if pkg_edges.insert((fid, pid)) {
@@ -823,16 +991,17 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
         let fid = file_id[&pf.path];
         let ids = &sym_ids[pi];
         let imported = imports_of.get(&fid);
-        for (name, byte) in &pf.calls {
+        for (name, byte, recv) in &pf.calls {
             // Innermost enclosing def that is callable (or any def) → caller.
-            let caller = pf
-                .defs
-                .iter()
-                .enumerate()
-                .filter(|(_, d)| d.start_byte <= *byte && *byte < d.end_byte)
-                .min_by_key(|(_, d)| d.end_byte - d.start_byte)
-                .map(|(i, _)| ids[i])
-                .unwrap_or(fid);
+            let enclosing = |filter: &dyn Fn(&Def) -> bool| {
+                pf.defs
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, d)| d.start_byte <= *byte && *byte < d.end_byte && filter(d))
+                    .min_by_key(|(_, d)| d.end_byte - d.start_byte)
+                    .map(|(i, _)| i)
+            };
+            let caller = enclosing(&|_| true).map(|i| ids[i]).unwrap_or(fid);
             let Some(cands) = by_name.get(name) else { continue };
             // A name only links within one language family: a TypeScript call to
             // `confirm` is never the Rust function of the same name.
@@ -841,6 +1010,37 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
             if cands.is_empty() {
                 continue;
             }
+            // Methods: self./Self:: and Type:: resolve to the owner's own methods
+            // first (same impl, class or trait), whatever the name.
+            let owner = match recv.as_deref() {
+                Some("self") => enclosing(&|d| d.parent_name.is_some()).and_then(|i| pf.defs[i].parent_name.clone()),
+                Some(".") | None => None,
+                Some(t) => Some(t.to_string()),
+            };
+            if let Some(o) = &owner {
+                let own: Vec<usize> = cands.iter().copied().filter(|c| owner_of[*c].as_deref() == Some(o.as_str())).collect();
+                if !own.is_empty() {
+                    let w = 1.0 / own.len() as f64;
+                    for t in own {
+                        if t != caller && call_set.insert((caller, t)) {
+                            edges.push(Edge { src: caller as i64, dst: t as i64, kind: "CALLS".into(), weight: w });
+                        }
+                    }
+                    continue;
+                }
+            }
+            // A receiver call (`x.m()`, `self.m()` with no own match) can only
+            // land on a method: a unique method of that name is taken.
+            let cands: Vec<usize> = if recv.is_some() {
+                let methods: Vec<usize> = cands.iter().copied().filter(|c| nodes[*c].kind == "method").collect();
+                if methods.is_empty() {
+                    cands
+                } else {
+                    methods
+                }
+            } else {
+                cands
+            };
             let common = COMMON.contains(&name.as_str());
             let local: Vec<usize> = cands.iter().copied().filter(|c| nodes[*c].path == pf.path).collect();
             let targets: Vec<usize> = if !local.is_empty() {
@@ -875,7 +1075,16 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
         p.phase(4, 0);
     }
     let communities = crate::graph::detect_communities(&mut nodes, &edges);
-    Built { nodes, edges, communities, hashes, files: files.len(), parsed: parsed.len() }
+    let nparsed = parsed.len();
+    let next: ParseCache = parsed.into_iter().map(|p| (p.path.clone(), p)).collect();
+    (Built { nodes, edges, communities, hashes, files: files.len(), parsed: nparsed }, next, reparsed.into_inner())
+}
+
+/// Stable fingerprint of a built graph: equal graphs skip the store rewrite,
+/// which keeps the stored map (and its revision) valid.
+fn fingerprint(nodes: &[Node], edges: &[Edge], communities: &[crate::store::Community]) -> String {
+    let j = serde_json::to_vec(&(nodes, edges, communities)).unwrap_or_default();
+    format!("{:016x}-{}", fnv(&j), j.len())
 }
 
 pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
@@ -894,11 +1103,25 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         }
     }
     let read = |p: &str| std::fs::read_to_string(root.join(p)).ok();
-    let Built { nodes, edges, communities, files: nfiles, parsed, .. } = build_with(&files, &read, Some(&PROGRESS));
+    let dir = repo.kula_dir();
+    let live = Store::open(repo).ok().filter(|s| s.meta("indexed_head").is_some());
+    // The parse cache only counts when the graph it fed is still on disk.
+    let cache = if live.is_some() { load_cache(&dir) } else { HashMap::new() };
+    let (Built { nodes, edges, communities, files: nfiles, parsed, .. }, next, reparsed) =
+        build_with(&files, &read, Some(&PROGRESS), Some(&cache));
 
     PROGRESS.phase(5, 0);
-    let store = Store::create(repo)?;
-    store.write_all(&nodes, &edges, &communities)?;
+    let fp = fingerprint(&nodes, &edges, &communities);
+    let unchanged = live.as_ref().is_some_and(|s| s.meta("graph_fp").as_deref() == Some(fp.as_str()));
+    let store = if unchanged {
+        live.unwrap()
+    } else {
+        drop(live);
+        let s = Store::create(repo)?;
+        s.write_all(&nodes, &edges, &communities)?;
+        s.set_meta("graph_fp", &fp)?;
+        s
+    };
     store.set_meta("indexed_head", &repo.head().unwrap_or_default())?;
     store.set_meta(
         "indexed_at",
@@ -911,10 +1134,13 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         symbols: nodes.iter().filter(|n| n.kind != "file" && n.kind != "package").count(),
         edges: edges.len(),
         communities: communities.len(),
+        reparsed,
         millis: t0.elapsed().as_millis(),
     };
     store.set_meta("stats", &serde_json::to_string(&stats)?)?;
     store.publish()?;
+    std::fs::create_dir_all(&dir).ok();
+    save_cache(&dir, &next);
     if !quiet {
         eprintln!();
     }
@@ -988,7 +1214,7 @@ pub fn probe_detail(lang: &langs::Lang, src: &str) -> Vec<String> {
             format!("def {} {}{} :{}", d.kind, d.parent_name.as_deref().map(|p| format!("{p}.")).unwrap_or_default(), d.name, d.start_line)
         })
         .collect();
-    out.extend(pf.calls.iter().map(|(c, _)| format!("call {c}")));
+    out.extend(pf.calls.iter().map(|(c, _, _)| format!("call {c}")));
     out.extend(pf.imports.iter().map(|i| format!("import {i}")));
     out
 }
@@ -1178,7 +1404,7 @@ mod tests {
         for (file, defs, calls, imports) in CASES {
             let Some(pf) = parse_fixture(file) else { continue };
             let got_defs: Vec<String> = pf.defs.iter().map(|d| format!("{} {}", d.kind, d.name)).collect();
-            let got_calls: HashSet<&str> = pf.calls.iter().map(|(c, _)| c.as_str()).collect();
+            let got_calls: HashSet<&str> = pf.calls.iter().map(|(c, _, _)| c.as_str()).collect();
             for d in *defs {
                 if !got_defs.iter().any(|g| g == d) {
                     fails.push(format!("{file}: missing def `{d}` (got {got_defs:?})"));
@@ -1242,5 +1468,97 @@ mod tests {
         assert_eq!(resolve_import("Data.Util", "app/Main.hs", "haskell", &by_stem, &by_dir), vec![1]);
         assert_eq!(resolve_import("./helpers.sh", "lib/x.sh", "bash", &by_stem, &by_dir), vec![2]);
         assert!(resolve_import("kotlin.math.max", "a.kt", "kotlin", &by_stem, &by_dir).is_empty());
+    }
+
+    #[test]
+    fn warm_build_reuses_unchanged_files() {
+        let files: Vec<(String, Option<&'static str>)> = vec![("a.rs".into(), Some("rust")), ("b.rs".into(), Some("rust"))];
+        let src = std::sync::Mutex::new(HashMap::from([
+            ("a.rs".to_string(), "fn alpha() { beta(); }".to_string()),
+            ("b.rs".to_string(), "fn beta() {}".to_string()),
+        ]));
+        let read = |p: &str| src.lock().unwrap().get(p).cloned();
+        let (b1, cache, n1) = build_with(&files, &read, None, None);
+        assert_eq!(n1, 2);
+        let (b2, cache, n2) = build_with(&files, &read, None, Some(&cache));
+        assert_eq!(n2, 0, "unchanged files are not reparsed");
+        assert_eq!(fingerprint(&b1.nodes, &b1.edges, &b1.communities), fingerprint(&b2.nodes, &b2.edges, &b2.communities));
+        src.lock().unwrap().insert("b.rs".into(), "fn beta() {}\nfn gamma() {}".into());
+        let (b3, _, n3) = build_with(&files, &read, None, Some(&cache));
+        assert_eq!(n3, 1, "only the edited file is reparsed");
+        assert!(b3.nodes.iter().any(|n| n.name == "gamma"));
+        assert_ne!(fingerprint(&b1.nodes, &b1.edges, &b1.communities), fingerprint(&b3.nodes, &b3.edges, &b3.communities));
+    }
+
+    #[test]
+    fn parse_cache_round_trips() {
+        let files: Vec<(String, Option<&'static str>)> = vec![("a.rs".into(), Some("rust"))];
+        let read = |_: &str| Some("struct S; impl S { fn m(&self) { self.n(); } fn n(&self) {} }".to_string());
+        let (_, cache, _) = build_with(&files, &read, None, None);
+        let dir = tempfile::tempdir().unwrap();
+        save_cache(dir.path(), &cache);
+        let back = load_cache(dir.path());
+        let (a, b) = (&cache["a.rs"], &back["a.rs"]);
+        assert_eq!(a.src_hash, b.src_hash);
+        assert_eq!(a.calls, b.calls);
+        assert_eq!(
+            a.defs.iter().map(|d| (&d.name, d.kind, &d.parent_name)).collect::<Vec<_>>(),
+            b.defs.iter().map(|d| (&d.name, d.kind, &d.parent_name)).collect::<Vec<_>>()
+        );
+        let (_, _, n) = build_with(&files, &read, None, Some(&back));
+        assert_eq!(n, 0);
+    }
+
+    fn calls_between(b: &Built) -> HashSet<(String, String)> {
+        let name = |id: i64| {
+            let n = &b.nodes[id as usize];
+            format!("{}::{}", b.nodes.get(n.parent.unwrap_or(-1).max(0) as usize).filter(|p| p.kind == "class").map(|p| p.name.as_str()).unwrap_or(""), n.name)
+        };
+        b.edges.iter().filter(|e| e.kind == "CALLS").map(|e| (name(e.src), name(e.dst))).collect()
+    }
+
+    #[test]
+    fn rust_method_calls_resolve_to_impl_methods() {
+        let files: Vec<(String, Option<&'static str>)> =
+            vec![("src/a.rs".into(), Some("rust")), ("src/b.rs".into(), Some("rust")), ("src/c.rs".into(), Some("rust"))];
+        let src = HashMap::from([
+            (
+                "src/a.rs",
+                "pub struct A;\nimpl A {\n    pub fn get(&self) {}\n    fn helper(&self) { self.get(); Self::load(); }\n    fn load() {}\n}\n\
+                 #[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { let a = A; assert!(a.helper_twice()); }\n}\n",
+            ),
+            ("src/b.rs", "pub struct B;\nimpl B {\n    pub fn get(&self) {}\n    pub fn load() {}\n    fn helper_twice(&self) {}\n}\n"),
+            ("src/c.rs", "fn user(x: &crate::b::B) { B::load(); x.helper_twice(); }\n"),
+        ]);
+        let read = |p: &str| src.get(p).map(|s| s.to_string());
+        let (b, _, _) = build_with(&files, &read, None, None);
+        let calls = calls_between(&b);
+        // self./Self:: land on the same impl, even for common names in other files.
+        assert!(calls.contains(&("A::helper".into(), "A::get".into())), "{calls:?}");
+        assert!(calls.contains(&("A::helper".into(), "A::load".into())), "{calls:?}");
+        assert!(!calls.contains(&("A::helper".into(), "B::get".into())), "{calls:?}");
+        // Type::f picks that type's method across files.
+        assert!(calls.contains(&("::user".into(), "B::load".into())), "{calls:?}");
+        // obj.method() with a unique method name, also inside a macro body.
+        assert!(calls.contains(&("::user".into(), "B::helper_twice".into())), "{calls:?}");
+        assert!(calls.contains(&("::t".into(), "B::helper_twice".into())), "{calls:?}");
+    }
+
+    #[test]
+    fn python_and_js_self_calls_prefer_own_class() {
+        let files: Vec<(String, Option<&'static str>)> =
+            vec![("a.py".into(), Some("python")), ("b.py".into(), Some("python")), ("c.js".into(), Some("javascript"))];
+        let src = HashMap::from([
+            ("a.py", "class A:\n    def run(self):\n        self.save()\n    def save(self):\n        pass\n"),
+            ("b.py", "class B:\n    def save(self):\n        pass\n"),
+            ("c.js", "class C {\n  go() { this.save(); }\n  save() {}\n}\nclass D {\n  save() {}\n}\n"),
+        ]);
+        let read = |p: &str| src.get(p).map(|s| s.to_string());
+        let (b, _, _) = build_with(&files, &read, None, None);
+        let calls = calls_between(&b);
+        assert!(calls.contains(&("A::run".into(), "A::save".into())), "{calls:?}");
+        assert!(!calls.contains(&("A::run".into(), "B::save".into())), "{calls:?}");
+        assert!(calls.contains(&("C::go".into(), "C::save".into())), "{calls:?}");
+        assert!(!calls.contains(&("C::go".into(), "D::save".into())), "{calls:?}");
     }
 }

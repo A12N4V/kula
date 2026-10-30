@@ -6,7 +6,7 @@
 .btn:hover { border-color: var(--hover-line); }
 .btn:active { background: var(--active-bg); }
 .btn:disabled, .btn.primary:disabled { opacity: 1; cursor: not-allowed; background: var(--panel-2); border-color: var(--line); color: var(--text-3); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn.primary { background: var(--accent); border-color: var(--accent-text); color: var(--accent-ink); font-weight: 600; }
 .btn.primary:hover { border-color: var(--text); }
 .btn.primary:active { background: color-mix(in oklab, var(--accent) 86%, #000); }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
@@ -24,7 +24,7 @@
 .row { display: flex; align-items: center; gap: 8px; }
 .stack { display: flex; flex-direction: column; gap: 10px; }
 .tag { display: inline-flex; align-items: center; height: 19px; padding: 0 7px; border-radius: 0; background: var(--panel-2); border: 1px solid var(--line); color: var(--text-2); font-size: 11px; }
-.tag.accent { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.tag.accent { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); }
 .tag.green { color: var(--green); background: rgba(143, 214, 148, 0.1); border-color: transparent; }
 .tag.red { color: var(--red); background: rgba(240, 130, 122, 0.1); border-color: transparent; }
 .tag.violet { color: var(--violet); background: rgba(212, 156, 240, 0.1); border-color: transparent; }
@@ -47,3 +47,7 @@
 /* icons without their own size take the text's */
 .chip svg, .btn svg, .tag svg { width: 14px; height: 14px; flex: none; }
 .rail button svg { width: 18px; height: 18px; }
+
+/* X14 – loading states get padding: a lone "loading…" line never hugs the
+   view's corner. */
+.view-loading { padding: 48px 24px; color: var(--text-3); }

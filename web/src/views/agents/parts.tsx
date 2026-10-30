@@ -44,16 +44,25 @@ export function Card({ title, sub, right, children, className = "" }: { title: s
     </section>
   );
 }
-/** What a seat is called on screen: its name, else (teams made before names) the agent's. */
-export const seatName = (m: { name?: string; agent: string }) => m.name || AGENT_NAME[m.agent] || m.agent;
+/** What a seat is called on screen: its own name, else the job it holds (role,
+ *  then workflow). Never the provider – which model or plugin runs a seat is a
+ *  setting of the seat (`seatProvider`), not its identity. */
+export const seatName = (m: { name?: string; workflow?: string; agent?: string; service?: string; role?: string }) => {
+  // a name that only repeats the provider or the workflow is a default, not a name
+  const own = m.name && ![m.agent, m.service, m.workflow].includes(m.name) && !(m.name in AGENT_NAME)
+    && m.name !== m.role?.replace(/\s+/g, "-") ? m.name : ""; // a name that spells the role reads as the role
+  return own || (m.role ? m.role[0].toUpperCase() + m.role.slice(1) : "") || m.workflow || "seat";
+};
+/** The provider a seat runs on (claude, codex, a plugin…) – shown as a setting, never as its name. */
+export const seatProvider = (m: { service?: string; agent?: string }) => { const p = m.service ?? m.agent ?? ""; return p === "any" ? "" : AGENT_NAME[p] ?? p; };
 /** The display name for a key a teammate points at (reports_to, hands_off). */
-export const keyName = (members: { name?: string; agent: string }[], key: string) => {
+export const keyName = (members: { name?: string; workflow?: string; agent?: string }[], key: string) => {
   const m = members.find((x) => seatKey(x) === key);
   return m ? seatName(m) : key;
 };
 
 /** A seat's mark: the harmonograph of its name; `live` while it works. */
-export function SeatMark({ m, size = 16, live }: { m: { name?: string; agent: string }; size?: number; live?: boolean }) {
+export function SeatMark({ m, size = 16, live }: { m: { name?: string; workflow?: string; agent?: string }; size?: number; live?: boolean }) {
   // decorative: the seat's name always sits beside it, and the runner is written out where it matters
   return <Harmonograph seed={seatKey(m)} size={size} live={live} />;
 }

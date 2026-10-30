@@ -23,12 +23,13 @@ import { Legend } from "./map/legend"; // U7 – the map's key (announced: mount
 import { PlainPanel, RailSearch } from "./map/plain"; // U9 – the reading layer (announced: mount-only glue)
 import { ProgressStrip, useMapProgress } from "./map/progress";
 import { focusOf, type Focus } from "./map/chainFocus";
-import { Library, ReviewPanel, RunPanel, fencedSectionsOf, filesOf, sectionAtPoint, sectionOf, stashNewItem, useAgentFence, useLive, useMarks, type Marks } from "./map/workspace";
+import { Library, ReviewPanel, RunPanel, accessOf, fencedSectionsOf, filesOf, sectionAtPoint, sectionOf, stashNewItem, useAgentFence, useLive, useMarks, type Marks } from "./map/workspace";
 // U2 chrome: rail, layers, Map·Runs·Evals, tidy (undoable) – new file, so
 // this diff stays wiring-only.
-import { DEFAULT_LAYERS, EvalsBoard, Explorer, FrameSwitch, LayerBar, type Frame, type LayerId, type Layers } from "./map/chrome";
+import { DEFAULT_LAYERS, DEFAULT_MAP_SETTINGS, EvalsBoard, Explorer, FrameSwitch, MapSettings, type Frame, type LayerId, type Layers, type MapSettingsState } from "./map/chrome";
 import { FenceHull } from "./agents/actors";
 import { AgentHarmonograph } from "../flow/agentMark";
+import { SwarmPanel } from "./map/SwarmPanel";
 import { AgentInspector } from "./agents/AgentInspector";
 import { AddForm } from "./agents/AddForm";
 import { clearPersisted } from "../flow/positions";
@@ -47,7 +48,6 @@ const PROGRESS_LABEL: Record<string, string> = {
 };
 // The run reports phases as strings – the bar's percent follows the phase list.
 const PHASES = ["load", "graph", "similarity", "map", "done"];
-const EMPTY_PATHS: string[] = [];
 
 // The view owns its own sidebar visibility on phones (390 px): a drawer.
 type Tab = "inspect" | "structure" | "pipeline" | "live" | "changes" | "library";
@@ -113,6 +113,23 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
   const [panel, setPanel] = useState(false);
   const [scheme, setScheme] = useState<Scheme>(() => { try { return (localStorage.getItem("kula.map.scheme") as Scheme) || "mono"; } catch { return "mono"; } });
   useEffect(() => { try { localStorage.setItem("kula.map.scheme", scheme); } catch { /* private */ } }, [scheme]);
+  // X14 – the map's settings: edge density, card labels, minimap and snap,
+  // remembered beside the layers and scheme they sit with.
+  const [mset, setMset] = useState<MapSettingsState>(() => {
+    try { return { ...DEFAULT_MAP_SETTINGS, ...JSON.parse(localStorage.getItem("kula.map.settings") ?? "{}") }; } catch { return DEFAULT_MAP_SETTINGS; }
+  });
+  useEffect(() => { try { localStorage.setItem("kula.map.settings", JSON.stringify(mset)); } catch { /* private */ } }, [mset]);
+  const setMsetPatch = useCallback((patch: Partial<MapSettingsState>) => setMset((s) => ({ ...s, ...patch })), []);
+  // Edge density filters the value-flow edges the kit draws: Few keeps the
+  // strongest quarter, Normal half, Full everything the map carries.
+  const dataForKit = useMemo(() => {
+    if (!data || mset.edgeDensity === "full") return data;
+    const flows = (data as NonNullable<typeof data> & { flows?: { from: string; to: string; weight: number }[] }).flows;
+    if (!flows?.length) return data;
+    const sorted = [...flows].sort((a, b) => b.weight - a.weight);
+    const keep = mset.edgeDensity === "few" ? 0.25 : 0.5;
+    return { ...data, flows: sorted.slice(0, Math.max(1, Math.round(sorted.length * keep))) };
+  }, [data, mset.edgeDensity]);
   const [viewSec, setViewSec] = useState<string>("show");
   const ws = useLive(true);
   // U3 – actors on the terrain: the selected agent, its fence, and the R1
@@ -205,21 +222,38 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
   useEffect(() => {
     if (!data) return;
     if (path.length && !data.blocks[path[0]]) setPath([]);
+    // A deep link names one block: open its real ancestry so the crumbs and
+    // the drilled canvas match what an in-canvas drill would show.
+    else if (path.length === 1 && data.blocks[path[0]]?.parent) {
+      const chain: string[] = [];
+      for (let cur: string | null | undefined = path[0], n = 0; cur && n < 64; n++) { chain.unshift(cur); cur = data.blocks[cur]?.parent; }
+      setPath(chain);
+    }
     if (!openRoot.length) {
       setOpenRoot(Object.values(data.blocks).filter((b) => b.depth === 0).map((b) => b.id));
     }
   }, [data, path, openRoot]);
 
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const drill = useCallback((id: string) => {
     setPath((p) => {
-      // Clicking an open ancestor pops back to it; a new block descends.
+      // The path is always the block's real ancestry, root first: clicking a
+      // block anywhere (not just a child of the last crumb) must not append it
+      // to whatever was open before.
+      const blocks = dataRef.current?.blocks;
+      const chain: string[] = [];
+      for (let cur: string | null | undefined = id, n = 0; cur && n < 64; n++) {
+        chain.unshift(cur);
+        cur = blocks?.[cur]?.parent;
+      }
       const at = p.indexOf(id);
-      const next = at >= 0 ? p.slice(0, at + 1) : [...p, id];
-      if (`#map/${next.join("/")}` !== location.hash) history.replaceState(null, "", `#map/${next.join("/")}`);
+      const next = blocks?.[id] ? chain : at >= 0 ? p.slice(0, at + 1) : [id];
+      if (`#map/${next.join("/")}` !== location.hash) history.replaceState(history.state, "", `#map/${next.join("/")}`);
       return next;
     });
   }, []);
-  const home = useCallback(() => { setPath([]); history.replaceState(null, "", "#map"); }, []);
+  const home = useCallback(() => { setPath([]); history.replaceState(history.state, "", "#map"); }, []);
 
   // Esc steps back out to the flow (unless a field or dialog has focus).
   useEffect(() => {
@@ -328,14 +362,23 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
   // everything else to ≤ 35% (contract §8.5). Fences auto-on when an agent is
   // selected – the ring rides the existing marks, the dim rides the kit's
   // focus path, so no flow-level change.
-  const selPaths = selAgent ? fence.fencePaths(selAgent) : EMPTY_PATHS;
-  const fenced = useMemo(() => (selAgent ? fencedSectionsOf(data, selPaths) : []), [data, selAgent, selPaths.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The access lens: picking an agent lights what it may change, rings what
+  // needs a person's review, and fades what its fences keep it out of – one
+  // click instead of a wire from every agent to every section.
+  const access = useMemo(() => accessOf(data, ws.info, selAgent), [data, ws.info, selAgent]);
+  const fenced = useMemo(() => Object.keys(access).filter((k) => access[k] !== "out"), [access]);
+  // Picking an agent brings its reach into view: the camera goes to the first
+  // section it may change (unless it may change everything).
+  useEffect(() => {
+    const lit = Object.keys(access).filter((k) => access[k] !== "out");
+    if (selAgent && lit.length && lit.length < Object.keys(access).length) setReveal(lit[0]);
+  }, [selAgent, access]);
   const fenceMarks = useMemo(() => {
-    if (!fenced.length) return marks;
+    if (!selAgent) return marks;
     const m: Marks = { ...marks };
-    for (const id of fenced) m[id] = { ...m[id], fence: true, agent: (selAgent ?? "").slice(0, 1).toUpperCase() };
+    for (const [id, a] of Object.entries(access)) if (a !== "out") m[id] = { ...m[id], fence: a === "open", review: a === "review", agent: selAgent.slice(0, 1).toUpperCase() };
     return m;
-  }, [marks, fenced, selAgent]);
+  }, [marks, access, selAgent]);
   // The kit dims on focus.chain's truthiness and focus.on's membership, so a
   // U6 – the agent library for the terrain: one row per non-builtin workflow,
   // its fenced section ids from the fence data (empty = whole codebase).
@@ -699,10 +742,16 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
   // Chains-off toggle simply stops showing focus, not a navigation.
   const layerCls = (["blocks", "flows", "chains", "fences", "agents", "runs"] as LayerId[])
     .filter((l) => !layers[l]).map((l) => `u2-l-${l}-off`).join(" ");
+  // X14 – the map's settings popover sits in the top strip, beside the Explorer.
+  const mapSettings = <MapSettings layers={layers} onLayer={toggleLayer} scheme={scheme} onScheme={setScheme} st={mset} onSt={setMsetPatch}
+    canUndo={!!tidyUndo} onTidy={tidy} onUndo={undoTidy}
+    onReset={() => { clearPersisted("map", `map-2-${layoutKey}-n`); setTidyUndo(null); setLayoutKey((k) => k + 1); }}
+    onClearPin={() => { setPinned(null); setSelBlock(null); }} />;
   // the key, plain words and Explorer: docked in the map's top strip
   const headTools = <>
               {!insp && <div className="u7-key-dock" data-testid="map-key-dock"><Legend data={data} ringHue={flowPick != null ? flowHue(flowPick) : null} /></div>}
               <div className="u9-dock" data-testid="map-plain-dock"><PlainPanel agents={ws.info?.workflows.filter((w) => !w.builtin).map((w) => w.name)} /></div>
+              {mapSettings}
 <Explorer open={exOpen} onOpen={setExOpen}
                 search={(<>
                   {!searchOpen && <button className="ex-verb ex-find" data-testid="u2-rail-search" title="Search  /" onClick={() => setSearchOpen(true)}><Icon.search /> Search code</button>}
@@ -717,12 +766,10 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
                   <button className={`ex-row${rolesOpen ? " on" : ""}`} data-testid="map-roles-btn" aria-expanded={rolesOpen} aria-controls="map-role-filter"
                     onClick={() => setRolesOpen((o) => !o)}><Icon.types /> Roles</button>
                 </>}
-                layers={<LayerBar layers={layers} onToggle={toggleLayer} />}
+                layers={null}
                 verbs={<>
                   <button className="ex-verb" data-testid="u2-rail-add" title="Add agent  n" onClick={() => { setExOpen(false); openAgentAdd(); }}><Icon.plus /> Agent</button>
                   <button className="ex-verb" data-testid="u2-rail-note" title="Add sticky note  ⇧S" onClick={() => { setExOpen(false); addSticky(); }}><Icon.doc /> Note</button>
-                  <button className="ex-verb" data-testid="u2-tidy" title="Tidy – re-run the layout (T)" onClick={tidy}><Icon.sweep /> Tidy</button>
-                  {tidyUndo && <button className="ex-verb ex-undo" data-testid="u2-tidy-undo" title="Undo tidy  ⌘Z" onClick={undoTidy}><Icon.rerun /> Undo</button>}
                 </>} />
             </>;
   return (
@@ -761,10 +808,11 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
       <div className="sy-split" style={listWidth("map", 360)}>
         {path.length
           ? <BlockCanvas tools={headTools} blocks={data.blocks} leaves={data.leaves} loops={data.loops} roles={roles} chain={chain} path={path} onDrill={drill} onLeaf={selectLeaf} onHome={home} />
-          : <div className="ws-drop" ref={canvasWrapRef} onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView headTools={headTools}
+          : <div className={`ws-drop${selAgent ? " at-lens" : ""}`} ref={canvasWrapRef} onDragOver={onCanvasDragOver} onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(null); }} onDrop={onCanvasDrop}><FlowKitView headTools={headTools}
             onPickFile={(path) => { const hit = Object.entries(data.leaves).find(([, l]) => l.path === path); if (hit) selectLeaf(Number(hit[0])); }}
-            agents={terrainAgents} agentsOn={layers.agents} flowTint={flowTint} marks={fenceMarks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={data} roles={roles} focus={fenceFocus ?? (layers.chains && chain ? focusOf(data, chain) : null)} selection={selBlock ?? (selAgent ? `agent:${selAgent}` : null)} onSelect={pickOnCanvas} onDrill={(id) => { setSelBlock(id); setInspForced(true); }} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
+            agents={terrainAgents} agentsOn={layers.agents} flowTint={flowTint} marks={fenceMarks} steps={pipe.steps} onStepTool={onStepTool} scheme={scheme} canvas={canvas} data={dataForKit ?? data!} roles={roles} focus={fenceFocus ?? (layers.chains && chain ? focusOf(data, chain) : null)} selection={selBlock ?? (selAgent ? `agent:${selAgent}` : null)} onSelect={pickOnCanvas} onDrill={(id) => { setSelBlock(id); setInspForced(true); }} onLeaf={selectLeaf} onClearFocus={() => { setSelChain(null); }} layoutKey={layoutKey}
             reveal={reveal}
+            labels={mset.labels} minimap={mset.minimap} snap={mset.snap}
             pinned={pinned && !selStep ? pinned : null}
             onNodeTool={(id, action) => {
               if (action === "open") { drill(id); setSelBlock(id); setInspForced(true); }
@@ -779,6 +827,8 @@ export default function MapView({ block, agent, go }: { openSymbol?: (id: number
         counts={{ runs: runner.runs.length ? `${runner.runs.length}` : undefined }} />} runner={runner} steps={runnable(pipe.steps)} waiting={waiting ? { id: waiting.id, name: waiting.name } : null} last={runner.runs[0] ?? null} sel={selStep} onPick={(id) => (sup.planActive ? sup.toggleStrike(id) : setSelBlock(`step:${id}`))} onOpen={(id) => { setSelBlock(`step:${id}`); setNdv(id); }} sup={sup} />
             {/* U3 – the fence hull around the selected agent's sections (§8.5). */}
             <FenceHull canvas={canvasWrapRef} fencedIds={fenced} agent={selAgent} />
+            {ws.info && (ws.info.teams.length > 0) && <SwarmPanel info={ws.info} picked={selAgent} access={access}
+              onPick={(wf) => { setSelAgent(wf); if (wf) setInspForced(true); }} />}
             {/* U7 – journey steps over the map; onPickStep pans the camera via the kit's reveal. */}
             {flowPick != null && <JourneyStrip data={data} flowPick={flowPick} onPickStep={(id) => { setSelBlock(id); setReveal(id); }} onClose={() => setFlowPick(null)} />}
             {/* U4 – run supervision: plan overlay (read outline / write tint /

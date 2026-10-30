@@ -18,7 +18,7 @@ test.describe("s1 agents split", () => {
     test.skip(test.info().project.name !== "desktop");
     await open(page);
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // `a` opens Agents (its rail item is back as the config home)
-    await expect(page.locator(".ag-menu .list-head h2")).toHaveText("Agents");
+    await expect(page.locator(".ag-detail .page-head h1")).toHaveText("Agents");
     const tabs = page.locator(".ag-tabs [role=tab]");
     await expect(tabs).toHaveCount(7);
     for (const name of ["Agents", "Teams", "Research", "Skills", "Memory", "Docs", "Settings"]) {

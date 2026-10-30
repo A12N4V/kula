@@ -17,11 +17,11 @@
 .dock-body { flex: 1; min-height: 0; overflow: hidden; }
 .dock-body .console { height: 100%; }
 .dock-empty { padding: 18px; color: var(--text-3); font-size: 12.5px; }
-.dock-empty b { color: var(--accent); }
+.dock-empty b { color: var(--accent-text); }
 .dock-log { height: 100%; overflow: auto; padding: 8px 12px; font: 12px/1.55 var(--mono); }
 .dl { display: grid; grid-template-columns: 64px 120px 1fr; gap: 10px; animation: dl-in .2s var(--ease) both; }
 .dl-t { color: var(--text-3); }
-.dl-src { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-src { color: var(--accent-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dl-x { color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
 .dl-ok .dl-x { color: var(--green); }
 .dl-err .dl-x { color: var(--red); }

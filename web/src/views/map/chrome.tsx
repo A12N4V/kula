@@ -9,6 +9,7 @@
 import { PaneControls } from "../../resize";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../ui";
+import { SCHEMES, type Scheme } from "./flowKit";
 
 export type LayerId = "blocks" | "flows" | "chains" | "fences" | "agents" | "runs";
 export const LAYERS: { id: LayerId; label: string; hint: string }[] = [
@@ -189,6 +190,81 @@ export function EvalsBoard({ onRuns, onClose }: { onRuns: () => void; onClose: (
         <p className="ws-hint">Run a task with an eval gate and its scores land here – pass rate, cost and time per agent, per run.</p>
         <button className="btn sm" data-testid="u2-evals-open-runs" onClick={onRuns}><Icon.flows /> Open Runs</button>
       </div>
+    </div>
+  );
+}
+
+/** X14 – the map's one settings popover: layers, colour scheme, edge density,
+    labels, minimap, snap-to-grid, tidy/undo and the pin reset – the controls
+    that were scattered over the Explorer sheet, the canvas zoom bar and
+    localStorage keys. One gear in the map's top strip, remembered per
+    browser, same dropdown language as Agents Settings. */
+export type MapEdgeDensity = "few" | "normal" | "full";
+export interface MapSettingsState {
+  edgeDensity: MapEdgeDensity;
+  labels: "few" | "normal" | "many";
+  minimap: boolean;
+  snap: boolean;
+}
+export const DEFAULT_MAP_SETTINGS: MapSettingsState = { edgeDensity: "normal", labels: "normal", minimap: false, snap: true };
+
+function Seg<T extends string>({ value, options, onChange, testId }: { value: T; options: [T, string][]; onChange: (v: T) => void; testId: string }) {
+  return (
+    <div className="seg full" data-testid={testId}>
+      {options.map(([v, l]) => (
+        <button key={v} className={value === v ? "on" : ""} aria-pressed={value === v}
+          data-testid={`${testId}-${v}`} onClick={() => onChange(v)}>{l}</button>
+      ))}
+    </div>
+  );
+}
+
+export function MapSettings({ layers, onLayer, scheme, onScheme, st, onSt,
+  canUndo, onTidy, onUndo, onReset, onClearPin }: {
+  layers: Layers; onLayer: (id: LayerId) => void;
+  scheme: Scheme; onScheme: (s: Scheme) => void;
+  st: MapSettingsState; onSt: (patch: Partial<MapSettingsState>) => void;
+  canUndo: boolean; onTidy: () => void; onUndo: () => void; onReset: () => void; onClearPin: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target as Element)?.closest?.("input")) setOpen(false); };
+    window.addEventListener("pointerdown", away); window.addEventListener("keydown", esc);
+    return () => { window.removeEventListener("pointerdown", away); window.removeEventListener("keydown", esc); };
+  }, [open]);
+  return (
+    <div className="mset-wrap" ref={ref} data-testid="map-settings">
+      <button className={`ex-btn${open ? " on" : ""}`} data-testid="map-settings-btn" aria-expanded={open} aria-controls="map-settings-sheet"
+        title="Map settings" onClick={() => setOpen((o) => !o)}><Icon.gear /><span>Settings</span></button>
+      {open && (
+        <div className="ex-sheet mset-sheet" id="map-settings-sheet" data-testid="map-settings-sheet" role="dialog" aria-label="Map settings">
+          <div className="ex-sec"><span className="ex-h">Layers</span><LayerBar layers={layers} onToggle={onLayer} /></div>
+          <div className="ex-sec"><span className="ex-h">Colour scheme</span>
+            <Seg testId="map-scheme" value={scheme} options={SCHEMES.map((s) => [s.id, s.label] as [Scheme, string])} onChange={onScheme} />
+          </div>
+          <div className="ex-sec"><span className="ex-h">Edge density</span>
+            <Seg testId="map-edges" value={st.edgeDensity} options={[["few", "Few"], ["normal", "Normal"], ["full", "Full"]]} onChange={(v) => onSt({ edgeDensity: v })} />
+          </div>
+          <div className="ex-sec"><span className="ex-h">Card labels</span>
+            <Seg testId="map-labels" value={st.labels} options={[["few", "Few"], ["normal", "Normal"], ["many", "Many"]]} onChange={(v) => onSt({ labels: v })} />
+          </div>
+          <div className="ex-sec"><span className="ex-h">Canvas</span>
+            <label className="mset-row"><input type="checkbox" data-testid="map-minimap" checked={st.minimap} onChange={(e) => onSt({ minimap: e.target.checked })} /> Minimap</label>
+            <label className="mset-row"><input type="checkbox" data-testid="map-snap" checked={st.snap} onChange={(e) => onSt({ snap: e.target.checked })} /> Snap cards to grid</label>
+          </div>
+          <div className="ex-sec"><span className="ex-h">Layout</span>
+            <div className="ex-verbs">
+              <button className="ex-verb" data-testid="u2-tidy" title="Tidy – re-run the layout (T)" onClick={() => { onTidy(); }}><Icon.sweep /> Tidy</button>
+              {canUndo && <button className="ex-verb ex-undo" data-testid="u2-tidy-undo" title="Undo tidy  ⌘Z" onClick={onUndo}><Icon.rerun /> Undo</button>}
+              <button className="ex-verb" data-testid="map-reset-layout" title="Reset layout – forget every drag and tidy again" onClick={onReset}><Icon.rerun /> Reset layout</button>
+              <button className="ex-verb" data-testid="map-clear-pin" title="Release the pinned block" onClick={onClearPin}><Icon.target /> Clear pin</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

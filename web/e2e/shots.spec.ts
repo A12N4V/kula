@@ -49,7 +49,7 @@ test("graph, impact, fences and a path", async ({ page }) => {
   await settled(page);
   await shot(page, "graph");
   await inspect(page, "context_pack");
-  await page.locator(".inspector").getByRole("button", { name: "Impact" }).click();
+  await page.locator(".inspector .tabs").getByRole("tab", { name: "Impact" }).click();
   await page.waitForTimeout(1200);
   await shot(page, "impact");
   await page.keyboard.press("Escape");
@@ -111,10 +111,12 @@ test("notes autofill", async ({ page }) => {
   await settled(page);
   await inspect(page, "resolve_target");
   await page.locator(".rail").getByRole("button", { name: "Notes" }).click();
+  // since X13 the note composer is a code-panel window – open a new note first
+  await page.getByTestId("u14-new-note").click();
+  await page.locator(".code-panel").waitFor({ timeout: 10_000 });
   const target = page.getByLabel("Note target");
   await target.fill("");
   await target.focus();
-  await page.mouse.move(900, 700);
   await page.waitForTimeout(700);
   await shot(page, "autofill");
 });

@@ -11,7 +11,7 @@
   <img alt="agents" src="https://img.shields.io/badge/agents-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20Gemini-8fd694?style=flat-square&labelColor=000000">
   <img alt="languages" src="https://img.shields.io/badge/parses-11%20languages-7cb7ff?style=flat-square&labelColor=000000">
   <img alt="rdf" src="https://img.shields.io/badge/graph-RDF%20·%20SPARQL%201.1-d49cf0?style=flat-square&labelColor=000000">
-  <img alt="platforms" src="https://img.shields.io/badge/macOS%20·%20Linux%20·%20Windows-x64%20·%20arm64-e8e2d9?style=flat-square&labelColor=000000">
+  <img alt="platforms" src="https://img.shields.io/badge/macOS%20·%20Linux-x64%20·%20arm64-e8e2d9?style=flat-square&labelColor=000000"> <img alt="windows" src="https://img.shields.io/badge/Windows-x64-e8e2d9?style=flat-square&labelColor=000000">
   <img alt="local-first" src="https://img.shields.io/badge/local--first-no%20account%20·%20no%20telemetry-e8e2d9?style=flat-square&labelColor=000000">
 </p>
 

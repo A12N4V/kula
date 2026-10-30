@@ -3,11 +3,12 @@
 // one line of role, and the tags line at the bottom. The whole card is the
 // button: clicking it opens the agent sidebar (AgentSidebar).
 
-import { useMemo } from "react";
+import { useMemo, type KeyboardEvent } from "react";
 import { harmonographPath, harmonographSegments, svgId, useLogo, type MarkFamily } from "../../flow/agentMark";
 import { openLogoStudio } from "./LogoStudio";
 import { Icon } from "../../ui";
 import type { Workflow } from "../../api";
+import { dropHandlers, getDrag, setDrag, type DragPayload } from "./dnd";
 
 export interface CardData {
   name: string;
@@ -64,22 +65,19 @@ export function CardArt({ name, family = "agent", onStudio = true }: { name: str
     e.stopPropagation();
     openLogoStudio(family, name);
   };
-  // keyboard affordance for the mark: focusable, Enter or Space opens the
-  // studio, matching the team canvas marks. The card button stays the agent.
-  const onKey = (e: React.KeyboardEvent) => {
-    if (!onStudio) return;
-    if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); openLogoStudio(family, name); }
-  };
-  const studioProps = onStudio ? { role: "button" as const, tabIndex: 0, onKeyDown: onKey, "aria-label": `Open logo studio – ${name}` } : {};
+  // Enter/Space on the mark must reach its own click, not the card's keydown
+  // (which opens the side panel and swallows the key).
+  const studioProps = onStudio ? { type: "button" as const, "aria-label": `Edit logo – ${name}`, onKeyDown: (e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); } } : {};
   if (logo) {
     return (
-      <span className={`ag-card-art-svg logo-saved${onStudio ? " logo-click" : ""}`} data-testid={`ag-art-${name}`} data-figure
+      <button className={`ag-card-art-svg logo-saved${onStudio ? " logo-click" : ""}`} data-testid={`ag-art-${name}`} data-figure
         onClick={open} {...studioProps} style={{ display: "block", aspectRatio: "1" }} dangerouslySetInnerHTML={{ __html: logo.svg }} />
     );
   }
   return (
-    <svg className={`ag-card-art-svg${onStudio ? " logo-click" : ""}`} viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" aria-hidden={onStudio ? undefined : true} data-figure data-testid={`ag-art-${name}`}
+    <button className={`ag-card-art-svg${onStudio ? " logo-click" : ""}`} data-testid={`ag-art-${name}`}
       onClick={open} {...studioProps}>
+      <svg viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" aria-hidden={onStudio ? undefined : true} data-figure>
       <defs>
         <mask id={id} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
           <path className="ag-card-hg" d={whole} pathLength={1} fill="none" stroke="#fff" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
@@ -88,14 +86,20 @@ export function CardArt({ name, family = "agent", onStudio = true }: { name: str
       <g mask={`url(#${id})`}>
         {segs.map((g, i) => <path key={i} d={g.d} fill="none" stroke={g.stroke} strokeOpacity={g.opacity} className="ag-card-seg" strokeLinecap="round" strokeLinejoin="round" />)}
       </g>
-    </svg>
+      </svg>
+    </button>
   );
 }
 
-export default function AgentCard({ card, live, onOpen }: { card: CardData; live: boolean; onOpen: () => void }) {
+export default function AgentCard({ card, live, onOpen, onDelete, onDragStart, onDropPayload }: { card: CardData; live: boolean; onOpen: () => void; onDelete?: () => void; onDragStart?: (e: React.DragEvent) => void; onDropPayload?: (p: DragPayload) => void }) {
+  const open = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); }
+  };
   return (
-    <button className="card ag-card" data-testid={`ag-card-${card.name}`} onClick={onOpen} aria-haspopup="dialog">
-      <span className="card__art" aria-hidden="true"><CardArt name={card.name} /></span>
+    <div className="card ag-card" data-testid={`ag-card-${card.name}`} role="button" tabIndex={0} onClick={onOpen} onKeyDown={open}
+      aria-haspopup="dialog" draggable={!!onDragStart} onDragStart={onDragStart}
+      {...(onDropPayload ? dropHandlers(["skill", "memory"], onDropPayload) : {})}>
+      <span className="card__art"><CardArt name={card.name} /></span>
       <span className="card__body">
         <span className="card__meta">
           <span className="mono">{card.agent}</span>
@@ -106,7 +110,13 @@ export default function AgentCard({ card, live, onOpen }: { card: CardData; live
         <span className="card__d">{card.description || card.role || <span className="muted">no role yet</span>}</span>
         <span className="card__fmt">{card.tags.join(" · ") || "–"}</span>
       </span>
-    </button>
+      {onDelete && (
+        <span className="ag-card-ovf" onClick={(e) => e.stopPropagation()}>
+          <button className="btn sm ghost" aria-label={`Delete ${card.name}`} title="Delete this agent" data-testid={`ag-card-del-${card.name}`}
+            onClick={() => { if (confirm(`Delete the ${card.name} agent?`)) onDelete(); }}>Delete</button>
+        </span>
+      )}
+    </div>
   );
 }
 

@@ -659,6 +659,7 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "hook_installed": read(".claude/settings.json").contains("kula guard hook"),
             "kula_toml": crate::config::Config::exists(&r.root),
             "allow_solo": cfg.agents.allow_solo,
+            "scopes": agent_scopes(&cfg),
             "workflows": crate::workflow::all(&cfg),
             "workflow": g.workflow(),
             "workflow_rules": g.workflow_rules().into_iter().map(|(rule, level)| json!({ "level": level, "paths": rule.paths, "symbols": rule.symbols, "reason": rule.reason })).collect::<Vec<_>>(),
@@ -680,6 +681,79 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
         })
     })
     .await
+}
+
+/// GET /api/agents/effective_fences?team=&seat= – the fences a seat actually
+/// works under, outer first: the repo's, then the team's, then the workflow's
+/// (shown to U20 as the agent's own). Same shape agents_info rules use, plus
+/// a `source` saying which layer wrote it.
+#[derive(serde::Deserialize)]
+struct FenceQuery {
+    team: String,
+    seat: String,
+}
+
+async fn agent_effective_fences(State(s): State<AppState>, Query(q): Query<FenceQuery>) -> ApiResult {
+    blocking(move || effective_fences_req(&s.repo.root, &q.team, &q.seat)).await
+}
+
+fn effective_fences_req(root: &std::path::Path, team: &str, seat: &str) -> anyhow::Result<Value> {
+    let cfg = crate::config::Config::load(root)?;
+    let t = cfg.teams.iter().find(|t| t.name == team).ok_or_else(|| anyhow!("no team {:?}", team))?;
+    let m = t.members.iter().find(|m| m.key() == seat).ok_or_else(|| anyhow!("{:?} is not in the team {:?}", seat, team))?;
+    // The task the seat would run under, as guard.rs builds it for a team start.
+    let wf = (!m.workflow.is_empty()).then(|| crate::workflow::find(&cfg, &m.workflow)).flatten();
+    let scope = if !m.scope.is_empty() { m.scope.clone() } else { wf.as_ref().map(|w| w.scope.clone()).unwrap_or_default() };
+    let task = crate::guard::Task {
+        title: format!("team {}: {}", t.name, m.key()),
+        started: crate::meta::now(),
+        by: format!("team:{}", t.name),
+        workflow: m.workflow.clone(),
+        scope,
+    };
+    let g = crate::guard::Guards::new(&cfg, Some(task))?;
+    let layer = |source: &str| -> &'static str {
+        if source.starts_with("team ") {
+            "team"
+        } else if source.starts_with("workflow ") {
+            "agent"
+        } else {
+            "repo"
+        }
+    };
+    // Outer first: the repo's rules, then the team's, then the agent's.
+    let rank = |l: &str| match l {
+        "repo" => 0,
+        "team" => 1,
+        _ => 2,
+    };
+    let mut out: Vec<_> = g
+        .all_rules()
+        .into_iter()
+        .map(|(rule, level, source)| {
+            json!({
+                "level": level,
+                "paths": rule.paths,
+                "symbols": rule.symbols,
+                "reason": rule.reason,
+                "source": layer(&source),
+            })
+        })
+        .collect();
+    out.sort_by_key(|v| rank(v["source"].as_str().unwrap_or("repo")));
+    Ok(json!(out))
+}
+
+/// The core of `settings_save`, split out for the route tests: agents settings
+/// may also write the neighbouring sections (check/index/project/embed).
+fn settings_save_req(root: &std::path::Path, ag: &crate::config::Agents) -> anyhow::Result<Value> {
+    crate::config::set_agents(root, ag)?;
+    Ok(json!({ "ok": true }))
+}
+/// The `scopes` block of GET /api/agents: every workflow's name, one-liner and
+/// default scope, so the frontend can show what each loop may touch.
+fn agent_scopes(cfg: &crate::config::Config) -> Value {
+    json!(crate::workflow::all(cfg).iter().map(|w| json!({ "name": w.name, "about": w.about, "paths": w.scope })).collect::<Vec<_>>())
 }
 
 /// What the repository is built with, so templates can offer commands that run here.
@@ -904,8 +978,7 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
             }
             "settings_save" => {
                 let ag = a.agents.ok_or_else(|| anyhow!("agents settings required"))?;
-                crate::config::set_agents(&r.root, &ag)?;
-                json!({ "ok": true })
+                settings_save_req(&r.root, &ag)?
             }
             "doc_read" => json!({ "path": a.path, "text": crate::agents::doc_read(r, &a.path)? }),
             "doc_save" => {
@@ -1384,6 +1457,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/git/{action}", post(git_action))
         .route("/api/meta", get(meta_all))
         .route("/api/agents", get(agents_info))
+        .route("/api/agents/effective_fences", get(agent_effective_fences))
         .route("/api/agents/{action}", post(agents_action))
         .route("/api/agents/logo_save", post(logo_save))
         .route("/api/agents/logo_delete", post(logo_delete))
@@ -1753,6 +1827,57 @@ mod b2_tests {
         assert!(err.contains("teams now") && err.contains("allow_solo"), "{err}");
         assert!(matches!(run_decision("", true).unwrap(), RunKind::Solo));
         assert!(matches!(run_decision("ship", false).unwrap(), RunKind::Team(t) if t == "ship"));
+    }
+
+    /// fuse5 B3 · GET /api/agents/effective_fences returns the seat's fences
+    /// outer first (repo, then team, then the agent's own workflow), and
+    /// agents_info carries the workflow scopes.
+    #[test]
+    fn effective_fences_and_scopes_routes() {
+        let (_d, r) = fixture();
+        std::fs::write(
+            r.root.join("kula.toml"),
+            "[[guard]]\npaths = [\"src/**\"]\nlevel = \"locked\"\nreason = \"repo rule\"\n\n[[workflow]]\nname = \"fix\"\nabout = \"fixing\"\n\n[[team]]\nname = \"ship\"\nmembers = [{ name = \"atlas\", service = \"claude\", workflow = \"fix\" }]\nfences = [{ paths = [\"migrations/**\"], level = \"locked\", reason = \"schema is the DBA's\" }]\n",
+        )
+        .unwrap();
+        let out = effective_fences_req(&r.root, "ship", "atlas").unwrap();
+        let arr = out.as_array().unwrap();
+        let sources: Vec<&str> = arr.iter().map(|v| v["source"].as_str().unwrap()).collect();
+        assert_eq!(sources, vec!["repo", "team"], "{out}");
+        assert_eq!(arr[0]["reason"], json!("repo rule"));
+        assert_eq!(arr[1]["paths"], json!(["migrations/**"]));
+        assert!(effective_fences_req(&r.root, "ship", "nonesuch").is_err(), "an unknown seat is refused");
+        // agents_info's scopes: each workflow's name, about and paths
+        let cfg = crate::config::Config::load(&r.root).unwrap();
+        let scopes = agent_scopes(&cfg);
+        let fix = scopes.as_array().unwrap().iter().find(|v| v["name"] == json!("fix")).unwrap();
+        assert_eq!(fix["about"], json!("fixing"));
+        assert_eq!(fix["paths"], json!([] as [Value; 0]));
+    }
+
+    /// fuse5 B3 · settings_save writes the agents settings plus the
+    /// cross-section fields (check/index/project/embed) and says ok.
+    #[test]
+    fn settings_save_route_writes_settings() {
+        let (_d, r) = fixture();
+        let ag = crate::config::Agents {
+            hide_secrets: false,
+            memory: false,
+            docs: vec![],
+            default: String::new(),
+            allow_solo: true,
+            max_risk: Some("high".into()),
+            exclude: Some(vec!["dist/**".into()]),
+            max_file_kb: Some(2048),
+            default_branch: Some("develop".into()),
+            embed_pause_ms: Some(120),
+        };
+        let out = settings_save_req(&r.root, &ag).unwrap();
+        assert_eq!(out["ok"], json!(true));
+        let cfg = crate::config::Config::load(&r.root).unwrap();
+        assert!(cfg.agents.allow_solo && !cfg.agents.hide_secrets);
+        assert_eq!(cfg.check.max_risk, "high");
+        assert_eq!(cfg.embed.pause_ms, 120);
     }
 
     /// fuse5 · a temp fixture repo for the route-level tests below.

@@ -143,6 +143,9 @@ enum Cmd {
         /// Don't build the graph at the end.
         #[arg(long)]
         no_index: bool,
+        /// Leave kula's files committable (default: kept local via .git/info/exclude).
+        #[arg(long)]
+        commit: bool,
     },
     /// Build or rebuild the knowledge graph (.kula/graph.db).
     #[command(after_help = "Examples:\n  kula index          ·  kula index --if-stale --quiet   (what the hooks run)")]
@@ -1049,7 +1052,7 @@ fn run(cli: Cli) -> Result<()> {
     if let Cmd::Lang(lc) = cmd {
         return lang_cmd::run(&cwd, lc, json);
     }
-    if let Cmd::Init { yes, hooks, no_hooks, agents, no_agents, ci, no_index } = cmd {
+    if let Cmd::Init { yes, hooks, no_hooks, agents, no_agents, ci, no_index, commit } = cmd {
         let pick = |on: bool, off: bool| {
             if on {
                 Some(true)
@@ -1061,7 +1064,7 @@ fn run(cli: Cli) -> Result<()> {
         };
         return project::init(
             &cwd,
-            project::InitOpts { yes, hooks: pick(hooks, no_hooks), agents: pick(agents, no_agents), ci, index: !no_index },
+            project::InitOpts { yes, hooks: pick(hooks, no_hooks), agents: pick(agents, no_agents), ci, index: !no_index, commit },
         );
     }
     let repo = Repo::discover(&cwd)?;
@@ -1072,10 +1075,11 @@ fn run(cli: Cli) -> Result<()> {
             if if_stale && Store::freshness(&repo) == "current" {
                 return Ok(());
             }
+            let wall = std::time::Instant::now();
             if !quiet {
                 eprint!("{} indexing {} …", accent("◯"), bold(&repo.name()));
             }
-            let s = index::run(&repo, quiet)?;
+            let mut s = index::run(&repo, quiet)?;
             // Map by default: blocks and chains after the graph builds. The
             // CLI runs it on this thread (run_now) – the process ends when
             // main returns, so a detached thread would be killed mid-run and
@@ -1097,15 +1101,18 @@ fn run(cli: Cli) -> Result<()> {
                     v => eprintln!("  {} embeddings off – {}: {}", crate::term::dim("◆"), v, rep.reasons.join("; ")),
                 }
             }
+            // Report wall time for the whole command (graph, map, embeddings), not just the parse.
+            s.millis = wall.elapsed().as_millis();
             if quiet {
             } else if json {
                 out(&s);
             } else {
                 println!(
-                    "{} {} files · {} parsed · {} symbols · {} edges · {} clusters  {}",
+                    "{} {} files · {} parsed ({} changed) · {} symbols · {} edges · {} clusters  {}",
                     green("✓"),
                     s.files,
                     s.parsed,
+                    s.reparsed,
                     bold(&s.symbols.to_string()),
                     s.edges,
                     s.communities,
@@ -2096,7 +2103,7 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                     .collect();
                 println!(
                     "{}",
-                    serde_json::json!({ "rules": rules, "task": g.task(), "files": files.iter().map(|(p, v)| serde_json::json!({ "path": p, "verdict": v })).collect::<Vec<_>>() })
+                    serde_json::json!({ "rules": rules, "scopes": g.scope_fences(&config::Config::load(&repo.root)?), "task": g.task(), "files": files.iter().map(|(p, v)| serde_json::json!({ "path": p, "verdict": v })).collect::<Vec<_>>() })
                 );
                 return Ok(());
             }
@@ -2107,6 +2114,23 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
             for (i, (r, l)) in g.rules().iter().enumerate() {
                 let what = [r.paths.clone(), r.symbols.clone()].concat().join(", ");
                 println!("  {} {}  {}  {}", dim(&format!("#{}", i + 1)), level_tag(*l), bold(&what), dim(&r.reason));
+            }
+            let fences = g.scope_fences(&config::Config::load(&repo.root)?);
+            if !fences.is_empty() {
+                println!("\n  {}", accent("scope fences"));
+            }
+            for f in &fences {
+                let tag = match f.level.as_str() {
+                    "locked" => level_tag(guard::Level::Locked),
+                    "hidden" => level_tag(guard::Level::Hidden),
+                    "review" => level_tag(guard::Level::Review),
+                    "saved" => dim("saved"),
+                    _ => level_tag(guard::Level::Scope),
+                };
+                let what = f.entries.join(", ");
+                let n = if f.resolved != f.entries { format!("  → {} path(s)", f.resolved.len()) } else { String::new() };
+                let on = if f.active { accent(" active") } else { String::new() };
+                println!("  {}  {}  {}{}{}", tag, bold(&f.source), what, dim(&n), on);
             }
             if let Some(t) = g.task() {
                 println!(
@@ -2229,13 +2253,28 @@ fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                 || words_has(cmd, "patch")
                 || words_has(cmd, "env")
                 || words_has(cmd, "unset")
-                || words_has(cmd, "cd");
+                || words_has(cmd, "cd")
+                || ["sed", "tee", "touch", "rm", "truncate", "cp", "mv", "ln", "install", "xargs", "cargo", "prettier", "black", "rustfmt",
+                    "isort", "autopep8", "gofmt", "goimports", "ruff", "clang-format", "npx", "pnpm", "yarn", "bunx", "python", "python3",
+                    "python2", "node", "deno", "bun", "ruby", "perl", "php", "sh", "bash", "zsh", "lua", "Rscript", "dd", "rsync", "tar", "unzip", "eslint", "make", "gmake", "just", "npm", "go", "uv", "pushd",
+                    "find", "sudo", "nice", "time", "command", "tsx", "ts-node", "timeout", "doas", "nohup", "exec"]
+                    .iter()
+                    .any(|w| words_has(cmd, w))
+                || cmd.split(|c: char| c.is_whitespace() || matches!(c, ';' | '|' | '&' | '(')).any(|w| w.starts_with("python"));
             if suspicious {
                 let fenced = guard::fenced_paths(repo, &g, st.as_ref());
                 let hidden = guard::hidden_paths(repo, &g);
                 if !fenced.is_empty() || !hidden.is_empty() {
                     let (more, why) = guard::shell_guard(cmd, &cwd_rel, &fenced, &hidden);
-                    if let Some(why) = why {
+                    if let Some(mut why) = why {
+                        // Say which rule fences it, as the edit-tool refusals do.
+                        if let Some(hit) = why.strip_prefix("kula guard: refused – ").and_then(|r| r.strip_suffix(" is fenced for agents.")) {
+                            let hit = hit.to_string();
+                            if let Some(f) = fenced.iter().find(|f| **f == hit || f.starts_with(&format!("{hit}/")) || hit.starts_with(&format!("{f}/"))) {
+                                let v = g.edit(st.as_ref(), f);
+                                why = format!("kula guard: refused – {hit} is {} for agents – {} ({}).", v.level.as_str(), v.reason, v.rule);
+                            }
+                        }
                         deny(why);
                     }
                     for p in more {
@@ -2409,9 +2448,12 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
                 if !wf.is_empty() && workflow::find(&cfg, wf).is_none() {
                     bail!("no workflow called {wf}");
                 }
-                // re-saving keeps what the UI set: prompts, hand-offs
-                let old =
-                    cfg.teams.iter().find(|t| t.name == name).and_then(|t| t.members.iter().find(|x| x.key() == agent.trim())).cloned();
+                // re-saving keeps what the UI set: prompts, hand-offs.
+                // Seats are keyed by name/workflow now, so `claude` also
+                // matches the seat that service runs.
+                let old = cfg.teams.iter().find(|t| t.name == name).and_then(|t| {
+                    t.members.iter().find(|x| x.key() == agent.trim() || x.service == agent.trim() || x.agent == agent.trim()).cloned()
+                });
                 members.push(config::Member {
                     agent: agent.trim().into(),
                     workflow: wf.trim().into(),
@@ -2422,8 +2464,14 @@ fn team_cmd(repo: &Repo, c: TeamCmd, json: bool) -> Result<()> {
             // `-m gemini=fix:lead` names the lead as well as --lead does
             let lead = lead.or_else(|| members.iter().find(|m| m.role == "lead").map(|m| m.key().to_string()));
             if let Some(lead) = &lead {
+                // the lead may be named by seat key or by the service that runs it
+                let key = members
+                    .iter()
+                    .find(|m| m.key() == lead.as_str() || m.service == lead.as_str() || m.agent == lead.as_str())
+                    .map(|m| m.key().to_string())
+                    .unwrap_or_else(|| lead.clone());
                 for m in members.iter_mut() {
-                    m.reports_to = if m.key() == lead { String::new() } else { lead.clone() };
+                    m.reports_to = if m.key() == key { String::new() } else { key.clone() };
                 }
             }
             let mut teams = cfg.teams.clone();

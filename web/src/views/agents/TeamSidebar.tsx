@@ -13,7 +13,7 @@ import { Window } from "../../ui/Window";
 import { AgentHarmonograph } from "../../flow/agentMark";
 import { seatKey, titleFor } from "../../roster";
 import { AGENT_IDS, AGENT_NAME, MODELS, type Act } from "./data";
-import { keyName } from "./parts";
+import { keyName, seatName, seatProvider } from "./parts";
 import type { AgentsInfo, RawRule, Team } from "../../api";
 import type { Member } from "./TeamCanvas";
 import { memberKey } from "./TeamCanvas";
@@ -69,13 +69,13 @@ export default function TeamSidebar({ team, all, info, member, act, onSet, onAdd
                 return (
                   // a row, not a button: two sibling buttons inside one div
                   <div key={k} className="tc-mcard" data-testid={`tc-member-${k}`}>
-                    <button className="tc-mrow-open" onClick={() => onPickMember(k)} aria-label={`Edit ${m.name || m.workflow || m.agent}`}>
+                    <button className="tc-mrow-open" onClick={() => onPickMember(k)} aria-label={`Edit ${seatName(m)}`}>
                       <AgentHarmonograph name={k} size={22} family="team" />
-                      <span className="tc-mcard-name mono">{m.name || m.workflow || m.agent || "any agent"}</span>
+                      <span className="tc-mcard-name mono">{seatName(m)}</span>
                       <span className="tc-mcard-sub">{memberKey(m) === leadSeat(team) ? "lead" : titleFor(m.role || "member")}</span>
                     </button>
-                    <button className="btn sm ghost icon-only" data-testid={`tc-member-x-${k}`} title={`Remove ${m.name || m.agent} from the team`}
-                      aria-label={`Remove ${m.name || m.agent}`} onClick={() => onRemove(m.workflow || k)}><Icon.minus /></button>
+                    <button className="btn sm ghost icon-only" data-testid={`tc-member-x-${k}`} title={`Remove ${seatName(m)} from the team`}
+                      aria-label={`Remove ${seatName(m)}`} onClick={() => onRemove(m.workflow || k)}><Icon.minus /></button>
                   </div>
                 );
               })}
@@ -108,7 +108,7 @@ function TeamSettings({ team, all, onSet, onDelete }: { team: Team; all: Team[];
           onSet({ members: team.members.map((m) => (memberKey(m) === target ? { ...m, reports_to: "" } : !m.reports_to ? { ...m, reports_to: target } : m)) });
         }} aria-label="Team lead">
           <option value="">nobody</option>
-          {team.members.map((m) => <option key={memberKey(m)} value={memberKey(m)}>{m.name || m.workflow || m.agent || "any agent"}</option>)}
+          {team.members.map((m) => <option key={memberKey(m)} value={memberKey(m)}>{seatName(m)}</option>)}
         </select>
       </label>
       <label className="mi-field"><span>answers to team</span>
@@ -226,6 +226,27 @@ function AddToTeam({ team, info, onAdd, onRemove }: { team: Team; info: AgentsIn
   );
 }
 
+
+/** The seat's effective fences, outer layer first: repo (the global raw
+ *  rules), then the team's fences, then the seat workflow's own rules. Each
+ *  row keeps its source so a person sees why a path is locked. */
+function effRows(m: Member, team: Team, info: AgentsInfo): { level: string; paths: string; source: string; why: string }[] {
+  const rows: { level: string; paths: string; source: string; why: string }[] = [];
+  for (const r of info.raw_rules ?? []) rows.push({ level: r.level, paths: (r.paths ?? []).join(" ") || "–", source: "repo", why: r.reason || "repository rule" });
+  for (const r of team.fences ?? []) rows.push({ level: r.level, paths: (r.paths ?? []).join(" ") || "–", source: `team ${team.name}`, why: r.reason || `team ${team.name} fence` });
+  const wf = info.workflows.find((w) => w.name === m.workflow);
+  // workflow_rules has no owner field in the payload, so a rule counts as
+  // this seat's only when its paths actually come from this workflow's
+  // lock/hide/review lists – otherwise every rule was attributed to every seat.
+  const owns = (paths: string[], list?: string[]) => !!list && paths.some((p) => list.includes(p));
+  for (const r of info.workflow_rules ?? []) {
+    if (!wf) break;
+    const hit = (r.level === "locked" && owns(r.paths, wf.lock)) || (r.level === "hidden" && owns(r.paths, wf.hide)) || (r.level === "review" && owns(r.paths, wf.review));
+    if (hit) rows.push({ level: r.level, paths: r.paths.join(" ") || "–", source: `agent ${wf.name}`, why: r.reason || `${wf.name} rule` });
+  }
+  return rows;
+}
+
 /** One member's fields – now with the seat's service: the agent definition
  *  is neutral, the service is chosen where the seat is. */
 function MemberEdit({ team, idx, info, act, onSet, onClose }: {
@@ -238,7 +259,7 @@ function MemberEdit({ team, idx, info, act, onSet, onClose }: {
   const others = team.members.filter((y) => memberKey(y) !== k).map(memberKey).filter(Boolean);
   const svc = (m as { service?: string }).service ?? (m.agent === "any" ? "" : m.agent);
   return (
-    <section className="tc-member-edit" aria-label={`Edit ${m.name || m.agent}`}>
+    <section className="tc-member-edit" aria-label={`Edit ${seatName(m)}`}>
       <div className="mi-kind"><AgentHarmonograph name={k} size={16} family="team" /> {k === leadSeat(team) ? "lead" : titleFor(m.role || "member")}<span className="spacer" />
         <button className="btn sm ghost icon-only" onClick={onClose} aria-label="Back to the team"><Icon.close /></button>
       </div>
@@ -277,6 +298,23 @@ function MemberEdit({ team, idx, info, act, onSet, onClose }: {
       <label className="mi-field"><span>system prompt</span>
         <textarea className="input" rows={3} value={m.prompt ?? ""} onChange={(e) => setM({ prompt: e.target.value })} aria-label="System prompt" />
       </label>
+      {/* Effective fences: one read-only list, outer layer first – repo · team
+          · agent – each row with its source, so a person sees why a path is
+          locked. Built from the same data Guards::for_agent layers; when the
+          backend's effective_fences route lands it replaces this derivation. */}
+      <div className="mi-field tc-eff" data-testid="tc-eff-fences">
+        <span>effective fences</span>
+        <div className="tc-eff-list" role="list">
+          {effRows(m, team, info).map((r, i) => (
+            <div key={i} className="tc-eff-row" role="listitem" title={r.why}>
+              <span className={`tag ${r.level === "locked" ? "red" : r.level === "review" ? "yellow" : ""}`}>{r.level}</span>
+              <span className="mono tc-eff-paths">{r.paths}</span>
+              <span className="muted tc-eff-src">{r.source}</span>
+            </div>
+          ))}
+          {effRows(m, team, info).length === 0 && <span className="muted">nothing is locked for this seat</span>}
+        </div>
+      </div>
       <div className="row">
         <button className="btn sm ghost" onClick={() => act("team_prompt", { teams: [team], agent: k }, "").catch(() => {})}>Preview prompt</button>
         <span className="spacer" />

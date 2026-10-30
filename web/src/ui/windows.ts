@@ -12,7 +12,7 @@ export type WinState = {
   open?: boolean;
 };
 
-const KEY = "kula.windows.v1";
+const KEY = "kula.windows.v2"; // v2: windows open docked right, not centred
 const MIN_W = 280, MIN_H = 160, EDGE = 24; // snap distance, in px
 
 let wins: Record<string, WinState> = (() => {
@@ -44,14 +44,18 @@ export function clampAll() {
   if (moved) { save(); emit(); }
 }
 
+// The shell's top bar and status bar heights, and the gap kept to the edge.
+const TOP = 52, BOTTOM = 36;
+
 function defaults(id: string): WinState {
-  // First open: a modest window, cascaded a little so stacked opens read as
-  // separate windows rather than a stack of identical cards.
+  // First open: a tall panel against the right edge, below the top bar and
+  // above the status bar, so the canvas in the middle stays in play. Stacked
+  // opens step left and down a little so they read as separate windows.
   const n = Object.values(wins).filter((w) => w.open).length;
   const vw = window.innerWidth, vh = window.innerHeight;
-  const w = Math.min(560, Math.max(360, vw * 0.34));
-  const h = Math.min(Math.round(vh * 0.7), 640);
-  return { x: Math.round(vw * 0.5 - w * 0.5 + n * 28), y: Math.round(vh * 0.5 - h * 0.4 + n * 24), w, h, z: 0 };
+  const w = Math.min(520, Math.max(340, Math.round(vw * 0.32)));
+  const h = Math.max(320, vh - TOP - BOTTOM);
+  return { x: Math.max(0, vw - w - 8 - n * 28), y: TOP + n * 24, w, h: h - n * 24, z: 0 };
 }
 
 export function get(id: string): WinState | undefined {
@@ -107,8 +111,8 @@ export function open(id: string, size?: { w: number; h: number }): WinState {
       // the requested size can differ from the default one the cascade was
       // computed for – re-centre so a wide window never opens off-screen
       const vw = window.innerWidth, vh = window.innerHeight;
-      w.x = Math.max(0, Math.min(vw - w.w, Math.round(vw * 0.5 - w.w * 0.5 + n * 28)));
-      w.y = Math.max(0, Math.min(vh - w.h, Math.round(vh * 0.5 - w.h * 0.4 + n * 24)));
+      w.x = Math.max(0, vw - w.w - 8 - n * 28);
+      w.y = Math.max(0, Math.min(vh - w.h, TOP + n * 24));
     }
   }
   w.open = true;

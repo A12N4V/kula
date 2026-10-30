@@ -95,16 +95,19 @@ test.describe("teams as a map canvas", () => {
     await expect(canvas.locator(".react-flow__edge").first()).toBeVisible();
     // the lead is on top: the node marked "lead" is drawn above the members –
     // its z-index (2) sits over theirs (0)
-    const lead = canvas.locator(".react-flow__node", { hasText: /lead/i }).first();
+    // (seat nodes only: the all-teams org canvas also draws a group node per team)
+    const seats = canvas.locator(".react-flow__node-tc");
+    const lead = seats.filter({ hasText: /lead/i }).first();
     await expect(lead).toBeVisible();
     const zLead = await lead.evaluate((el) => Number(getComputedStyle(el).zIndex || 0));
-    const zMember = await canvas.locator(".react-flow__node").nth(1).evaluate((el) => Number(getComputedStyle(el).zIndex || 0));
+    const zMember = await seats.filter({ hasNotText: /lead/i }).first().evaluate((el) => Number(getComputedStyle(el).zIndex || 0));
     expect(zLead).toBeGreaterThan(zMember);
-    // switching tabs remounts the canvas: steer has no cursor, ship does
+    // every team sits on one org canvas: switching tabs picks a team, it
+    // never swaps the canvas out (ship's Cursor seat stays on screen)
     await page.getByTestId("team-tab-steer").click();
-    await expect(page.getByTestId("team-canvas")).not.toContainText("cursor");
-    await page.getByTestId("team-tab-ship").click();
-    await expect(page.getByTestId("team-canvas")).toContainText("cursor");
+    await expect(page.getByTestId("team-tab-steer")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("team-canvas")).toContainText(/on Cursor/);
+    for (const t of ["ship", "steer"]) await expect(canvas.locator(".react-flow__node-tg").filter({ hasText: t })).toHaveCount(1);
   });
 
   test("the + tab creates a team with an inline name; Enter saves via team_save", async ({ page, request }) => {
@@ -180,7 +183,8 @@ test.describe("teams as a map canvas", () => {
     await page.getByTestId("team-tab-ship").click();
     const canvas = page.getByTestId("team-canvas");
     await expect(canvas).toBeVisible();
-    const node = canvas.locator(".react-flow__node").first();
+    // a seat, not a team's group frame (that drags only by its head)
+    const node = canvas.locator(".react-flow__node-tc").filter({ hasText: "cursor" }).first();
     await expect(node).toBeVisible();
     const box = await node.boundingBox();
     if (!box) throw new Error("node not on screen – fit the canvas");

@@ -43,7 +43,7 @@ export type FlowNode = {
   /** Dimmed while another selection is focused. */
   dim?: boolean;
   /** Overlay ring: an agent's fence, changed files, or a live drop target. */
-  ring?: "fence" | "hot" | "drop";
+  ring?: "fence" | "review" | "hot" | "drop";
   /** Small corner badge (an agent widget, a change count). */
   badge?: ReactNode;
   /** The output handle can be dragged to make a connection (n8n). */

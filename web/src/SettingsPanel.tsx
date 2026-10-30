@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { dirColor, groupDirs, rankHue } from "./colors";
 import { fuzzyScore } from "./nav";
 import { settings, useKnownDirs, useSettings, type Settings } from "./settings";
-import { Icon, IconToggle, SunMoon } from "./ui";
+import { Icon, IconToggle } from "./ui";
 
 /** The icon a switch carries – icon + state, one per setting. */
 const TOGGLE_ICON: Partial<Record<keyof Settings, React.ComponentType>> = {
@@ -218,19 +218,17 @@ function Toggle({ k, label, hint, q }: { k: keyof Settings; label: string; hint?
     the first flip writes an explicit choice. */
 function ThemeMorph() {
   const s = useSettings();
-  const dark = s.theme === "dark" || (s.theme === "system" && typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches);
+  // Three explicit states – Light / Dark / System. A system theme "renders
+  // dark" for the toggle alone (the glyph guesses the OS), so the guess is
+  // gone: the segment states the choice, and System says it follows the OS.
   return (
-    <>
-      <IconToggle checked={dark} hint={dark ? "Dark theme – switch to light" : "Light theme – switch to dark"}
-        testId="theme-toggle"
-        icon={(on) => <SunMoon on={on} />}
-        onChange={(v) => settings.set({ theme: v ? "dark" : "light" })} />
-      {/* Follow-the-OS stays reachable from the panel: one small reset next to the morph. */}
-      {s.theme !== "system" && (
-        <button className="btn ghost sm" data-testid="theme-system" aria-label="Follow the system theme"
-          onClick={() => settings.set({ theme: "system" })}>system</button>
-      )}
-    </>
+    <div className="seg full" role="radiogroup" aria-label="Theme" data-testid="theme-seg">
+      {([["light", "Light"], ["dark", "Dark"], ["system", "System"]] as const).map(([v, l]) => (
+        <button key={v} role="radio" aria-checked={s.theme === v} className={s.theme === v ? "on" : ""}
+          data-testid={`theme-${v}`} title={v === "system" ? "Follow the system theme" : `${l} theme`}
+          onClick={() => settings.set({ theme: v })}>{l}</button>
+      ))}
+    </div>
   );
 }
 
