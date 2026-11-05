@@ -8,7 +8,7 @@ import { useEffect, useRef } from "react";
 import type { GraphData } from "./api";
 import { groupDirs } from "./colors";
 
-const BAYER = (() => {
+export const BAYER = (() => {
   // Recursive construction of the 8×8 Bayer index matrix, normalised to (0, 1).
   let m = [[0]];
   for (let n = 1; n < 8; n *= 2) {

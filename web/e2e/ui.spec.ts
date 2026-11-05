@@ -79,8 +79,9 @@ test.describe("shell", () => {
     // The title is the repository's directory name, whatever the checkout is called.
     const repo = await page.evaluate(() => fetch("/api/repo", { headers: { "x-kula-token": document.querySelector('meta[name="kula-token"]')?.content ?? "" } }).then((r) => r.json()));
     await expect(page.locator(".ov-title h1")).toHaveText(new RegExp(`\\b${repo.name}\\b`));
-    // Numbers live in the stat table now, not KPI tiles.
-    await expect(page.locator(".stat-table.ov-stats")).toBeVisible();
+    // Numbers live in stat cards: icon and label over the counted number.
+    await expect(page.locator(".ov-stats .stat-card")).toHaveCount(6);
+    await expect(page.locator(".ov-stats .stat-card").first().locator(".sc-label svg")).toBeVisible();
   });
 
   test("top bar carries only navigation, search and settings", async ({ page }) => {
@@ -155,7 +156,7 @@ test.describe("shell", () => {
 test.describe("design language", () => {
   test("one typeface: JetBrains Mono everywhere", async ({ page }) => {
     await open(page);
-    for (const sel of ["body", ".ov-title h1", ".stat-table td", ".stat-table .st-note", ".card-head h2", ".section-title, .stat-table th"]) {
+    for (const sel of ["body", ".ov-title h1", ".stat-card .sc-num", ".stat-card .sc-label", ".card-head h2"]) {
       const ff = await page.locator(sel).first().evaluate((el) => getComputedStyle(el).fontFamily);
       expect(ff, sel).toMatch(/^"?JetBrains Mono/);
     }
@@ -174,7 +175,7 @@ test.describe("design language", () => {
 
   test("sharp: framed surfaces and controls have square corners", async ({ page }) => {
     await open(page);
-    for (const sel of [".card", ".stat-table.ov-stats", ".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("0px");
+    for (const sel of [".card", ".ov-stats", ".stat-card", ".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("0px");
   });
 
   test("errors get a thin even border, not an accent bar", async ({ page }) => {
