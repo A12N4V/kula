@@ -72,3 +72,18 @@
   .kc-mini { width: 112px; height: 72px; right: 8px; bottom: 8px; }
   .kc-tools { left: 8px; bottom: 8px; }
 }
+
+/* Agents: the palette of agents and workflows to drag onto team frames */
+.ag-palette { position: absolute; right: 12px; top: 12px; z-index: 3; width: 184px; max-height: calc(100% - 150px); overflow: auto; background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line-2); }
+.ag-pal-h { padding: 8px 10px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-3); }
+.ag-pal-item { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; font-size: 12px; cursor: grab; border-top: 1px solid var(--line); }
+.ag-pal-item:hover { background: var(--panel-2); color: var(--text); }
+.ag-pal-item svg { width: 14px; height: 14px; flex: none; }
+.ag-pal-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-pal-item:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.ws.side-open .ag-palette { display: none; }
+@media (max-width: 760px) {
+  .ag-palette { left: 8px; right: 8px; top: 48px; width: auto; max-height: none; display: flex; overflow-x: auto; scrollbar-width: none; }
+  .ag-pal-h { display: none; }
+  .ag-pal-item { border-top: 0; border-left: 1px solid var(--line); flex: none; height: 32px; }
+}

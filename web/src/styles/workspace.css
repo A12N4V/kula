@@ -87,5 +87,5 @@
 /* Code: the symbols graph sits in the canvas slot with the mode switch under it */
 .code-graph { position: relative; height: 100%; }
 .code-graph > .kc-pick { top: auto; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 20; }
-.kc-pick .btn { background: var(--panel); }
+.kc-pick .btn:not(.primary) { background: var(--panel); }
 .kc-pick .btn.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }

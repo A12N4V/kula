@@ -116,6 +116,28 @@ test.describe("shell", () => {
     }
   });
 
+  test("@responsive agents: teams are frames on the canvas; dropping an agent on a frame adds a seat configured in the sidebar", async ({ page }) => {
+    await open(page, "agents");
+    const canvas = page.getByTestId("agents-canvas");
+    const frame = canvas.locator(".kc-node.frame").first();
+    test.skip(!(await frame.count()), "no teams in this repo");
+    const seats = await canvas.locator(".kc-node[data-kind=seat]").count();
+    const box = (await frame.boundingBox())!;
+    await page.evaluate(([x, y]) => {
+      const dt = new DataTransfer(); dt.setData("text/kula", "agent:codex");
+      document.querySelector("[data-testid=agents-canvas]")!.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y }));
+    }, [box.x + box.width / 2, box.y + box.height - 4]);
+    await expect(canvas.locator(".kc-node[data-kind=seat]")).toHaveCount(seats + 1);
+    const cfg = page.getByTestId("seat-config");
+    await expect(cfg.getByLabel("Agent")).toHaveValue("codex");
+    await expect(cfg.getByLabel("Workflow")).toBeVisible();
+    await expect(page.getByTestId("teams-save")).toBeVisible();
+    // nothing is written until Save: revert leaves kula.toml as it was
+    await page.getByRole("button", { name: "Revert" }).click();
+    await expect(canvas.locator(".kc-node[data-kind=seat]")).toHaveCount(seats);
+    for (const t of ["board", "proposals", "configure"]) await expect(page.getByTestId("ws-pane").locator(`[data-pane="${t}"]`)).toBeVisible();
+  });
+
   test("top nav carries only destinations, search and settings", async ({ page }) => {
     await open(page);
     const bar = page.locator(".topnav");
@@ -136,11 +158,12 @@ test.describe("shell", () => {
     await expect(page.locator(".palette")).toBeVisible();
     await page.keyboard.press("Escape");
     await page.locator(".topnav").getByRole("button", { name: "Agents" }).click();
+    await page.getByTestId("ws-pane").locator('[data-pane="configure"]').click();
     await page.getByRole("tab", { name: /Memory/ }).click();
     await expect(page).toHaveURL(/#agents\/memory$/);
     await page.goBack();
     await expect(page).toHaveURL(/#agents$/);
-    await expect(page.getByRole("tab", { name: /Overview/ })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("ws-pane").locator('[data-pane="runs"]')).toHaveAttribute("aria-pressed", "true");
     await page.goBack();
     await expect(page.locator(".ov-title h1")).toBeVisible();
     await page.keyboard.press("Alt+ArrowRight");
@@ -450,7 +473,7 @@ test.describe("animation", () => {
 const VIEWS: [string, string][] = [
   ["overview", ".ov-title h1"], ["graph", ".graph-wrap"], ["changes", ".list-head"], ["history", ".list-head"],
   ["branches", ".list-head"], ["issues", ".list-head"], ["notes", ".list-head"], ["console", ".console"],
-  ["agents", ".page-head h1"], ["query", ".kq-text"],
+  ["agents", "[data-testid=agents-canvas]"], ["query", ".kq-text"],
 ];
 for (const [view, sel] of VIEWS) {
   test(`@responsive ${view} fits without sideways scroll`, async ({ page }, info) => {
@@ -498,7 +521,7 @@ test.describe("phone chrome", () => {
 test.describe("phone workspace", () => {
   test("@mobile the pane is on by default in every destination; a node's details slide up as a sheet", async ({ page }, info) => {
     test.skip(info.project.name !== "phone", "phones only");
-    for (const hash of ["overview", "flows", "history", "connectors"]) {
+    for (const hash of ["overview", "flows", "history", "connectors", "agents"]) {
       await open(page, hash);
       const pane = page.getByTestId("ws-pane");
       await expect(pane).toBeVisible();
@@ -659,7 +682,7 @@ test.describe("agents", () => {
   const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
 
   test("@responsive the task, its workflow and the agent loop, and what needs a person", async ({ page }, info) => {
-    await open(page, "agents");
+    await open(page, "agents/overview");
     await expect(page.locator(".page-head h1")).toHaveText("Agents");
     await expect(page.locator(".ag-task-title")).toHaveText("harden the MCP server");
     await expect(page.locator(".ag-now .ag-chips .tag")).toHaveText(["fix", "src/mcp.rs", "src/agent.rs"]);
@@ -780,6 +803,7 @@ test.describe("agents", () => {
     await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
     await expect(page.locator(".inspector h2")).toHaveText("context_pack");
     await page.locator(".topnav").getByRole("button", { name: "Agents" }).click();
+    await page.getByTestId("ws-pane").locator('[data-pane="configure"]').click();
     await page.getByRole("tab", { name: /Memory/ }).click();
     const hint = page.locator(".here-hint");
     await expect(hint).toContainText("context_pack");
@@ -845,6 +869,7 @@ test.describe("agents", () => {
     await insp.getByRole("button", { name: "Remember" }).click();
     await expect(insp.locator(".note.mem").filter({ hasText: fact })).toBeVisible();
     await page.locator(".topnav").getByRole("button", { name: "Agents" }).click();
+    await page.getByTestId("ws-pane").locator('[data-pane="configure"]').click();
     await page.getByRole("tab", { name: /Memory/ }).click();
     const row = page.locator(".ag-mem").filter({ hasText: fact });
     await expect(row.locator(".tag")).toHaveText("fresh");
@@ -856,6 +881,7 @@ test.describe("agents", () => {
 
   test("the fences overlay lights locked code and the task's scope, and previews any workflow", async ({ page }) => {
     await open(page, "graph");
+    await expect(page.locator(".graph-wrap")).toBeVisible();
     await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 20_000 });
     await page.keyboard.press("f");
     const key = page.locator(".fence-key");
@@ -1433,7 +1459,7 @@ test.describe("agents A2", () => {
   // Read-only tests: no fixture writes, so no serial coupling and all projects may run them.
 
   test("A2.1: the roster renders every fixture agent with its wiring, counts and seats", async ({ page }) => {
-    await open(page, "agents");
+    await open(page, "agents/overview");
     const rows = page.locator(".roster-row");
     await expect(rows).toHaveCount(4);
     // Claude Code is connected in the fixture (MCP and hook); the others are not wired.
@@ -1451,7 +1477,7 @@ test.describe("agents A2", () => {
     await expect(rows.filter({ hasText: "Cursor" }).locator(".roster-num").nth(5)).toHaveText("2");
     await expect(rows.filter({ hasText: "Codex" }).locator(".roster-num").nth(5)).toHaveText("3");
     await expect(rows.filter({ hasText: "Gemini CLI" }).locator(".roster-num").nth(5)).toHaveText("3");
-    for (const row of await rows.all()) await expect(row).toContainText("0"); // no skills in the fixture
+    await expect(claude.locator(".roster-num").first()).toHaveText(/^3/); // kula's own three skills (.agents/skills), synced for Claude
     // Loops and teams as compact rows with status, linked to their tabs.
     await expect(page.locator(".loop-row")).toHaveCount(4); // the four kula.toml teams
     await expect(page.locator(".loop-row").filter({ hasText: "ship" })).toContainText("saved");
@@ -1462,7 +1488,7 @@ test.describe("agents A2", () => {
   });
 
   test("A2.2: j/k/enter/esc walk the roster and / filters it", async ({ page }) => {
-    await open(page, "agents");
+    await open(page, "agents/overview");
     const roster = page.locator(".roster");
     await roster.focus();
     await page.keyboard.press("j");
@@ -1476,7 +1502,7 @@ test.describe("agents A2", () => {
     await page.keyboard.press("Enter"); // the roster row opens Connect
     await expect(page).toHaveURL(/#agents\/connect/);
     // Back to the roster: / opens the filter, typing narrows, esc clears it.
-    await open(page, "agents");
+    await open(page, "agents/overview");
     await roster.focus();
     await page.keyboard.press("/");
     await expect(page.getByLabel("Filter roster")).toBeFocused();
@@ -1542,7 +1568,7 @@ test.describe("agents A2", () => {
     const facts = page.locator(".seat-facts");
     await expect(facts).toBeVisible();
     await expect(facts).toContainText("explore");
-    await expect(facts).toContainText("no skills carried");
+    await expect(facts).toContainText("kula-board"); // the fixture is a clone of this repo, skills included
     // The inspector coexists with drag rewiring: the org card is still draggable.
     await expect(page.locator('[data-org="codex"]')).toHaveAttribute("draggable", "true");
   });

@@ -97,7 +97,7 @@ export default function Canvas({ nodes, edges, selected, onSelect, onMove, onDro
     if (e.button !== 0 || (e.target as HTMLElement).closest("button, input, select, textarea, a, .kc-body-live")) return;
     e.stopPropagation();
     pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    host.current?.setPointerCapture(e.pointerId);
+    try { host.current?.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
     if (pts.current.size === 2) {
       const [a, b] = [...pts.current.values()];
       pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y), k: viewRef.current.k }; drag.current = null; return;

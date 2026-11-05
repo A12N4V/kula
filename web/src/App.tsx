@@ -8,13 +8,10 @@ import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, fuzzyScore } from "./nav";
 // Heavy views load on demand: the first paint ships the shell + Overview only,
 // the rest arrive as their own chunks (prefetched on idle – see PREFETCH below).
 const GraphView = lazy(() => import("./views/GraphView"));
-const Agents = lazy(() => import("./views/Agents"));
+const AgentsCanvas = lazy(() => import("./views/AgentsCanvas"));
 const Code = lazy(() => import("./views/Code"));
 const Connectors = lazy(() => import("./views/Connectors"));
 const MapView = lazy(() => import("./views/MapView"));
-const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
-const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
-const Proposals = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Proposals })));
 import Overview from "./views/Overview";
 import SettingsPanel from "./SettingsPanel";
 
@@ -22,7 +19,7 @@ import SettingsPanel from "./SettingsPanel";
 // does not wait on the network (local disk, but still a visible flash).
 const PREFETCH: Array<() => Promise<unknown>> = [
   () => import("./views/GraphView"),
-  () => import("./views/Agents"),
+  () => import("./views/AgentsCanvas"),
   () => import("./views/Query"),
   () => import("./views/GitViews"),
   () => import("./views/MetaViews"),
@@ -213,16 +210,14 @@ export default function App() {
           </div>
         )}
         {/* Keyed so each view change plays a short enter transition. */}
-        <div className="view-enter" key={(destOf(view).id === "code" ? (view === "graph" ? "graph" : "code") : view) + (contrast ? ":c" : "")}>
+        <div className="view-enter" key={(view === "graph" ? "graph" : destOf(view).id) + (contrast ? ":c" : "")}>
           <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
             {view === "overview" && <Overview repo={repo} version={version} go={go} />}
             {["graph", "changes", "history", "branches", "query", "console"].includes(view) && <Code view={view} nav={{ ...nav, target }}
               graph={view === "graph" ? <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} /> : null} />}
-            {view === "proposals" && <Proposals {...nav} />}
-            {view === "issues" && <Issues {...nav} />}
-            {view === "notes" && <Notes {...nav} />}
+
             {view === "flows" && <MapView {...nav} />}
-            {view === "agents" && <Agents {...nav} />}
+            {["agents", "proposals", "issues", "notes"].includes(view) && <AgentsCanvas {...nav} view={view} />}
             {view === "connectors" && <Connectors {...nav} />}
           </Suspense>
         </div>
