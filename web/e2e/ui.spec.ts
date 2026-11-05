@@ -495,6 +495,27 @@ test.describe("phone chrome", () => {
   });
 });
 
+test.describe("phone workspace", () => {
+  test("@mobile the pane is on by default in every destination; a node's details slide up as a sheet", async ({ page }, info) => {
+    test.skip(info.project.name !== "phone", "phones only");
+    for (const hash of ["overview", "flows", "history", "connectors"]) {
+      await open(page, hash);
+      const pane = page.getByTestId("ws-pane");
+      await expect(pane).toBeVisible();
+      const [p, v] = [(await pane.boundingBox())!, page.viewportSize()!];
+      expect(p.height).toBeGreaterThan(v.height * 0.35);
+    }
+    await open(page, "flows");
+    await page.getByTestId("ws-pane").locator(".pt-row[data-row]").nth(1).click();
+    const side = page.getByTestId("ws-side");
+    await expect(side).toHaveClass(/\bin\b/);
+    const s = (await side.boundingBox())!;
+    expect(Math.round(s.width)).toBe(page.viewportSize()!.width);
+    await side.getByRole("button", { name: "Close details" }).click();
+    await expect(side).not.toHaveClass(/\bin\b/);
+  });
+});
+
 test.describe("console", () => {
   test("a terminal that runs kula: tabs to add and close, help, kula's own commands and git's", async ({ page }) => {
     await open(page, "console");

@@ -21,9 +21,13 @@ export default function Workspace({ id, canvas, tabs, tab, onTab, side, paneTall
   const host = useRef<HTMLDivElement>(null);
   const [frac, setFrac] = useState(() => (paneTall ? 0.62 : read(`kula.pane.${id}`, 0.42)));
   // Phones keep the pane on by default; desktop remembers whether you closed it.
-  const [open, setOpen] = useState(() => { try { const v = localStorage.getItem(`kula.pane.${id}.open`); return phone() || (closedByDefault ? v === "1" : v !== "0"); } catch { return true; } });
+  // Phones keep their own memory, and start with the pane on: canvas top half, information bottom half.
+  const key = () => `kula.pane.${id}.open${phone() ? ".m" : ""}`;
+  const [open, setOpen] = useState(() => { try { const v = localStorage.getItem(key()); return phone() ? v !== "0" : closedByDefault ? v === "1" : v !== "0"; } catch { return true; } });
   useEffect(() => { if (paneTall) { setFrac((f) => Math.max(f, 0.62)); setOpen(true); } }, [paneTall, tab]);
-  const toggle = () => setOpen((o) => { write(`kula.pane.${id}.open`, o ? "0" : "1"); return !o; });
+  const toggle = () => setOpen((o) => { write(key(), o ? "0" : "1"); return !o; });
+  // On phones the node sheet closes with a downward swipe on its header.
+  const swipe = useRef<number | null>(null);
   const cur = tabs.find((t) => t.id === tab) ?? tabs[0];
 
   const grip = (e: React.PointerEvent) => {
@@ -42,7 +46,9 @@ export default function Workspace({ id, canvas, tabs, tab, onTab, side, paneTall
         {canvas}
         <aside className={`ws-side ${side ? "in" : ""}`} aria-label="Selection" aria-hidden={!side} data-testid="ws-side">
           {side && <>
-            <header className="ws-side-head">
+            <header className="ws-side-head" onPointerDown={(e) => { if (phone()) swipe.current = e.clientY; }}
+              onPointerUp={(e) => { if (swipe.current != null && e.clientY - swipe.current > 48) side.onClose(); swipe.current = null; }}>
+              <span className="ws-sheet-grab" aria-hidden="true" />
               {side.icon && <span className="ws-side-ico">{side.icon}</span>}
               <div className="grow"><h2>{side.title}</h2>{side.sub && <div className="sub">{side.sub}</div>}</div>
               <button className="btn sm ghost icon-only" aria-label="Close details" data-tip="Close  esc" data-tip-place="left" onClick={side.onClose}><Icon.close /></button>

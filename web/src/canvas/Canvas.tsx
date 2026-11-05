@@ -42,7 +42,7 @@ export default function Canvas({ nodes, edges, selected, onSelect, onMove, onDro
   const [mini, setMini] = useState(() => { try { return localStorage.getItem("kula.canvas.minimap") !== "0"; } catch { return true; } });
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
-  const fit = useCallback((pad = 40) => {
+  const fit = useCallback((pad = matchMedia?.("(max-width: 760px)").matches ? 16 : 40) => {
     const el = host.current; if (!el) return;
     const b = bounds(nodes);
     const W = el.clientWidth, H = el.clientHeight;
