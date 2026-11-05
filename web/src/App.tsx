@@ -9,11 +9,8 @@ import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, fuzzyScore } from "./nav";
 // the rest arrive as their own chunks (prefetched on idle – see PREFETCH below).
 const GraphView = lazy(() => import("./views/GraphView"));
 const Agents = lazy(() => import("./views/Agents"));
-const Query = lazy(() => import("./views/Query"));
-const Changes = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Changes })));
-const History = lazy(() => import("./views/GitViews").then((m) => ({ default: m.History })));
-const Branches = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Branches })));
-const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
+const Code = lazy(() => import("./views/Code"));
+const Connectors = lazy(() => import("./views/Connectors"));
 const MapView = lazy(() => import("./views/MapView"));
 const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
 const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
@@ -216,21 +213,17 @@ export default function App() {
           </div>
         )}
         {/* Keyed so each view change plays a short enter transition. */}
-        <div className="view-enter" key={view + (contrast ? ":c" : "")}>
+        <div className="view-enter" key={(destOf(view).id === "code" ? (view === "graph" ? "graph" : "code") : view) + (contrast ? ":c" : "")}>
           <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
             {view === "overview" && <Overview repo={repo} version={version} go={go} />}
-            {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
-            {view === "changes" && <Changes {...nav} />}
-            {view === "history" && <History {...nav} />}
-            {view === "branches" && <Branches {...nav} />}
+            {["graph", "changes", "history", "branches", "query", "console"].includes(view) && <Code view={view} nav={{ ...nav, target }}
+              graph={view === "graph" ? <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} /> : null} />}
             {view === "proposals" && <Proposals {...nav} />}
             {view === "issues" && <Issues {...nav} />}
             {view === "notes" && <Notes {...nav} />}
             {view === "flows" && <MapView {...nav} />}
             {view === "agents" && <Agents {...nav} />}
-            {view === "connectors" && <Agents {...nav} target={{ tab: "connect" }} />}
-            {view === "query" && <Query {...nav} />}
-            {view === "console" && <Console {...nav} />}
+            {view === "connectors" && <Connectors {...nav} />}
           </Suspense>
         </div>
         </>

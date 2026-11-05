@@ -1,12 +1,14 @@
 import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, relTime, type LangRow, type Overview as O, type RepoInfo } from "../api";
-import { Empty, Icon } from "../ui";
+import { Empty, Icon, Logo } from "../ui";
+import Canvas, { type CEdge, type CNode } from "../canvas/Canvas";
+import Workspace from "../canvas/Workspace";
 import type { Go, View } from "../nav";
 import Coupling from "../Coupling";
 import { useCode } from "../CodePanel";
 import AsciiMark from "../AsciiMark";
 import { CountUp, DitherDissolve, Stagger } from "../motion";
-import Runs from "./Runs";
+import Runs, { RunDetail, useRuns } from "./Runs";
 
 const Life = lazy(() => import("../Life"));
 
@@ -177,21 +179,76 @@ export function Loading({ text }: { text: string }) {
   return <div className="loading"><div className="mini-loader"><div className="ml-field"><AsciiMark period={3.2} /></div><span>{text}</span></div></div>;
 }
 
-/** Everything that needs a human, on one screen: the review queue. */
+// The overview canvas: the repository as a system. Work flows from branches
+// through the worktree into proposals; issues become runs, runs become edits.
+type OvNode = "repo" | StatDef["id"] | "runs";
+const LAYOUT: Record<OvNode, [number, number]> = {
+  repo: [0, 150], branches: [300, 0], changes: [540, 0], proposals: [780, 0],
+  issues: [300, 150], runs: [540, 150], hotspots: [300, 300], notes: [540, 300],
+};
+const LINKS: [OvNode, OvNode, string][] = [
+  ["repo", "branches", ""], ["branches", "changes", "worktree"], ["changes", "proposals", "propose"],
+  ["repo", "issues", ""], ["issues", "runs", "assign"], ["runs", "changes", "edits"], ["runs", "proposals", "review"],
+  ["repo", "hotspots", ""], ["hotspots", "notes", "annotate"],
+];
+/** Which pane tab tells the story of each node. */
+const PANE_OF: Record<OvNode, string> = { repo: "summary", branches: "readouts", changes: "summary", proposals: "review", issues: "readouts", runs: "runs", hotspots: "hotspots", notes: "summary" };
+
+/** Everything that needs a human, on one canvas: the review queue. */
 export default function Overview({ repo, version, go }: Props) {
   const { o, err } = useOverview(version);
+  const [sel, setSel] = useState<string | null>(null);
+  const [tab, setTab] = useState("summary");
+  const [run, setRun] = useState<string | null>(null);
+  const { runs } = useRuns(version);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") setSel(null); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, []);
   if (err && !o) return <Empty title="Overview unavailable">{err}</Empty>;
   if (!o) return <Loading text="Gathering the review queue…" />;
+
+  const stats = statDefs(o);
+  const active = runs.filter((r) => r.state === "running").length;
+  const W = 190, H = 92;
+  const nodes: CNode[] = [
+    { id: "repo", x: 0, y: LAYOUT.repo[1] - 10, w: 220, h: 112, icon: <Logo size={14} />, title: repo?.name ?? "repo", sub: `⎇ ${repo?.branch ?? ""}`, tone: "accent", label: "Repository",
+      body: repo?.stats ? <span className="tnum"><CountUp value={repo.stats.files} /> files · <CountUp value={repo.stats.symbols} /> symbols</span> : null },
+    ...stats.map((s): CNode => ({ id: s.id, x: LAYOUT[s.id as OvNode][0], y: LAYOUT[s.id as OvNode][1], w: W, h: H, icon: <s.icon />, title: s.label, label: s.label, sub: s.note,
+      tone: s.tone === "bad" ? "bad" : s.tone === "warn" ? "warn" : undefined, body: <span className="kc-num"><CountUp value={s.value} /></span> })),
+    { id: "runs", x: LAYOUT.runs[0], y: LAYOUT.runs[1], w: W, h: H, icon: <Icon.runs />, title: "Runs", label: "Runs", sub: active ? `${active} active` : "none active", live: active > 0, body: <span className="kc-num"><CountUp value={runs.length} /></span> },
+  ];
+  const edges: CEdge[] = LINKS.map(([a, b, l]) => ({ id: `${a}>${b}`, from: a, to: b, label: l || undefined }));
+  const hl = new Set(Object.entries(PANE_OF).filter(([, t]) => t === tab).map(([k]) => k));
+
+  const pick = (id: string | null) => { setSel(id); if (id) setTab(PANE_OF[id as OvNode]); };
+  const st = stats.find((s) => s.id === sel);
+  const list = (rows: [string, string, () => void][]) => rows.length ? rows.map(([k, t, f]) => <button key={k} className="side-link" onClick={f}><span className="mono">{t}</span></button>) : <div className="muted">Nothing here.</div>;
+  const detail: Record<string, ReactNode> = {
+    repo: <dl className="kv"><div><dt>Branch</dt><dd>{repo?.branch}</dd></div><div><dt>Default</dt><dd>{o.default_branch}</dd></div><div><dt>Head</dt><dd className="mono">{repo?.head?.slice(0, 10)}</dd></div>{repo?.stats && <><div><dt>Files</dt><dd>{repo.stats.files}</dd></div><div><dt>Symbols</dt><dd>{repo.stats.symbols}</dd></div><div><dt>Edges</dt><dd>{repo.stats.edges}</dd></div></>}</dl>,
+    proposals: list(o.proposals.map(({ proposal: p }) => [String(p.id), `#${p.id} ${p.title}`, () => go("proposals", { proposal: p.id })])),
+    issues: list(o.issues.map((i) => [String(i.id), `#${i.id} ${i.title}`, () => go("issues", { issue: i.id })])),
+    branches: list(o.branches.slice(0, 10).map((b) => [b.name, `${b.name}  −${b.behind}/+${b.ahead}`, () => go("graph", { contrast: { base: o.default_branch, head: b.name } })])),
+    hotspots: list(o.hotspots.slice(0, 10).map((h) => [h.path, h.path, () => go("graph", { search: h.path })])),
+    changes: <div className="muted">{o.changes ? `${o.changes} files differ from HEAD.` : "The worktree is clean."}</div>,
+    notes: <div className="muted">{o.notes} notes on symbols and files.</div>,
+    runs: list(runs.map((r) => [r.id, `${r.kind}: ${r.task}`, () => { setTab("runs"); setRun(r.id); }])),
+  };
+  const side = sel ? {
+    title: sel === "repo" ? repo?.name : sel === "runs" ? "Runs" : st?.label, sub: sel === "repo" ? `⎇ ${repo?.branch}` : sel === "runs" ? `${runs.length} runs` : st?.note,
+    icon: sel === "repo" ? <Logo size={16} /> : sel === "runs" ? <Icon.runs /> : st ? <st.icon /> : null,
+    body: detail[sel], onClose: () => setSel(null),
+    actions: sel === "repo" ? <button className="btn sm" onClick={() => go("flows")}><Icon.map /> Open map</button>
+      : sel === "runs" ? <button className="btn sm" onClick={() => go("agents", { tab: "teams" })}><Icon.agents /> Open agents</button>
+      : st ? <button className="btn sm" onClick={() => go(st.view, st.search ? { search: st.search } : {})}><st.icon /> Open {st.label.toLowerCase()}</button> : null,
+  } : null;
+
   return (
-    <div className="overview" data-testid="overview">
-      <Stagger className="ov-stack">
-        <Hero repo={repo} o={o} go={go} />
-        <StatCards o={o} go={go} />
-        <div className="ov-grid">
-          <div className="ov-col"><Runs version={version} go={go} /><Review o={o} go={go} /></div>
-          <div className="ov-col"><Hotspots o={o} go={go} /><MorePanel o={o} go={go} version={version} /></div>
-        </div>
-      </Stagger>
-    </div>
+    <Workspace id="overview" testid="overview" side={side} tab={tab} onTab={(t) => { setTab(t); }}
+      canvas={<Canvas testid="overview-canvas" label="Overview canvas" nodes={nodes} edges={edges} selected={sel} onSelect={pick} highlight={hl} fitKey="overview" />}
+      tabs={[
+        { id: "summary", label: "Summary", icon: Icon.home, render: () => <div className="overview pane-pad"><Stagger className="ov-stack"><Hero repo={repo} o={o} go={go} /><StatCards o={o} go={go} /></Stagger></div> },
+        { id: "runs", label: "Runs", icon: Icon.runs, count: runs.length, render: () => <div className="pane-pad"><Runs version={version} go={go} selected={run} onSelect={(r) => { setRun(r?.id ?? null); if (r) setSel("runs"); }} />{run && runs.find((r) => r.id === run) && <RunDetail run={runs.find((r) => r.id === run)!} go={go} />}</div> },
+        { id: "review", label: "Review", icon: Icon.pr, count: o.proposals.length, render: () => <div className="pane-pad"><Review o={o} go={go} /></div> },
+        { id: "hotspots", label: "Hotspots", icon: Icon.flame, render: () => <div className="pane-pad"><Hotspots o={o} go={go} /></div> },
+        { id: "readouts", label: "Readouts", icon: Icon.langs, render: () => <div className="pane-pad"><MorePanel key={sel ?? ""} o={o} go={go} version={version} initial={sel === "issues" ? "issues" : "branches"} /></div> },
+      ]} />
   );
 }

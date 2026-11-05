@@ -13,15 +13,15 @@ const phone = () => typeof matchMedia === "function" && matchMedia("(max-width: 
 const read = (k: string, d: number) => { try { const v = Number(localStorage.getItem(k)); return v > 0 ? v : d; } catch { return d; } };
 const write = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* private window */ } };
 
-export default function Workspace({ id, canvas, tabs, tab, onTab, side, paneTall, testid }: {
+export default function Workspace({ id, canvas, tabs, tab, onTab, side, paneTall, closedByDefault, testid }: {
   id: string; canvas: ReactNode; tabs: PaneTab[]; tab: string; onTab: (t: string) => void; side: Side;
   /** Open the pane taller (a list or table view was asked for directly). */
-  paneTall?: boolean; testid?: string;
+  paneTall?: boolean; closedByDefault?: boolean; testid?: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [frac, setFrac] = useState(() => (paneTall ? 0.62 : read(`kula.pane.${id}`, 0.42)));
   // Phones keep the pane on by default; desktop remembers whether you closed it.
-  const [open, setOpen] = useState(() => { try { return phone() || localStorage.getItem(`kula.pane.${id}.open`) !== "0"; } catch { return true; } });
+  const [open, setOpen] = useState(() => { try { const v = localStorage.getItem(`kula.pane.${id}.open`); return phone() || (closedByDefault ? v === "1" : v !== "0"); } catch { return true; } });
   useEffect(() => { if (paneTall) { setFrac((f) => Math.max(f, 0.62)); setOpen(true); } }, [paneTall, tab]);
   const toggle = () => setOpen((o) => { write(`kula.pane.${id}.open`, o ? "0" : "1"); return !o; });
   const cur = tabs.find((t) => t.id === tab) ?? tabs[0];

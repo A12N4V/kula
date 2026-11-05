@@ -100,6 +100,22 @@ test.describe("shell", () => {
     await expect(page.getByTestId("ws-side")).not.toHaveClass(/\bin\b/);
   });
 
+  test("@responsive every destination is one canvas over a bottom pane; a node opens the sidebar and its pane", async ({ page }) => {
+    await open(page);
+    const canvas = page.getByTestId("overview-canvas");
+    await canvas.locator('.kc-node[data-node="proposals"]').click();
+    await expect(page.getByTestId("ws-pane").locator('[data-pane="review"]')).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("ws-side")).toHaveClass(/\bin\b/);
+    // the pane lights the canvas back: Runs in the pane highlights the Runs node
+    await page.getByTestId("ws-pane").locator('[data-pane="runs"]').click();
+    await expect(canvas.locator('.kc-node[data-node="runs"]')).toHaveClass(/\bhl\b/);
+    for (const [hash, id] of [["history", "code-canvas"], ["connectors", "connectors-canvas"]]) {
+      await open(page, hash);
+      await expect(page.getByTestId(id).locator(".kc-node").first()).toBeVisible();
+      await expect(page.getByTestId("ws-pane")).toBeVisible();
+    }
+  });
+
   test("top nav carries only destinations, search and settings", async ({ page }) => {
     await open(page);
     const bar = page.locator(".topnav");
@@ -227,6 +243,9 @@ test.describe("graph", () => {
 test.describe("overview + code panel", () => {
   test("coupling: one functional figure – directories × directories, loops marked", async ({ page }) => {
     await open(page);
+    // readouts live in the pane, behind icon toggles
+    await page.getByTestId("ws-pane").locator('[data-pane="readouts"]').click();
+    await page.getByRole("button", { name: "Coupling", exact: true }).click();
     const c = page.locator(".coupling");
     await expect(c.locator(".cpl-row").first()).toBeVisible();
     const k = await c.locator(".cpl-row").count();
@@ -242,6 +261,7 @@ test.describe("overview + code panel", () => {
 
   test("a hotspot opens its file in the code panel", async ({ page }) => {
     await open(page);
+    await page.getByTestId("ws-pane").locator('[data-pane="hotspots"]').click();
     await page.locator(".hot-row:not(.hot-headrow)").first().click();
     const panel = page.locator(".code-panel");
     await expect(panel).toBeVisible();
