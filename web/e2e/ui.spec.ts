@@ -84,6 +84,22 @@ test.describe("shell", () => {
     await expect(page.locator(".ov-stats .stat-card").first().locator(".sc-label svg")).toBeVisible();
   });
 
+  test("@responsive map is the flows canvas: steps in the pane, a node opens the sidebar and lights its row", async ({ page }) => {
+    await open(page, "flows");
+    const canvas = page.getByTestId("map-canvas");
+    await expect(canvas.locator(".kc-node").first()).toBeVisible();
+    await expect(canvas.locator(".kc-wire").first()).toBeAttached();
+    await expect(page.getByTestId("minimap")).toBeVisible();
+    await expect(page.locator(".thread, .flows-list, .list-head", { hasText: "Execution flows" })).toHaveCount(0);
+    const row = page.getByTestId("ws-pane").locator(".pt-row[data-row]").nth(1);
+    const id = await row.getAttribute("data-row");
+    await row.click();
+    await expect(canvas.locator(`.kc-node[data-node="${id}"]`)).toHaveClass(/\bsel\b/);
+    await expect(page.getByTestId("ws-side")).toHaveClass(/\bin\b/);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("ws-side")).not.toHaveClass(/\bin\b/);
+  });
+
   test("top nav carries only destinations, search and settings", async ({ page }) => {
     await open(page);
     const bar = page.locator(".topnav");
@@ -1253,9 +1269,9 @@ test.describe("g1 – graph, inspector and git by keyboard", () => {
 
 test.describe("N1 · shell: palette, shortcuts, states", () => {
   const VIEWS: [string, string][] = [
-    ["Overview", "overview"], ["Graph", "graph"], ["Flows", "flows"], ["Changes", "changes"],
+    ["Overview", "overview"], ["Graph", "graph"], ["Map", "flows"], ["Changes", "changes"],
     ["History", "history"], ["Branches & compare", "branches"], ["Proposals", "proposals"],
-    ["Issues", "issues"], ["Notes", "notes"], ["Agents", "agents"], ["Query (SPARQL)", "query"], ["Console", "console"],
+    ["Issues", "issues"], ["Notes", "notes"], ["Agents", "agents"], ["Connectors", "connectors"], ["Query (SPARQL)", "query"], ["Console", "console"],
   ];
 
   test("N1.1: every view is reachable from the palette", async ({ page }) => {
@@ -1332,14 +1348,14 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
       await page.locator(".palette .res").first().click();
       await expect(page).toHaveURL(hash);
     };
-    // Run Flows, then Console. The palette remembers, most recent first.
-    await run("Flows", /#flows\b/);
+    // Run Map, then Console. The palette remembers, most recent first.
+    await run("Map", /#flows\b/);
     await run("Console", /#console\b/);
     await page.keyboard.press("ControlOrMeta+k");
     await page.keyboard.type(">go to");
     const results = page.locator(".palette .res");
     await expect(results.first()).toContainText("Go to Console");
-    await expect(results.nth(1)).toContainText("Go to Flows");
+    await expect(results.nth(1)).toContainText("Go to Map");
   });
 
   test("N1.3: a dead server is an error state with retry, not a blank page", async ({ page }) => {

@@ -1,0 +1,74 @@
+/* ================================================================ canvas
+   Nodes on a dotted grid, bezier wires, pan/zoom, minimap. Sharp corners,
+   hairlines, one accent for what is selected or live. */
+
+.kc {
+  position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; cursor: grab; user-select: none;
+  background-color: var(--bg);
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text) 16%, transparent) 1px, transparent 1.2px);
+}
+.kc:active { cursor: grabbing; }
+.kc-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.kc-wires { position: absolute; overflow: visible; pointer-events: none; }
+.kc-wire path { fill: none; stroke: color-mix(in srgb, var(--text) 26%, transparent); stroke-width: 1.25; transition: stroke var(--dur); }
+.kc-wire.dashed path { stroke-dasharray: 4 4; }
+.kc-wire text { fill: var(--text-3); font: 500 10px var(--mono); }
+.kc-wire.on path { stroke: var(--accent); stroke-width: 1.5; }
+.kc-wire.on text { fill: var(--accent); }
+.kc-wire.ok path { stroke: color-mix(in srgb, var(--green) 55%, transparent); }
+.kc-wire.warn path { stroke: color-mix(in srgb, var(--yellow) 55%, transparent); }
+
+.kc-node {
+  position: absolute; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  background: var(--panel); border: 1px solid var(--line-2); color: var(--text); cursor: pointer; outline: none;
+  transition: border-color var(--dur), box-shadow var(--dur), background var(--dur);
+}
+.kc-node.movable { cursor: grab; }
+.kc-node:hover { border-color: var(--text-3); }
+.kc-node:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.kc-node.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px -4px color-mix(in srgb, var(--accent) 70%, transparent); }
+.kc-node.hl { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.kc-node.accent { border-top: 2px solid var(--accent); }
+.kc-node.ok .kc-ico { color: var(--green); }
+.kc-node.warn .kc-ico { color: var(--yellow); }
+.kc-node.bad .kc-ico { color: var(--red); }
+.kc-node.muted { opacity: .7; border-style: dashed; }
+.kc-node.live::after { content: ""; position: absolute; top: 6px; right: 6px; width: 5px; height: 5px; background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: dotpulse 1.4s ease-in-out infinite; }
+.kc-node.frame { background: color-mix(in srgb, var(--panel) 45%, transparent); border: 1px dashed var(--line-2); padding: 8px 12px; cursor: default; }
+.kc-node.frame.sel { border-style: solid; box-shadow: inset 0 0 0 1px var(--accent); }
+.kc-node.frame .kc-title { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-2); }
+.kc-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.kc-ico { display: inline-flex; color: var(--text-3); flex: none; }
+.kc-ico svg { width: 14px; height: 14px; }
+.kc-node.sel .kc-ico { color: var(--accent); }
+.kc-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.kc-badge { flex: none; font-size: 10.5px; color: var(--text-3); }
+.kc-sub { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kc-body { font-size: 11px; color: var(--text-2); min-height: 0; }
+.kc-num { font-size: 22px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text); }
+.kc-node.warn .kc-num { color: var(--yellow); }
+.kc-node.bad .kc-num { color: var(--red); }
+.kc-port { position: absolute; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; background: var(--bg); border: 1px solid var(--line-2); }
+.kc-port.in { left: -4px; }
+.kc-port.out { right: -4px; }
+.kc-node.sel .kc-port { border-color: var(--accent); }
+.kc-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); pointer-events: none; text-align: center; padding: 24px; }
+
+.kc-tools { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 1px; background: var(--line); border: 1px solid var(--line); z-index: 3; }
+.kc-tool { all: unset; box-sizing: border-box; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; background: var(--panel); color: var(--text-2); cursor: pointer; }
+.kc-tool:hover { background: var(--panel-2); color: var(--text); }
+.kc-tool.on { color: var(--accent); }
+.kc-tool svg { width: 15px; height: 15px; }
+.kc-tool:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.kc-mini { position: absolute; right: 12px; bottom: 12px; width: 168px; height: 108px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line-2); z-index: 3; cursor: crosshair; }
+.kc-mini rect { fill: var(--line-2); }
+.kc-mini rect.frame { fill: none; stroke: var(--line-2); stroke-width: 4; }
+.kc-mini rect.sel { fill: var(--accent); }
+.kc-mini rect.vp { fill: color-mix(in srgb, var(--accent) 8%, transparent); stroke: var(--accent); stroke-width: 3; vector-effect: non-scaling-stroke; }
+.kc-pick { position: absolute; left: 12px; top: 12px; z-index: 3; display: flex; gap: 6px; align-items: center; }
+.kc-pick select { height: 32px; max-width: min(420px, calc(100vw - 48px)); background: var(--panel); border: 1px solid var(--line-2); color: var(--text); padding: 0 8px; font: 12px var(--mono); border-radius: 0; }
+
+@media (max-width: 760px) {
+  .kc-mini { width: 112px; height: 72px; right: 8px; bottom: 8px; }
+  .kc-tools { left: 8px; bottom: 8px; }
+}

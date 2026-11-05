@@ -14,7 +14,7 @@ const Changes = lazy(() => import("./views/GitViews").then((m) => ({ default: m.
 const History = lazy(() => import("./views/GitViews").then((m) => ({ default: m.History })));
 const Branches = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Branches })));
 const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
-const Flows = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Flows })));
+const MapView = lazy(() => import("./views/MapView"));
 const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
 const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
 const Proposals = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Proposals })));
@@ -29,6 +29,7 @@ const PREFETCH: Array<() => Promise<unknown>> = [
   () => import("./views/Query"),
   () => import("./views/GitViews"),
   () => import("./views/MetaViews"),
+  () => import("./views/MapView"),
 ];
 let prefetched = false;
 function prefetchViews() {
@@ -225,7 +226,7 @@ export default function App() {
             {view === "proposals" && <Proposals {...nav} />}
             {view === "issues" && <Issues {...nav} />}
             {view === "notes" && <Notes {...nav} />}
-            {view === "flows" && <Flows {...nav} />}
+            {view === "flows" && <MapView {...nav} />}
             {view === "agents" && <Agents {...nav} />}
             {view === "connectors" && <Agents {...nav} target={{ tab: "connect" }} />}
             {view === "query" && <Query {...nav} />}

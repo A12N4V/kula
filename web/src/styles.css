@@ -15,6 +15,8 @@
 @import "./styles/sweep.css";
 @import "./styles/widgets.css";
 @import "./styles/nav.css";
+@import "./styles/canvas.css";
+@import "./styles/workspace.css";
 
 /* ------------------------------------------------------------------ K2 · unified agent config (skills, rules, MCP, memory layers) */
 .sk-diff { margin-top: var(--gap); border-top: 1px solid var(--line); padding-top: var(--gap); }
