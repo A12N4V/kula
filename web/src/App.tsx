@@ -2,6 +2,7 @@ import { CodeProvider } from "./CodePanel";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
+import TopNav, { type Dest } from "./TopNav";
 import type { ContrastMode, Go, Target, View } from "./nav";
 import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, fuzzyScore } from "./nav";
 // Heavy views load on demand: the first paint ships the shell + Overview only,
@@ -40,30 +41,24 @@ function prefetchViews() {
 import { settings } from "./settings";
 import Opening from "./Opening";
 
-type Rail = { id: View; label: string; icon: () => React.ReactElement; key: string };
-// Grouped by intent: understand · change · collaborate · agents and the graph as data · escape hatch.
-const GROUPS: Rail[][] = [
-  [
-    { id: "overview", label: "Overview", icon: Icon.home, key: "1" },
-    { id: "graph", label: "Graph", icon: Icon.graph, key: "2" },
-    { id: "flows", label: "Flows", icon: Icon.flows, key: "3" },
-  ],
-  [
-    { id: "changes", label: "Changes", icon: Icon.changes, key: "4" },
-    { id: "history", label: "History", icon: Icon.history, key: "5" },
-    { id: "branches", label: "Branches & compare", icon: Icon.branches, key: "6" },
-  ],
-  [
-    { id: "proposals", label: "Proposals", icon: Icon.pr, key: "7" },
-    { id: "issues", label: "Issues", icon: Icon.issues, key: "8" },
-    { id: "notes", label: "Notes", icon: Icon.notes, key: "9" },
-  ],
-  [
-    { id: "agents", label: "Agents", icon: Icon.agents, key: "a" },
-    { id: "query", label: "Query (SPARQL)", icon: Icon.query, key: "q" },
-  ],
-  [{ id: "console", label: "Console", icon: Icon.console, key: "0" }],
+type ViewDef = { id: View; label: string; key: string };
+// Five destinations in the top nav; the other views live inside one of them
+// (Code holds the graph and git, Agents holds the review queue and notes).
+const DESTS: Dest[] = [
+  { id: "overview", label: "Overview", icon: Icon.home, key: "1", home: "overview", views: ["overview"] },
+  { id: "map", label: "Map", icon: Icon.map, key: "3", home: "flows", views: ["flows"] },
+  { id: "code", label: "Code", icon: Icon.code, key: "2", home: "graph", views: ["graph", "changes", "history", "branches", "query", "console"] },
+  { id: "connectors", label: "Connectors", icon: Icon.plug, key: "c", home: "connectors", views: ["connectors"] },
+  { id: "agents", label: "Agents", icon: Icon.agents, key: "a", home: "agents", views: ["agents", "proposals", "issues", "notes"] },
 ];
+const GROUPS: ViewDef[][] = [
+  [{ id: "overview", label: "Overview", key: "1" }, { id: "graph", label: "Graph", key: "2" }, { id: "flows", label: "Map", key: "3" }],
+  [{ id: "changes", label: "Changes", key: "4" }, { id: "history", label: "History", key: "5" }, { id: "branches", label: "Branches & compare", key: "6" }],
+  [{ id: "proposals", label: "Proposals", key: "7" }, { id: "issues", label: "Issues", key: "8" }, { id: "notes", label: "Notes", key: "9" }],
+  [{ id: "agents", label: "Agents", key: "a" }, { id: "connectors", label: "Connectors", key: "c" }, { id: "query", label: "Query (SPARQL)", key: "q" }],
+  [{ id: "console", label: "Console", key: "0" }],
+];
+const destOf = (v: View) => DESTS.find((d) => d.views.includes(v)) ?? DESTS[0];
 const VIEWS = GROUPS.flat();
 
 type Contrast = { base: string; head: string; mode?: ContrastMode } | null;
@@ -154,8 +149,6 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // Phones: the sidebar is a drawer, summoned from the top bar.
-  const [rail, setRail] = useState(false);
   const go: Go = useCallback((v, t = {}) => {
     setView(v);
     setTarget(t);
@@ -177,7 +170,7 @@ export default function App() {
       if (e.key === "/") { e.preventDefault(); setPalette(true); }
       if (e.key === "?") setHelp((h) => !h);
       if (e.key === ",") setPrefs((p) => !p);
-      if (e.key === "Escape") { setHelp(false); setFocus(null); setRail(false); }
+      if (e.key === "Escape") { setHelp(false); setFocus(null); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -192,43 +185,13 @@ export default function App() {
 
   const openIssues = meta?.issues.filter((i) => i.status === "open").length ?? 0;
   const openPrs = meta?.proposals.filter((p) => p.status === "open").length ?? 0;
-  const badge: Partial<Record<View, number>> = { changes, issues: openIssues, proposals: openPrs };
   const nav = { onChanged, openSymbol: (id: number) => go("graph", { symbol: id }), version, go, target };
-  const current = VIEWS.find((v) => v.id === view)!;
 
   return (
     <CodeProvider onLocate={(id) => go("graph", { symbol: id })}>
-    <div className={`shell ${rail ? "rail-open" : ""}`}>
-      <header className="topbar">
-        <button className="brand" onClick={() => go("overview")} aria-label="Overview"><Logo /><span>kula</span></button>
-        <button className="rail-toggle" onClick={() => setRail((r) => !r)} aria-label={rail ? "Hide sidebar" : "Show sidebar"} aria-expanded={rail} aria-controls="rail"><Icon.sidebar /></button>
-        <span className="crumb">/</span>
-        <span className="crumb-repo">{repo?.name ?? "…"}</span>
-        <span className="crumb">/</span>
-        <span className="crumb-view">{contrast && view === "graph" ? "Contrast" : current.label}</span>
-        <button className="chip" onClick={() => go("branches")} title="Current branch"><Icon.branches /><b className="mono">{repo?.branch ?? "…"}</b></button>
-        <span className="spacer" />
-        <div className="top-actions">
-          <button className="btn sm ghost icon-only" aria-label="Back" title="Back  ⌥←" onClick={() => history.back()}><Icon.back /></button>
-          <button className="btn sm ghost top-search" aria-label="Search" title="Search symbols, issues, branches, commands  ⌘K" onClick={() => setPalette(true)}><Icon.search /><kbd>⌘K</kbd></button>
-          <button className="btn sm ghost icon-only" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.gear /></button>
-        </div>
-      </header>
-
-      <nav className="rail" id="rail" aria-label="Views">
-        {GROUPS.map((g, gi) => (
-          <div key={gi} className="rail-group">
-            {g.map((v) => (
-              <button key={v.id} className={view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
-                <v.icon />
-                <span className="rail-label">{v.label}</span>
-                {!!badge[v.id] && <span className="badge">{badge[v.id]}</span>}
-              </button>
-            ))}
-          </div>
-        ))}
-      </nav>
-      {rail && <div className="rail-scrim" onClick={() => setRail(false)} aria-hidden="true" />}
+    <div className="shell top">
+      <TopNav dests={DESTS} current={destOf(view).id} badge={{ code: changes, agents: openIssues + openPrs }}
+        onGo={(d) => go(d.home)} onSearch={() => setPalette(true)} onSettings={() => setPrefs(true)} repo={repo?.name} branch={repo?.branch} />
 
       <main className="main">
         {/* Full panel only when nothing has loaded; once data is in, a failed poll
@@ -264,6 +227,7 @@ export default function App() {
             {view === "notes" && <Notes {...nav} />}
             {view === "flows" && <Flows {...nav} />}
             {view === "agents" && <Agents {...nav} />}
+            {view === "connectors" && <Agents {...nav} target={{ tab: "connect" }} />}
             {view === "query" && <Query {...nav} />}
             {view === "console" && <Console {...nav} />}
           </Suspense>
