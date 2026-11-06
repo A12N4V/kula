@@ -33,7 +33,7 @@ export function useMap(): { map: MapShape | null; error: string | null } {
     let live = true;
     mapPromise.then((r) => {
       if (!live) return;
-      if (r && "error" in (r as object)) setState({ map: null, error: String((r as { error: unknown }).error) });
+      if (r && "error" in (r as object)) setState({ map: null, error: String((r as unknown as { error: unknown }).error) });
       else setState({ map: r as MapShape, error: null });
     });
     return () => {
