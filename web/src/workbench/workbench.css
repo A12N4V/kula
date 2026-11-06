@@ -1,0 +1,80 @@
+/* W1 · workbench shell – Tailwind wiring for the whole workbench dir.
+   kit/theme.css scopes its source scan to kit/ only, so utilities used
+   solely by shell/ (bg-input, min-w-56, w-11, …) never generated. This
+   entry repeats the kit token set verbatim (kept in sync by review) and
+   scans source("./") = src/workbench so the shell's classes exist too.
+   Same values, same selectors – duplicates compose with the kit build. */
+@import "tailwindcss/theme.css" theme(reference);
+@import "tailwindcss/utilities.css" source("./");
+
+.kwb-theme {
+  --background: #000000;
+  --foreground: #f0ebe3;
+
+  --card: #0c0b0a;
+  --card-foreground: #f0ebe3;
+
+  --popover: #0c0b0a;
+  --popover-foreground: #f0ebe3;
+
+  --primary: #ff5a1f;
+  --primary-foreground: #140500;
+
+  --secondary: #141210;
+  --secondary-foreground: #f0ebe3;
+
+  --muted: #141210;
+  --muted-foreground: #867d73;
+
+  --accent: #ff5a1f;
+  --accent-foreground: #140500;
+
+  --destructive: #f0827a;
+  --destructive-foreground: #140500;
+
+  --border: #24201d;
+  --input: #24201d;
+  --ring: #ff5a1f;
+
+  --radius: 0rem;
+  --radius-sm: 0rem;
+  --radius-md: 0rem;
+  --radius-lg: 0rem;
+  --radius-xl: 0rem;
+}
+
+/* No preflight is imported (legacy views share this stylesheet), so the UA
+   default buttonface (rgb(107,107,107) in dark colour scheme) leaks onto
+   workbench rows rendered as bare <button>s. Reset it with an element-only
+   selector: it beats the UA default and loses to every bg-* utility. */
+:where(.kwb-theme) button { background-color: transparent; }
+
+/* No preflight: the UA list styles survive inside the workbench (the 40px
+   start padding shrank every <ul> content box, squeezing rows to ~13px). */
+:where(.kwb-theme) ul, :where(.kwb-theme) ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}

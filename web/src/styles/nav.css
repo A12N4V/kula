@@ -1,0 +1,64 @@
+/* ================================================================ top navbar
+   After the homonin.com landing nav (structure, spacing, hover glow that
+   springs between tabs, one accent point under the current page, one accent
+   control at the end), in kula's sharp language: square corners, hairlines,
+   mono type. Controls are 32px squares at every width. */
+
+.shell.top { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 56px minmax(0, 1fr) 26px; height: 100%; }
+.shell.top > .main { grid-column: 1; }
+.shell.top > .statusbar { grid-column: 1; }
+
+.topnav { position: relative; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 0 16px; pointer-events: none; }
+.topnav-bar {
+  pointer-events: auto; position: relative; display: flex; align-items: center; justify-content: space-between; gap: 32px;
+  min-width: 420px; max-width: calc(100vw - 32px); padding: 6px 8px 6px 14px;
+  background: rgba(0, 0, 0, .92); border: 1px solid color-mix(in srgb, var(--text) 14%, transparent); border-radius: 0;
+  box-shadow: 0 1px 1px 0 rgba(0, 0, 0, .4), 0 8px 24px -4px rgba(0, 0, 0, .45);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); user-select: none;
+}
+:root[data-theme="light"] .topnav-bar { background: color-mix(in srgb, var(--panel) 94%, transparent); }
+.topnav-brand { all: unset; cursor: pointer; display: flex; align-items: center; gap: 10px; flex: none; height: 32px; }
+.topnav-logo { display: inline-flex; transition: transform .5s cubic-bezier(.16, 1, .3, 1); color: var(--accent); }
+.topnav-brand:hover .topnav-logo { transform: rotate(-8deg) scale(1.1); }
+.topnav-brand:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.topnav-mark { font: 600 12px/24px var(--mono); letter-spacing: .2em; color: var(--text); }
+.topnav-tabs { position: relative; display: flex; align-items: center; gap: 2px; }
+.topnav-end { display: flex; align-items: center; gap: 6px; flex: none; }
+
+.topnav-tab {
+  all: unset; box-sizing: border-box; position: relative; width: 32px; height: 32px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  color: color-mix(in srgb, var(--text) 62%, transparent); transition: color .2s;
+}
+.topnav-tab svg { position: relative; width: 16px; height: 16px; }
+.topnav-tab:hover, .topnav-tab[aria-current="page"] { color: var(--text); }
+.topnav-tab[aria-current="page"] svg { color: var(--accent); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 55%, transparent)); }
+.topnav-tab:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+/* the hover glow: one surface that springs to whichever tab the pointer is over */
+.topnav-glow {
+  position: absolute; left: 0; top: 0; height: 32px; pointer-events: none;
+  background: color-mix(in srgb, var(--text) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent);
+  transition: transform .34s cubic-bezier(.34, 1.36, .64, 1), width .34s cubic-bezier(.34, 1.36, .64, 1);
+  animation: tip-in .12s ease-out both;
+}
+/* the page you are on: a single accent point under its icon */
+.topnav-here { position: absolute; left: 50%; bottom: 2px; width: 3px; height: 3px; margin-left: -1.5px; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.topnav-badge { position: absolute; top: 2px; right: 1px; min-width: 13px; height: 13px; padding: 0 3px; font: 600 9px/13px var(--mono); text-align: center; color: var(--accent-ink); background: var(--accent); }
+.topnav-cta {
+  all: unset; box-sizing: border-box; width: 32px; height: 32px; flex: none; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  background: #F05201; color: #0F0E0B; box-shadow: 0 2px 14px rgba(240, 82, 1, .35); transition: box-shadow .3s, transform .15s; position: relative;
+}
+.topnav-cta svg { width: 16px; height: 16px; }
+.topnav-cta:hover { box-shadow: 0 2px 22px rgba(240, 82, 1, .55); transform: translateY(-1px); }
+.topnav-cta:active { transform: scale(.97); }
+.topnav-cta:focus-visible { outline: 2px solid #F05201; outline-offset: 3px; }
+
+@media (max-width: 760px) {
+  .shell.top { grid-template-rows: 52px minmax(0, 1fr); }
+  .shell.top > .statusbar { display: none; }
+  .topnav { padding: 0 8px; }
+  .topnav-bar { min-width: 0; width: 100%; gap: 8px; padding: 4px 4px 4px 8px; }
+  .topnav-mark { display: none; }
+  .topnav-tabs { gap: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .topnav-glow { transition: none; } .topnav-logo { transition: none; } }

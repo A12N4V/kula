@@ -10,14 +10,14 @@ import { groupDirs } from "./colors";
 
 const MAX = 9;
 
-type Model = {
+export type Model = {
   dirs: { key: string; label: string; files: number; fanIn: number; fanOut: number; inside: number }[];
   m: number[][];
   loops: [number, number][];
   peak: number;
 };
 
-function build(g: GraphData): Model | null {
+export function build(g: GraphData): Model | null {
   const code = g.nodes.filter((n) => n.kind !== "package");
   if (!code.length) return null;
   const groups = groupDirs(code.map((n) => n.path), 0);
