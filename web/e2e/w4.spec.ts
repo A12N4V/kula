@@ -89,6 +89,39 @@ test("memory editor: edit, save shows the diff first, history lists revisions", 
   await expect(page.getByTestId("wb-memory-diff")).toHaveCount(0);
 });
 
+test("memory history rows with a run deep-link the runs ledger (W3 contract)", async ({ page }) => {
+  await openAgents(page);
+  await page.locator('[data-testid="file-tree-item-kula://memory/by-block/indexer/0007-walk-tree-order.md"]').first().click();
+  // r3 has run #40 (critic); r1 has none and must not be a button.
+  const r3 = page.getByTestId("wb-history-r3");
+  await expect(r3).toContainText("run #40");
+  // A revision without a run stays inert: no › affordance, not a button.
+  const r1 = page.getByTestId("wb-history-r1");
+  await expect(r1).not.toContainText("›");
+  await expect(r1).not.toHaveAttribute("role", "button");
+  await r3.click();
+  // The deep-link lands in the runs ledger: run 40 selected, agent filter critic.
+  await page.getByTestId("wb-activity-runs").click();
+  await page.getByTestId("wb-tab-runs-lanes").click();
+  await expect(page.getByTestId("wb-ledger-filter-agent")).toContainText("critic", { timeout: 30000 });
+  await expect(page.getByTestId("wb-run-40")).toHaveClass(/outline/);
+});
+
+test("team graph draws hand-off wires (solid) and reporting lines (dashed)", async ({ page }) => {
+  await openAgents(page);
+  const svg = page.locator('[data-figure="wires"]');
+  await expect(svg).toBeVisible();
+  // Wires are derived from the agent records: planner hands off to both
+  // coders (solid), each coder hands off to critic (solid) and reports to
+  // planner (dashed).
+  await expect(svg.locator('[data-testid="wb-wire-handoff-planner-coder-1"]')).toHaveCount(1);
+  await expect(svg.locator('[data-testid="wb-wire-handoff-planner-coder-2"]')).toHaveCount(1);
+  await expect(svg.locator('[data-testid="wb-wire-handoff-coder-1-critic"]')).toHaveCount(1);
+  await expect(svg.locator('[data-testid="wb-wire-report-coder-1-planner"]')).toHaveCount(1);
+  const dashed = svg.locator('[data-testid="wb-wire-report-coder-1-planner"]');
+  await expect(dashed).toHaveAttribute("stroke-dasharray", /4/);
+});
+
 test("agents at 390x844: explorer rows meet the 40px small-target rule @responsive", async ({ page }) => {
   await page.goto("/#/wb");
   await page.setViewportSize({ width: 390, height: 844 });

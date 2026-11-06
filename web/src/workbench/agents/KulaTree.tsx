@@ -64,7 +64,9 @@ function buildTree(): FileTreeNode[] {
     { id: "kula://fences.toml", name: "fences.toml" },
     {
       id: "folder:memory",
-      name: `memory ${memories.length + stale.length}`,
+      // Stale notes are a subset of memories, shown in their own branch –
+      // never added to the count (critic-w4).
+      name: `memory ${memories.length}`,
       children: [
         { id: "folder:memory/by-block", name: "by-block", children: byBlock },
         { id: "folder:memory/by-agent", name: "by-agent", children: [{ id: "kula://memory/by-agent/(symlinked view)", name: "same notes, symlinked view" }] },
@@ -84,7 +86,7 @@ function buildTree(): FileTreeNode[] {
 
 // Branches open at first glance – the deck wants content visible, not a
 // closed tree (deck p.9 note 2).
-const OPEN_AT_START = ["folder:connectors", "folder:teams", "folder:teams/map-rework", "folder:memory", "folder:memory/by-block", "folder:by-block/indexer", "folder:by-block/map-engine"];
+const OPEN_AT_START = ["folder:connectors", "folder:teams", "folder:teams/map-rework", "folder:memory", "folder:memory/by-block", "folder:by-block/indexer", "folder:by-block/map engine"];
 
 export function KulaTree() {
   const ui = useAgentsUi();

@@ -9,6 +9,7 @@ import { CodeView, type BlameLine, type CodeLine } from "@/workbench/kit/code-vi
 import { MOCK_MEMORIES, MOCK_READS, type MemoryFile } from "@/workbench/mock/agents";
 import { setAgentsUi, useAgentsUi } from "@/workbench/agents/selection";
 import { saveFile } from "@/workbench/mock/files";
+import { setRunsUi } from "@/workbench/runs/selection";
 
 function blameOf(m: MemoryFile, lines: CodeLine[]): BlameLine[] {
   return lines.map((l, i) => {
@@ -188,19 +189,45 @@ export function MemoryEditor() {
 
           <h3 className="pt-2 text-[10px] uppercase tracking-wider text-muted-foreground">History</h3>
           <div className="flex flex-col gap-0.5 py-1" data-testid="wb-memory-history">
-            {memory.history.map((h) => (
-              <div
-                key={h.rev}
-                data-testid={`wb-history-r${h.rev}`}
-                className="flex justify-between gap-2 text-muted-foreground"
-              >
-                <span>
-                  r{h.rev} · {h.date} · {h.by}
-                  {h.run ? ` · run #${h.run}` : ""}
-                </span>
-                <span aria-hidden>›</span>
-              </div>
-            ))}
+            {memory.history.map((h) =>
+              h.run ? (
+                // Revision rows with a run deep-link the runs ledger (W3
+                // contract: setRunsUi({ runId, agentId })); rows without a
+                // run stay inert and carry no › affordance.
+                <button
+                  key={h.rev}
+                  type="button"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open run #${h.run} filtered to ${h.by} in the ledger`}
+                  data-testid={`wb-history-r${h.rev}`}
+                  onClick={() => setRunsUi({ runId: h.run, agentId: h.by })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setRunsUi({ runId: h.run, agentId: h.by });
+                    }
+                  }}
+                  className="flex min-h-7 w-full cursor-pointer items-center justify-between gap-2 border border-transparent px-1 py-0.5 text-left text-muted-foreground hover:border-primary hover:text-foreground focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary"
+                >
+                  <span>
+                    r{h.rev} · {h.date} · {h.by}
+                    {h.run ? ` · run #${h.run}` : ""}
+                  </span>
+                  <span aria-hidden>›</span>
+                </button>
+              ) : (
+                <div
+                  key={h.rev}
+                  data-testid={`wb-history-r${h.rev}`}
+                  className="flex min-h-7 items-center justify-between gap-2 px-1 py-0.5 text-muted-foreground"
+                >
+                  <span>
+                    r{h.rev} · {h.date} · {h.by}
+                  </span>
+                </div>
+              ),
+            )}
           </div>
         </aside>
       </div>
