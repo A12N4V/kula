@@ -8,6 +8,8 @@ export type LaneChartTask = {
   /** Inclusive slot indexes on the shared time axis (0-based). */
   start: number;
   end: number;
+  /** Optional W3 lane kind: working (black), waiting (grey), blocked (accent). */
+  kind?: "working" | "waiting" | "blocked";
 };
 
 export type LaneChartLane = {
@@ -21,12 +23,14 @@ export type LaneChartProps = {
   /** Number of slots on the time axis. Defaults to the max task end + 1. */
   slots?: number;
   className?: string;
+  /** Optional W3 addition: click a bar (or an empty slot) and report it. */
+  onSelectItem?: (task: LaneChartTask | undefined) => void;
 };
 
 /* kula variant of the bigbullui gantt-lite (21st.dev, MIT): a CSS-grid
    lane chart with radius 0 bars, hairline slot grid, accent for the
    in-progress bar, mono labels. No shadows, no glow. */
-export function LaneChart({ lanes, tasks, slots, className }: LaneChartProps) {
+export function LaneChart({ lanes, tasks, slots, className, onSelectItem }: LaneChartProps) {
   const slotCount = React.useMemo(() => {
     const maxEnd = tasks.reduce((m, t) => Math.max(m, t.end), 0);
     return Math.max(slots ?? 0, maxEnd + 1, 1);
@@ -74,15 +78,35 @@ export function LaneChart({ lanes, tasks, slots, className }: LaneChartProps) {
               (t) => t.start <= slot && slot <= t.end,
             );
             const isBarStart = task?.start === slot;
+            const kindClass =
+              task?.kind === "waiting"
+                ? "bg-secondary text-secondary-foreground"
+                : task?.kind === "blocked"
+                  ? "bg-accent text-accent-foreground"
+                  : task
+                    ? "bg-primary text-primary-foreground"
+                    : undefined;
+            const onItem = task && isBarStart ? () => onSelectItem?.(task) : undefined;
             return (
               <div
                 key={i}
                 data-testid={task && isBarStart ? `lane-bar-${task.id}` : undefined}
+                role={onItem ? "button" : undefined}
+                tabIndex={onItem ? 0 : undefined}
+                aria-label={task && isBarStart ? `${lanes[lane]?.label} ${task.label}` : undefined}
+                onClick={onItem}
+                onKeyDown={(e) => {
+                  if (onItem && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    onItem();
+                  }
+                }}
                 className={cn(
                   "relative flex items-center overflow-hidden border-r border-b border-border/60",
-                  task && "bg-secondary px-2",
-                  task && isBarStart && "bg-primary text-primary-foreground",
-                  task && !isBarStart && "bg-primary/60 text-primary-foreground",
+                  task && isBarStart && "px-2",
+                  kindClass,
+                  task && onSelectItem && onItem && "cursor-pointer",
+                  task && onSelectItem && onItem && "focus-visible:outline focus-visible:outline-1 focus-visible:-outline-offset-2 focus-visible:outline-accent",
                 )}
               >
                 {task && isBarStart && (
