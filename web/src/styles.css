@@ -1,4 +1,5 @@
 @import "@fontsource-variable/jetbrains-mono";
+@import "./workbench/kit/theme.css";
 @import "./styles/tokens.css";
 @import "./styles/base.css";
 @import "./styles/system.css";
