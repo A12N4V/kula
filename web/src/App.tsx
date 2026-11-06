@@ -12,6 +12,7 @@ const AgentsCanvas = lazy(() => import("./views/AgentsCanvas"));
 const Code = lazy(() => import("./views/Code"));
 const Connectors = lazy(() => import("./views/Connectors"));
 const MapView = lazy(() => import("./views/MapView"));
+const Workbench = lazy(() => import("./workbench/Workbench"));
 import Overview from "./views/Overview";
 import SettingsPanel from "./SettingsPanel";
 
@@ -74,6 +75,9 @@ function parseHash() {
 }
 
 export default function App() {
+  // The workbench route (#/wb) takes precedence over parseHash; the legacy
+  // fallback only applies when the hash is absent or unknown.
+  const [wb, setWb] = useState(() => location.hash.startsWith("#/wb"));
   const initial = useRef(parseHash()).current;
   const [view, setView] = useState<View>(initial.view);
   const [target, setTarget] = useState<Target>(initial.target);
@@ -129,19 +133,23 @@ export default function App() {
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
     else if (view === "agents" && target.tab && target.tab !== "overview") h += `/${target.tab}`;
+    if (wb) return; // #/wb owns its own hash; the legacy views don't rewrite it.
     if (`#${h}` === location.hash) return;
     if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
     else history.pushState(null, "", `#${h}`);
     popping.current = false;
-  }, [view, focus, contrast, target]);
+  }, [view, focus, contrast, target, wb]);
   useEffect(() => {
     const onPop = () => {
       const p = parseHash();
       popping.current = true;
+      setWb(location.hash.startsWith("#/wb"));
       setView(p.view); setTarget(p.target); setContrast(p.contrast); setFocus(p.focus);
     };
     window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
+    const onHash = () => setWb(location.hash.startsWith("#/wb"));
+    window.addEventListener("hashchange", onHash);
+    return () => { window.removeEventListener("popstate", onPop); window.removeEventListener("hashchange", onHash); };
   }, []);
 
   const go: Go = useCallback((v, t = {}) => {
@@ -156,6 +164,9 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // #/wb scopes its own keymap (⌘K, ⌘J, ⌥I, ⌥1–5); the global palette
+      // owns ⌘K everywhere else.
+      if (wb) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
       if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") history.back(); else history.forward(); return; }
       const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
@@ -169,7 +180,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go]);
+  }, [go, wb]);
 
   const reindex = async () => {
     setIndexing(true);
@@ -184,6 +195,11 @@ export default function App() {
 
   return (
     <CodeProvider onLocate={(id) => go("graph", { symbol: id })}>
+    {wb ? (
+      <Suspense fallback={<div className="view-loading" aria-live="polite">loading workbench…</div>}>
+        <Workbench />
+      </Suspense>
+    ) : (
     <div className="shell top">
       <TopNav dests={DESTS} current={destOf(view).id} badge={{ code: changes, agents: openIssues + openPrs }}
         onGo={(d) => go(d.home)} onSearch={() => setPalette(true)} onSettings={() => setPrefs(true)} repo={repo?.name} branch={repo?.branch} />
@@ -233,6 +249,7 @@ export default function App() {
         <span>{changes ? `${changes} changed` : "clean"}</span>
         <span className="mono">{repo?.head?.slice(0, 8)}</span>
         <span>{repo?.user}</span>
+        <a className="sb-help" href="#/wb" data-testid="nav-workbench">Workbench</a>
         <button className="sb-help" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
       </footer>
 
@@ -241,6 +258,7 @@ export default function App() {
       {prefs && <SettingsPanel onClose={() => setPrefs(false)} />}
       {opening && <Opening repo={repo} onDone={endOpening} />}
     </div>
+    )}
     </CodeProvider>
   );
 }
