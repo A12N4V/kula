@@ -14,6 +14,7 @@ import { FileText, Box, GitBranch, GitCommitHorizontal, ShieldCheck } from "luci
 // W2 map + fences activities register through ensurePlaceholders in rail order.
 import { registerMapActivity, registerFencesActivity } from "@/workbench/map";
 import { registerRunsActivity } from "@/workbench/runs";
+import { registerAgentsActivity } from "@/workbench/agents";
 
 // Placeholder activities so every slot is populated before W2–W4 land.
 // They register real shapes ({id, icon, Explorer, Inspector, tabs}) that the
@@ -74,6 +75,7 @@ function ensurePlaceholders() {
   // map, runs, agents, fences, git so ⌥1–5 keeps its meaning.
   registerMapActivity();
   registerRunsActivity();
+  registerAgentsActivity();
   for (const p of PLACEHOLDERS.filter((p) => p.id !== "git" && p.id !== "fences")) {
     if (!WorkbenchRegistry.get(p.id)) WorkbenchRegistry.register(p);
   }

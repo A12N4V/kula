@@ -84,10 +84,16 @@ test("⌘K outside #/wb still opens the global palette", async ({ page }) => {
 
 test("explorer placeholders present in every slot", async ({ page }) => {
   await openWb(page);
-  // W2 replaced the map and fences placeholders and W3 the runs one; agents
-  // and git still show the shell placeholder. The default activity is the
-  // real map, so switch to Agents to see a placeholder.
+  // W2 replaced the map and fences placeholders, W3 the runs one and W4 the
+  // agents one – only git still shows the shell placeholder.
   await page.keyboard.press("Alt+3");
+  // Agents ships its real explorer (connectors summary + kula:// tree); the
+  // Radix Tabs quirk (W1) may need one trigger click before content shows.
+  await page.getByTestId("wb-tab-agents-team").click();
+  await expect(page.getByTestId("wb-connectors")).toBeVisible({ timeout: 30000 });
+  await expect(page.getByTestId("wb-kula-tree")).toBeVisible();
+  // git still shows the shell placeholder.
+  await page.keyboard.press("Alt+5");
   await expect(page.getByTestId("wb-placeholder").first()).toBeVisible();
   // the map activity fills the explorer and inspector slots with real views
   await page.keyboard.press("Alt+1");
