@@ -4,13 +4,14 @@
 // Time axis in minutes from the run start, labelled every 5 min.
 import { useMemo } from "react";
 import { LaneChart, type LaneChartTask } from "@/workbench/kit/lane-chart/lane-chart";
-import { MOCK_AGENTS, MOCK_LANES, formatTokens } from "@/workbench/mock/runs";
+import { MOCK_AGENTS, MOCK_LANES, MOCK_RUNS, formatTokens, runStartMinutes } from "@/workbench/mock/runs";
 import { setRunsUi, useRunsUi } from "@/workbench/runs/selection";
 
 export function Lanes({ className }: { className?: string }) {
   const ui = useRunsUi();
   const runId = ui.runId ?? 42;
-  const agents = MOCK_AGENTS[runId] ?? [];
+  const run = MOCK_RUNS.find((r) => r.id === runId) ?? MOCK_RUNS[0];
+  const agents = MOCK_AGENTS[run.id] ?? [];
 
   const lanes = useMemo(
     () => agents.map((a) => ({ id: a.id, label: `${a.id} · ${formatTokens(a.tokensIn + a.tokensOut)}` })),
@@ -18,15 +19,17 @@ export function Lanes({ className }: { className?: string }) {
   );
   const tasks: LaneChartTask[] = useMemo(
     () =>
-      MOCK_LANES.filter((l) => agents.some((a) => a.id === l.agentId)).map((l) => ({
-        id: l.id,
-        laneId: l.agentId,
-        label: l.kind,
-        start: l.start,
-        end: l.end,
-        kind: l.kind,
-      })),
-    [agents],
+      (MOCK_LANES[run.id] ?? [])
+        .filter((l) => agents.some((a) => a.id === l.agentId))
+        .map((l) => ({
+          id: l.id,
+          laneId: l.agentId,
+          label: l.kind,
+          start: l.start,
+          end: l.end,
+          kind: l.kind,
+        })),
+    [agents, run.id],
   );
 
   const onSelect = (task: LaneChartTask | undefined) => {
@@ -37,7 +40,8 @@ export function Lanes({ className }: { className?: string }) {
     setRunsUi({ agentId: task.laneId, laneKind: task.kind ?? null, window: { start: task.start, end: task.end + 1 } });
   };
 
-  const slots = agents.length ? 32 : 1;
+  // the axis spans exactly the run's minutes (mock coherence: no slot drift)
+  const slots = Math.max(run.minutes + 1, 12);
 
   return (
     <section data-testid="wb-lanes" className={className}>
@@ -52,16 +56,28 @@ export function Lanes({ className }: { className?: string }) {
       ) : (
         <>
           <LaneChart lanes={lanes} tasks={tasks} slots={slots} onSelectItem={onSelect} />
-          <div
-            aria-hidden
-            className="mt-px flex pl-0 text-[10px] tabular-nums text-muted-foreground"
-            style={{ gridTemplateColumns: `repeat(${slots}, minmax(48px, 1fr))` }}
-          >
-            {Array.from({ length: slots }, (_, m) => (
-              <span key={m} className="min-w-0 overflow-visible whitespace-nowrap pl-1">
-                {m % 5 === 0 ? label(m) : ""}
-              </span>
-            ))}
+          {/* axis labels: flex row with a hidden mirror of the lane labels so
+              the spacer width matches LaneChart's content-sized gutter exactly,
+              then the same grid template as the chart's slot grid (critic fix:
+              display:grid, previously a flex row that ignored the template). */}
+          <div className="mt-px flex" aria-hidden>
+            <div className="shrink-0 pr-2">
+              {lanes.map((lane) => (
+                <div key={lane.id} className="h-8 whitespace-nowrap px-2 opacity-0">
+                  {lane.label}
+                </div>
+              ))}
+            </div>
+            <div
+              className="grid flex-1 text-[10px] tabular-nums text-muted-foreground"
+              style={{ gridTemplateColumns: `repeat(${slots}, minmax(48px, 1fr))` }}
+            >
+              {Array.from({ length: slots }, (_, m) => (
+                <span key={m} className="min-w-0 overflow-visible whitespace-nowrap pl-1">
+                  {m % 5 === 0 ? label(m, run.start) : ""}
+                </span>
+              ))}
+            </div>
           </div>
         </>
       )}
@@ -69,9 +85,8 @@ export function Lanes({ className }: { className?: string }) {
   );
 }
 
-function label(minute: number): string {
-  // run #42 starts 14:18 – axis labels are wall-clock, from the mock run.
-  const h = 14 + Math.floor((18 + minute) / 60);
-  const m = (18 + minute) % 60;
-  return `${h}:${String(m).padStart(2, "0")}`;
+function label(minute: number, start: string): string {
+  // wall-clock axis labels, derived from the run's own start (never hardcoded)
+  const total = runStartMinutes(start) + minute;
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }

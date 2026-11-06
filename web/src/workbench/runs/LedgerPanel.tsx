@@ -4,7 +4,7 @@
 // map store's blockId, read one-way from map/selection.ts. Tokens and credits
 // only, never dollars.
 import { useMemo } from "react";
-import { formatTokens, MOCK_LEDGER, type Verdict } from "@/workbench/mock/runs";
+import { formatTokens, MOCK_LEDGER, MOCK_RUNS, runStartMinutes, type Verdict } from "@/workbench/mock/runs";
 import { useMapUi } from "@/workbench/map/selection";
 import { clearRunsFilters, setRunsUi, useRunsUi } from "@/workbench/runs/selection";
 import { cn } from "cn";
@@ -29,7 +29,8 @@ export function LedgerPanel() {
   const ui = useRunsUi();
   const mapUi = useMapUi();
   const runId = ui.runId ?? 42;
-  const events = MOCK_LEDGER[runId] ?? [];
+  const run = MOCK_RUNS.find((r) => r.id === runId) ?? MOCK_RUNS[0];
+  const events = MOCK_LEDGER[run.id] ?? [];
 
   const filtered = useMemo(() => {
     return events
@@ -37,7 +38,7 @@ export function LedgerPanel() {
       .filter((e) => (ui.laneKind ? matchKind(e, ui.laneKind) : true))
       .filter((e) => {
         if (!ui.window) return true;
-        const m = minuteOf(e.time);
+        const m = minuteOf(e.time, run.start);
         return m >= ui.window.start && m < ui.window.end;
       })
       .filter((e) => (ui.verdict ? e.verdict === ui.verdict : true))
@@ -48,12 +49,12 @@ export function LedgerPanel() {
       })
       .slice()
       .reverse(); // newest first, like the deck
-  }, [events, ui, mapUi.block, runId]);
+  }, [events, ui, mapUi.block, run.id, run.start]);
 
   const filters = [
     ui.agentId ? { key: "agent", text: `agent: ${ui.agentId}` } : null,
     ui.laneKind ? { key: "kind", text: ui.laneKind } : null,
-    ui.window ? { key: "window", text: `${fmt(ui.window.start)}–${fmt(ui.window.end)} min` } : null,
+    ui.window ? { key: "window", text: `${fmt(ui.window.start, run.start)}–${fmt(ui.window.end, run.start)} min` } : null,
     ui.verdict ? { key: "verdict", text: `verdict: ${ui.verdict}` } : null,
     (ui.blockId ?? mapUi.block) ? { key: "block", text: `block: ${ui.blockId ?? mapUi.block}` } : null,
   ].filter(Boolean) as { key: string; text: string }[];
@@ -85,7 +86,7 @@ export function LedgerPanel() {
                         : { blockId: null },
               )
             }
-            className="flex cursor-pointer items-center gap-1 border border-border px-1.5 py-0.5 hover:text-foreground"
+            className="flex min-h-[28px] cursor-pointer items-center gap-1 border border-border px-2 hover:text-foreground"
           >
             {f.text} <X size={8} />
           </button>
@@ -95,7 +96,7 @@ export function LedgerPanel() {
             type="button"
             data-testid="wb-ledger-clear"
             onClick={() => clearRunsFilters()}
-            className="cursor-pointer text-accent hover:underline"
+            className="flex min-h-[28px] min-w-[28px] cursor-pointer items-center text-accent hover:underline"
           >
             clear
           </button>
@@ -119,6 +120,9 @@ export function LedgerPanel() {
               key={`${e.time}-${e.agentId}-${e.target}`}
               data-testid={`wb-ledger-row-${e.agentId}-${e.event}`}
               tabIndex={0}
+              onClick={() => {
+                if (e.blockId) setRunsUi({ agentId: e.agentId });
+              }}
               onKeyDown={(ev) => {
                 if (ev.key === "Enter" || ev.key === " ") {
                   ev.preventDefault();
@@ -157,13 +161,14 @@ function matchKind(e: { verdict: Verdict }, kind: string): boolean {
   return e.verdict === "ok";
 }
 
-// minuteOf – minutes from the mock run start (14:18).
-function minuteOf(time: string): number {
+// minuteOf – minutes from the selected run's own start (from the mock run,
+// never a hardcoded time – critic fix: every run gets a working window filter).
+function minuteOf(time: string, start: string): number {
   const [h, m] = time.split(":").map(Number);
-  return h * 60 + m - (14 * 60 + 18);
+  return h * 60 + m - runStartMinutes(start);
 }
 
-function fmt(minute: number): string {
-  const total = 14 * 60 + 18 + minute;
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+function fmt(minute: number, start: string): string {
+  const total = runStartMinutes(start) + minute;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }

@@ -78,21 +78,44 @@ export const MOCK_AGENTS: Record<number, RunAgent[]> = {
   39: [{ id: "claude-code", kind: "claude-code", task: "interactive session", tokensIn: 70_000, tokensOut: 18_000, credits: 0, toolCalls: 9, filesEdited: 2 }],
 };
 
-export const MOCK_LANES: LaneSegment[] = [
-  { id: "l-1", agentId: "planner", kind: "working", start: 0, end: 3 },
-  { id: "l-2", agentId: "planner", kind: "waiting", start: 4, end: 9 },
-  { id: "l-3", agentId: "planner", kind: "working", start: 10, end: 14 },
-  { id: "l-4", agentId: "coder-1", kind: "waiting", start: 0, end: 4 },
-  { id: "l-5", agentId: "coder-1", kind: "working", start: 5, end: 10 },
-  { id: "l-6", agentId: "coder-1", kind: "blocked", start: 11, end: 11 },
-  { id: "l-7", agentId: "coder-1", kind: "working", start: 12, end: 14 },
-  { id: "l-8", agentId: "coder-2", kind: "waiting", start: 0, end: 9 },
-  { id: "l-9", agentId: "coder-2", kind: "working", start: 10, end: 10 },
-  { id: "l-10", agentId: "coder-2", kind: "waiting", start: 11, end: 14 },
-  { id: "l-11", agentId: "critic", kind: "waiting", start: 0, end: 11 },
-  { id: "l-12", agentId: "critic", kind: "working", start: 12, end: 13 },
-  { id: "l-13", agentId: "critic", kind: "blocked", start: 14, end: 14 },
-];
+/** Lane segments per run – every segment fits inside its run's minutes. */
+export const MOCK_LANES: Record<number, LaneSegment[]> = {
+  42: [
+    { id: "l-1", agentId: "planner", kind: "working", start: 0, end: 3 },
+    { id: "l-2", agentId: "planner", kind: "waiting", start: 4, end: 9 },
+    { id: "l-3", agentId: "planner", kind: "working", start: 10, end: 14 },
+    { id: "l-4", agentId: "coder-1", kind: "waiting", start: 0, end: 4 },
+    { id: "l-5", agentId: "coder-1", kind: "working", start: 5, end: 10 },
+    { id: "l-6", agentId: "coder-1", kind: "blocked", start: 11, end: 11 },
+    { id: "l-7", agentId: "coder-1", kind: "working", start: 12, end: 14 },
+    { id: "l-8", agentId: "coder-2", kind: "waiting", start: 0, end: 9 },
+    { id: "l-9", agentId: "coder-2", kind: "working", start: 10, end: 10 },
+    { id: "l-10", agentId: "coder-2", kind: "waiting", start: 11, end: 14 },
+    { id: "l-11", agentId: "critic", kind: "waiting", start: 0, end: 11 },
+    { id: "l-12", agentId: "critic", kind: "working", start: 12, end: 13 },
+    { id: "l-13", agentId: "critic", kind: "blocked", start: 14, end: 14 },
+  ],
+  41: [
+    { id: "l-1", agentId: "planner", kind: "working", start: 0, end: 8 },
+    { id: "l-2", agentId: "planner", kind: "waiting", start: 9, end: 14 },
+    { id: "l-3", agentId: "researcher", kind: "waiting", start: 0, end: 12 },
+    { id: "l-4", agentId: "researcher", kind: "working", start: 13, end: 38 },
+    { id: "l-5", agentId: "researcher", kind: "blocked", start: 39, end: 41 },
+    { id: "l-6", agentId: "researcher", kind: "working", start: 42, end: 45 },
+  ],
+  40: [
+    { id: "l-1", agentId: "coder-1", kind: "working", start: 0, end: 6 },
+    { id: "l-2", agentId: "coder-1", kind: "blocked", start: 7, end: 8 },
+    { id: "l-3", agentId: "coder-1", kind: "working", start: 9, end: 11 },
+  ],
+  39: [{ id: "l-1", agentId: "claude-code", kind: "working", start: 0, end: 8 }],
+};
+
+/** Minutes-since-midnight for a run's HH:MM start – one source for the axis. */
+export function runStartMinutes(start: string): number {
+  const [h, m] = start.split(":").map(Number);
+  return h * 60 + m;
+}
 
 /** Touched block ids per run – wheel sectors light up for these. */
 export const MOCK_TOUCHED_BLOCKS: Record<number, string[]> = {
@@ -120,9 +143,10 @@ export const MOCK_LEDGER: Record<number, LedgerEvent[]> = {
     { time: "14:32", agentId: "coder-1", event: "fence", target: "review src/index/**", blockId: "6", tokensIn: 300, tokensOut: 0, verdict: "review" },
   ],
   41: [
-    { time: "09:02", agentId: "planner", event: "spawn", target: "run #41 · bench", blockId: "src/codemap/**", tokensIn: 3_000, tokensOut: 500, verdict: "ok" },
-    { time: "09:10", agentId: "researcher", event: "read", target: "src/codemap/passes.rs", blockId: "src/codemap/**", tokensIn: 40_000, tokensOut: 120, verdict: "ok" },
-    { time: "09:30", agentId: "researcher", event: "bash", target: "cargo bench codemap", blockId: "src/codemap/**", tokensIn: 8_000, tokensOut: 300, verdict: "ok" },
+    { time: "09:02", agentId: "planner", event: "spawn", target: "run #41 · bench", blockId: "2", tokensIn: 3_000, tokensOut: 500, verdict: "ok" },
+    { time: "09:10", agentId: "researcher", event: "read", target: "src/codemap/passes.rs", blockId: "2", tokensIn: 40_000, tokensOut: 120, verdict: "ok" },
+    { time: "09:30", agentId: "researcher", event: "bash", target: "cargo bench codemap", blockId: "2", tokensIn: 8_000, tokensOut: 300, verdict: "ok" },
+    { time: "09:33", agentId: "researcher", event: "edit", target: "src/codemap/passes.rs::rank", blockId: "2", tokensIn: 5_000, tokensOut: 640, verdict: "review" },
   ],
   40: [
     { time: "08:41", agentId: "coder-1", event: "edit", target: "src/guard.rs::fence_glob", blockId: "8", tokensIn: 5_000, tokensOut: 700, verdict: "ok" },

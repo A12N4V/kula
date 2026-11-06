@@ -98,12 +98,34 @@ test("mini wheel lights the run's touched blocks and a sector filters the ledger
   await sector.dispatchEvent("click");
   await page.getByTestId("wb-panel-tab-run-ledger").click();
   await expect(page.getByTestId("wb-ledger-filter-block")).toContainText("block: 4");
+  // exact filtered set: the mock has exactly 5 block-4 events for run #42
+  // (14:21 handoff, 14:23 read, 14:28 edit, 14:28 memory, 14:32 handoff)
+  const rows = page.locator('[data-testid^="wb-ledger-row-"]');
+  await expect(rows).toHaveCount(5);
+  const texts = await rows.allTextContents();
+  // the first row is one of the block-4 targets, not just any agent name
+  expect(texts[0]).toMatch(/lanes|lane-chart|api\.ts|lane-axis|narrow lane labels/);
+});
+
+test("lane bar click on a non-default run filters by that run's window", async ({ page }) => {
+  await openRuns(page);
+  // switch to run #41 (starts 09:02 – different axis from the 14:18 default)
+  await page.getByTestId("wb-run-41").click();
+  await expect(page.getByTestId("wb-runs-tab")).toContainText("Run #41");
+  // researcher working bar l-4 (13–38 min from start)
+  await page.getByTestId("lane-bar-l-4").click();
+  await page.getByTestId("wb-panel-tab-run-ledger").click();
+  await expect(page.getByTestId("wb-ledger-filter-agent")).toContainText("researcher");
   const rows = page.locator('[data-testid^="wb-ledger-row-"]');
   const texts = await rows.allTextContents();
   expect(texts.length).toBeGreaterThan(0);
-  // every visible row is one of the block-4 events from the mock ledger
   for (const t of texts) {
-    expect(t).toMatch(/coder-1|coder-2|planner|critic/);
+    expect(t).toContain("researcher");
+  }
+  // the window chip shows the run's own wall-clock window, and rows match it
+  await expect(page.getByTestId("wb-ledger-filter-window")).toContainText("09:1");
+  for (const t of texts) {
+    expect(t).toMatch(/09:(1\d|2\d|3\d)/); // after 09:13, before 09:39
   }
 });
 

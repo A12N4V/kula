@@ -74,7 +74,7 @@ export function RunsInspector() {
             type="button"
             data-testid="wb-runs-inspector-clear"
             onClick={() => clearRunsFilters()}
-            className="cursor-pointer text-accent hover:underline"
+            className="flex min-h-[28px] min-w-[28px] cursor-pointer items-center text-accent hover:underline"
           >
             clear
           </button>
@@ -99,7 +99,7 @@ function Row({ label, value, filter }: { label: string; value: string; filter?: 
           <button
             type="button"
             onClick={filter}
-            className="cursor-pointer outline-none hover:text-accent focus-visible:outline focus-visible:outline-1 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+            className="min-h-[28px] cursor-pointer outline-none hover:text-accent focus-visible:outline focus-visible:outline-1 focus-visible:-outline-offset-2 focus-visible:outline-accent"
           >
             {value}
           </button>
