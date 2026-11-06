@@ -13,6 +13,7 @@ import type { Activity, BottomPanelTab } from "@/workbench/registry";
 import { FileText, Box, GitBranch, GitCommitHorizontal, ShieldCheck } from "lucide-react";
 // W2 map + fences activities register through ensurePlaceholders in rail order.
 import { registerMapActivity, registerFencesActivity } from "@/workbench/map";
+import { registerRunsActivity } from "@/workbench/runs";
 
 // Placeholder activities so every slot is populated before W2–W4 land.
 // They register real shapes ({id, icon, Explorer, Inspector, tabs}) that the
@@ -72,6 +73,7 @@ function ensurePlaceholders() {
   // W2 replaces the map and fences placeholders; rail order must stay
   // map, runs, agents, fences, git so ⌥1–5 keeps its meaning.
   registerMapActivity();
+  registerRunsActivity();
   for (const p of PLACEHOLDERS.filter((p) => p.id !== "git" && p.id !== "fences")) {
     if (!WorkbenchRegistry.get(p.id)) WorkbenchRegistry.register(p);
   }
