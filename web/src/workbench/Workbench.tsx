@@ -11,6 +11,8 @@ import { CommandPalette } from "@/workbench/shell/CommandPalette";
 import { WorkbenchRegistry } from "@/workbench/registry";
 import type { Activity, BottomPanelTab } from "@/workbench/registry";
 import { FileText, Box, GitBranch, GitCommitHorizontal, ShieldCheck } from "lucide-react";
+// W2 map + fences activities register through ensurePlaceholders in rail order.
+import { registerMapActivity, registerFencesActivity } from "@/workbench/map";
 
 // Placeholder activities so every slot is populated before W2–W4 land.
 // They register real shapes ({id, icon, Explorer, Inspector, tabs}) that the
@@ -67,7 +69,14 @@ const PLACEHOLDERS: Activity[] = [
 ];
 
 function ensurePlaceholders() {
-  for (const p of PLACEHOLDERS) {
+  // W2 replaces the map and fences placeholders; rail order must stay
+  // map, runs, agents, fences, git so ⌥1–5 keeps its meaning.
+  registerMapActivity();
+  for (const p of PLACEHOLDERS.filter((p) => p.id !== "git")) {
+    if (!WorkbenchRegistry.get(p.id)) WorkbenchRegistry.register(p);
+  }
+  registerFencesActivity();
+  for (const p of PLACEHOLDERS.filter((p) => p.id === "git")) {
     if (!WorkbenchRegistry.get(p.id)) WorkbenchRegistry.register(p);
   }
 }
