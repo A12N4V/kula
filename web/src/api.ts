@@ -194,6 +194,15 @@ export const api = {
   metaAction: <T = unknown>(kind: "issues" | "proposals" | "notes", action: string | number, body: Record<string, unknown>) =>
     post<T>(`/api/meta/${kind}/${action}`, body),
 
+  // U1 · Syntagm: blocks and chains (+ E1's embed endpoints)
+  syntagm: () => get<SyntagmData>("/api/syntagm"),
+  syntagmBlock: (id: string) => get<SyntagmBlock>(`/api/syntagm/block/${encodeURIComponent(id)}`),
+  syntagmChain: (id: string) => get<Chain>(`/api/syntagm/chain/${encodeURIComponent(id)}`),
+  embedStatus: () => get<EmbedStatus>("/api/embed/status"),
+  embedCheck: () => get<EmbedCheck>("/api/embed/check"),
+  embedInstall: () => post<EmbedInstall>("/api/embed/install"),
+  embedRemove: () => post<EmbedInstall>("/api/embed/remove"),
+
   // K2 · unified agent config: skills, rules, MCP, memory layers
   configMatrix: () => get<ConfigMatrix>("/api/agent/config_matrix"),
   skillDetail: (name: string) => get<SkillDetail>(`/api/agent/skill_detail?${q({ name })}`),
@@ -226,5 +235,12 @@ export function relTime(ts: number) {
 
 // Cluster colours share the graph palette (see colors.ts).
 export { hue as colorFor } from "./colors";
+
+// U1 · Syntagm shared types (the contract shapes live in views/syntagm/types.ts).
+import type { Chain, EmbedCheck, SyntagmData } from "./views/syntagm/types";
+export type { Chain, EmbedCheck, SyntagmData } from "./views/syntagm/types";
+export interface SyntagmBlock { block: import("./views/syntagm/types").Block }
+export interface EmbedStatus { state: "off" | "on" | "stale"; installed: boolean; model: string | null; ms: number }
+export interface EmbedInstall { ok: boolean; phase?: string; done?: number; total?: number }
 
 export type LangRow = { id: string; name: string; files: number; indexed: boolean; builtin: boolean; tier: string };

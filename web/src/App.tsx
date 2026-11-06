@@ -12,6 +12,7 @@ const AgentsCanvas = lazy(() => import("./views/AgentsCanvas"));
 const Code = lazy(() => import("./views/Code"));
 const Connectors = lazy(() => import("./views/Connectors"));
 const MapView = lazy(() => import("./views/MapView"));
+const Syntagm = lazy(() => import("./views/Syntagm"));
 import Overview from "./views/Overview";
 import SettingsPanel from "./SettingsPanel";
 
@@ -41,7 +42,7 @@ type ViewDef = { id: View; label: string; key: string };
 // (Code holds the graph and git, Agents holds the review queue and notes).
 const DESTS: Dest[] = [
   { id: "overview", label: "Overview", icon: Icon.home, key: "1", home: "overview", views: ["overview"] },
-  { id: "map", label: "Map", icon: Icon.map, key: "3", home: "flows", views: ["flows"] },
+  { id: "map", label: "Map", icon: Icon.map, key: "3", home: "flows", views: ["flows", "syntagm"] },
   { id: "code", label: "Code", icon: Icon.code, key: "2", home: "graph", views: ["graph", "changes", "history", "branches", "query", "console"] },
   { id: "connectors", label: "Connectors", icon: Icon.plug, key: "c", home: "connectors", views: ["connectors"] },
   { id: "agents", label: "Agents", icon: Icon.agents, key: "a", home: "agents", views: ["agents", "proposals", "issues", "notes"] },
@@ -69,6 +70,7 @@ function parseHash() {
   if (view === "proposals" && Number(a)) target.proposal = Number(a);
   if (view === "history" && a) target.sha = a;
   if (view === "agents" && a) target.tab = a;
+  if (view === "syntagm" && a) target.block = a;
   if (view === "graph" && a === "fences") target.fences = b ?? "";
   return { view, contrast, focus, target };
 }
@@ -129,6 +131,7 @@ export default function App() {
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
     else if (view === "agents" && target.tab && target.tab !== "overview") h += `/${target.tab}`;
+    else if (view === "syntagm" && target.block) h += `/${target.block}`;
     if (`#${h}` === location.hash) return;
     if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
     else history.pushState(null, "", `#${h}`);
@@ -217,6 +220,7 @@ export default function App() {
               graph={view === "graph" ? <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} /> : null} />}
 
             {view === "flows" && <MapView {...nav} />}
+            {view === "syntagm" && <Syntagm openSymbol={(id) => go("graph", { symbol: id })} version={version} block={target.block} />}
             {["agents", "proposals", "issues", "notes"].includes(view) && <AgentsCanvas {...nav} view={view} />}
             {view === "connectors" && <Connectors {...nav} />}
           </Suspense>
