@@ -109,9 +109,13 @@ export function BottomPanel({
   extraTabs?: BottomPanelTab[];
   onClose: () => void;
 }) {
-  const tabs = [...BUILT_IN_PANEL_TABS, ...extraTabs].sort(
-    (a, b) => (a.order ?? 100) - (b.order ?? 100) || a.id.localeCompare(b.id),
-  );
+  // De-duplicate by topic (keep the earliest order): activities may register
+  // a panel tab for a topic the shell also ships as a built-in placeholder
+  // under a different id, and two tabs labelled alike would both render.
+  const seen = new Set<string>();
+  const tabs = [...BUILT_IN_PANEL_TABS, ...extraTabs]
+    .sort((a, b) => (a.order ?? 100) - (b.order ?? 100) || a.id.localeCompare(b.id))
+    .filter((t) => !seen.has(t.label) && seen.add(t.label));
   return (
     <div data-testid="wb-bottom-panel" data-figure="wb-bottom-panel" className="flex h-full min-h-0 flex-col border-t border-border bg-card">
       <Tabs defaultValue={tabs[0]?.id} className="flex min-h-0 flex-1 flex-col gap-0">

@@ -35,7 +35,9 @@ test("activity bar lists registry activities and switches", async ({ page }) => 
 
 test("bottom panel has all six tabs", async ({ page }) => {
   await openWb(page);
-  for (const t of ["ledger", "terminal", "diff", "tests", "check", "problems"]) {
+  // The shell de-dupes panel tabs by label (critic round 1): W3's real
+  // run-ledger (order 9) wins over the built-in ledger placeholder (order 10).
+  for (const t of ["run-ledger", "terminal", "diff", "tests", "check", "problems"]) {
     await expect(page.getByTestId(`wb-panel-tab-${t}`)).toBeVisible();
   }
   await page.getByTestId("wb-panel-tab-problems").click();
