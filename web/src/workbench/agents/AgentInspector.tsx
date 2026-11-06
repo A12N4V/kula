@@ -77,7 +77,7 @@ export function AgentInspector() {
           onKeyDown={(e) => {
             if (e.key === "Enter") setAgentsUi({ agentId: agent.id, openFile: agent.file, memoryOpen: null });
           }}
-          className="mt-1 border border-border px-2 py-1 text-[11px] text-foreground/80 hover:border-primary hover:text-primary focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary"
+          className="mt-1 inline-flex min-h-7 items-center border border-border px-2 text-[11px] text-foreground/80 hover:border-primary hover:text-primary focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary"
         >
           Open {agent.name}.toml ▫
         </button>
