@@ -92,7 +92,17 @@ function ensurePlaceholders() {
 export function Workbench() {
   ensurePlaceholders();
   const activities = WorkbenchRegistry.list();
-  const [active, setActive] = useState(activities[0]?.id ?? "map");
+  const [active, setActive] = useState(() => {
+    const fromHash = location.hash.slice(5);
+    return activities.some((a) => a.id === fromHash) ? fromHash : (activities[0]?.id ?? "map");
+  });
+  // Selecting an activity deep-links: #/wb/<id>, so rail, ⌥1–9 and the
+  // palette land on the same URL (replaceState – no history spam, no remount:
+  // the route listener only checks the #/wb prefix).
+  const selectActivity = useCallback((id: string) => {
+    setActive(id);
+    history.replaceState(null, "", `#/wb/${id}`);
+  }, []);
   const [commandOpen, setCommandOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -115,7 +125,7 @@ export function Workbench() {
         const a = activities[Number(e.key) - 1];
         if (a) {
           e.preventDefault();
-          setActive(a.id);
+          selectActivity(a.id);
         }
       }
     };
@@ -142,7 +152,7 @@ export function Workbench() {
     >
       <TitleBar onOpenCommand={() => setCommandOpen(true)} />
       <div className="flex min-h-0 flex-1">
-        <ActivityBar activities={activities} active={active} onSelect={setActive} />
+        <ActivityBar activities={activities} active={active} onSelect={selectActivity} />
         <div className="min-w-0 flex-1">
           <ResizablePanelGroup direction="vertical" className="h-full">
             <ResizablePanel>
@@ -190,7 +200,7 @@ export function Workbench() {
         activities={activities}
         onActivity={(id) => {
           setCommandOpen(false);
-          setActive(id);
+          selectActivity(id);
         }}
         onVerb={runVerb}
         blocks={[

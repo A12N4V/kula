@@ -59,7 +59,7 @@ export function MapTab() {
           />
         </div>
       </TabsContent>
-      <TabsContent value="subway" className="flex min-h-0 flex-1 flex-col">
+      <TabsContent value="subway" aria-label="Subway" className="flex min-h-0 flex-1 flex-col">
         <Subway />
       </TabsContent>
     </Tabs>
