@@ -12,7 +12,7 @@ const AgentsCanvas = lazy(() => import("./views/AgentsCanvas"));
 const Code = lazy(() => import("./views/Code"));
 const Connectors = lazy(() => import("./views/Connectors"));
 const MapView = lazy(() => import("./views/MapView"));
-const Syntagm = lazy(() => import("./views/Syntagm"));
+const CodeMap = lazy(() => import("./views/CodeMap"));
 import Overview from "./views/Overview";
 import SettingsPanel from "./SettingsPanel";
 
@@ -220,7 +220,7 @@ export default function App() {
               graph={view === "graph" ? <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} /> : null} />}
 
             {view === "flows" && <MapView {...nav} />}
-            {view === "syntagm" && <Syntagm openSymbol={(id) => go("graph", { symbol: id })} version={version} block={target.block} />}
+            {view === "syntagm" && <CodeMap {...nav} />}
             {["agents", "proposals", "issues", "notes"].includes(view) && <AgentsCanvas {...nav} view={view} />}
             {view === "connectors" && <Connectors {...nav} />}
           </Suspense>

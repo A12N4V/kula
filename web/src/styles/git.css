@@ -1,5 +1,5 @@
 /* ---------- diff ---------- */
-.diff { font-family: var(--mono); font-size: 12px; line-height: 1.55; border: 1px solid var(--line); border-radius: 0; overflow: hidden; background: var(--panel); }
+.diff { font-family: var(--mono); font-size: 12px; line-height: 1.55; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; background: var(--panel); }
 .diff .file { padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel-2); color: var(--text); font-weight: 500; position: sticky; top: 0; }
 .diff .hunk { color: var(--blue); background: rgba(124, 183, 255, 0.06); padding: 2px 12px; }
 .diff .ln { display: grid; grid-template-columns: 44px 44px 1fr; white-space: pre; }
@@ -10,7 +10,7 @@
 .diff .del { background: var(--del-bg); }
 .diff .del .c { color: var(--red); }
 .diff .meta { color: var(--text-3); padding: 0 12px; white-space: pre; }
-pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 0; background: var(--panel); overflow: auto; max-height: 360px; }
+pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); overflow: auto; max-height: 360px; }
 
 /* ---------- console ---------- */
 .console { height: 100%; display: flex; flex-direction: column; background: var(--bg); font-family: var(--mono); font-size: 12.5px; }

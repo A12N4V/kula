@@ -43,7 +43,7 @@ function build(f: Flow) {
   return { nodes, edges, kept };
 }
 
-export default function MapView({ openSymbol, version }: Nav) {
+export default function MapView({ openSymbol, version, go }: Nav) {
   const [flows, setFlows] = useState<Flow[] | null>(null);
   const [cur, setCur] = useState(0);
   const [sel, setSel] = useState<string | null>(null);
@@ -88,6 +88,10 @@ export default function MapView({ openSymbol, version }: Nav) {
     <>
       <Canvas testid="map-canvas" label="Flow canvas" nodes={g!.nodes} edges={g!.edges} selected={sel} onSelect={(id) => setSel(id && id.startsWith("n") ? id : null)} fitKey={`flow${cur}`} />
       <div className="kc-pick">
+        <div className="seg cm-mode" role="group" aria-label="Map mode" onPointerDown={(e) => e.stopPropagation()}>
+          <button className="on" aria-pressed="true" aria-label="Flows" data-tip="Flows"><Icon.map /></button>
+          <button aria-label="Blocks" data-tip="Blocks" onClick={() => go?.("syntagm")}><Icon.box /></button>
+        </div>
         <select aria-label="Flow" value={cur} onChange={(e) => pick(Number(e.target.value))}>
           {flows.map((x, i) => <option key={x.entry.id} value={i}>{x.entry.name} · reaches {x.reach}</option>)}
         </select>

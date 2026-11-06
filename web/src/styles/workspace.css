@@ -48,7 +48,7 @@
 .side-pre { margin: 0; padding: 8px 10px; max-height: 260px; overflow: auto; background: var(--bg); border: 1px solid var(--line); font-size: 11px; line-height: 1.5; white-space: pre; }
 .side-field { display: flex; flex-direction: column; gap: 4px; }
 .side-field > span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-3); }
-.side-field input, .side-field select, .side-field textarea { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; background: var(--bg); border: 1px solid var(--line-2); color: var(--text); font: 12px var(--mono); border-radius: 0; }
+.side-field input, .side-field select, .side-field textarea { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; background: var(--bg); border: 1px solid var(--line-2); color: var(--text); font: 12px var(--mono); border-radius: var(--radius-sm); }
 .side-field textarea { height: 84px; padding: 6px 8px; resize: vertical; }
 .side-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 

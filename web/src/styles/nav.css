@@ -12,7 +12,7 @@
 .topnav-bar {
   pointer-events: auto; position: relative; display: flex; align-items: center; justify-content: space-between; gap: 32px;
   min-width: 420px; max-width: calc(100vw - 32px); padding: 6px 8px 6px 14px;
-  background: rgba(0, 0, 0, .92); border: 1px solid color-mix(in srgb, var(--text) 14%, transparent); border-radius: 0;
+  background: rgba(0, 0, 0, .92); border: 1px solid color-mix(in srgb, var(--text) 14%, transparent); border-radius: var(--radius-sm);
   box-shadow: 0 1px 1px 0 rgba(0, 0, 0, .4), 0 8px 24px -4px rgba(0, 0, 0, .45);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); user-select: none;
 }

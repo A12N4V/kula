@@ -30,8 +30,8 @@ export function bounds(nodes: CNode[]) {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
-export default function Canvas({ nodes, edges, selected, onSelect, onMove, onDrop, highlight, fitKey, toolbar, empty, label = "Canvas", testid }: {
-  nodes: CNode[]; edges: CEdge[]; selected?: string | null; onSelect?: (id: string | null) => void;
+export default function Canvas({ nodes, edges, selected, onSelect, onOpen, onMove, onDrop, highlight, fitKey, toolbar, empty, label = "Canvas", testid }: {
+  nodes: CNode[]; edges: CEdge[]; selected?: string | null; onSelect?: (id: string | null) => void; onOpen?: (id: string) => void;
   onMove?: (id: string, x: number, y: number, done: boolean) => void;
   onDrop?: (data: string, at: { x: number; y: number }, over: string | null) => void;
   highlight?: Set<string>; fitKey?: string | number; toolbar?: ReactNode; empty?: ReactNode; label?: string; testid?: string;
@@ -162,7 +162,8 @@ export default function Canvas({ nodes, edges, selected, onSelect, onMove, onDro
             className={`kc-node ${n.frame ? "frame" : ""} ${n.tone ?? ""} ${selected === n.id ? "sel" : ""} ${highlight?.has(n.id) ? "hl" : ""} ${n.live ? "live" : ""} ${onMove ? "movable" : ""}`}
             style={{ left: n.x, top: n.y, width: n.w, height: n.h }}
             onPointerDown={(e) => down(e, n.id)}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect?.(n.id); } }}>
+            onDoubleClick={onOpen ? (e) => { e.stopPropagation(); onOpen(n.id); } : undefined}
+            onKeyDown={(e) => { if (e.key === "Enter" && onOpen && selected === n.id) { e.preventDefault(); onOpen(n.id); } else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect?.(n.id); } }}>
             <div className="kc-head">
               {n.icon && <span className="kc-ico">{n.icon}</span>}
               <span className="kc-title">{n.title}</span>
