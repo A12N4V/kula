@@ -10,7 +10,7 @@ import { BottomPanel } from "@/workbench/shell/BottomPanel";
 import { CommandPalette } from "@/workbench/shell/CommandPalette";
 import { WorkbenchRegistry } from "@/workbench/registry";
 import type { Activity, BottomPanelTab } from "@/workbench/registry";
-import { FileText, Box, GitBranch, ShieldCheck } from "lucide-react";
+import { FileText, Box, GitBranch, GitCommitHorizontal, ShieldCheck } from "lucide-react";
 
 // Placeholder activities so every slot is populated before W2–W4 land.
 // They register real shapes ({id, icon, Explorer, Inspector, tabs}) that the
@@ -55,6 +55,14 @@ const PLACEHOLDERS: Activity[] = [
     Explorer: () => <Placeholder what="fences explorer" />,
     Inspector: () => <Placeholder what="fences inspector" />,
     tabs: [{ id: "fences-list", label: "Guards", component: () => <Placeholder what="fence list" /> }],
+  },
+  {
+    id: "git",
+    label: "Git",
+    icon: GitCommitHorizontal,
+    Explorer: () => <Placeholder what="git explorer" />,
+    Inspector: () => <Placeholder what="git inspector" />,
+    tabs: [{ id: "git-log", label: "Log", component: () => <Placeholder what="git log" /> }],
   },
 ];
 

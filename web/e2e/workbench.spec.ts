@@ -66,12 +66,14 @@ test("⌘J toggles the bottom panel, ⌥I the inspector", async ({ page }) => {
   await expect(page.getByTestId("wb-inspector")).toBeVisible();
 });
 
-test("⌥1–4 switch activities", async ({ page }) => {
+test("⌥1–5 switch activities", async ({ page }) => {
   await openWb(page);
   await page.keyboard.press("Alt+2");
   await expect(page.getByTestId("wb-tab-runs-lanes")).toBeVisible();
   await page.keyboard.press("Alt+1");
   await expect(page.getByTestId("wb-tab-map-graph")).toBeVisible();
+  await page.keyboard.press("Alt+5");
+  await expect(page.getByTestId("wb-tab-git-log")).toBeVisible();
 });
 
 test("⌘K outside #/wb still opens the global palette", async ({ page }) => {
