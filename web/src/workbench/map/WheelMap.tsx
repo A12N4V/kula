@@ -28,7 +28,7 @@ export function useMap(): { map: MapShape | null; error: string | null } {
   useEffect(() => {
     mapPromise ??= buildMap().catch((e) => {
       mapPromise = null;
-      return { error: String(e) } as never;
+      return { error: e instanceof Error ? `${e.message}\n${e.stack?.split("\n")[1] ?? ""}` : String(e) } as never;
     });
     let live = true;
     mapPromise.then((r) => {
@@ -110,16 +110,16 @@ function fillFor(b: MapBlock, overlay: MapOverlay, lit: boolean): string {
   if (overlay === "stages") return STAGE_COLORS[b.stage];
   if (overlay === "owners") {
     const owner = ownerOf(b.dir);
-    return owner === "coder-1" ? "#5d5d5d" : owner === "codex" ? "#434343" : owner === "w2" ? "#6f6f6f" : "#303030";
+    return owner === "coder-1" ? "#6e655e" : owner === "codex" ? "#565049" : owner === "w2" ? "#8a7f76" : "#3f3a35";
   }
   if (overlay === "spend") {
     const s = spendOf(b.dir);
     if (s === 0) return "#1c1c1c";
-    return s > 300_000 ? ACCENT : s > 100_000 ? "#8a4526" : "#3d2a1e";
+    return s > 300_000 ? ACCENT : s > 100_000 ? "#8a5a3f" : "#3d332c";
   }
   if (overlay === "churn") {
     if (b.churn === 0) return "#1c1c1c";
-    return b.churn > 8 ? ACCENT : b.churn > 3 ? "#6b5346" : "#2f2721";
+    return b.churn > 8 ? ACCENT : b.churn > 3 ? "#6b574a" : "#2f2a24";
   }
   return STAGE_COLORS[b.stage];
 }
@@ -143,7 +143,7 @@ export function WheelMap({ map, overlay, selection, litBlocks, onSelectBlock, on
           <line x1="0" y1="0" x2="0" y2="6" stroke={ACCENT} strokeWidth="1.5" />
         </pattern>
       </defs>
-      {/* chords under sectors */}
+      {/* chords over sectors – drawn last so a chord is itself clickable */}
       <g data-testid="wb-wheel-chords">
         {map.threads.map((t) => {
           const from = slots.get(t.blocks[0]);
@@ -165,6 +165,7 @@ export function WheelMap({ map, overlay, selection, litBlocks, onSelectBlock, on
               strokeWidth={width}
               strokeLinecap="round"
               className="cursor-pointer opacity-70 hover:opacity-100"
+              style={{ pointerEvents: "stroke" }}
               data-testid={`wb-chord-${t.id}`}
               onClick={() => onOpenThread?.(t.id)}
             />

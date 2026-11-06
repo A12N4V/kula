@@ -31,7 +31,7 @@ export function BlockExplorer() {
                 <button
                   key={b.id}
                   data-testid={`wb-explorer-block-${b.id}`}
-                  className={`flex w-full items-center justify-between px-3 py-1 text-left hover:bg-accent/10 ${
+                  className={`flex min-h-10 w-full items-center justify-between px-3 py-1 text-left md:min-h-0 hover:bg-accent/10 ${
                     ui.block === b.id ? "bg-accent/15 text-accent" : "text-foreground/80"
                   }`}
                   onClick={() => setMapUi({ block: ui.block === b.id ? null : b.id })}
@@ -52,13 +52,10 @@ export function BlockExplorer() {
           <button
             key={t.id}
             data-testid={`wb-thread-${t.id}`}
-            className={`flex w-full items-center justify-between px-3 py-1 text-left hover:bg-accent/10 ${
+            className={`flex min-h-10 w-full items-center justify-between px-3 py-1 text-left md:min-h-0 hover:bg-accent/10 ${
               ui.thread === t.id ? "text-accent" : "text-foreground/80"
             }`}
-            onClick={() => {
-              setMapUi({ thread: t.id, subwayOpen: true });
-              document.querySelector('[data-testid="wb-tab-map-subway"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            }}
+            onClick={() => setMapUi({ thread: t.id, subwayOpen: true })}
           >
             <span className="truncate">{t.label}</span>
             <span className="shrink-0 pl-2 tabular-nums text-muted-foreground">{t.weight}</span>

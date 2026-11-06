@@ -72,7 +72,7 @@ function ensurePlaceholders() {
   // W2 replaces the map and fences placeholders; rail order must stay
   // map, runs, agents, fences, git so ⌥1–5 keeps its meaning.
   registerMapActivity();
-  for (const p of PLACEHOLDERS.filter((p) => p.id !== "git")) {
+  for (const p of PLACEHOLDERS.filter((p) => p.id !== "git" && p.id !== "fences")) {
     if (!WorkbenchRegistry.get(p.id)) WorkbenchRegistry.register(p);
   }
   registerFencesActivity();

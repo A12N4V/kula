@@ -52,11 +52,11 @@ export const mockSpend: Record<string, number> = {
 export const spendOf = (dir: string): number => mockSpend[dir] ?? 0;
 
 export const STAGE_COLORS: Record<Stage, string> = {
-  entry: "#8a8a8a",
-  ingest: "#6e6e6e",
-  transform: "#565656",
-  decide: "#3f3f3f",
-  effect: "#2a2a2a",
+  entry: "#8a7f76",
+  ingest: "#6e655e",
+  transform: "#565049",
+  decide: "#3f3a35",
+  effect: "#2a2723",
 };
 
 export const ACCENT = "#ff5a1f";

@@ -19,10 +19,10 @@ export function registerMapActivity() {
     icon: Box,
     Explorer: BlockExplorer,
     Inspector: MapInspector,
-    tabs: [
-      { id: "map-graph", label: "Graph", component: MapTab },
-      { id: "map-subway", label: "Subway", component: Subway },
-    ],
+    // the subway is an inner tab of MapTab (controlled switch, driven by
+    // chord and thread clicks) – CenterTabs is uncontrolled and cannot be
+    // switched programmatically from the shell.
+    tabs: [{ id: "map-graph", label: "Graph", component: MapTab }],
   };
   WorkbenchRegistry.register(activity);
 }

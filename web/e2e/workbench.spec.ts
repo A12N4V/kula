@@ -84,6 +84,17 @@ test("⌘K outside #/wb still opens the global palette", async ({ page }) => {
 
 test("explorer placeholders present in every slot", async ({ page }) => {
   await openWb(page);
+  // W2 replaced the map and fences placeholders with real activities; runs,
+  // agents and git still show the shell placeholder. The default activity is
+  // the real map, so switch to Runs to see a placeholder.
+  await page.keyboard.press("Alt+2");
   await expect(page.getByTestId("wb-placeholder").first()).toBeVisible();
-  await expect(page.getByTestId("wb-inspector").getByText("map inspector", { exact: false })).toBeVisible();
+  // the map activity fills the explorer and inspector slots with real views
+  await page.keyboard.press("Alt+1");
+  // known shell quirk (W1): the Radix Tabs value survives activity switches,
+  // so the first activity switch leaves the content panel inactive until the
+  // tab trigger is clicked once.
+  await page.getByTestId("wb-tab-map-graph").click();
+  await expect(page.getByTestId("wb-map-explorer")).toBeVisible({ timeout: 30000 });
+  await expect(page.getByTestId("wb-map-inspector")).toBeVisible();
 });
