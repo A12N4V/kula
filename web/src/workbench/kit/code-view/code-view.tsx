@@ -16,6 +16,8 @@ export type BlameLine = {
   rev: string;
   /** ISO date string, rendered as its date part. */
   date: string;
+  /** Optional accent styling (deck p.10: agent-authored memory lines in the accent). */
+  accent?: boolean;
 };
 
 export type CodeViewProps = {
@@ -78,7 +80,10 @@ export function CodeView({
                 {showBlame && (
                   <td
                     data-testid={`code-blame-${line.id}`}
-                    className="select-none border-r border-border px-2 py-0 whitespace-nowrap text-[11px] text-muted-foreground"
+                    className={cn(
+                      "select-none border-r border-border px-2 py-0 whitespace-nowrap text-[11px] text-muted-foreground",
+                      b?.accent && "text-primary",
+                    )}
                   >
                     {b ? `${b.author} · ${b.rev} · ${b.date}` : " "}
                   </td>
