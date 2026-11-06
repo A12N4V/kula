@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /* S1 kit e2e – spawns its own vite dev server on :5199 so the kit showcase
    can run independently of the app server on KULA_PW_PORT. */
@@ -9,7 +10,7 @@ let vite: ChildProcess | undefined;
 const port = 5199;
 
 test.beforeAll(async () => {
-  const webDir = path.resolve(__dirname, "..");
+  const webDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   vite = spawn("npx", ["vite", "--port", String(port), "--strictPort"], {
     cwd: webDir,
     stdio: "ignore",
@@ -43,6 +44,7 @@ test("kit showcase mounts with kula tokens", async ({ page }) => {
   await expect(page.locator(".kwb-theme")).toBeVisible();
   await expect(page.getByTestId("kwb-file-tree")).toBeVisible();
   await expect(page.getByTestId("kwb-code-view")).toBeVisible();
+  await page.getByTestId("kwb-tabs").getByText("lanes").click();
   await expect(page.getByTestId("kwb-lane-chart")).toBeVisible();
 });
 

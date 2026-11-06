@@ -102,7 +102,7 @@ export function KitShowcase() {
                 <TabsTrigger value="lanes">lanes</TabsTrigger>
               </TabsList>
               <TabsContent value="tree">
-                <FileTree nodes={tree} selectedId={selected} onSelect={(n) => setSelected(n.id)} />
+                <FileTree nodes={tree} selectedId={selected} onSelect={(n) => setSelected(n.id)} defaultOpenIds={["src", "src-kit"]} />
               </TabsContent>
               <TabsContent value="lanes">
                 <LaneChart lanes={lanes} tasks={tasks} slots={8} />
