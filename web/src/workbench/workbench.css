@@ -43,6 +43,20 @@
   --radius-xl: 0rem;
 }
 
+/* No preflight is imported (legacy views share this stylesheet), so the UA
+   default buttonface (rgb(107,107,107) in dark colour scheme) leaks onto
+   workbench rows rendered as bare <button>s. Reset it with an element-only
+   selector: it beats the UA default and loses to every bg-* utility. */
+:where(.kwb-theme) button { background-color: transparent; }
+
+/* No preflight: the UA list styles survive inside the workbench (the 40px
+   start padding shrank every <ul> content box, squeezing rows to ~13px). */
+:where(.kwb-theme) ul, :where(.kwb-theme) ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

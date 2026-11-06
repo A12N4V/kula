@@ -27,7 +27,7 @@ export function RunExplorer() {
         </div>
         <ul className="flex flex-col">
           {MOCK_RUNS.map((r) => (
-            <li key={r.id}>
+            <li key={r.id} className="block w-full">
               <button
                 type="button"
                 data-testid={`wb-run-${r.id}`}
@@ -65,7 +65,7 @@ export function RunExplorer() {
         </div>
         <ul className="flex flex-col">
           {agents.map((a) => (
-            <li key={a.id}>
+            <li key={a.id} className="block w-full">
               <button
                 type="button"
                 data-testid={`wb-agent-${a.id}`}

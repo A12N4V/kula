@@ -49,7 +49,7 @@ export function RunsInspector() {
         <h3 className="mb-1 text-[11px] uppercase tracking-wider text-muted-foreground">Verdicts</h3>
         <ul className="flex flex-col">
           {verdicts.map(({ v, n }) => (
-            <li key={v}>
+            <li key={v} className="block w-full">
               <button
                 type="button"
                 data-testid={`wb-verdict-${v}`}

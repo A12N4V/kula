@@ -105,7 +105,9 @@ export function Workbench() {
   }, []);
   const [commandOpen, setCommandOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  // On a phone the three-column split leaves the explorer ~58px wide; the
+  // inspector starts collapsed there so the explorer and centre get the width.
+  const [inspectorOpen, setInspectorOpen] = useState(() => window.innerWidth >= 640);
 
   const panelTabs: BottomPanelTab[] = activities.flatMap((a) => a.panelTabs ?? []);
 
