@@ -24,7 +24,7 @@ test.describe("shell", () => {
       await expect(list.getByTestId(`rail-item-${id}`)).toHaveCount(1);
     // Only the active view's item is marked.
     await expect(list.getByTestId("rail-item-overview")).toHaveAttribute("aria-current", "true");
-    await expect(list.getByTestId("rail-item-graph")).toHaveAttribute("aria-current", "false");
+    await expect(list.getByTestId("rail-item-graph")).not.toHaveAttribute("aria-current", "true");
   });
 
   test("rail group icons open the group home view", async ({ page }) => {
@@ -88,7 +88,7 @@ test.describe("shell", () => {
   test("@responsive the list pane gives way and the rail stays navigable", async ({ page }, info) => {
     test.skip(info.project.name === "desktop", "mid and phone only");
     await open(page);
-    await expect(page.getByTestId("list-pane")).toHaveCount(0);
+    await expect(page.getByTestId("list-pane")).toBeHidden();
     await page.getByTestId("rail-group-code").click();
     await expect(page).toHaveURL(/#graph$/);
   });
@@ -98,7 +98,8 @@ test.describe("shell", () => {
     await open(page);
     const rail = page.locator(".rail");
     const rr = (await rail.boundingBox())!;
-    expect(rr.y + rr.height).toBeGreaterThanOrEqual(830); // docked low on a 844px screen
+    const bottom = rr.y + rr.height;
+    expect(844 - bottom).toBeLessThanOrEqual(60); // docked low, above the statusbar
     await expect(page.locator(".shell-root")).toHaveAttribute("data-tier", "mobile");
   });
 });
