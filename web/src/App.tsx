@@ -2,11 +2,10 @@ import { CodeProvider } from "./CodePanel";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
-import TopNav, { type Dest } from "./TopNav";
 import type { ContrastMode, Go, Target, View } from "./nav";
 import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, fuzzyScore } from "./nav";
 // Heavy views load on demand: the first paint ships the shell + Overview only,
-// the rest arrive as their own chunks (prefetched on idle – see PREFETCH below).
+// the rest arrive as their own chunks (prefetched on idle – see registry below).
 const GraphView = lazy(() => import("./views/GraphView"));
 const AgentsCanvas = lazy(() => import("./views/AgentsCanvas"));
 const Code = lazy(() => import("./views/Code"));
@@ -15,54 +14,18 @@ const MapView = lazy(() => import("./views/MapView"));
 const CodeMap = lazy(() => import("./views/CodeMap"));
 import Overview from "./views/Overview";
 import SettingsPanel from "./SettingsPanel";
-
-// Warm the lazy chunks once the shell is up, so the first click on a rail item
-// does not wait on the network (local disk, but still a visible flash).
-const PREFETCH: Array<() => Promise<unknown>> = [
-  () => import("./views/GraphView"),
-  () => import("./views/AgentsCanvas"),
-  () => import("./views/Query"),
-  () => import("./views/GitViews"),
-  () => import("./views/MetaViews"),
-  () => import("./views/MapView"),
-];
-let prefetched = false;
-function prefetchViews() {
-  if (prefetched) return;
-  prefetched = true;
-  const idle = (window as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback;
-  if (idle) idle(() => PREFETCH.forEach((f) => void f().catch(() => {})));
-  else setTimeout(() => PREFETCH.forEach((f) => void f().catch(() => {})), 1500);
-}
+import Shell, { PaneToggles } from "./shell/Shell";
+import Rail from "./shell/Rail";
+import { MODULES, moduleOf, prefetchModules } from "./shell/registry";
 import { settings } from "./settings";
 import Opening from "./Opening";
-
-type ViewDef = { id: View; label: string; key: string };
-// Five destinations in the top nav; the other views live inside one of them
-// (Code holds the graph and git, Agents holds the review queue and notes).
-const DESTS: Dest[] = [
-  { id: "overview", label: "Overview", icon: Icon.home, key: "1", home: "overview", views: ["overview"] },
-  { id: "map", label: "Map", icon: Icon.map, key: "3", home: "flows", views: ["flows", "syntagm"] },
-  { id: "code", label: "Code", icon: Icon.code, key: "2", home: "graph", views: ["graph", "changes", "history", "branches", "query", "console"] },
-  { id: "connectors", label: "Connectors", icon: Icon.plug, key: "c", home: "connectors", views: ["connectors"] },
-  { id: "agents", label: "Agents", icon: Icon.agents, key: "a", home: "agents", views: ["agents", "proposals", "issues", "notes"] },
-];
-const GROUPS: ViewDef[][] = [
-  [{ id: "overview", label: "Overview", key: "1" }, { id: "graph", label: "Graph", key: "2" }, { id: "flows", label: "Map", key: "3" }],
-  [{ id: "changes", label: "Changes", key: "4" }, { id: "history", label: "History", key: "5" }, { id: "branches", label: "Branches & compare", key: "6" }],
-  [{ id: "proposals", label: "Proposals", key: "7" }, { id: "issues", label: "Issues", key: "8" }, { id: "notes", label: "Notes", key: "9" }],
-  [{ id: "agents", label: "Agents", key: "a" }, { id: "connectors", label: "Connectors", key: "c" }, { id: "query", label: "Query (SPARQL)", key: "q" }],
-  [{ id: "console", label: "Console", key: "0" }],
-];
-const destOf = (v: View) => DESTS.find((d) => d.views.includes(v)) ?? DESTS[0];
-const VIEWS = GROUPS.flat();
 
 type Contrast = { base: string; head: string; mode?: ContrastMode } | null;
 
 /** URL ⇄ state: #overview · #graph/<id>/<tab> · #graph/contrast/<base>/<head> · #issues/<id> … */
 function parseHash() {
   const [v, a, b, c, d] = location.hash.slice(1).split("/").map(decodeURIComponent);
-  const view = (VIEWS.some((x) => x.id === v) ? v : "overview") as View;
+  const view = (MODULES.some((x) => x.id === v) ? v : "overview") as View;
   const contrast: Contrast = view === "graph" && a === "contrast" && b && c ? { base: b, head: c, mode: (["overlay", "split", "report"].includes(d) ? d : undefined) as ContrastMode | undefined } : null;
   const focus = view === "graph" && !contrast && Number(a) > 0 ? Number(a) : null;
   const target: Target = {};
@@ -89,6 +52,7 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const [indexing, setIndexing] = useState(false);
   const [prefs, setPrefs] = useState(false);
+  const [listOpen, setListOpen] = useState(true);
   // The server's last error: when set, the shell shows it with a retry instead of a blank page.
   const [serverError, setServerError] = useState<string | null>(null);
   // The opening plays once per session (or on demand with ?opening), never under reduced motion.
@@ -117,7 +81,7 @@ export default function App() {
   const onChanged = useCallback(() => { refresh(); setVersion((v) => v + 1); }, [refresh]);
 
   useEffect(() => { refresh(); const t = setInterval(refresh, 5000); return () => clearInterval(t); }, [refresh]);
-  useEffect(() => { prefetchViews(); }, []);
+  useEffect(() => { prefetchModules(); }, []);
 
   // Keep the URL shareable, and make back/forward walk through where you have been:
   // each new place is a history entry; popping one restores it.
@@ -161,9 +125,10 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
       if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") history.back(); else history.forward(); return; }
+      if (e.key === "b" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setListOpen((o) => !o); return; }
       const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-      const v = VIEWS.find((x) => x.key === e.key);
+      const v = MODULES.find((x) => x.key === e.key);
       if (v) go(v.id);
       if (e.key === "/") { e.preventDefault(); setPalette(true); }
       if (e.key === "?") setHelp((h) => !h);
@@ -181,70 +146,77 @@ export default function App() {
     finally { setIndexing(false); }
   };
 
-  const openIssues = meta?.issues.filter((i) => i.status === "open").length ?? 0;
-  const openPrs = meta?.proposals.filter((p) => p.status === "open").length ?? 0;
   const nav = { onChanged, openSymbol: (id: number) => go("graph", { symbol: id }), version, go, target };
+
+  const centre = (
+    <>
+      {/* Full panel only when nothing has loaded; once data is in, a failed poll
+          is a slim banner so the view (and its state) survives the blip. */}
+      {serverError && !repo ? (
+        <div className="shell-error" data-testid="server-error" role="alert">
+          <h2>Server unreachable</h2>
+          <p className="mono">{serverError}</p>
+          <p className="hint">kula's server answers every view – nothing can load until it is back.</p>
+          <div className="shell-error-actions">
+            <button className="btn primary" onClick={refresh}>Retry now</button>
+            <span className="muted">or restart with <code>kula serve</code></span>
+          </div>
+        </div>
+      ) : (
+      <>
+      {serverError && repo && (
+        <div className="server-note" data-testid="server-note" role="alert">
+          <span className="mono">{serverError}</span>
+          <button className="btn sm" onClick={refresh}>Retry</button>
+        </div>
+      )}
+      {/* Keyed so each view change plays a short enter transition. */}
+      <div className="view-enter" key={(view === "graph" ? "graph" : moduleOf(view).group) + (contrast ? ":c" : "")}>
+        <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
+          {view === "overview" && <Overview repo={repo} version={version} go={go} />}
+          {["graph", "changes", "history", "branches", "query", "console"].includes(view) && <Code view={view} nav={{ ...nav, target }}
+            graph={view === "graph" ? <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} /> : null} />}
+
+          {view === "flows" && <MapView {...nav} />}
+          {view === "syntagm" && <CodeMap {...nav} />}
+          {["agents", "proposals", "issues", "notes"].includes(view) && <AgentsCanvas {...nav} view={view} />}
+          {view === "connectors" && <Connectors {...nav} />}
+        </Suspense>
+      </div>
+      </>
+      )}
+    </>
+  );
+
+  const status = (
+    <footer className="statusbar shell-status">
+      <span>kula {repo?.version}</span>
+      {(indexing || repo?.index !== "current") && <span className="sb-warn">{indexing || repo?.index === "stale" ? "reindexing…" : "no graph – ⌘K, then Reindex"}</span>}
+      {repo?.stats && <span className="sb-stats">{repo.stats.files} files · {repo.stats.symbols} symbols · {repo.stats.edges} edges · {repo.stats.communities} clusters</span>}
+      <span className="spacer" />
+      <span>{changes ? `${changes} changed` : "clean"}</span>
+      <span className="mono">{repo?.head?.slice(0, 8)}</span>
+      <span>{repo?.user}</span>
+      <button className="sb-help" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
+    </footer>
+  );
 
   return (
     <CodeProvider onLocate={(id) => go("graph", { symbol: id })}>
-    <div className="shell top">
-      <TopNav dests={DESTS} current={destOf(view).id} badge={{ code: changes, agents: openIssues + openPrs }}
-        onGo={(d) => go(d.home)} onSearch={() => setPalette(true)} onSettings={() => setPrefs(true)} repo={repo?.name} branch={repo?.branch} />
-
-      <main className="main">
-        {/* Full panel only when nothing has loaded; once data is in, a failed poll
-            is a slim banner so the view (and its state) survives the blip. */}
-        {serverError && !repo ? (
-          <div className="shell-error" data-testid="server-error" role="alert">
-            <h2>Server unreachable</h2>
-            <p className="mono">{serverError}</p>
-            <p className="hint">kula's server answers every view – nothing can load until it is back.</p>
-            <div className="shell-error-actions">
-              <button className="btn primary" onClick={refresh}>Retry now</button>
-              <span className="muted">or restart with <code>kula serve</code></span>
-            </div>
-          </div>
-        ) : (
-        <>
-        {serverError && repo && (
-          <div className="server-note" data-testid="server-note" role="alert">
-            <span className="mono">{serverError}</span>
-            <button className="btn sm" onClick={refresh}>Retry</button>
-          </div>
-        )}
-        {/* Keyed so each view change plays a short enter transition. */}
-        <div className="view-enter" key={(view === "graph" ? "graph" : destOf(view).id) + (contrast ? ":c" : "")}>
-          <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
-            {view === "overview" && <Overview repo={repo} version={version} go={go} />}
-            {["graph", "changes", "history", "branches", "query", "console"].includes(view) && <Code view={view} nav={{ ...nav, target }}
-              graph={view === "graph" ? <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} /> : null} />}
-
-            {view === "flows" && <MapView {...nav} />}
-            {view === "syntagm" && <CodeMap {...nav} />}
-            {["agents", "proposals", "issues", "notes"].includes(view) && <AgentsCanvas {...nav} view={view} />}
-            {view === "connectors" && <Connectors {...nav} />}
-          </Suspense>
-        </div>
-        </>
-        )}
-      </main>
-
-      <footer className="statusbar">
-        <span>kula {repo?.version}</span>
-        {(indexing || repo?.index !== "current") && <span className="sb-warn">{indexing || repo?.index === "stale" ? "reindexing…" : "no graph – ⌘K, then Reindex"}</span>}
-        {repo?.stats && <span className="sb-stats">{repo.stats.files} files · {repo.stats.symbols} symbols · {repo.stats.edges} edges · {repo.stats.communities} clusters</span>}
-        <span className="spacer" />
-        <span>{changes ? `${changes} changed` : "clean"}</span>
-        <span className="mono">{repo?.head?.slice(0, 8)}</span>
-        <span>{repo?.user}</span>
-        <button className="sb-help" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
-      </footer>
-
+    <Shell
+      rail={
+        <Rail view={view} onGo={go} open={listOpen}
+          toggles={<PaneToggles open={listOpen} onToggle={() => setListOpen((o) => !o)} />} />
+      }
+      centre={centre}
+      status={status}
+      open={{ list: listOpen }}
+    >
       {palette && <Palette meta={meta} onClose={() => setPalette(false)} go={(v, t) => { setPalette(false); go(v, t); }} onReindex={() => { setPalette(false); reindex(); }} onSettings={() => { setPalette(false); setPrefs(true); }} />}
       {help && <Help onClose={() => setHelp(false)} />}
       {prefs && <SettingsPanel onClose={() => setPrefs(false)} />}
       {opening && <Opening repo={repo} onDone={endOpening} />}
-    </div>
+    </Shell>
     </CodeProvider>
   );
 }
@@ -300,7 +272,7 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
     items.push({ key: `b${b.name}`, text: b.name, group: "Branches", run: () => go("graph", { contrast: { base: "HEAD", head: b.name } }), el: <><span className="pal-ico"><Icon.branches /></span><span className="mono">{b.name}</span><span className="p">contrast graph with HEAD</span></> }));
   if (!mode || mode === ">") {
     [
-      ...VIEWS.map((v) => ({ key: `go:${v.id}`, label: `Go to ${v.label}`, hint: v.key, run: () => go(v.id) })),
+      ...MODULES.map((v) => ({ key: `go:${v.id}`, label: `Go to ${v.label}`, hint: v.key, run: () => go(v.id) })),
       { key: "contrast:worktree", label: "Contrast graph: HEAD → working tree", hint: "", run: () => go("graph", { contrast: { base: "HEAD", head: "WORKTREE" } }) },
       { key: "reindex", label: "Reindex knowledge graph", hint: "", run: onReindex },
       { key: "fences", label: "Graph: show fences", hint: "f", run: () => go("graph", { fences: "" }) },
@@ -360,7 +332,7 @@ function Help({ onClose }: { onClose: () => void }) {
         <div className="help-grid" data-testid="help-grid">
           {GLOBAL_SHORTCUTS.map((k) => (<div key={k.keys} className="help-row" data-keys={k.keys}><kbd>{k.keys}</kbd><span>{k.label}</span></div>))}
           <div className="help-sep">Views</div>
-          {VIEWS.map((v) => (<div key={v.id} className="help-row" data-keys={v.key}><kbd>{v.key}</kbd><span>{v.label}</span></div>))}
+          {MODULES.map((v) => (<div key={v.id} className="help-row" data-keys={v.key}><kbd>{v.key}</kbd><span>{v.label}</span></div>))}
           <div className="help-sep">In context</div>
           {CONTEXT_SHORTCUTS.map((k) => (<div key={k.keys} className="help-row" data-keys={k.keys}><kbd>{k.keys}</kbd><span>{k.label}</span></div>))}
         </div>

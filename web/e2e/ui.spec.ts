@@ -138,26 +138,21 @@ test.describe("shell", () => {
     for (const t of ["board", "proposals", "configure"]) await expect(page.getByTestId("ws-pane").locator(`[data-pane="${t}"]`)).toBeVisible();
   });
 
-  test("top nav carries only destinations, search and settings", async ({ page }) => {
+  test("the rail carries only section icons, no app actions", async ({ page }) => {
     await open(page);
-    const bar = page.locator(".topnav");
-    await expect(bar.getByText(/graph current|no graph/)).toHaveCount(0);
-    await expect(bar.getByRole("button", { name: /Reindex/ })).toHaveCount(0);
-    await expect(bar.getByRole("button", { name: "Keyboard shortcuts" })).toHaveCount(0);
-    await expect(bar.getByRole("button", { name: "Settings" })).toBeVisible();
+    const rail = page.locator(".rail");
+    await expect(rail.getByText(/graph current|no graph/)).toHaveCount(0);
+    await expect(rail.getByRole("button", { name: /Reindex/ })).toHaveCount(0);
+    await expect(rail.getByRole("button", { name: "Keyboard shortcuts" })).toHaveCount(0);
+    await expect(rail.getByRole("button", { name: "Settings" })).toHaveCount(0);
   });
 
-  test("search is an icon beside settings, and back/forward walk through views", async ({ page }) => {
+  test("search opens the palette, and back/forward walk through views", async ({ page }) => {
     await open(page);
-    const actions = page.locator(".topnav .topnav-end");
-    const search = actions.getByRole("button", { name: "Search" });
-    const gear = actions.getByRole("button", { name: "Settings" });
-    const [s, g] = [await search.boundingBox(), await gear.boundingBox()];
-    expect(s!.x - (g!.x + g!.width)).toBeLessThan(12);
-    await search.click();
+    await page.keyboard.press("ControlOrMeta+k");
     await expect(page.locator(".palette")).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.locator(".topnav").getByRole("button", { name: "Agents" }).click();
+    await page.getByTestId("rail-group-agents").click();
     await page.getByTestId("ws-pane").locator('[data-pane="configure"]').click();
     await page.getByRole("tab", { name: /Memory/ }).click();
     await expect(page).toHaveURL(/#agents\/memory$/);
@@ -172,7 +167,9 @@ test.describe("shell", () => {
 
   test("mark is the kula ring drawn with kula rings, everywhere", async ({ page, request }) => {
     await open(page);
-    const mark = page.locator(".topnav-brand svg.logo");
+    const mark = page.locator(".help-head svg.logo");
+    await page.keyboard.press("?");
+    await expect(mark).toBeVisible();
     await expect(mark).toHaveAttribute("shape-rendering", "crispEdges");
     // One level in the top bar (a 7×7 ring and its centre: 17 cells)…
     expect((await mark.locator("path").getAttribute("d"))?.match(/M\d+ \d+h1v1h-1z/g)?.length).toBe(17);
@@ -184,15 +181,17 @@ test.describe("shell", () => {
 
   test("simple icons: one round-capped stroke, and settings is a gear", async ({ page }) => {
     await open(page);
-    for (const svg of await page.locator(".topnav-tabs button svg").all()) {
+    for (const svg of await page.locator(".rail button svg").all()) {
       expect(await svg.getAttribute("stroke-linecap")).toBe("round");
       expect(await svg.getAttribute("stroke-width")).toBe("1.5");
     }
-    const gear = page.locator(".topnav").getByRole("button", { name: "Settings" }).locator("svg");
+    await page.keyboard.press(",");
+    const gear = page.locator(".settings header svg").first();
     await expect(gear.locator("circle")).toHaveCount(1);
     expect(((await gear.locator("path").getAttribute("d")) ?? "").split("L").length).toBeGreaterThan(30); // eight teeth
+    await page.keyboard.press("Escape");
     // No icon balloons to its container: every icon in the chrome stays at text size.
-    const big = await page.evaluate(() => [...document.querySelectorAll(".topnav svg, .statusbar svg, .btn svg, .chip svg")]
+    const big = await page.evaluate(() => [...document.querySelectorAll(".rail svg, .statusbar svg, .btn svg, .chip svg")]
       .filter((el) => el.getBoundingClientRect().height > 26).length);
     expect(big).toBe(0);
   });
@@ -230,7 +229,7 @@ test.describe("design language", () => {
 
   test("sharp: framed surfaces and controls have square corners", async ({ page }) => {
     await open(page);
-    for (const sel of [".card", ".ov-stats", ".stat-card", ".btn", ".topnav-bar", ".topnav-tab", ".topnav-cta"]) expect(await radius(page, sel), sel).toBe("0px");
+    for (const sel of [".card", ".ov-stats", ".stat-card", ".btn", ".rail-list-head", ".statusbar"]) expect(await radius(page, sel), sel).toBe("0px");
   });
 
   test("errors get a thin even border, not an accent bar", async ({ page }) => {
@@ -484,7 +483,7 @@ if (view === "graph") { test.setTimeout(60_000); await expect(page.locator(".gra
     const over = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
     expect(over).toBeLessThanOrEqual(0);
     // Nothing important is pushed off the right edge.
-    const clipped = await page.evaluate(() => [...document.querySelectorAll(".topnav button, .stat-card, .card-head h2, .list-head h2, .hud button, .zoom button")]
+    const clipped = await page.evaluate(() => [...document.querySelectorAll(".rail button, .stat-card, .card-head h2, .list-head h2, .hud button, .zoom button")]
       .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > window.innerWidth + 1; }).map((el) => el.textContent?.trim().slice(0, 30)));
     expect(clipped).toEqual([]);
     await page.screenshot({ path: `test-results/${info.project.name}-${view}.png` });
@@ -504,17 +503,17 @@ test.describe("phone chrome", () => {
     await page.screenshot({ path: `test-results/${info.project.name}-settings.png` });
   });
 
-  test("@mobile top nav: icon tabs keep their 32px size, the wordmark gives way, labels only on hover", async ({ page }, info) => {
+  test("@mobile rail: the dock keeps its icon size and marks the active group", async ({ page }, info) => {
     test.skip(info.project.name !== "phone", "phones only");
     await open(page);
-    const bar = page.locator(".topnav");
-    await expect(bar.locator(".topnav-mark")).toBeHidden();
-    for (const b of await bar.locator(".topnav-tab, .topnav-cta").all()) {
+    const rail = page.locator(".rail");
+    await expect(rail).toBeVisible();
+    for (const b of await rail.locator(".rail-btn").all()) {
       const r = (await b.boundingBox())!;
-      expect([Math.round(r.width), Math.round(r.height)]).toEqual([32, 32]);
+      expect([Math.round(r.width), Math.round(r.height)]).toEqual([36, 36]);
     }
-    await bar.getByRole("button", { name: "Code" }).click();
-    await expect(bar.getByRole("button", { name: "Code" })).toHaveAttribute("aria-current", "page");
+    await rail.getByRole("button", { name: "Code" }).click();
+    await expect(rail.getByRole("button", { name: "Code" })).toHaveAttribute("aria-current", "true");
   });
 });
 
@@ -820,7 +819,7 @@ test.describe("agents", () => {
     await page.keyboard.type("context_pack");
     await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
     await expect(page.locator(".inspector h2")).toHaveText("context_pack");
-    await page.locator(".topnav").getByRole("button", { name: "Agents" }).click();
+    await page.getByTestId("rail-group-agents").click();
     await page.getByTestId("ws-pane").locator('[data-pane="configure"]').click();
     await page.getByRole("tab", { name: /Memory/ }).click();
     const hint = page.locator(".here-hint");
@@ -886,7 +885,7 @@ test.describe("agents", () => {
     await insp.locator("textarea").fill(fact);
     await insp.getByRole("button", { name: "Remember" }).click();
     await expect(insp.locator(".note.mem").filter({ hasText: fact })).toBeVisible();
-    await page.locator(".topnav").getByRole("button", { name: "Agents" }).click();
+    await page.getByTestId("rail-group-agents").click();
     await page.getByTestId("ws-pane").locator('[data-pane="configure"]').click();
     await page.getByRole("tab", { name: /Memory/ }).click();
     const row = page.locator(".ag-mem").filter({ hasText: fact });
@@ -1451,7 +1450,7 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
     const err = page.getByTestId("server-error");
     await expect(err).toBeVisible();
     await expect(err).toContainText("Retry now");
-    await expect(page.locator(".topnav")).toBeVisible();
+    await expect(page.locator(".rail")).toBeVisible();
     // Retrying while it is still down keeps the message up…
     await page.getByRole("button", { name: "Retry now" }).click();
     await expect(err).toBeVisible();

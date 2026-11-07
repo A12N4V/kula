@@ -14,7 +14,7 @@
 @import "./styles/type.css";
 @import "./styles/sweep.css";
 @import "./styles/widgets.css";
-@import "./styles/nav.css";
+@import "./shell/shell.css";
 @import "./styles/canvas.css";
 @import "./styles/workspace.css";
 @import "./styles/syntagm.css";
