@@ -52,7 +52,7 @@ const agentsCanvas = () => import("../views/AgentsCanvas");
 const code = () => import("../views/Code");
 const connectors = () => import("../views/Connectors");
 const mapView = () => import("../views/MapView");
-const codeMap = () => import("../views/CodeMap");
+const syntagm = () => import("../views/Syntagm");
 const overview = () => import("../views/Overview");
 const query = () => import("../views/Query");
 
@@ -61,7 +61,7 @@ export const MODULES: Module[] = [
   { id: "overview", label: "Overview", icon: Icon.home, slot: "centre", group: "overview", key: "1", lazy: overview },
   { id: "graph", label: "Graph", icon: Icon.graph, slot: "centre", group: "code", key: "2", family: "code", lazy: graphView },
   { id: "flows", label: "Map", icon: Icon.map, slot: "centre", group: "map", key: "3", lazy: mapView },
-  { id: "syntagm", label: "Syntagm", icon: Icon.map, slot: "centre", group: "map", lazy: codeMap },
+  { id: "syntagm", label: "Syntagm", icon: Icon.map, slot: "centre", group: "map", lazy: syntagm },
   { id: "changes", label: "Changes", icon: Icon.changes, slot: "centre", group: "code", key: "4", family: "code", lazy: code },
   { id: "history", label: "History", icon: Icon.history, slot: "centre", group: "code", key: "5", family: "code", lazy: code },
   { id: "branches", label: "Branches & compare", icon: Icon.branches, slot: "centre", group: "code", key: "6", family: "code", lazy: code },
