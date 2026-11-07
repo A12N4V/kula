@@ -3,6 +3,7 @@
 // nothing about which views exist – the rail reads those from the registry.
 
 import type { ReactNode } from "react";
+import { Icon } from "../ui";
 import { Grip } from "../resize";
 import { useTier } from "./useTier";
 
@@ -54,15 +55,15 @@ export default function Shell({
   );
 }
 
-/** One toggle per pane the tier actually draws. Wave 1: the list pane only. */
+/** One toggle per pane the tier actually draws. Wave 1: the list pane only.
+ *  Class `rail-toggle`, not `rail-btn` – that name means one thing only: a
+ *  36px dock icon for a registry group. The glyph is the shared Icon so the
+ *  stroke grammar (round cap, 1.5 width) is inherited, never hand-rolled. */
 export function PaneToggles({ open, onToggle, testId = "pane-list" }: { open: boolean; onToggle: () => void; testId?: string }) {
   return (
-    <button type="button" className="rail-btn" data-testid={testId} aria-pressed={open}
+    <button type="button" className="rail-toggle" data-testid={testId} aria-pressed={open}
       aria-label={`${open ? "Hide" : "Show"} view list`} data-tip="Views  ⌘B" onClick={onToggle}>
-      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-        <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" />
-        <line x1="5.5" y1="2.5" x2="5.5" y2="13.5" stroke="currentColor" />
-      </svg>
+      <Icon.sidebar />
     </button>
   );
 }

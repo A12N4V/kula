@@ -39,6 +39,9 @@ export interface Module {
   group: Group;
   /** ⌘-number view key (1–9, 0, a, q, c); absent for views without one. */
   key?: string;
+  /** Component bundle shared by several modules (e.g. "code" for the Code
+   *  workbench tabs). App maps family → element; defaults to the module id. */
+  family?: string;
   /** Lazy component importer – the shell renders it under Suspense. */
   lazy: () => Promise<{ default: ComponentType<any> }>;
 }
@@ -56,19 +59,19 @@ const query = () => import("../views/Query");
 /** Every view in the product, grouped the way the rail shows it. */
 export const MODULES: Module[] = [
   { id: "overview", label: "Overview", icon: Icon.home, slot: "centre", group: "overview", key: "1", lazy: overview },
-  { id: "graph", label: "Graph", icon: Icon.graph, slot: "centre", group: "code", key: "2", lazy: graphView },
+  { id: "graph", label: "Graph", icon: Icon.graph, slot: "centre", group: "code", key: "2", family: "code", lazy: graphView },
   { id: "flows", label: "Map", icon: Icon.map, slot: "centre", group: "map", key: "3", lazy: mapView },
   { id: "syntagm", label: "Syntagm", icon: Icon.map, slot: "centre", group: "map", lazy: codeMap },
-  { id: "changes", label: "Changes", icon: Icon.changes, slot: "centre", group: "code", key: "4", lazy: code },
-  { id: "history", label: "History", icon: Icon.history, slot: "centre", group: "code", key: "5", lazy: code },
-  { id: "branches", label: "Branches & compare", icon: Icon.branches, slot: "centre", group: "code", key: "6", lazy: code },
-  { id: "proposals", label: "Proposals", icon: Icon.pr, slot: "centre", group: "agents", key: "7", lazy: agentsCanvas },
-  { id: "issues", label: "Issues", icon: Icon.issues, slot: "centre", group: "agents", key: "8", lazy: agentsCanvas },
-  { id: "notes", label: "Notes", icon: Icon.notes, slot: "centre", group: "agents", key: "9", lazy: agentsCanvas },
-  { id: "agents", label: "Agents", icon: Icon.agents, slot: "centre", group: "agents", key: "a", lazy: agentsCanvas },
+  { id: "changes", label: "Changes", icon: Icon.changes, slot: "centre", group: "code", key: "4", family: "code", lazy: code },
+  { id: "history", label: "History", icon: Icon.history, slot: "centre", group: "code", key: "5", family: "code", lazy: code },
+  { id: "branches", label: "Branches & compare", icon: Icon.branches, slot: "centre", group: "code", key: "6", family: "code", lazy: code },
+  { id: "proposals", label: "Proposals", icon: Icon.pr, slot: "centre", group: "agents", key: "7", family: "agents", lazy: agentsCanvas },
+  { id: "issues", label: "Issues", icon: Icon.issues, slot: "centre", group: "agents", key: "8", family: "agents", lazy: agentsCanvas },
+  { id: "notes", label: "Notes", icon: Icon.notes, slot: "centre", group: "agents", key: "9", family: "agents", lazy: agentsCanvas },
+  { id: "agents", label: "Agents", icon: Icon.agents, slot: "centre", group: "agents", key: "a", family: "agents", lazy: agentsCanvas },
   { id: "connectors", label: "Connectors", icon: Icon.plug, slot: "centre", group: "connectors", key: "c", lazy: connectors },
-  { id: "query", label: "Query (SPARQL)", icon: Icon.query, slot: "centre", group: "code", key: "q", lazy: query },
-  { id: "console", label: "Console", icon: Icon.console, slot: "centre", group: "code", key: "0", lazy: code },
+  { id: "query", label: "Query (SPARQL)", icon: Icon.query, slot: "centre", group: "code", key: "q", family: "code", lazy: query },
+  { id: "console", label: "Console", icon: Icon.console, slot: "centre", group: "code", key: "0", family: "code", lazy: code },
 ];
 
 /** All module ids, in rail order. */

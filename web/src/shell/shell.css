@@ -143,9 +143,44 @@
   height: 18px;
 }
 
+/* Pane toggle – same footprint and tooltip language as the dock icons, but a
+   different class: .rail-btn means "a 36px registry-group icon" and nothing
+   else (the mobile tier tests iterate .rail-btn and expect them visible). */
+.rail .rail-toggle {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.rail .rail-toggle:hover,
+.rail .rail-toggle:focus-visible {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.rail .rail-toggle[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.rail .rail-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
 /* Tooltip on hover/focus – no JS (shared language with the legacy rule). */
 .rail .rail-btn[data-tip]:hover::after,
-.rail .rail-btn[data-tip]:focus-visible::after {
+.rail .rail-btn[data-tip]:focus-visible::after,
+.rail .rail-toggle[data-tip]:hover::after,
+.rail .rail-toggle[data-tip]:focus-visible::after {
   content: attr(data-tip);
   position: absolute;
   left: 44px;

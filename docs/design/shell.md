@@ -37,6 +37,13 @@ const myModule: Module = {
   shows one icon per group and clicking it opens the group's home view.
 - `key` powers the ⌘-number shortcuts, the help sheet and the list pane kbd.
   Keys are unique across modules.
+- `family` (optional) names the component bundle a view renders inside when
+  several views share one component – `code` for the Code workbench tabs
+  (graph, changes, history, branches, query, console), `agents` for the
+  AgentsCanvas views (agents, proposals, issues, notes). It defaults to the
+  module id. The centre slot renders `CENTRE[family ?? id]` (see App.tsx), so
+  a new module that reuses a family needs only its registry line; a new
+  family adds one entry to the `CENTRE` map in App.tsx.
 - `lazy` is the only place a view chunk is imported; the shell prefetches all
   of them on idle (`prefetchModules()`), so no view file may be imported
   eagerly elsewhere.

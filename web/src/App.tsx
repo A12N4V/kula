@@ -22,6 +22,22 @@ import Opening from "./Opening";
 
 type Contrast = { base: string; head: string; mode?: ContrastMode } | null;
 
+// Centre slot, registry-driven: the family (or module id) picks the element,
+// this map supplies the props. A new module that reuses a family needs only
+// its registry line; a new family adds one entry here.
+const CENTRE: Record<string, (c: {
+  view: View; repo: RepoInfo | null; version: number; go: Go;
+  nav: { onChanged: () => void; openSymbol: (id: number) => void; version: number; go: Go; target: Target };
+  target: Target; graph: React.ReactNode;
+}) => React.ReactNode> = {
+  overview: ({ repo, version, go }) => <Overview repo={repo} version={version} go={go} />,
+  code: ({ view, nav, target, graph }) => <Code view={view} nav={{ ...nav, target }} graph={graph} />,
+  flows: ({ nav }) => <MapView {...nav} />,
+  syntagm: ({ nav }) => <CodeMap {...nav} />,
+  agents: ({ nav, view }) => <AgentsCanvas {...nav} view={view} />,
+  connectors: ({ nav }) => <Connectors {...nav} />,
+};
+
 /** URL ⇄ state: #overview · #graph/<id>/<tab> · #graph/contrast/<base>/<head> · #issues/<id> … */
 function parseHash() {
   const [v, a, b, c, d] = location.hash.slice(1).split("/").map(decodeURIComponent);
@@ -173,14 +189,12 @@ export default function App() {
       {/* Keyed so each view change plays a short enter transition. */}
       <div className="view-enter" key={(view === "graph" ? "graph" : moduleOf(view).group) + (contrast ? ":c" : "")}>
         <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
-          {view === "overview" && <Overview repo={repo} version={version} go={go} />}
-          {["graph", "changes", "history", "branches", "query", "console"].includes(view) && <Code view={view} nav={{ ...nav, target }}
-            graph={view === "graph" ? <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} /> : null} />}
-
-          {view === "flows" && <MapView {...nav} />}
-          {view === "syntagm" && <CodeMap {...nav} />}
-          {["agents", "proposals", "issues", "notes"].includes(view) && <AgentsCanvas {...nav} view={view} />}
-          {view === "connectors" && <Connectors {...nav} />}
+          {/* Registry-driven: the family (or the module id) picks the element;
+              a new module that reuses a family needs only its registry line. */}
+          {CENTRE[moduleOf(view).family ?? view]({
+            view, repo, version, go, nav, target, graph:
+              view === "graph" ? <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} /> : null,
+          })}
         </Suspense>
       </div>
       </>
