@@ -67,7 +67,7 @@
 .sy-box-title:hover { background: var(--hover-bg); }
 .sy-box-title svg { width: 12px; height: 12px; color: var(--text-3); flex: none; }
 .sy-box-meta { font-size: 10.5px; color: var(--text-3); flex: none; }
-.sy-box-block { border-radius: 6px; }
+.sy-box-block { border-radius: var(--radius); }
 .sy-box-sub { border-radius: 4px; background: var(--bg-2); }
 .sy-on-chain { border-color: var(--accent); }
 

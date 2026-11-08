@@ -63,7 +63,7 @@ export default function Workspace({ id, canvas, tabs, tab, onTab, side, paneTall
         <header className="ws-pane-head">
           <div className="ws-tabs" role="group" aria-label="Pane views">
             {tabs.map((t) => (
-              <button key={t.id} className={`ws-tab ${cur?.id === t.id ? "on" : ""}`} aria-pressed={cur?.id === t.id} data-pane={t.id} data-tip={t.label}
+              <button key={t.id} className={`ws-tab ${cur?.id === t.id ? "on" : ""}`} aria-pressed={cur?.id === t.id} aria-label={t.label} data-pane={t.id} data-tip={t.label}
                 onClick={() => { onTab(t.id); if (!open) toggle(); }}>
                 <t.icon /><span className="ws-tab-l">{t.label}</span>{!!t.count && <span className="ws-count tnum">{t.count}</span>}
               </button>
