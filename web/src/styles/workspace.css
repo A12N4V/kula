@@ -71,7 +71,7 @@
   .ws-sheet-grab { display: block; position: absolute; left: 50%; top: 5px; width: 36px; height: 3px; margin-left: -18px; background: var(--line-2); }
   .ws-side-head { position: relative; padding-top: 16px; touch-action: none; }
   .ws-tab .ws-tab-l { display: none; }
-  .ws-tab { width: 36px; padding: 0; justify-content: center; position: relative; }
+  .ws-tab { width: 40px; padding: 0; justify-content: center; position: relative; min-height: 40px; }
   .ws-count { position: absolute; top: 1px; right: 2px; font-size: 9px; }
   /* the node sidebar is a sheet that slides up over the information half */
   .ws-side { top: auto; height: 50%; max-height: 100%; width: 100%; border-left: 0; border-top: 1px solid var(--accent); transform: translateY(104%); box-shadow: 0 -16px 32px -16px rgba(0, 0, 0, .7); }

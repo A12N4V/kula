@@ -89,6 +89,11 @@
   position: absolute;
   top: 0;
   bottom: 0;
+  /* 6px hairline, kept after measurement (integration): list items span the
+     pane's full width and the centre's zoom tools start at x 290 (at 1440),
+     so any strip wide enough to clear the 28px probe floor collides with one
+     side or the other. A drag-only affordance wins as the least-harm state –
+     the git views' 28px .split > .grip strip has real controls on neither side. */
   right: -3px;
   width: 6px;
   cursor: col-resize;
@@ -325,8 +330,9 @@
 }
 
 .shell-root[data-tier="mobile"] .rail .rail-btn {
-  width: 36px;
-  height: 36px;
+  /* the dock clears the 40px phone floor; the glyph keeps its 18px size */
+  width: 40px;
+  height: 40px;
 }
 
 .shell-root[data-tier="mobile"] .rail .rail-btn[aria-current="true"]::before {

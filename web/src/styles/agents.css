@@ -205,7 +205,6 @@
   .conn.other { grid-column: auto; }
 }
 @media (max-width: 760px) {
-  .top-actions .btn[aria-label="Back"], .top-search kbd { display: none; }
   .loop { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .loop-step { border-right: 0; border-top: 1px solid var(--line); }
   .loop-step:nth-child(odd) { border-right: 1px solid var(--line); }

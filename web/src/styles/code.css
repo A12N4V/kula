@@ -41,7 +41,6 @@
   .contrast-canvas { right: 0; bottom: 45%; }
   .contrast-panel { top: 55%; width: 100%; border-left: 0; border-top: 1px solid var(--line); }
   .contrast-hud { right: 14px; }
-  .crumb, .crumb-repo, .crumb-view { display: none; }
 }
 
 .btn svg:not([width]) { width: 15px; height: 15px; flex: none; }

@@ -510,7 +510,7 @@ test.describe("phone chrome", () => {
     await expect(rail).toBeVisible();
     for (const b of await rail.locator(".rail-btn").all()) {
       const r = (await b.boundingBox())!;
-      expect([Math.round(r.width), Math.round(r.height)]).toEqual([36, 36]);
+      expect([Math.round(r.width), Math.round(r.height)]).toEqual([40, 40]);
     }
     await rail.getByRole("button", { name: "Code" }).click();
     await expect(rail.getByRole("button", { name: "Code" })).toHaveAttribute("aria-current", "true");
