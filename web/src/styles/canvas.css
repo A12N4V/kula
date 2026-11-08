@@ -71,10 +71,11 @@
 @media (max-width: 760px) {
   .kc-mini { width: 112px; height: 72px; right: 8px; bottom: 8px; }
   .kc-tools { left: 8px; bottom: 8px; }
-  /* touch targets: 32 px desktop buttons grow at mid/mobile tier only */
+  /* touch targets: 32 px desktop buttons grow at mid/mobile tier only;
+     kc-node heights come from canvas data as inline styles, hence !important */
   .kc-tool { width: 40px; height: 40px; }
   .kc-pick select { height: 40px; }
-  .kc-node { min-height: 40px; }
+  .kc-node { min-height: 40px !important; }
 }
 
 /* Agents: the palette of agents and workflows to drag onto team frames */
