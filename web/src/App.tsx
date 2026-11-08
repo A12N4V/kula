@@ -48,7 +48,7 @@ const DESTS: Dest[] = [
   { id: "agents", label: "Agents", icon: Icon.agents, key: "a", home: "agents", views: ["agents", "proposals", "issues", "notes"] },
 ];
 const GROUPS: ViewDef[][] = [
-  [{ id: "overview", label: "Overview", key: "1" }, { id: "graph", label: "Graph", key: "2" }, { id: "flows", label: "Map", key: "3" }],
+  [{ id: "overview", label: "Overview", key: "1" }, { id: "graph", label: "Graph", key: "2" }, { id: "flows", label: "Map", key: "3" }, { id: "syntagm", label: "Blocks", key: "" }],
   [{ id: "changes", label: "Changes", key: "4" }, { id: "history", label: "History", key: "5" }, { id: "branches", label: "Branches & compare", key: "6" }],
   [{ id: "proposals", label: "Proposals", key: "7" }, { id: "issues", label: "Issues", key: "8" }, { id: "notes", label: "Notes", key: "9" }],
   [{ id: "agents", label: "Agents", key: "a" }, { id: "connectors", label: "Connectors", key: "c" }, { id: "query", label: "Query (SPARQL)", key: "q" }],

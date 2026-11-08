@@ -12,6 +12,7 @@ import Canvas, { layered, type CEdge, type CNode } from "../canvas/Canvas";
 import Workspace from "../canvas/Workspace";
 import { fixture } from "./syntagm/fixture";
 import { fromGraph } from "./codemap/fromGraph";
+import { normalize } from "./codemap/normalize";
 import type { Block, Leaf, SyntagmData } from "./syntagm/types";
 import { chart, type Chart, type FKind } from "./codemap/flowchart";
 import { Loading } from "./Overview";
@@ -55,7 +56,7 @@ export default function CodeMap({ go, version }: Nav) {
   const code = useCode();
 
   useEffect(() => {
-    api.syntagm().then((d) => { setData(d); setLive(true); })
+    api.syntagm().then((d) => { setData(normalize(d)); setLive(true); })
       .catch(() => api.graph("symbol").then((g) => { setData(fromGraph(g)); setLive(true); }))
       .catch(() => { setData(fixture); setLive(false); });
   }, [version]);
