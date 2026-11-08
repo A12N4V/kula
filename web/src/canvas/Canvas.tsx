@@ -144,7 +144,7 @@ export default function Canvas({ nodes, edges, selected, onSelect, onOpen, onMov
       onDrop={onDrop ? (e) => { e.preventDefault(); const data = e.dataTransfer.getData("text/kula"); if (data) { const p = toWorld(e.clientX, e.clientY); onDrop(data, p, frameAt(p)); } } : undefined}
       style={{ backgroundSize: `${20 * view.k}px ${20 * view.k}px`, backgroundPosition: `${view.x}px ${view.y}px` }}>
       <div className="kc-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
-        <svg className="kc-wires" style={{ left: b.x - 400, top: b.y - 400, width: b.w + 800, height: b.h + 800 }} viewBox={`${b.x - 400} ${b.y - 400} ${b.w + 800} ${b.h + 800}`} aria-hidden="true">
+        <svg data-figure className="kc-wires" style={{ left: b.x - 400, top: b.y - 400, width: b.w + 800, height: b.h + 800 }} viewBox={`${b.x - 400} ${b.y - 400} ${b.w + 800} ${b.h + 800}`} aria-hidden="true">
           <defs><marker id="kc-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z" fill="context-stroke" /></marker></defs>
           {edges.map((e) => {
             const a = byId.get(e.from), c = byId.get(e.to); if (!a || !c) return null;
@@ -201,7 +201,7 @@ function Minimap({ nodes, view, host, selected, onCenter }: { nodes: CNode[]; vi
     onCenter(x0 + (e.clientX - r.left - ox) * s, y0 + (e.clientY - r.top - oy) * s);
   };
   return (
-    <svg className="kc-mini" viewBox={box} preserveAspectRatio="xMidYMid meet" onPointerDown={pick} aria-label="Minimap" data-testid="minimap">
+    <svg data-figure className="kc-mini" viewBox={box} preserveAspectRatio="xMidYMid meet" onPointerDown={pick} aria-label="Minimap" data-testid="minimap">
       {nodes.map((n) => <rect key={n.id} x={n.x} y={n.y} width={n.w} height={n.h} className={`${n.frame ? "frame" : ""} ${selected === n.id ? "sel" : ""}`} />)}
       <rect className="vp" x={vx} y={vy} width={vw} height={vh} />
     </svg>

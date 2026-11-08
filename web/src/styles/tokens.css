@@ -1,5 +1,5 @@
 :root {
-  --bg: #000000;
+  --bg: #050505;
   --bg-2: #0a0a0a;
   --edge: rgba(181, 172, 159, 0.13);
   --node-faded: #1a1715;
@@ -20,7 +20,7 @@
   --violet: #d49cf0;
   --add-bg: rgba(143, 214, 148, 0.09);
   --del-bg: rgba(240, 130, 122, 0.09);
-  --radius: 10px; --radius-sm: 7px; --radius-lg: 14px; --radius-pill: 999px;
+  --radius: 0px; --radius-sm: 0px; --radius-lg: 0px; --radius-pill: 999px;
   /* D1 – interaction system: hover is a quiet background/border shift on the
      warm-line scale, never a shadow, glow, scale or layout shift. */
   --hover-bg: var(--panel-2);

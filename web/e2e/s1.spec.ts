@@ -17,7 +17,10 @@ test.describe("s1 agents split", () => {
   test("the nine agents tabs all render after the split", async ({ page }) => {
     test.skip(test.info().project.name !== "desktop");
     await open(page);
+    // The shell routes Agents behind the teams canvas: the tabs live in the
+    // Configure pane, so open it before asserting the composition.
     await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.getByTestId("ws-pane").locator('[data-pane="configure"]').click();
     await expect(page.locator(".page-head h1")).toHaveText("Agents");
     const tabs = page.locator(".ag-tabs [role=tab]");
     await expect(tabs).toHaveCount(9);
@@ -29,6 +32,7 @@ test.describe("s1 agents split", () => {
   test("workflows, memory and connect tabs compose their parts", async ({ page }) => {
     test.skip(test.info().project.name !== "desktop");
     await open(page, "agents");
+    await page.getByTestId("ws-pane").locator('[data-pane="configure"]').click();
     await page.locator(".ag-tabs [role=tab]", { hasText: "Workflows" }).click();
     await expect(page.locator(".wf-tabs")).toBeVisible();
     await expect(page.locator(".wf-tabs [role=tab]").first()).toBeVisible();
