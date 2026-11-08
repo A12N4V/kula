@@ -11,7 +11,7 @@ const AgentsCanvas = lazy(() => import("./views/AgentsCanvas"));
 const Code = lazy(() => import("./views/Code"));
 const Connectors = lazy(() => import("./views/Connectors"));
 const MapView = lazy(() => import("./views/MapView"));
-const Syntagm = lazy(() => import("./views/Syntagm"));
+const CodeMap = lazy(() => import("./views/CodeMap"));
 import Overview from "./views/Overview";
 import SettingsPanel from "./SettingsPanel";
 import Shell, { PaneToggles } from "./shell/Shell";
@@ -33,7 +33,7 @@ const CENTRE: Record<string, (c: {
   overview: ({ repo, version, go }) => <Overview repo={repo} version={version} go={go} />,
   code: ({ view, nav, target, graph }) => <Code view={view} nav={{ ...nav, target }} graph={graph} />,
   flows: ({ nav }) => <MapView {...nav} />,
-  syntagm: ({ nav, target }) => <Syntagm {...nav} block={target.block} />,
+  syntagm: ({ nav }) => <CodeMap {...nav} />,
   agents: ({ nav, view }) => <AgentsCanvas {...nav} view={view} />,
   connectors: ({ nav }) => <Connectors {...nav} />,
 };
