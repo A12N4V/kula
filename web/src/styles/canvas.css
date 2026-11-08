@@ -19,21 +19,21 @@
 .kc-wire.warn path { stroke: color-mix(in srgb, var(--yellow) 55%, transparent); }
 
 .kc-node {
-  position: absolute; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  position: absolute; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; min-height: 28px;
   background: var(--panel); border: 1px solid var(--line-2); color: var(--text); cursor: pointer; outline: none;
   transition: border-color var(--dur), box-shadow var(--dur), background var(--dur);
 }
 .kc-node.movable { cursor: grab; }
 .kc-node:hover { border-color: var(--text-3); }
 .kc-node:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
-.kc-node.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px -4px color-mix(in srgb, var(--accent) 70%, transparent); }
+.kc-node.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .kc-node.hl { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .kc-node.accent { border-top: 2px solid var(--accent); }
 .kc-node.ok .kc-ico { color: var(--green); }
 .kc-node.warn .kc-ico { color: var(--yellow); }
 .kc-node.bad .kc-ico { color: var(--red); }
 .kc-node.muted { opacity: .7; border-style: dashed; }
-.kc-node.live::after { content: ""; position: absolute; top: 6px; right: 6px; width: 5px; height: 5px; background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: dotpulse 1.4s ease-in-out infinite; }
+.kc-node.live::after { content: ""; position: absolute; top: 6px; right: 6px; width: 5px; height: 5px; background: var(--accent); border: 1px solid var(--accent); animation: dotpulse 1.4s ease-in-out infinite; }
 .kc-node.frame { background: color-mix(in srgb, var(--panel) 45%, transparent); border: 1px dashed var(--line-2); padding: 8px 12px; cursor: default; }
 .kc-node.frame.sel { border-style: solid; box-shadow: inset 0 0 0 1px var(--accent); }
 .kc-node.frame .kc-title { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-2); }
@@ -71,6 +71,10 @@
 @media (max-width: 760px) {
   .kc-mini { width: 112px; height: 72px; right: 8px; bottom: 8px; }
   .kc-tools { left: 8px; bottom: 8px; }
+  /* touch targets: 32 px desktop buttons grow at mid/mobile tier only */
+  .kc-tool { width: 40px; height: 40px; }
+  .kc-pick select { height: 40px; }
+  .kc-node { min-height: 40px; }
 }
 
 /* Agents: the palette of agents and workflows to drag onto team frames */
