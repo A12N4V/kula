@@ -19,7 +19,7 @@
 .kc-wire.warn path { stroke: color-mix(in srgb, var(--yellow) 55%, transparent); }
 
 .kc-node {
-  position: absolute; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; min-height: 28px;
+  position: absolute; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
   background: var(--panel); border: 1px solid var(--line-2); color: var(--text); cursor: pointer; outline: none;
   transition: border-color var(--dur), box-shadow var(--dur), background var(--dur);
 }
