@@ -33,6 +33,26 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+
+  /* `both` would keep the end keyframe applied forever, leaving .view-enter
+     with a residual transform – which becomes the containing block for
+     position: fixed descendants (the graph's node menu) and offsets them by
+     the centre slot's x. The end state equals the unanimated state, so
+     backwards fill is enough and the element settles at transform: none. */
+}
+.view-enter {
+  animation-fill-mode: backwards;
+}
+
+/* The code panel shifts clear of the graph inspector. The panel is a sibling
+   of the shell root (CodeProvider renders it beside the Shell), so the
+   selector must match the new root class, not the old `.shell`. */
+.shell-root:has(.inspector) + .code-panel {
+  right: calc(var(--size-inspector, 380px) + 24px);
+  border-right: 1px solid var(--line-2);
+}
+@media (max-width: 760px) {
+  .shell-root:has(.inspector) + .code-panel { right: 0; }
 }
 
 .shell-slot {
