@@ -212,6 +212,7 @@ export default function App() {
       <span className="mono">{repo?.head?.slice(0, 8)}</span>
       <span>{repo?.user}</span>
       <button className="sb-help" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
+      <button className="sb-help" aria-label="Settings" data-tip="Settings  (,)" onClick={() => setPrefs(true)}><Icon.gear /></button>
     </footer>
   );
 

@@ -244,7 +244,7 @@ export default function Overview({ repo, version, go }: Props) {
     <Workspace id="overview" testid="overview" side={side} tab={tab} onTab={(t) => { setTab(t); }}
       canvas={<Canvas testid="overview-canvas" label="Overview canvas" nodes={nodes} edges={edges} selected={sel} onSelect={pick} highlight={hl} fitKey="overview" />}
       tabs={[
-        { id: "summary", label: "Summary", icon: Icon.home, render: () => <div className="overview pane-pad"><Stagger className="ov-stack"><Hero repo={repo} o={o} go={go} /><StatCards o={o} go={go} /></Stagger></div> },
+        { id: "summary", label: "Summary", icon: Icon.home, render: () => <div className="overview pane-pad"><Stagger className="ov-stack"><Hero repo={repo} o={o} go={go} /><StatCards o={o} go={go} /><MorePanel o={o} go={go} version={version} /></Stagger></div> },
         { id: "runs", label: "Runs", icon: Icon.runs, count: runs.length, render: () => <div className="pane-pad"><Runs version={version} go={go} selected={run} onSelect={(r) => { setRun(r?.id ?? null); if (r) setSel("runs"); }} />{run && runs.find((r) => r.id === run) && <RunDetail run={runs.find((r) => r.id === run)!} go={go} />}</div> },
         { id: "review", label: "Review", icon: Icon.pr, count: o.proposals.length, render: () => <div className="pane-pad"><Review o={o} go={go} /></div> },
         { id: "hotspots", label: "Hotspots", icon: Icon.flame, render: () => <div className="pane-pad"><Hotspots o={o} go={go} /></div> },
