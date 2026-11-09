@@ -563,9 +563,11 @@ test.describe("console", () => {
 
 /** Screen position of a graph node, once the layout has settled (automation-only handle, see GraphView). */
 async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: number; y: number; id: string; label: string }; b: { x: number; y: number; id: string; label: string } }> {
+  // __kula first: the loader mounts a beat after navigation, so checking it
+  // earlier passes vacuously and positions get sampled mid-layout.
+  await page.waitForFunction(() => !!(window as any).__kula?.settled, null, { timeout: 20_000 });
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 20_000 });
-  await page.waitForFunction(() => !!(window as any).__kula);
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(1200);
   // Under load the layout can still settle after the loader clears; positions
   // sampled too early drift and the subsequent mouse click misses the node.
   // Wait until the two candidate positions hold still across a beat.
@@ -578,7 +580,7 @@ async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: numbe
       return flat.map((id: string) => {
         const p = sigma.framedGraphToViewport(sigma.getNodeDisplayData(id));
         return `${id}:${Math.round(p.x)},${Math.round(p.y)}`;
-      }).join("|");
+      }).join("|") + `@${Math.round(box.left)},${Math.round(box.top)},${Math.round(box.width)}`;
     }, pick);
     const first = await read();
     await page.waitForTimeout(250);
@@ -593,14 +595,19 @@ async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: numbe
       return { x: box.left + p.x, y: box.top + p.y, id, label: graph.getNodeAttribute(id, "label") };
     };
     // Two far-apart, directly connected symbols, both on screen.
-    const inView = (id: string) => { const p = at(id); return p.x > box.left + 40 && p.x < box.right - 40 && p.y > box.top + 80 && p.y < box.bottom - 80; };
+    const inView = (id: string) => { const p = at(id); return p.x > box.left + 40 && p.x < box.right - 40 && p.y > box.top + 80 && p.y < box.bottom - 80 && !!document.elementFromPoint(p.x, p.y)?.classList.contains("sigma-mouse"); };
     const edges = graph.edges().map((e: string) => graph.extremities(e)).filter(([s, t]: string[]) => s !== t && real(s) && real(t) && inView(s) && inView(t));
     // Symbols, a short hop apart but not overlapping: still near each other after the camera zooms in.
     const d = (e: string[]) => { const p = at(e[0]), q = at(e[1]); return Math.hypot(p.x - q.x, p.y - q.y); };
     const sym = (id: string) => graph.getNodeAttribute(id, "node").kind !== "file";
     const pool = edges.filter((e: string[]) => sym(e[0]) && sym(e[1]) && d(e) > 25);
     pool.sort((e1: string[], e2: string[]) => (pick === "hub" ? d(e2) - d(e1) : d(e1) - d(e2)));
-    const [s, t] = pool[0] ?? edges[0];
+    // Prefer pairs no other node overlaps: in the shell's narrower centre pane
+    // nodes crowd, and a click on an overlapped one hits whichever draws on top.
+    const pts = graph.nodes().map((id: string) => at(id));
+    const clear = (id: string, r: number) => { const p = at(id); return pts.every((q: { id: string; x: number; y: number }) => q.id === id || Math.hypot(p.x - q.x, p.y - q.y) > r); };
+    const ok = (r: number) => (e: string[]) => clear(e[0], r) && clear(e[1], r);
+    const [s, t] = pool.find(ok(28)) ?? pool.find(ok(16)) ?? pool.find(ok(8)) ?? pool[0] ?? edges[0];
     return { a: at(s), b: at(t) };
   }, pick);
 }
@@ -1483,7 +1490,9 @@ test.describe("agents A2", () => {
     const claude = rows.filter({ hasText: "Claude Code" });
     await expect(claude).toContainText("connected");
     await expect(claude).toContainText("hook");
-    for (const name of ["Cursor", "Codex", "Gemini CLI"]) {
+    // Cursor is left out: the connectors test wires it on the shared server,
+    // so its state depends on test order.
+    for (const name of ["Codex", "Gemini CLI"]) {
       const row = rows.filter({ hasText: name });
       await expect(row).toContainText("not wired");
       await expect(row).toContainText("no hook");

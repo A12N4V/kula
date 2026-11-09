@@ -467,6 +467,7 @@ function MapView(props: Props) {
         noverlap.assign(graph, { maxIterations: 40, settings: { margin: 3, ratio: 1.15 } });
         placePackages(graph);
         setSettling(false);
+        if ((window as any).__kula?.graph === graph) (window as any).__kula.settled = true;
       }, settleMs);
     } else {
       setSettling(false);
@@ -476,7 +477,7 @@ function MapView(props: Props) {
     }
     sigma.current = r;
     // UI tests (and only automation) can find nodes on screen.
-    if (navigator.webdriver) (window as any).__kula = { sigma: r, graph };
+    if (navigator.webdriver) (window as any).__kula = { sigma: r, graph, settled: !worker };
     return () => {
       clearTimeout(timer);
       worker?.kill();
