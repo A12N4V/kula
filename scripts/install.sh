@@ -19,11 +19,10 @@ url="https://github.com/$repo/releases/download/$tag/kula-$target.tar.gz"
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 echo "◯ downloading kula $tag for $target"
 curl -fsSL "$url" -o "$tmp/kula.tgz"
-if curl -fsSL "$url.sha256" -o "$tmp/kula.sha256" 2>/dev/null; then
-  expected=$(cut -d' ' -f1 < "$tmp/kula.sha256")
-  actual=$( (sha256sum "$tmp/kula.tgz" 2>/dev/null || shasum -a 256 "$tmp/kula.tgz") | cut -d' ' -f1)
-  [ "$expected" = "$actual" ] || { echo "kula: checksum mismatch" >&2; exit 1; }
-fi
+curl -fsSL "$url.sha256" -o "$tmp/kula.sha256" 2>/dev/null || { echo "kula: no checksum published for $tag; refusing to install" >&2; exit 1; }
+expected=$(cut -d' ' -f1 < "$tmp/kula.sha256")
+actual=$( (sha256sum "$tmp/kula.tgz" 2>/dev/null || shasum -a 256 "$tmp/kula.tgz") | cut -d' ' -f1)
+[ -n "$expected" ] && [ "$expected" = "$actual" ] || { echo "kula: checksum mismatch" >&2; exit 1; }
 tar -xzf "$tmp/kula.tgz" -C "$tmp"
 mkdir -p "$dir"
 install -m 755 "$tmp/kula" "$dir/kula"

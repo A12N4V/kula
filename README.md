@@ -139,6 +139,8 @@ Fences are not a paragraph in a prompt. Every way an agent can change code meets
 | a harness kula doesn't know | `kula run` makes fenced files read-only for the run (hidden ones unreadable) and puts back anything fenced it changed; the agent's version is kept in `.kula/run/` |
 | a branch | `kula check` fails it in CI – the authoritative gate; hooks are speed bumps, CI is the wall |
 
+A `[[guard]]` that names a symbol which no longer exists (renamed or deleted) protects nothing; `kula check` warns about it.
+
 ### Workflows
 
 A workflow is a work mode. Start a task in one and its fences, scope, steps, docs and memory policy apply to every agent until the task is done.

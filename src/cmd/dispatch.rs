@@ -196,8 +196,14 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
             let max = max_risk.unwrap_or(cfg.check.max_risk);
             let st = Store::open(&repo).ok();
             let r = project::check(&repo, st.as_ref(), &base, &max)?;
+            let dangling = match (&st, crate::guard::Guards::load(&repo)) {
+                (Some(s), Ok(g)) => g.dangling_symbols(s),
+                _ => vec![],
+            };
             if json {
-                out(&serde_json::to_value(&r)?);
+                let mut v = serde_json::to_value(&r)?;
+                v["dangling_guards"] = serde_json::json!(dangling);
+                out(&v);
             } else if md {
                 print!("{}", project::check_markdown(&r));
             } else {
@@ -212,6 +218,9 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
                 );
                 for (n, p, d) in &r.top {
                     println!("    {} {}  {}", dim(&"·".repeat(*d)), bold(n), dim(p));
+                }
+                if !dangling.is_empty() {
+                    println!("  {} guard names a symbol that no longer exists (fence is inactive): {}", yellow("!"), dangling.join(", "));
                 }
                 if !r.undeclared.is_empty() {
                     println!("  {} undeclared: {}", yellow("!"), r.undeclared.join(", "));

@@ -339,6 +339,25 @@ impl Guards {
         Ok(Guards { rules, own, secrets, task, workflow: wf })
     }
 
+    /// Symbol patterns in `[[guard]]` rules that match no definition in the graph.
+    /// A renamed or deleted symbol silently drops its fence; this surfaces it.
+    pub fn dangling_symbols(&self, store: &Store) -> Vec<String> {
+        let mut out = Vec::new();
+        for c in &self.rules {
+            for s in &c.rule.symbols {
+                let name = s.rsplit_once(':').map_or(s.as_str(), |x| x.1);
+                let n: i64 = store
+                    .conn
+                    .query_row("SELECT COUNT(*) FROM nodes WHERE name = ?1 AND kind != 'file'", [name], |r| r.get(0))
+                    .unwrap_or(1);
+                if n == 0 && !out.contains(s) {
+                    out.push(s.clone());
+                }
+            }
+        }
+        out
+    }
+
     pub fn task(&self) -> Option<&Task> {
         self.task.as_ref().map(|t| &t.0)
     }

@@ -1141,3 +1141,15 @@ fn research_revert_never_deletes_a_persons_files() {
     assert_eq!(std::fs::read_to_string(d.join("NOTES.txt")).unwrap(), "my scratch notes\n");
     kula(d, &["research", "stop"]);
 }
+
+#[test]
+fn check_warns_when_a_guard_names_a_missing_symbol() {
+    let t = fixture();
+    let d = t.path();
+    write(d, "kula.toml", "[[guard]]\nsymbols = [\"hashToken\", \"renamedAway\"]\nlevel = \"locked\"\n");
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "g"]);
+    kula(d, &["index"]);
+    let r = kula_json(d, &["check", "--base", "HEAD"]);
+    assert_eq!(r["dangling_guards"], serde_json::json!(["renamedAway"]), "{r}");
+}
