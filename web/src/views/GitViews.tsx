@@ -7,7 +7,7 @@ import { Diff, Empty, Icon, ShowOutput, StatTable, Sym, useToast } from "../ui";
 import { Grip, listWidth } from "../resize";
 import { VerifyPanel } from "../AgentChecks";
 
-type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
+type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target; compact?: boolean };
 
 // ============================================================ Changes
 export function Changes({ onChanged, version }: Nav) {
@@ -376,7 +376,7 @@ const COMMANDS = ["init", "index", "deps", "pack", "before", "verify", "check", 
 // Terminals outlive a visit to another view.
 let saved: { terms: Term[]; on: number; seq: number } = { terms: [{ id: 1, hist: [] }], on: 1, seq: 1 };
 
-export function Console({ onChanged }: Nav) {
+export function Console({ onChanged, compact }: Nav) {
   const [terms, setTerms] = useState<Term[]>(saved.terms);
   const [on, setOn] = useState(saved.on);
   const [line, setLine] = useState("");
@@ -385,7 +385,7 @@ export function Console({ onChanged }: Nav) {
   const input = useRef<HTMLInputElement>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [repo, setRepo] = useState<RepoInfo | null>(null);
-  useEffect(() => { api.graph("symbol").then(setGraph).catch(() => {}); api.repo().then(setRepo).catch(() => {}); }, []);
+  useEffect(() => { if (!compact) api.graph("symbol").then(setGraph).catch(() => {}); api.repo().then(setRepo).catch(() => {}); }, []);
   useEffect(() => { saved = { ...saved, terms, on }; }, [terms, on]);
   const term = terms.find((t) => t.id === on) ?? terms[0];
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [term?.hist.length, on]);
@@ -440,7 +440,7 @@ export function Console({ onChanged }: Nav) {
         <button className="term-btn" onClick={() => patch(term.id, (t) => ({ ...t, hist: [] }))} title="Clear (ctrl+L)">clear</button>
       </div>
       <div className="out" onClick={() => { if (!window.getSelection()?.toString()) input.current?.focus(); }}>
-        <section className="console-hero">
+        {!compact && <section className="console-hero">
           <Dither data={graph} pixel={3} speed={0.6} className="ch-dither" />
           <div className="ch-text">
             <div className="ch-eyebrow">{repo ? `${repo.name} · ${repo.branch} @ ${repo.head?.slice(0, 7) ?? ""}` : "…"}</div>
@@ -448,7 +448,7 @@ export function Console({ onChanged }: Nav) {
             <button className="btn sm mono" onClick={() => exec("help")}>kula help</button>
           </div>
           <Life className="ch-life" />
-        </section>
+        </section>}
         {term.hist.map((h, i) => (
           <div key={i} className="entry">
             <div className="cmd">{ps} <span className="ps-sym">$</span> {h.cmd && <>kula {h.cmd}</>} {h.code !== 0 && <span className="exit">exit {h.code}</span>}</div>

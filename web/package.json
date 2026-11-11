@@ -11,8 +11,10 @@
     "test:ui:only": "playwright test"
   },
   "dependencies": {
+    "@dagrejs/dagre": "3.1.1",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@sigma/edge-curve": "^3.1.0",
+    "@xyflow/react": "12.12.0",
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",
     "graphology-layout-noverlap": "^0.4.2",

@@ -1,0 +1,235 @@
+/* Flow canvas kit (F1) – fc- prefix. Tokens only; no glass, glow, shadow,
+   gradient or hover scale. Radii 8/6/4. */
+
+.fc-wrap { display: flex; height: 100%; min-height: 320px; width: 100%; }
+
+/* The lab fills .main absolutely (main is position:relative, overflow:hidden). */
+.view-flow-lab { position: absolute; inset: 0; }
+.fc-with-side .fc-canvas { flex: 1; min-width: 0; }
+.fc-canvas { position: relative; height: 100%; min-height: 320px; outline: none; }
+.fc-canvas:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.fc-canvas .react-flow__attribution { display: none; }
+
+/* Background dots sit on --line; the pane stays the ground colour. */
+.fc-canvas .react-flow__pane { cursor: default; }
+.fc-canvas .react-flow__node { cursor: grab; }
+.fc-canvas .react-flow__node.dragging { cursor: grabbing; }
+
+/* ---- Nodes ---------------------------------------------------------- */
+.fc-node { font-family: var(--font); color: var(--text); }
+
+.fc-tile { display: flex; flex-direction: column; align-items: center; }
+.fc-tile-box {
+  width: 96px; height: 96px; border-radius: var(--radius, 8px);
+  background: var(--panel); border: 1px solid var(--line);
+  display: grid; place-items: center; position: relative;
+  color: var(--fc-role, var(--text-2));
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+/* Entry "D": left corners take the full radius, right corners 0. */
+.fc-tile.fc-entry .fc-tile-box { border-radius: var(--radius, 8px) 0 0 var(--radius, 8px); }
+.fc-sel .fc-tile-box, .fc-sel .fc-wide-in, .fc-sel .fc-circle-in {
+  border-color: var(--accent); background: var(--accent-soft);
+}
+.fc-tile.fc-off, .fc-wide.fc-off { opacity: .4; }
+.fc-tile.fc-off .fc-title { text-decoration: line-through; }
+.fc-dim { opacity: .25; }
+
+.fc-title {
+  margin-top: 6px; font-size: 13px; line-height: 16px; max-width: 96px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fc-sub { font-size: 11px; line-height: 16px; color: var(--text-3); max-width: 128px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fc-status { position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; border-radius: 50%; }
+.fc-st-run { background: var(--accent); animation: fc-pulse 1.2s var(--ease) infinite; }
+.fc-st-ok { background: var(--green); }
+.fc-st-err { background: var(--red); }
+.fc-st-pin, .fc-st-pinned { background: none; color: var(--accent); }
+@keyframes fc-pulse { 50% { opacity: .35; } }
+
+.fc-wide-in {
+  width: 100%; height: 100%; box-sizing: border-box; padding: 16px;
+  display: flex; gap: 12px; align-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius, 8px);
+  color: var(--fc-role, var(--text-2)); position: relative;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.fc-wide-text { min-width: 0; flex: 1; }
+.fc-wide-title { font-size: 13px; line-height: 16px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fc-circle-in {
+  width: 100%; height: 100%; box-sizing: border-box;
+  background: var(--panel); border: 1px dashed var(--line-2); border-radius: 50%;
+  display: grid; place-items: center; color: var(--fc-role, var(--text-2));
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.fc-loop-glyph { font-size: 24px; }
+.fc-loop-box { border-radius: var(--radius, 8px) var(--radius, 8px) var(--radius-xs, 4px) var(--radius-xs, 4px); }
+
+/* Group frame – behind its members. */
+.fc-group { border-radius: var(--radius, 8px); }
+.react-flow__node.fc-group, .react-flow__node [data-id^=""] .fc-group { z-index: 0; }
+.fc-group { background: color-mix(in srgb, var(--panel) 60%, transparent); border: 1px solid var(--line); }
+.fc-group-head {
+  display: flex; gap: 8px; align-items: baseline; padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.fc-group-label { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); }
+.fc-group-count { font-size: 11px; color: var(--text-3); }
+.fc-group .fc-node, .fc-group .react-flow__node { z-index: auto; }
+
+/* Handles: 8 px dots with a 2 px ground ring; diamonds for sub-node edges. */
+.fc-dot, .fc-diamond { width: 8px; height: 8px; background: var(--line); border: 2px solid var(--bg); transition: none; min-width: 0; min-height: 0; }
+.fc-dot:hover { width: 12px; height: 12px; background: var(--accent); }
+.fc-diamond { border-radius: 2px; transform: rotate(45deg); }
+
+/* "+" stub on an unused output. */
+.fc-stub {
+  position: absolute; right: -8px; top: 50%; transform: translate(100%, -50%);
+  width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--line-2);
+  background: var(--bg); color: var(--text-3); font-size: 12px; line-height: 14px;
+  text-align: center; cursor: pointer; padding: 0;
+}
+.fc-stub:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ---- Edges ---------------------------------------------------------- */
+.fc-edge { stroke: var(--line-2); fill: none; }
+.fc-edge.fc-back { stroke: var(--text-3); }
+.fc-edge.fc-dashed { stroke-dasharray: 6 4; }
+.fc-edge:hover, .fc-edge.fc-edge-sel { stroke: var(--accent); }
+.fc-edge-label {
+  position: absolute; font-family: var(--font); font-size: 11px; color: var(--text-3);
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-xs, 4px);
+  padding: 1px 6px; pointer-events: none;
+}
+
+/* ---- Controls (bottom-left, 48 wide) -------------------------------- */
+.fc-controls {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm, 6px);
+  display: flex; flex-direction: column; gap: 2px; padding: 4px; box-shadow: none;
+  z-index: 50; /* above nodes, which React Flow lifts while dragging */
+}
+.fc-ctl {
+  width: 32px; height: 32px; border: 0; background: none; color: var(--text-2);
+  font-family: var(--font); font-size: 16px; cursor: pointer; border-radius: var(--radius-xs, 4px);
+}
+.fc-ctl:hover { background: var(--hover-bg, var(--bg-2)); color: var(--text); }
+.fc-ctl.on { color: var(--accent); }
+.fc-zoom { font-size: 10px; color: var(--text-3); text-align: center; }
+
+/* ---- Minimap (bottom-right) ----------------------------------------- */
+.fc-minimap { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm, 6px); }
+
+/* ---- Hover toolbar (the slot) ---------------------------------------- */
+.fc-toolbar-wrap { z-index: 20; }
+.fc-toolbar {
+  display: flex; gap: 2px; height: 24px; align-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm, 6px); padding: 0 4px;
+}
+.fc-tool {
+  width: 24px; height: 24px; border: 0; background: none; color: var(--text-2);
+  font-size: 14px; cursor: pointer; border-radius: var(--radius-xs, 4px); padding: 0;
+}
+.fc-tool:hover { color: var(--accent); }
+
+/* ---- Sidebar ---------------------------------------------------------- */
+.fsb { display: flex; flex-direction: column; gap: 16px; padding: 16px; overflow-y: auto; height: 100%;
+  background: var(--bg); border-left: 1px solid var(--line); box-sizing: border-box; }
+.fc-side { width: 320px; flex: none; height: 100%; min-height: 0; }
+.fsb-title { font-size: 15px; margin: 0; color: var(--text); text-transform: uppercase; letter-spacing: .08em; }
+.fsb-desc { font-size: 12px; color: var(--text-2); margin: 0; line-height: 1.5; }
+.fsb-kv { width: 100%; border-collapse: collapse; font-size: 12px; }
+.fsb-kv th { text-align: left; color: var(--text-3); font-weight: normal; padding: 4px 0; vertical-align: top; }
+.fsb-kv td { text-align: right; color: var(--text); padding: 4px 0; }
+.fsb-kv tr + tr { border-top: 1px solid var(--line); }
+.fsb-head { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--text-3); margin: 0 0 8px; font-weight: normal; }
+.fsb-section { border-top: 1px solid var(--line); padding-top: 12px; }
+.fc-side-toggle { display: none; }
+
+/* ---- Phone: the sidebar becomes a drawer over the canvas ------------- */
+@media (max-width: 600px) {
+  .fc-wrap { position: relative; }
+  .fc-ctl { width: 40px; height: 40px; }
+  .fc-side-toggle { width: 40px; height: 40px; }
+  .fc-side {
+    position: absolute; inset: 0 0 0 auto; width: min(320px, 88vw); z-index: 30;
+    transform: translateX(100%); visibility: hidden; transition: transform var(--dur) var(--ease);
+    border-left: 1px solid var(--line); background: var(--bg);
+  }
+  .fc-side.fc-side-open { transform: none; visibility: visible; }
+  .fc-side-toggle {
+    display: block; position: absolute; right: 8px; top: 8px; z-index: 31;
+    width: 40px; height: 40px; border: 1px solid var(--line); border-radius: var(--radius-xs, 4px);
+    background: var(--panel); color: var(--text-2); cursor: pointer;
+  }
+}
+
+/* ---- Reduced motion: stop every animation, dashes included ----------- */
+@media (prefers-reduced-motion: reduce) {
+  .fc-st-run { animation: none; }
+  .fc-side, .fc-tile-box, .fc-wide-in, .fc-circle-in, .fc-dot { transition: none; }
+}
+/* The same stop, honoured for an explicit runtime flag – views (M3, A3) can
+   tinker-motion off without the OS setting; the e2e asserts it. */
+html[data-rm="1"] .fc-st-run { animation: none; }
+html[data-rm="1"] .fc-side, html[data-rm="1"] .fc-tile-box,
+html[data-rm="1"] .fc-wide-in, html[data-rm="1"] .fc-circle-in,
+html[data-rm="1"] .fc-dot { transition: none; }
+
+/* ---- Colour: every node carries its role (n8n-style tinted tiles) ------ */
+.fc-tile-box, .fc-wide-in, .fc-loop-box {
+  background: color-mix(in srgb, var(--fc-role, var(--text-3)) 12%, var(--panel));
+  border-color: color-mix(in srgb, var(--fc-role, var(--line)) 45%, var(--line));
+}
+.fc-wide-in { border-left: 4px solid var(--fc-role, var(--line-2)); }
+.fc-circle-in { border-color: color-mix(in srgb, var(--fc-role, var(--line-2)) 55%, var(--line)); }
+.fc-node:hover .fc-tile-box, .fc-node:hover .fc-wide-in {
+  border-color: var(--fc-role, var(--line-2));
+  background: color-mix(in srgb, var(--fc-role, var(--text-3)) 20%, var(--panel));
+}
+.fc-wide-title { font-size: 14px; font-weight: 500; }
+.fc-title { color: var(--text-2); }
+.fc-group-label { color: var(--text-2); font-size: 12px; }
+
+/* ---- n8n parity: run states, wires, stickies, handles ---------------- */
+/* Running: a sweeping ring round the node (n8n's spinner border). */
+.fc-is-running .fc-tile-box, .fc-is-running .fc-wide-in { border-color: transparent; position: relative; }
+.fc-is-running .fc-tile-box::before, .fc-is-running .fc-wide-in::before {
+  content: ""; position: absolute; inset: -2px; border-radius: inherit; padding: 2px; pointer-events: none;
+  background: conic-gradient(from var(--fc-a, 0deg), var(--accent) 0 25%, transparent 25% 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: fc-sweep 1s linear infinite; }
+@property --fc-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes fc-sweep { to { --fc-a: 360deg; } }
+.fc-is-success .fc-tile-box, .fc-is-success .fc-wide-in { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); }
+.fc-is-error .fc-tile-box, .fc-is-error .fc-wide-in { border-color: var(--red); box-shadow: inset 0 0 0 1px var(--red); }
+.fc-is-success .fc-st-ok, .fc-is-error .fc-st-err { top: auto; bottom: 4px; right: 4px; }
+/* Wires: data moving, passed, failed. */
+.fc-flow-run { stroke: var(--accent) !important; stroke-dasharray: 6 6; animation: fc-march .6s linear infinite; }
+.fc-flow-ok { stroke: var(--green) !important; }
+.fc-flow-err { stroke: var(--red) !important; }
+@keyframes fc-march { to { stroke-dashoffset: -12; } }
+.fc-edge-hot { stroke: var(--text) !important; }
+.fc-edge-hit { fill: none; stroke: transparent; stroke-width: 18px; pointer-events: stroke; cursor: pointer; }
+.fc-edge-tools { position: absolute; pointer-events: all; display: flex; gap: 4px; opacity: 0; transition: opacity .12s ease-out; }
+.fc-edge-tools.on { opacity: 1; }
+.fc-edge-tools button { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; background: var(--bg-2); border: 1px solid var(--line-2); color: var(--text-2); font: 600 14px var(--mono); cursor: pointer; }
+.fc-edge-tools button:hover { color: var(--accent); border-color: var(--accent); }
+.fc-edge-tools svg { width: 12px; height: 12px; }
+/* "+" stub as a button. */
+.fc-stub-btn { cursor: pointer; background: var(--bg-2); font: inherit; pointer-events: all; }
+/* Connectable handles grow on hover like n8n's. */
+.fc-dot-out, .fc-dot-in { width: 12px !important; height: 12px !important; background: var(--bg-2) !important; border: 2px solid var(--text-3) !important; cursor: crosshair; transition: background .12s, border-color .12s; }
+.fc-dot-out:hover, .fc-dot-in:hover, .react-flow__handle.connectingto { background: var(--accent) !important; border-color: var(--accent) !important; }
+.react-flow__handle.valid { border-color: var(--green) !important; }
+/* Sticky notes. */
+.fc-sticky { border-radius: 8px; padding: 10px 12px; background: color-mix(in srgb, var(--fc-role) 18%, var(--bg)); border: 1px solid color-mix(in srgb, var(--fc-role) 45%, transparent); overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
+.fc-sticky.fc-sel { box-shadow: 0 0 0 2px var(--fc-role); }
+.fc-sticky-title { font-weight: 600; font-size: 13px; color: var(--text); }
+.fc-sticky-body { font-size: 12px; color: var(--text-2); white-space: pre-wrap; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .fc-is-running .fc-tile-box::before, .fc-flow-run { animation: none; } }
+.fc-edge-lit { stroke: var(--text) !important; }
+.fc-edge-faint { opacity: .25; transition: opacity .15s; }

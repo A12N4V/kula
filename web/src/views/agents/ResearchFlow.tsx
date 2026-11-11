@@ -1,15 +1,19 @@
-// Research flow: one autoresearch run drawn as the loop it is. Solvers (the
-// agents and people who tried) feed attempts; every attempt meets the gate –
-// the fences, then the metric kula runs itself; what beats the frontier is
-// kept as a record, and the next attempt starts from it. Under the flow, the
-// files the run touched and the selected attempt. Selecting a solver, file or
-// attempt lights its path through all of it.
+// Research flow: one autoresearch run drawn as the loop it is (module A2,
+// rebuilt on the shared flow canvas in A3). The loop reads as a left-to-right
+// pipeline – solvers feed attempts, every attempt meets the gate (the fences,
+// then the metric kula runs itself), what beats the frontier is kept as a
+// record, and the frontier loops back to start the next attempt. The actual
+// solvers, attempts and records hang below their stages as attached sub-nodes;
+// selecting one lights its path everywhere. Under the canvas, the attempt list
+// (keyboard-first, `/` filters), the timeline, the files the run touched and
+// the selected attempt.
 
 import { useMemo, useState } from "react";
 import { relTime, type Experiment, type ResearchRun } from "../../api";
 import { BRANDS } from "../../brands";
 import { AgentMark, ListFilter, num, useFilterList } from "./parts";
 import { AGENT_NAME } from "./data";
+import { FlowCanvas, FlowSidebar } from "../../flow";
 
 type Verdict = "kept" | "reverted" | "failed" | "fenced";
 type Focus = { solver?: string; file?: string; n?: number };
@@ -75,58 +79,90 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
   const toggle = (f: Focus) => setFocus((cur) => (JSON.stringify(cur) === JSON.stringify({ ...cur, ...f }) ? {} : { ...cur, ...f }));
   const sel = focus.n !== undefined ? exps.find((e) => e.n === focus.n) : undefined;
 
-  // The flow is laid out on fixed rows, so the wires need no measuring: x in
-  // percent of the width, y in pixels, strokes kept crisp by non-scaling-stroke.
-  const H = Math.max(solvers.length, vis.length, records.length + 1) * ROW + 8;
-  const yOf = (i: number) => 4 + i * ROW + ROW / 2;
-  const X = { solver: 19, tryIn: 25, tryOut: 61, gate: 66.5, rec: 72 };
-  const sIdx = new Map(solvers.map((s, i) => [s.id, i]));
-  const rIdx = new Map(records.map((e, i) => [e.n, i]));
-  const curve = (x1: number, y1: number, x2: number, y2: number) => { const m = (x1 + x2) / 2; return `M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2}`; };
+  // The pipeline on the canvas: stages left to right, the loop's actual items
+  // hanging below each stage. Selecting a node focuses it, like clicking used to.
+  const stage = (id: string, title: string, sub: number, entry = false) => ({
+    id, kind: "wide" as const, title, subtitle: sub ? `${sub} below` : undefined, entry, size: { w: 160, h: 64 },
+  });
+  // Identity-stable canvas props: the kit re-layouts whenever `nodes` changes
+  // identity, and a re-layout during the click's React Flow echo would clear
+  // the selection again. Selection (focus) is a real input here – it dims the
+  // non-matching nodes – so the memo keys on the focus, not the render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const nodes = useMemo(() => [
+    stage("st:solvers", "solvers", solvers.length, true),
+    stage("st:attempts", "attempts", vis.length),
+    stage("st:gate", "gate", 0),
+    stage("st:frontier", "frontier", records.length),
+    ...solvers.map((s) => ({
+      id: `solver:${s.id}`, kind: "circle" as const, sub: true, parent: "st:solvers",
+      title: solverName(s.id), subtitle: `${s.kept}/${s.tries} kept`,
+      color: BRANDS[s.id]?.color ?? "var(--accent)",
+    })),
+    ...vis.map((e) => ({
+      id: `try:${e.n}`, kind: "circle" as const, sub: true, parent: "st:attempts",
+      title: `#${e.n}`, subtitle: `${e.hypothesis.slice(0, 40)} – ${VERDICT_TEXT[verdict(e)]}`,
+      color: verdict(e) === "kept" ? "var(--accent)" : verdict(e) === "fenced" ? "var(--red)" : "var(--text-2)",
+      dim: anyFocus && !on(e),
+    })),
+    ...records.map((e) => ({
+      id: `rec:${e.n}`, kind: "circle" as const, sub: true, parent: "st:frontier",
+      title: num(e.value!), subtitle: `#${e.n} ${e.commit?.slice(0, 7) ?? ""}`,
+      color: "var(--accent)", dim: anyFocus && !on(e),
+    })),
+  ], [run, exps, solvers, focus, all, tries.filter]);
+  const edges = useMemo(() => [
+    { id: "p1", source: "st:solvers", target: "st:attempts", main: true },
+    { id: "p2", source: "st:attempts", target: "st:gate", main: true },
+    { id: "p3", source: "st:gate", target: "st:frontier", main: true },
+    // every attempt starts from the frontier: the loop runs back
+    { id: "loop", source: "st:frontier", target: "st:solvers", main: false, label: "builds on the best" },
+  ], [run, exps, solvers]);
+  const canvasSel = focus.n !== undefined ? `try:${focus.n}`
+    : focus.solver ? `solver:${focus.solver}` : null;
+  const onCanvasSel = (id: string | null) => {
+    if (!id) { if (anyFocus) toggleFocus(-1); setFocus({}); return; }
+    if (id.startsWith("try:")) { const n = Number(id.slice(4)); setFocus((f) => (f.n === n ? {} : { n })); }
+    else if (id.startsWith("solver:")) toggle({ solver: id.slice(7), n: undefined });
+    else if (id.startsWith("rec:")) { const n = Number(id.slice(4)); setFocus((f) => (f.n === n ? {} : { n })); }
+  };
+  const canvasSidebar = (
+    <FlowSidebar
+      title={sel ? `attempt ${sel.n}` : focus.solver ? solverName(focus.solver, true) : `${run.workflow} run`}
+      desc={sel ? sel.hypothesis : focus.solver ? `${solvers.find((s) => s.id === focus.solver)?.tries ?? 0} tries on ${run.branch}` : `${exps.length} attempts · frontier ${num(run.best)}`}
+      kv={sel ? [
+        ["by", solverName(solverId(sel.by))],
+        ["verdict", VERDICT_TEXT[verdict(sel)]],
+        ["measured", sel.value === null ? "–" : num(sel.value)],
+        ["files", sel.files.join(", ") || "–"],
+      ] : focus.solver ? [
+        ["kept", `${solvers.find((s) => s.id === focus.solver)?.kept ?? 0}/${solvers.find((s) => s.id === focus.solver)?.tries ?? 0}`],
+        ["gain", num(solvers.find((s) => s.id === focus.solver)?.gain ?? 0)],
+      ] : [
+        ["metric", run.metric],
+        ["baseline", num(run.baseline)],
+        ["best", num(run.best)],
+        ["attempts", String(exps.length)],
+      ]}
+    />
+  );
 
   return (
     <div className={`rf ${anyFocus ? "focused" : ""}`}>
-      <div className="rf-filter"><ListFilter inputRef={tries.inputRef} value={tries.filter} onChange={tries.setFilter} label="Filter attempts" placeholder="/ filter attempts" /></div>
+      <div className="rf-filter">
+        <ListFilter inputRef={tries.inputRef} value={tries.filter} onChange={tries.setFilter} label="Filter attempts" placeholder="/ filter attempts" />
+        <button className="btn sm ghost rf-more" aria-pressed={all} title={all ? "show the last 18 attempts" : "show every attempt"}
+          onClick={() => setAll((v) => !v)}>{all ? `last ${SHOW}` : `all ${exps.length}`}</button>
+      </div>
       <RunTimeline run={run} onPick={(n) => toggleFocus(n)} picked={focus.n} />
-      <div className="rf-cols mono" aria-hidden="true">
-        <span style={{ left: 0 }}>solvers · {solvers.length}</span>
-        <span style={{ left: `${X.tryIn}%` }}>attempts · {exps.length}{exps.length > SHOW && <button className="rf-more" onClick={() => setAll(!all)}>{all ? `last ${SHOW}` : "all"}</button>}</span>
-        <span style={{ left: `${X.gate - 3}%` }}>gate</span>
-        <span style={{ left: `${X.rec}%` }}>frontier · {exps.filter((e) => e.kept).length} records</span>
+
+      <div className="rf-canvas" data-testid="research-canvas">
+        <FlowCanvas nodes={nodes} edges={edges} selection={canvasSel} onSelect={onCanvasSel}
+          layoutKey={`research-${run.workflow}`} ns="agents-research" sidebar={canvasSidebar} />
       </div>
 
-      <div className="rf-stage" style={{ height: H }}>
-        <svg className="rf-wires" viewBox={`0 0 100 ${H}`} preserveAspectRatio="none" aria-hidden="true" data-figure>
-          {/* build on the best: the frontier feeds the next attempt */}
-          <path d={`M${X.rec + 1},2 L${X.rec + 1},0.5 L1,0.5 L1,2`} className="rf-back" />
-          {vis.map((e, i) => {
-            const v = verdict(e), lit = on(e);
-            const s = sIdx.get(solverId(e.by)) ?? 0;
-            const cls = `rf-w ${v} ${anyFocus ? (lit ? "lit" : "dim") : ""}`;
-            return (
-              <g key={e.n} className={cls}>
-                <path className="in" d={curve(X.solver, yOf(s), X.tryIn, yOf(i))} />
-                <path d={`M${X.tryOut},${yOf(i)} L${X.gate},${yOf(i)}`} />
-                {v === "kept" && <path d={curve(X.gate, yOf(i), X.rec, yOf(rIdx.get(e.n) ?? 0))} />}
-              </g>
-            );
-          })}
-        </svg>
-
-        <div className="rf-col rf-solvers" style={{ width: `${X.solver}%` }}>
-          {solvers.map((s) => (
-            <button key={s.id} className={`rf-solver ${focus.solver === s.id ? "sel" : ""}`} style={{ height: ROW }}
-              onClick={() => toggle({ solver: s.id, n: undefined })} aria-pressed={focus.solver === s.id}
-              title={`${solverName(s.id, true)}: ${s.tries} tries, ${s.kept} kept${s.fenced ? `, ${s.fenced} stopped at a fence` : ""}`}>
-              <AgentMark id={mark(s.id)} size={14} />
-              <span className="rf-sname">{solverName(s.id)}</span>
-              <span className="rf-share" title="share of the gain"><i style={{ width: `${(s.gain / total) * 100}%`, background: BRANDS[s.id]?.color ?? "var(--accent)" }} /></span>
-              <span className="mono rf-snum">{s.kept}/{s.tries}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="rf-col rf-tries" style={{ left: `${X.tryIn}%`, width: `${X.tryOut - X.tryIn}%` }} {...tries.props}>
+      <div className="rf-list mono">
+        <div className="rf-tries" {...tries.props}>
           {vis.map((e, i) => {
             const v = verdict(e);
             return (
@@ -139,30 +175,6 @@ export default function ResearchFlow({ run, scopeFiles, openFile, openCommit }: 
               </button>
             );
           })}
-        </div>
-
-        <div className="rf-gate" style={{ left: `${X.gate - 1}%` }} title={`fences, then \`${run.metric}\` – ${run.goal === "max" ? "higher" : "lower"} is better`}>
-          {vis.map((e, i) => {
-            const v = verdict(e);
-            return <span key={e.n} className={`rf-pin ${v} ${anyFocus && !on(e) ? "dim" : ""}`} style={{ top: yOf(i) - 5 }} title={`#${e.n} ${VERDICT_TEXT[v]}${e.value !== null ? ` – ${num(e.value)}` : ""}`} />;
-          })}
-        </div>
-
-        <div className="rf-col rf-records" style={{ left: `${X.rec}%`, width: `${100 - X.rec}%` }}>
-          {records.map((e) => {
-            const g = gain(run, e);
-            return (
-              <button key={e.n} className={`rf-rec ${anyFocus ? (on(e) ? "lit" : "dim") : ""} ${e.value === run.best ? "best" : ""}`} style={{ height: ROW }}
-                onClick={() => setFocus(focus.n === e.n ? {} : { n: e.n })}>
-                <b className="mono">{num(e.value!)}</b>
-                <span className="mono rf-gain">{run.goal === "max" ? "+" : "−"}{num(Math.abs(g))}</span>
-                <AgentMark id={mark(solverId(e.by))} size={12} />
-                <span className="mono rf-sha">{e.commit?.slice(0, 7)}</span>
-                {e.value === run.best && <span className="tag accent">frontier</span>}
-              </button>
-            );
-          })}
-          <div className="rf-rec base" style={{ height: ROW }}><b className="mono">{num(run.baseline)}</b><span className="muted">baseline · {run.base?.slice(0, 7) || run.branch}</span></div>
         </div>
       </div>
 
@@ -282,7 +294,6 @@ function RunTimeline({ run, onPick, picked }: { run: ResearchRun; onPick: (n: nu
   const span = hi - lo || Math.abs(hi) || 1;
   const x = (t: number) => padX + ((t - t0) / (t1 - t0)) * (W - 2 * padX);
   const y = (v: number) => padT + (1 - (v - lo) / span) * (H - padT - padB);
-  const lab = (v: number) => (padT + (1 - (v - lo) / span) * (H - padT - padB));
   const tick = (v: number) => ({ v, at: y(v) });
   const ticks = [hi, lo].map(tick);
   return (

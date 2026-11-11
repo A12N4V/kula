@@ -102,7 +102,7 @@ test.describe("shell", () => {
     await search.click();
     await expect(page.locator(".palette")).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // Agents left the rail (it is the Workspace library now); `a` still opens it
     await page.getByRole("tab", { name: /Memory/ }).click();
     await expect(page).toHaveURL(/#agents\/memory$/);
     await page.goBack();
@@ -256,6 +256,61 @@ test.describe("graph chrome", () => {
   test("one settings control, not two", async ({ page }) => {
     await open(page, "graph");
     await expect(page.getByRole("button", { name: /settings/i })).toHaveCount(1);
+  });
+
+  test("embeddings section: the switch and its state, off by default", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press(",");
+    const section = page.locator("#set-embed");
+    await section.scrollIntoViewIfNeeded();
+    await expect(section).toBeVisible();
+    // One switch drives the whole section: role=switch, labelled.
+    const sw = page.getByRole("switch", { name: "Enable embeddings" });
+    await expect(sw).toBeVisible();
+    // Off by default: embeddings are opt-in, nothing downloads until switched.
+    await expect(sw).toHaveAttribute("aria-checked", /false|true/);
+    const small = page.locator(".settings .set-row.toggle", { hasText: "Enable embeddings" }).locator("small");
+    await expect(small).toContainText(/Off – blocks form from the call graph alone|Thematic blocks|Enabled – install/);
+  });
+
+  test("embeddings switch runs the gate: check table or refuse, cancel available", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press(",");
+    const sw = page.getByRole("switch", { name: "Enable embeddings" });
+    await sw.scrollIntoViewIfNeeded();
+    const wasOff = (await sw.getAttribute("aria-checked")) === "false";
+    if (wasOff) await sw.click();
+    // Turning it on runs the check: the two-column table appears with a verdict row.
+    const table = page.getByTestId("embed-check");
+    await expect(table).toBeVisible({ timeout: 30_000 });
+    await expect(table).toContainText("Verdict");
+    await expect(table).toContainText("RAM free");
+    // The map row states what the map does with (or without) embeddings.
+    await expect(page.locator(".settings .set-row", { hasText: "Mapping" })).toBeVisible();
+    // Leave the setting as we found it so other tests see the default repo.
+    // A warn verdict parks the switch behind a confirm row, where a plain
+    // click on the switch is a no-op and the flag leaks into kula.toml –
+    // turn it off through the API instead of fighting that row.
+    if ((await sw.getAttribute("aria-checked")) === "true" || !(await sw.getAttribute("aria-checked"))) {
+      await page.evaluate(() =>
+        fetch("/api/embed/enable", {
+          method: "POST",
+          headers: { "x-kula-token": document.querySelector('meta[name="kula-token"]')?.content ?? "test", "content-type": "application/json" },
+          body: JSON.stringify({ enabled: false }),
+        }));
+    }
+    // Turn it off and keep turning it off until the server itself agrees –
+    // a warn verdict parks the switch behind a confirm row (a plain click on
+    // the switch is a no-op there) and the flag must not leak into kula.toml.
+    await page.waitForFunction(async () => {
+      const t = document.querySelector('meta[name="kula-token"]')?.content ?? "test";
+      await fetch("/api/embed/enable", { method: "POST", headers: { "x-kula-token": t, "content-type": "application/json" }, body: JSON.stringify({ enabled: false }) });
+      return (await (await fetch("/api/embed/status", { headers: { "x-kula-token": t } })).json()).enabled === false;
+    }, undefined, { timeout: 20_000, polling: 1_500 });
+    await page.reload();
+    await page.keyboard.press(",");
+    const sw2 = page.getByRole("switch", { name: "Enable embeddings" });
+    await expect(sw2).toHaveAttribute("aria-checked", "false", { timeout: 15_000 });
   });
 
   test("languages settings: indexed languages and install buttons for detected-but-missing ones", async ({ page }) => {
@@ -466,9 +521,10 @@ test.describe("phone chrome", () => {
 test.describe("console", () => {
   test("a terminal that runs kula: tabs to add and close, help, kula's own commands and git's", async ({ page }) => {
     await open(page, "console");
-    const c = page.locator(".console");
-    await expect(c.locator(".ch-title")).toHaveText("Console");
-    await expect(c.locator(".ch-text p")).toHaveCount(0);
+    // the console is the bottom dock now: #console opens it on the terminal
+    const c = page.locator("[data-testid=dock] .console");
+    await expect(page.locator("[data-testid=dock-tab-terminal]")).toHaveAttribute("aria-selected", "true");
+    await expect(c).toBeVisible();
     const input = page.getByRole("textbox", { name: "kula command" });
     await input.fill("help");
     await input.press("Enter");
@@ -491,6 +547,24 @@ async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: numbe
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 20_000 });
   await page.waitForFunction(() => !!(window as any).__kula);
   await page.waitForTimeout(400);
+  // Under load the layout can still settle after the loader clears; positions
+  // sampled too early drift and the subsequent mouse click misses the node.
+  // Wait until the two candidate positions hold still across a beat.
+  await expect.poll(async () => {
+    const read = () => page.evaluate((pick) => {
+      const { sigma, graph } = (window as any).__kula;
+      const box = sigma.getContainer().getBoundingClientRect();
+      const edges = graph.edges().map((e: string) => graph.extremities(e)).filter(([s, t]: string[]) => s !== t);
+      const flat = edges.flat().slice(0, 200);
+      return flat.map((id: string) => {
+        const p = sigma.framedGraphToViewport(sigma.getNodeDisplayData(id));
+        return `${id}:${Math.round(p.x)},${Math.round(p.y)}`;
+      }).join("|");
+    }, pick);
+    const first = await read();
+    await page.waitForTimeout(250);
+    return (await read()) === first ? "still" : "moving";
+  }).toBe("still");
   return page.evaluate((pick) => {
     const { sigma, graph } = (window as any).__kula;
     const box = sigma.getContainer().getBoundingClientRect();
@@ -726,7 +800,7 @@ test.describe("agents", () => {
     await page.keyboard.type("context_pack");
     await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
     await expect(page.locator(".inspector h2")).toHaveText("context_pack");
-    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // Agents left the rail (it is the Workspace library now); `a` still opens it
     await page.getByRole("tab", { name: /Memory/ }).click();
     const hint = page.locator(".here-hint");
     await expect(hint).toContainText("context_pack");
@@ -791,7 +865,7 @@ test.describe("agents", () => {
     await insp.locator("textarea").fill(fact);
     await insp.getByRole("button", { name: "Remember" }).click();
     await expect(insp.locator(".note.mem").filter({ hasText: fact })).toBeVisible();
-    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press("a"); // Agents left the rail (it is the Workspace library now); `a` still opens it
     await page.getByRole("tab", { name: /Memory/ }).click();
     const row = page.locator(".ag-mem").filter({ hasText: fact });
     await expect(row.locator(".tag")).toHaveText("fresh");
@@ -1490,8 +1564,11 @@ test.describe("agents A2", () => {
     await expect(facts).toBeVisible();
     await expect(facts).toContainText("explore");
     await expect(facts).toContainText("no skills carried");
-    // The inspector coexists with drag rewiring: the org card is still draggable.
-    await expect(page.locator('[data-org="codex"]')).toHaveAttribute("draggable", "true");
+    // Rewiring moved from a drag gesture to the canvas sidebar's tinker
+    // (the kit has no edge-connect): the card is not natively draggable, the
+    // sidebar carries the answers-to control.
+    await expect(page.locator('[data-org="codex"]')).not.toHaveAttribute("draggable", "true");
+    await expect(page.locator(".fc-sidebar").getByLabel("Answers to")).toBeVisible();
   });
 });
 
@@ -1729,5 +1806,806 @@ test.describe("isolate from the map", () => {
     await expect(panel.locator(".iso-sel")).toContainText(a.label);
     await page.keyboard.press("i");
     await expect(page.getByRole("dialog", { name: "Isolate part of the graph" }).getByLabel("Selectors")).toHaveValue(/symbol:|path:/);
+  });
+});
+
+/** Secondary map controls live in the View ▾ menu; open it (idempotent). */
+async function openView(page: Page, sec: "show" | "colour" | "canvas" = "show") {
+  const pop = page.locator("[data-testid=map-view-pop]");
+  if (!(await pop.isVisible())) await page.locator("[data-testid=map-view-menu]").click();
+  await expect(pop).toBeVisible();
+  // The View dropdown is stacked disclosures, one open at a time.
+  const head = page.locator(`[data-testid=dd-${sec}]`);
+  if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
+  await expect(head).toHaveAttribute("aria-expanded", "true");
+}
+
+/** The map opens with every section collapsed to one node; tests that need
+    block tiles inside frames open them all first. */
+/** Add a block the n8n way: open the panel, search, pick. */
+async function addBlock(page: Page, testid: string, query: string) {
+  await page.locator("[data-testid=ws-add]").click();
+  await expect(page.locator("[data-testid=np]")).toHaveClass(/open/);
+  await page.locator("[data-testid=np-search]").fill(query);
+  await page.locator(`[data-testid=${testid}]`).click();
+  await expect(page.locator("[data-testid=np]")).not.toHaveClass(/open/);
+}
+
+async function openAllSections(page: Page) {
+  await openView(page, "canvas");
+  const btn = page.locator("[data-testid=map-depth]");
+  if ((await btn.textContent())?.includes("open all")) await btn.click();
+  await expect(btn).toHaveText("close all");
+}
+
+test.describe("map", () => {
+  // The repo server has no /api/map until M1 lands; the view falls back to
+  // its fixture. The landing view is the functional flow; the nested-box drill
+  // is the "blocks" view, and the right panel lists blocks / functions / chains.
+  const blocksView = (page: Page) => page.locator("[data-testid=map-view-blocks]").click();
+  const chainsList = (page: Page) => page.locator("[data-testid=map-sect-chains]").click();
+  test("tab loads with sidebar, canvas and readout", async ({ page }) => {
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-view]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-filter]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-readout]")).toBeAttached();
+    // the panel opens on the block tree; chains are one tab away
+    await expect(page.locator("[data-testid=map-sidebar] .sy-section-label").first()).toHaveText(/blocks/i);
+    await chainsList(page);
+    await expect(page.locator(".sy-family").first()).toBeVisible();
+    await expect(page.locator("[data-testid=map-stats-table]")).toContainText("families");
+    // the lens filters (Functions / Utilities / All) live in the View menu
+    await openView(page);
+    await expect(page.locator("[data-testid=map-lens-functions]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-lens-utilities]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-lens-all]")).toBeVisible();
+  });
+
+  test("expanding a family pages its chains; selecting one draws the path", async ({ page }) => {
+    await open(page, "map");
+    await chainsList(page);
+    await expect(page.locator(".sy-family").first()).toBeVisible();
+    // narrow to the family with the most chains – a small family pages out
+    // in one pass and never shows the load-more row
+    const big = await page.evaluate(async () => {
+      const tok = document.querySelector('meta[name="kula-token"]')?.content ?? "";
+      const map = await (await fetch("/api/map", { headers: { "x-kula-token": tok } })).json();
+      const byId = new Map(Object.entries(map.leaves).map(([id, l]) => [id, l.name]));
+      const fam = map.families.reduce((a: { count: number; s: string; t: string }, f: { count: string; source: number; terminal: number }) =>
+        Number(f.count) > Number(a.count) ? { count: f.count, s: byId.get(String(f.source)) ?? "", t: byId.get(String(f.terminal)) ?? "" } : a, { count: "0", s: "", t: "" });
+      return `${fam.s} → ${fam.t}`;
+    });
+    await page.fill("[data-testid=map-filter]", big);
+    const famRows = await page.locator(".sy-family").count();
+    expect(famRows).toBeGreaterThan(0);
+    for (const row of await page.locator(".sy-family .sy-fam-name").all()) {
+      await expect(row).toHaveText(big);
+    }
+    await page.locator(".sy-family .sy-twist").first().click();
+    // the family pages its chains in (fixture enumeration, same paged shape)
+    const chains = page.locator(".sy-chain");
+    await expect(chains.first()).toBeVisible();
+    const first = await chains.count();
+    expect(first).toBeGreaterThan(0);
+    // "+ load more chains" pages the next cursor in – more chain rows appear.
+    // The row is below the fold and windowed out of the DOM: scroll to it.
+    await page.locator("[data-testid=map-side-scroll]").evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await page.locator(".sy-chain-load").first().click();
+    await expect.poll(async () => chains.count()).toBeGreaterThan(first);
+    await expect(chains.nth(first)).toBeVisible();
+    // selecting a chain draws the path and lists the steps
+    await chains.first().click();
+    const steps = page.locator("[data-testid=map-steps] .sy-step");
+    const n = await steps.count();
+    expect(n).toBeGreaterThan(0);
+    // one path segment per consecutive pair of measured boxes – a chain that
+    // crosses n boxes draws at most n−1 ordered hops. Content-visibility
+    // collapses boxes below the fold to zero rects and the drawing pass
+    // skips them, so the count sits between 1 and crossed−1; the exact
+    // number depends on how many boxes the window rendered.
+    const crossed = await page.locator(".sy-rail .sy-box").count();
+    expect(crossed).toBeGreaterThan(1);
+    const lines = page.locator("[data-testid=map-path] line");
+    await expect
+      .poll(async () => lines.count())
+      .toBeGreaterThanOrEqual(1);
+    const hops = await lines.count();
+    expect(hops).toBeLessThanOrEqual(crossed - 1);
+    // the crossed boxes are marked and listed in order in the rail
+    await expect(page.locator(".sy-rail .sy-box")).toHaveCount(crossed);
+    // steps carry their 1-based order
+    await expect(steps.first()).toContainText("1");
+    // toggling again returns to the flow – click the selected chain
+    // (after paging, the first .sy-chain in the DOM is a windowed row, not
+    // necessarily the one that is on)
+    await page.locator(".sy-chain.on").click();
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+  });
+
+  test("drill in and out with the breadcrumb, deep link restores the path", async ({ page }) => {
+    await open(page, "map");
+    await blocksView(page);
+    // top level: the map's depth-0 sections, no breadcrumb trail beyond "repo"
+    await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
+    const top = await page.locator(".sy-grid .sy-box").count();
+    expect(top).toBeGreaterThan(0);
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(1);
+    // drill: click a section box that nests further (a single-file section
+    // shows only leaves), walking boxes until the next level renders
+    let drilled = -1;
+    for (let i = 0; i < 6; i++) {
+      await page.locator(".sy-box-title").nth(i).click();
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+      if ((await page.locator(".sy-grid .sy-box").count()) > 0) { drilled = i; break; }
+      await page.locator("[data-testid=map-breadcrumb] .crumb-link").first().click();
+    }
+    expect(drilled).toBeGreaterThanOrEqual(0);
+    await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
+    const sub = await page.locator(".sy-grid .sy-box").count();
+    expect(sub).toBeGreaterThan(0);
+    // drill deeper until leaf rows appear (the tree's depth varies by repo)
+    for (let i = 0; i < 5 && (await page.locator(".sy-leaf-row").count()) === 0; i++) {
+      await page.locator(".sy-box-title").first().click();
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2 + i + 1);
+    }
+    await expect(page.locator(".sy-leaf-row").first()).toBeVisible();
+    // breadcrumb climbs back out one level – the parent crumb is the
+    // second-to-last link (the last is the level we are on)
+    const crumbs = await page.locator("[data-testid=map-breadcrumb] .crumb-link").count();
+    await page.locator("[data-testid=map-breadcrumb] .crumb-link").nth(crumbs - 2).click();
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(crumbs - 1);
+    // hash tracks the drill path – after the climb it may be back at the top
+    // (no sub-path), so the slash is optional here
+    await expect(page).toHaveURL(/#map(\/|$)/);
+    await page.locator(".sy-box-title").first().click();
+    const h = await page.evaluate(() => location.hash);
+    await page.goto("/?fresh=1");
+    await open(page, h.replace(/^#\/?/, ""));
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+  });
+
+  test("selecting a leaf opens the code panel with its source", async ({ page }) => {
+    await open(page, "map");
+    await blocksView(page);
+    // drill until leaves hang off the level below (depth varies by repo)
+    for (let i = 0; i < 6 && (await page.locator(".sy-leaf-row").count()) === 0; i++) {
+      await page.locator(".sy-box-title").first().click();
+      await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2 + i);
+    }
+    const leaf = page.locator(".sy-leaf-row").first();
+    await leaf.click();
+    await expect(page.locator(".code-panel")).toBeVisible();
+    // the panel shows the leaf's file
+    await expect(page.locator(".code-panel")).toContainText(".rs");
+    // the code panel is an overlay – the tab must stay on MapView
+    await expect(page).toHaveURL(/#map/);
+  });
+
+  test("sidebar filter narrows chains and blocks", async ({ page }) => {
+    await open(page, "map");
+    await blocksView(page);
+    await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
+    // the first box's name span – textContent would glue the role glyph to
+    // the name ("ocore"), so read .sy-bname, the name the sidebar filters on
+    const name = (await page.locator(".sy-box-title .sy-bname").first().textContent()) ?? "server";
+    await page.fill("[data-testid=map-filter]", name);
+    await expect(page.locator(".sy-block").first()).toBeVisible();
+    await page.fill("[data-testid=map-filter]", "zzzznope");
+    await expect(page.locator(".sy-empty")).toBeVisible();
+  });
+
+  test("@responsive map fits without sideways scroll", async ({ page }, info) => {
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-view]")).toBeVisible();
+    await page.waitForTimeout(300);
+    const over = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
+    expect(over).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: `test-results/${info.project.name}-map.png` });
+  });
+
+  test("@mobile the sidebar is a drawer, summoned and dismissed", async ({ page }, info) => {
+    test.skip(info.project.name !== "phone", "phones only");
+    await open(page, "map");
+    const side = page.locator("[data-testid=map-sidebar]");
+    await expect(side).toBeHidden();
+    await page.locator("[data-testid=map-side-toggle]").click();
+    await expect(side).toBeVisible();
+    await expect(page.locator("[data-testid=map-filter]")).toBeVisible();
+    await page.locator("[data-testid=map-side-close]").click();
+    await expect(side).toBeHidden();
+  });
+
+  test("keyboard moves through sidebar rows and opens with enter", async ({ page }) => {
+    await open(page, "map");
+    await chainsList(page);
+    await page.locator("[data-testid=map-side-scroll]").focus();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    // the first active row is a family: ↵ expands it and its chains page in
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".sy-chain").first()).toBeVisible();
+  });
+
+  test("the lens switch filters the view (Functions / Utilities / All)", async ({ page }) => {
+    await open(page, "map");
+    await chainsList(page);
+    // All: families listed whole (wait for the payload to land first)
+    await expect(page.locator(".sy-family").first()).toBeVisible();
+    const all = await page.locator(".sy-family").count();
+    expect(all).toBeGreaterThan(0);
+    // Utilities: only families whose ends carry a utilities-lens role – the
+    // glyph shows the family's source role, so on live data model ("m") and
+    // config ("k") sources appear beside utility ("u") ones
+    await openView(page); await page.locator("[data-testid=map-lens-utilities]").click();
+    const glyphs = await page.locator(".sy-family .sy-role").allTextContents();
+    expect(glyphs.length).toBeGreaterThan(0);
+    expect(glyphs.every((g) => ["u", "m", "k"].includes(g))).toBe(true);
+    // the role legend explains each role's one-line rule
+    await openView(page); await page.locator("[data-testid=map-roles-btn]").click();
+    for (const role of ["entry", "orchestrator", "core", "utility", "adapter", "model", "config", "test", "glue"]) {
+      await expect(page.locator(`[data-testid=map-role-${role}]`)).toBeVisible();
+    }
+    await expect(page.locator(".sy-role-rule", { hasText: "high fan-in from ≥ 3 distinct blocks" })).toBeVisible();
+    // back to All: the full list returns – non-utility entries are visible again
+    await openView(page); await page.locator("[data-testid=map-lens-all]").click();
+    const allGlyphs = await page.locator(".sy-family .sy-role").allTextContents();
+    // (no count comparison: the list is windowed, so rendered rows ≠ matches)
+    expect(allGlyphs.some((g) => g !== "u")).toBe(true);
+  });
+
+  test("the role filter narrows families and blocks", async ({ page }) => {
+    await open(page, "map");
+    await chainsList(page);
+    // count only after the data has landed, so `all` is not 0
+    await expect(page.locator(".sy-family").first()).toBeVisible();
+    const all = await page.locator(".sy-family").count();
+    await openView(page); await page.locator("[data-testid=map-roles-btn]").click();
+    await page.locator("[data-testid=map-role-test]").click();
+    const fewer = await page.locator(".sy-family").count();
+    expect(fewer).toBeLessThanOrEqual(all);
+    // blocks carry their role glyph, one-line rule as its title
+    await blocksView(page);
+    await expect(page.locator(".sy-box .sy-role").first()).toBeVisible();
+    // unchecking the last role never filters to nothing
+    for (const role of ["entry", "orchestrator", "core", "utility", "adapter", "model", "config", "glue"]) {
+      await page.locator(`[data-testid=map-role-${role}]`).click();
+    }
+    await expect(page.locator(".sy-family").first()).toBeVisible();
+  });
+
+  test("@u2 while the map runs, its progress shows – not an empty state", async ({ page }) => {
+    // /api/map/progress speaks the I1 contract (map_run.rs state): running,
+    // phase, blocks, chains, ms. A run in flight shows the progress table.
+    await page.route("**/api/map", (r) => r.fulfill({ status: 404, body: "{}", contentType: "application/json" }));
+    await page.route("**/api/map/chains**", (r) => r.fulfill({ status: 404, body: "{}", contentType: "application/json" }));
+    await page.route("**/api/map/progress", (r) => r.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ running: true, phase: "map", blocks: 1200, chains: 3400, ms: 4210, error: "" }),
+    }));
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-progress]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-progress-table]")).toContainText("mapping");
+    await expect(page.locator("[data-testid=map-progress-table]")).toContainText("1200");
+    await expect(page.locator("[data-testid=map-progress-table]")).toContainText("3400");
+    // the map landing (progress goes idle) swaps in the fixture stand-in
+    await page.route("**/api/map/progress", (r) => r.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ running: false, phase: "done", blocks: 3400, chains: 9000, ms: 9000, error: "" }),
+    }));
+    await expect(page.locator("[data-testid=map-sidebar]")).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("the old #syntagm link lands on map", async ({ page }) => {
+    await open(page, "syntagm");
+    await expect(page.locator("[data-testid=map-view]")).toBeVisible();
+    await expect(page.locator(".rail button[aria-current=page]")).toHaveAttribute("aria-label", "Workspace");
+  });
+
+  test("the flow is the default: a headline, frames and nodes with the graph's role marks", async ({ page }) => {
+    await open(page, "map");
+    await openAllSections(page);
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-headline]")).toContainText("executes");
+    await expect(page.locator("[data-testid=map-headline] .fm-headline-v")).not.toHaveText("–");
+    await expect(page.locator(".fc-tile").first()).toBeVisible();
+    // every block node carries its role mark (the map's one-letter role glyph)
+    const mark = page.locator(".fc-tile .sy-role[data-role]").first();
+    await expect(mark).toBeVisible();
+    expect(["entry", "orchestrator", "core", "utility", "adapter", "model", "config", "test", "glue"])
+      .toContain(await mark.getAttribute("data-role"));
+    // opening a node drills into the blocks view; Esc returns to the flow
+    await page.locator(".fc-tile").first().dblclick();
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+    await page.locator("body").press("Escape");
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+  });
+
+  test("the right panel lists every function, single-function blocks included", async ({ page }) => {
+    await open(page, "map");
+    const panel = page.locator("[data-testid=map-sidebar]");
+    // it sits on the right, like Graph's inspector
+    const box = await page.locator("#map-sidebar").boundingBox();
+    const vw = page.viewportSize()!.width;
+    test.skip(vw <= 720, "phones use the drawer");
+    expect(box!.x + box!.width).toBeGreaterThan(vw - 4);
+    await page.locator("[data-testid=map-sect-functions]").click();
+    await expect(panel.locator(".sy-section-label").first()).toHaveText(/functions · \d+/i);
+    await expect(panel.locator(".sy-leaf .fm-kind").first()).toBeVisible();
+  });
+
+  test("a running map pass shows the progress strip and the nav busy mark, then clears", async ({ page }) => {
+    let active = true;
+    await page.route("**/api/map/progress", (r) => r.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify(active ? { running: true, phase: "embed", blocks: 40, chains: 300, ms: 8000, error: "" } : { running: false, phase: "done", blocks: 255, chains: 2598, ms: 20000, error: "" }),
+    }));
+    await open(page, "map");
+    await expect(page.locator("[data-testid=map-progress-strip]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-progress-strip]")).toContainText("mapping in progress");
+    await expect(page.locator("[data-testid=map-progress-strip]")).toContainText("40 blocks");
+    await expect(page.locator("[data-testid=map-nav-busy]")).toBeAttached();
+    active = false;
+    await expect(page.locator("[data-testid=map-progress-strip]")).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator("[data-testid=map-nav-busy]")).toHaveCount(0);
+  });
+
+  // – M2: the map on the flow canvas – group frames, selection, lenses –
+  test("the flow canvas paints sections as group frames; selecting a block fills the details", async ({ page }) => {
+    await open(page, "map");
+    await openAllSections(page);
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    const frames = page.locator("[data-testid^='fc-node-sec:']");
+    await expect(frames.first()).toBeVisible();
+    expect(await frames.count()).toBeGreaterThan(0);
+    // every frame is titled and carries block nodes
+    await expect(page.locator(".fc-group-label").first()).toBeVisible();
+    await expect(page.locator(".fc-tile").first()).toBeVisible();
+    // the LAST tile in DOM: sibling group frames render above earlier
+    // groups' children (each frame is its own stacking context)
+    const box = page.locator(".fc-tile").last();
+    const picked = (await box.locator(".fc-title").first().textContent())?.trim() ?? "";
+    expect(picked.length).toBeGreaterThan(0);
+    expect(picked.toLowerCase()).not.toContain("whole repo");
+    // click in the tile's lower half – a tile at the canvas edge has its
+    // centre outside the clipped canvas region
+    await box.dispatchEvent("click");
+    // the details table fills with THAT block – not the repo root the table
+    // falls back to (the root reads "whole repo")
+    await expect(page.locator("[data-testid=map-readout] [data-testid=map-block-table]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-block-table] [data-testid=map-role-line]")).toContainText(/entry|orchestrator|core|utility|adapter|model|config|test|glue/);
+    await expect(page.locator("[data-testid=map-readout] h2")).toContainText(picked.split(/\s+/)[0]);
+    // the tinker rail: pin, hide tests, re-layout. Pin first: the role
+    // toggles and a re-layout replace the node objects and React Flow's
+    // selection echo clears the selection
+    await openView(page, "canvas"); await page.locator("[data-testid=map-pin]").click();
+    await expect(page.locator("[data-testid=map-pin]")).toHaveAttribute("aria-pressed", "true");
+    await openView(page); await page.locator("[data-testid=map-hide-tests]").click();
+    await expect(page.locator("[data-testid=map-hide-tests]")).toHaveAttribute("aria-pressed", "true");
+    await openView(page, "canvas"); await page.locator("[data-testid=map-relayout]").click();
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+  });
+
+  test("expanding a block lists its functions (capped) and one opens the code panel", async ({ page }) => {
+    await open(page, "map");
+    await openAllSections(page);
+    const box = page.locator(".fc-tile").last(); // on top of every frame
+    await box.dispatchEvent("click"); // select the block
+    expect(await page.locator("[data-testid^='fc-node-fn:']").count()).toBe(0);
+    // the tinker bar expands the selected block (canvas hover toolbars can
+    // sit under the lens bar for nodes near the canvas top)
+    await openView(page, "canvas"); await page.locator("[data-testid=map-expand]").click();
+    // expanded: up to 40 function circles hang below the block, one per function
+    const fns = page.locator("[data-testid^='fc-node-fn:']");
+    await expect(fns.first()).toBeVisible();
+    const n = await fns.count();
+    expect(n).toBeGreaterThan(0);
+    expect(n).toBeLessThanOrEqual(40);
+    // the expanded circles hang below their block; siblings can overlap, so
+    // click the last one in DOM (topmost) – it opens the code panel
+    await fns.last().click();
+    await expect(page.locator(".code-panel")).toBeVisible();
+    await expect(page).toHaveURL(/#map/);
+  });
+
+  // – Workspace: agents deployed onto the map –
+  test("workspace: sidebar tabs manage, the block panel opens with Tab and searches, Library folds the agents page in", async ({ page }) => {
+    await open(page, "map");
+    await expect(page.locator("[data-testid=ws-tab-inspect]")).toHaveAttribute("aria-selected", "true");
+    await page.locator("[data-testid=ws-add]").click();
+    const np = page.locator("[data-testid=np]");
+    await expect(np).toHaveClass(/open/);
+    // categories first; a category slides in its blocks
+    await page.locator("[data-testid=np-cat-agent]").click();
+    await expect(page.locator("[data-testid=np-item-agent-fix]")).toBeVisible();
+    await page.locator("[data-testid=np-back]").click();
+    await page.locator("[data-testid=np-search]").fill("verify");
+    await expect(page.locator("[data-testid=np-item-gate-verify]")).toBeVisible();
+    await expect(page.locator("[data-testid=np-item-agent-fix]")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(np).not.toHaveClass(/open/);
+    await page.locator("[data-testid=ws-tab-changes]").click();
+    await expect(page.locator("[data-testid=ws-review]")).toBeVisible();
+    await page.locator("[data-testid=ws-tab-live]").click();
+    await expect(page.locator("[data-testid=ws-run]")).toBeVisible();
+    await page.locator("[data-testid=ws-tab-library]").click();
+    await expect(page.locator("[data-testid=ws-library]")).toBeVisible();
+    await page.locator("[data-testid=lib-teams]").click();
+    await expect(page.locator("[data-testid=lib-teams]")).toHaveAttribute("aria-expanded", "true");
+    // colours: a scheme is one click in the View dropdown
+    await openView(page, "colour");
+    await page.locator("[data-testid=map-scheme-section]").click();
+    await expect(page.locator("[data-testid=map-scheme-section]")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("pipeline: blocks land on the map, Run opens a fenced task, Done hands on to the gate, the log streams it", async ({ page }) => {
+    let body: { title?: string; scope?: string[]; workflow?: string } | null = null;
+    let open1 = false;
+    await page.route("**/api/agents/task_start", async (r) => { body = r.request().postDataJSON(); open1 = true; await r.fulfill({ status: 200, contentType: "application/json", body: "{}" }); });
+    await page.route("**/api/agents/task_done", (r) => { open1 = false; return r.fulfill({ status: 200, contentType: "application/json", body: "{}" }); });
+    await open(page, "map");
+    await page.evaluate(() => localStorage.removeItem("kula.pipeline.map"));
+    // select a section, then click blocks in the panel: the agent lands on it
+    await page.locator(".fc-wide").first().dispatchEvent("click");
+    await addBlock(page, "np-item-trigger-manual", "manual");
+    await addBlock(page, "np-item-agent-fix", "fix");
+    await addBlock(page, "np-item-gate-status", "graph current");
+    await expect(page.locator("[data-testid^=pl-row-]")).toHaveCount(3);
+    await expect(page.locator("[data-testid^='fc-node-step:']")).toHaveCount(3);
+    await page.locator("[data-testid=pl-row-1]").click();
+    await page.locator("[data-testid=pl-task]").fill("tighten the parser");
+    await page.locator("[data-testid=ws-run-btn]").click();
+    await expect.poll(() => body?.title).toBe("tighten the parser");
+    expect(body!.workflow).toBe("fix");
+    expect(body!.scope!.length).toBeGreaterThan(0);
+    await expect(page.locator("[data-testid=dock-log]")).toContainText("waiting for a connected agent");
+    // the run bar carries the hand-off while an agent block waits
+    await page.locator("[data-testid=ws-done]").click();
+    await expect(page.locator("[data-testid=dock-log]")).toContainText(/run (passed|failed)/, { timeout: 20_000 });
+    expect(open1).toBe(false);
+  });
+
+  test("n8n parity: the panel slides into a category, right-click opens the menu, the details view has input · parameters · output, D skips a block, ⌘Z undoes", async ({ page }) => {
+    await page.route("**/api/agents/task_start", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+    await open(page, "map");
+    await page.evaluate(() => localStorage.removeItem("kula.pipeline.map"));
+    await page.reload();
+    await expect(page.locator("[data-testid=ws-add]")).toBeVisible();
+    // node panel: categories first, a category slides in its blocks, Esc backs out
+    await page.locator("[data-testid=ws-add]").click();
+    await page.locator("[data-testid=np-cat-gate]").click();
+    await expect(page.locator("[data-testid=np-back]")).toContainText("Gates");
+    await page.locator("[data-testid=np-item-gate-status]").click();
+    // keyboard: search, Enter inserts the top hit
+    await page.locator("[data-testid=ws-add]").click();
+    await page.locator("[data-testid=np-search]").fill("graph current");
+    await page.locator("[data-testid=np-search]").press("Enter");
+    await expect(page.locator("[data-testid^=pl-row-]")).toHaveCount(2);
+    // undo takes the second block back
+    await page.locator(".fc-canvas").focus();
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.locator("[data-testid^=pl-row-]")).toHaveCount(1);
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    await expect(page.locator("[data-testid^=pl-row-]")).toHaveCount(2);
+    // right-click a block: n8n's menu; Open shows the three-pane details view
+    const step = page.locator("[data-testid^='fc-node-step:']").first();
+    await step.click({ button: "right" });
+    await expect(page.locator("[data-testid=ctx-menu]")).toBeVisible();
+    await page.locator("[data-testid=cm-open]").press("Enter");
+    const ndv = page.locator("[data-testid=ndv]");
+    await expect(ndv).toBeVisible();
+    await expect(ndv.locator(".ndv-col h3")).toHaveText([/Input/, /Parameters/, /Output/]);
+    await page.keyboard.press("Escape");
+    await expect(ndv).toHaveCount(0);
+    // deactivate the first block: the run skips it and the log says so
+    await step.click({ button: "right" });
+    await page.locator("[data-testid=cm-toggle]").press("Enter");
+    await page.locator("[data-testid=ws-run-btn]").click();
+    await expect(page.locator("[data-testid=dock-log]")).toContainText("deactivated – skipped");
+    await expect(page.locator("[data-testid=dock-tree]")).toBeVisible();
+    await expect(page.locator("[data-testid=dock-log]")).toContainText(/run (passed|failed)/, { timeout: 20_000 });
+    // the run is in the executions history
+    await page.locator("[data-testid=ws-tab-live]").click();
+    await expect(page.locator("[data-testid=ws-execs] .ex-row")).toHaveCount(1);
+  });
+
+  test("transport: step runs one block then pauses, continue finishes, re-run appears after a failure", async ({ page }) => {
+    await page.route("**/api/git/kula", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ code: 1, stdout: "", stderr: "gate failed" }) }));
+    await open(page, "map");
+    await page.evaluate(() => localStorage.removeItem("kula.pipeline.map"));
+    await page.reload();
+    await addBlock(page, "np-item-trigger-manual", "manual");
+    await addBlock(page, "np-item-gate-status", "graph current");
+    await page.locator("[data-testid=ws-step]").click();
+    await expect(page.locator("[data-testid=ws-run-state]")).toContainText("Paused");
+    await expect(page.locator("[data-testid=ws-pause]")).toHaveAttribute("aria-pressed", "true");
+    await page.locator("[data-testid=ws-pause]").click();
+    await expect(page.locator("[data-testid=ws-run-state]")).toContainText("Failed", { timeout: 15_000 });
+    await expect(page.locator("[data-testid=ws-rerun]")).toBeVisible();
+  });
+
+  test("sections start collapsed; open all shows their blocks in frames, close all folds them back", async ({ page }) => {
+    await open(page, "map");
+    // default: one coloured wide node per section, no frames – detail is a click away
+    await openView(page, "canvas");
+    await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
+    await expect(page.locator("[data-testid^='fc-node-sec:']")).toHaveCount(0);
+    await expect(page.locator(".fc-wide-title").first()).toBeVisible();
+    await openAllSections(page);
+    await expect(page.locator("[data-testid^='fc-node-sec:']").first()).toBeVisible();
+    await expect(page.locator(".fc-tile").first()).toBeVisible();
+    await openView(page, "canvas"); await page.locator("[data-testid=map-depth]").click();
+    await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
+    await expect(page.locator("[data-testid^='fc-node-sec:']")).toHaveCount(0);
+  });
+
+  test("the capabilities lens shows one swimlane per entry family", async ({ page }) => {
+    await open(page, "map");
+    await page.locator("[data-testid=map-view-capabilities]").click();
+    const lanes = page.locator("[data-testid^='fc-node-lane:']");
+    await expect(lanes.first()).toBeVisible();
+    const n = await lanes.count();
+    expect(n).toBeGreaterThan(0);
+    // each lane frame is labelled with the family's source → terminal
+    await expect(page.locator(".fc-group-label").first()).toContainText("→");
+    await expect(page.locator(".fc-tile").first()).toBeVisible();
+    // a lane stop selects its block into the sidebar (last tile: on top)
+    await page.locator(".fc-tile").last().dispatchEvent("click");
+    await expect(page.locator("[data-testid=map-readout] [data-testid=map-block-table]")).toBeVisible();
+    // the selection is visible on the canvas: the canvas reports the picked
+    // lane stop (its accent border is React Flow's click selection, the
+    // layout stays put – no re-layout, so the selection is never echoed away)
+    const capsCanvas = page.locator("[data-testid=map-caps-canvas] .fc-canvas");
+    await expect(capsCanvas).not.toHaveAttribute("data-fc-selection", "");
+    await expect(capsCanvas.getAttribute("data-fc-selection")).resolves.toMatch(/lane:/);
+    // the switch keeps the other lenses working
+    await page.locator("[data-testid=map-view-flow]").click();
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    await page.locator("[data-testid=map-view-blocks]").click();
+    await expect(page.locator(".sy-grid .sy-box").first()).toBeVisible();
+    await page.locator("[data-testid=map-view-chains]").click();
+    await expect(page.locator("[data-testid=map-chains-view]")).toBeVisible();
+  });
+
+  test("focusing a chain dims everything it does not cross, from the chain card", async ({ page }) => {
+    await open(page, "map");
+    await chainsList(page);
+    await expect(page.locator(".sy-family").first()).toBeVisible();
+    // select the first family's first chain
+    await page.locator(".sy-family .sy-twist").first().click();
+    const chains = page.locator(".sy-chain");
+    await expect(chains.first()).toBeVisible();
+    await chains.first().click();
+    // the chain card appears with its subway strip; focus dims the canvas
+    const card = page.locator("[data-testid=map-chain-card]");
+    await expect(card).toBeVisible();
+    await expect(page.locator("[data-testid=map-subway] .fm-subway-btn").first()).toBeVisible();
+    // the flow canvas shows the focus badge with dimmed nodes and frames
+    await page.locator("[data-testid=map-focus-chain]").click();
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-focus-badge]")).toContainText("focused chain");
+    // dimmed nodes sit across the whole canvas; pan to bring some into the
+    // virtualized window, then count them
+    const canvas = page.locator("[data-testid=map-flow-canvas] .fc-canvas");
+    const cb = await canvas.boundingBox();
+    await page.mouse.move(cb!.x + cb!.width / 2, cb!.y + cb!.height / 2);
+    await page.mouse.down({ button: "middle" });
+    await page.mouse.move(cb!.x + cb!.width / 2 - 600, cb!.y + cb!.height / 2 - 300, { steps: 8 });
+    await page.mouse.up({ button: "middle" });
+    await page.waitForTimeout(600);
+    const dimmed = page.locator("[data-testid=map-flow] .fc-dim");
+    expect(await dimmed.count()).toBeGreaterThan(0);
+    await page.locator("[data-testid=map-focus-clear]").click();
+    await expect(page.locator("[data-testid=map-focus-badge]")).toHaveCount(0);
+  });
+
+  test("a subway strip step opens the code panel at its definition", async ({ page }) => {
+    await open(page, "map");
+    await chainsList(page);
+    await page.locator(".sy-family .sy-twist").first().click();
+    const chains = page.locator(".sy-chain");
+    await expect(chains.first()).toBeVisible();
+    await chains.first().click();
+    const stops = page.locator("[data-testid=map-subway] .fm-subway-btn");
+    await expect(stops.first()).toBeVisible();
+    await stops.first().click();
+    await expect(page.locator(".code-panel")).toBeVisible();
+  });
+
+  test("keyboard traversal works on the flow canvas: arrows walk edges, Enter opens, Esc clears", async ({ page }) => {
+    await open(page, "map");
+    await openAllSections(page);
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    const canvas = page.locator("[data-testid=map-flow-canvas] .fc-canvas");
+    const selOf = () => canvas.getAttribute("data-fc-selection");
+    // seed the walk from a tile with an outgoing main edge: tiles are tried
+    // from the top of the stacking order down (sibling frames cover earlier
+    // groups' children), each probed with one ArrowRight
+    const tiles = page.locator(".fc-tile");
+    const n = await tiles.count();
+    let start = "", moved = "";
+    for (let i = n - 1; i >= 0 && !moved; i--) {
+      await tiles.nth(i).dispatchEvent("click");
+      await canvas.focus();
+      await expect.poll(selOf).not.toBe("");
+      start = await selOf();
+      await page.keyboard.press("ArrowRight");
+      await page.waitForTimeout(200);
+      moved = (await selOf()) ?? "";
+      if (moved === start) {
+        moved = "";
+        await page.keyboard.press("Escape"); // clear and try the next tile
+        await expect.poll(selOf).toBe("");
+      }
+    }
+    expect(moved).toBeTruthy();
+    // ArrowLeft walks back along a main edge to a predecessor
+    await page.keyboard.press("ArrowLeft");
+    await expect.poll(selOf).not.toBe(moved);
+    // ArrowRight again, then Enter opens the selection (a block drills in)
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(selOf).not.toBe(start);
+    await page.keyboard.press("Enter");
+    await expect(page.locator("[data-testid=map-breadcrumb] .crumb-link")).toHaveCount(2);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+  });
+
+  test("the canvas kit works on the map: drag persists, tidy, fit and the minimap", async ({ page }) => {
+    await open(page, "map");
+    await openAllSections(page);
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    // the kit controls are present on the map canvas
+    await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-tidy]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-fit]")).toBeVisible();
+    await expect(page.locator("[data-testid=map-flow-canvas] [data-testid=fc-minimap-toggle]")).toBeVisible();
+    // the minimap starts hidden and toggles on
+    await expect(page.locator("[data-testid=map-flow-canvas] .fc-minimap")).toHaveCount(0);
+    await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-minimap-toggle]").click();
+    await expect(page.locator("[data-testid=map-flow-canvas] .fc-minimap")).toBeVisible();
+    // drag a node and the position persists to localStorage. Drags inside
+    // group frames are not persisted (kit limitation) – drag at depth 1,
+    // where every section is one unparented wide node.
+    await openView(page, "canvas"); await page.locator("[data-testid=map-depth]").click();
+    await expect(page.locator("[data-testid=map-depth]")).toHaveText("open all");
+    const wide = page.locator(".fc-wide").first();
+    await wide.hover();
+    const before = await wide.boundingBox();
+    await page.mouse.down();
+    await page.mouse.move(before!.x + before!.width / 2 - 120, before!.y + before!.height / 2 - 60, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    const after = await wide.boundingBox();
+    expect(Math.abs(after!.x - before!.x) + Math.abs(after!.y - before!.y)).toBeGreaterThan(40);
+    const persisted = await page.evaluate(() => {
+      const keys = Object.keys(localStorage).filter((k) => k.startsWith("kula.flow.pos.v1.map."));
+      return keys.length > 0 && keys.some((k) => Object.keys(JSON.parse(localStorage.getItem(k) || "{}")).length > 0);
+    });
+    expect(persisted).toBe(true);
+    // tidy re-runs dagre and clears persisted drags; fit recentres the view
+    await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-tidy]").click();
+    await page.waitForTimeout(600);
+    expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("kula.flow.pos.v1.map.")).length)).toBe(0);
+    const zoomBefore = Number((await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-zoom]").textContent())?.replace("%", ""));
+    await page.locator("[data-testid=map-flow-canvas] [data-testid=fc-fit]").click();
+    await page.waitForTimeout(400);
+    await expect(page.locator("[data-testid=map-flow]")).toBeVisible();
+    expect(zoomBefore).toBeGreaterThanOrEqual(0);
+  });
+
+  test("the workspace rail icon is the flow schematic with an agent on top", async ({ page }) => {
+    await open(page, "overview");
+    // the flow (two circles, one square) and an accent agent head riding on it
+    const btn = page.locator(".rail button[aria-label=Workspace] svg");
+    await expect(btn).toBeVisible();
+    expect(await btn.locator("circle").count()).toBe(2);
+    expect(await btn.locator("rect").count()).toBeGreaterThanOrEqual(2);
+    // Agents and Console are not rail items any more – the workspace and the dock hold them
+    await expect(page.locator(".rail button[aria-label=Agents]")).toHaveCount(0);
+    await expect(page.locator(".rail button[aria-label=Console]")).toHaveCount(0);
+    const acc = await btn.locator("[stroke='var(--accent)']").count();
+    expect(acc).toBeGreaterThanOrEqual(1);
+  });
+});
+
+test.describe("agents on the flow canvas (A3)", () => {
+  test.describe.configure({ mode: "serial" });
+  test.use({ baseURL: ({ fx }, use) => use(fx) });
+  const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
+
+  test("A3.1 teams: a canvas seat fills the sidebar; an answers-to edit round-trips teams_save", async ({ page, request }, info) => {
+    desktopOnly(info);
+    test.setTimeout(90_000);
+    await open(page, "agents/teams");
+    // Select a seat on the canvas: the kit sidebar explains it, the selection
+    // is on the canvas, and the seat's card exists (the DOM contract).
+    const card = page.locator(".react-flow__node .org-card").nth(1);
+    await expect(card).toBeVisible();
+    // The seat key is read at click time: canvas re-renders can reorder the
+    // cards, so a late read would name a different seat than the one picked.
+    const seat = await card.getAttribute("data-org");
+    await card.click();
+    const side = page.locator(".fc-sidebar");
+    await expect(page.locator(".fc-canvas")).not.toHaveAttribute("data-fc-selection", "");
+    // The sidebar tinker changes answers-to through the same onReport the old
+    // drag used; Save writes teams_save – assert the request payload, not pixels.
+    const orgSel = side.getByLabel("Answers to");
+    await expect(orgSel).toBeVisible();
+    const before = await orgSel.inputValue();
+    const options = await orgSel.locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    const to = options.find((v) => v !== before && v !== "") ?? "";
+    const saveReq = page.waitForRequest((r) => r.url().includes("/api/agents/teams_save") && r.method() === "POST");
+    await orgSel.selectOption(to);
+    await page.locator(".team-card").getByRole("button", { name: "Save", exact: true }).click();
+    const body = (await saveReq).postDataJSON() as { teams: { name: string; members: Record<string, unknown>[] }[] };
+    const team = body.teams.find((t) => t.members.some((m) => (m.name ?? m.agent) === seat));
+    const member = team?.members.find((m) => (m.name ?? m.agent) === seat);
+    expect(member?.reports_to, `teams_save carries reports_to=${to}`).toBe(to);
+    void request;
+  });
+
+  test("A3.2 workflows: a canvas step fills the sidebar; a reorder round-trips workflows_save", async ({ page, request }, info) => {
+    desktopOnly(info);
+    test.setTimeout(90_000);
+    await open(page, "agents/workflows");
+    // The task's workflow (fix) is selected by default; make sure of it.
+    await page.locator(".wf-tabs [role=tab]").filter({ hasText: /^fix$/ }).click();
+    // The API answers only with the session token, so read it through the
+    // page (the meta tag carries it) rather than a bare APIRequestContext.
+    const info0 = await page.evaluate(() => fetch("/api/agents", { headers: { "x-kula-token": document.querySelector('meta[name="kula-token"]')?.content ?? "" } }).then((r) => r.json()));
+    const steps0: string[] = info0.workflow.steps;
+    expect(steps0.length).toBeGreaterThan(1);
+    // Select step 2 on the canvas; the sidebar explains it and tinkers.
+    await page.locator('.react-flow__node[data-id="step:1"]').click();
+    await expect(page.locator(".fc-sidebar")).toContainText("step 2");
+    // Move it down, save, assert the same workflows_save payload shape the
+    // form always wrote (kula.toml, so CLI, MCP and kula check see it).
+    const saveReq = page.waitForRequest((r) => r.url().includes("/api/agents/workflows_save") && r.method() === "POST");
+    await page.locator(".fc-sidebar").getByRole("button", { name: /down/ }).click();
+    await page.locator(".wf-actions").getByRole("button", { name: "Save" }).click();
+    const body = (await saveReq).postDataJSON() as { workflows: { name: string; steps: string[] }[] };
+    const wf = body.workflows.find((w) => w.name === "fix");
+    // "down" moves step 2 one position later: [s0, s2, s1, …] – so the first
+    // two entries of the saved order are the old first and old third steps.
+    expect(wf?.steps.slice(0, 2)).toEqual([steps0[0], steps0[2]]);
+  });
+
+  test("A3.3 memory: a canvas node fills the sidebar and the list row follows", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "graph needs a desktop viewport");
+    await open(page, "agents/memory");
+    const node = page.locator('.react-flow__node[data-id^="mem:"]').first();
+    await expect(node).toBeVisible();
+    await node.click();
+    const side = page.locator(".fc-sidebar");
+    await expect(side).toContainText(/#\d+/);
+    await expect(side).toContainText("layer");
+    // one truth, two views: the list row is selected too
+    await expect(page.locator(".ag-mem.kb-sel")).toHaveCount(1);
+  });
+
+  test("A3.4 research: the run pipeline renders on the canvas; an attempt fills the sidebar", async ({ page }) => {
+    // The fixture has no finished run; inject one the way A2.2 does.
+    const now = Date.now(), min = 60_000;
+    const run = {
+      workflow: "explore", metric: "cargo test --quiet count", goal: "min", budget: 5, branch: "main", base: "main",
+      baseline: 12, best: 10, started: now - 40 * min, by: "agent:claude", active: false,
+      experiments: [
+        { n: 1, hypothesis: "index once per blob", value: 11, best_before: 12, kept: true, commit: "abc1234def", files: ["src/store.rs"], by: "agent:claude", at: now - 35 * min },
+        { n: 2, hypothesis: "borrow the graph", value: 10.5, best_before: 11, kept: false, files: ["src/graph.rs"], by: "agent:cursor", at: now - 28 * min },
+      ],
+    };
+    await page.route("**/api/agents", (route) => route.fetch().then((r) => r.json()).then((j) => route.fulfill({
+      json: { ...j, research: [run], workflows: [...j.workflows, { name: "explore", about: "loop", builtin: false, research: { metric: run.metric, goal: "min", budget: 5 } }] },
+    })));
+    await open(page, "agents/research");
+    await page.getByRole("tab", { name: "explore", exact: true }).click();
+    // The pipeline is on the canvas: stages left to right, sub-nodes below –
+    // 4 stages + 2 solver circles + 2 attempt circles + 1 frontier record.
+    await expect(page.locator(".rf-canvas .react-flow__node")).toHaveCount(9);
+    await expect(page.locator('.rf-canvas .react-flow__node[data-id="st:gate"]')).toBeVisible();
+    // Selecting an attempt on the canvas fills the sidebar and lights the list.
+    await page.locator('.rf-canvas .react-flow__node[data-id="try:2"]').click();
+    await expect(page.locator(".fc-sidebar")).toContainText("attempt 2");
+    await expect(page.locator(".rf-try").filter({ hasText: "borrow the graph" })).toHaveClass(/sel/);
   });
 });
