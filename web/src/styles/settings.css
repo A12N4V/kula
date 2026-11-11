@@ -1,6 +1,6 @@
 /* settings drawer */
 .scrim.clear { background: rgba(0, 0, 0, .18); justify-content: flex-end; align-items: stretch; padding: 0; }
-.settings { width: min(380px, 100vw); height: 100%; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); box-shadow: var(--shadow); animation: slide .2s var(--ease) both; }
+.settings { width: min(380px, 100vw); height: 100%; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); animation: slide .2s var(--ease) both; }
 .settings header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .settings header h2 { margin: 0; font-size: 13.5px; font-weight: 600; }
 .settings footer { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 11.5px; }
@@ -54,9 +54,45 @@
 .grip-top::after { left: 0; right: 0; top: 0; height: 2px; }
 .grip-bottom::after { left: 0; right: 0; bottom: 0; height: 2px; }
 .grip:hover::after, .grip:focus-visible::after, .grip:active::after { opacity: .85; }
+/* ── popped panels ── one corner pair on every panel: full screen · close
+   (PaneControls in resize.tsx). Full screen is [data-max] on the [data-pane]
+   element: it takes the window over everything, grips hide, Esc restores. */
+.pane-ctl { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }
+.pane-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--text-2); cursor: pointer; transition: background .12s var(--ease), color .12s var(--ease); }
+.pane-btn:hover { background: var(--panel-2); color: var(--text); }
+.pane-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pane-btn[aria-pressed="true"] { color: var(--accent); }
+.pane-btn .ico { width: 15px; height: 15px; }
+[data-pane][data-max] {
+  position: fixed !important; inset: 10px !important; width: auto !important; height: auto !important;
+  max-width: none !important; max-height: none !important; min-width: 0 !important; transform: none !important;
+  z-index: 400 !important; border-radius: var(--radius); box-shadow: 0 0 0 100vmax rgb(0 0 0 / .55), 0 20px 60px rgb(0 0 0 / .5);
+}
+[data-pane][data-max] .grip { display: none !important; }
+/* Full screen must cover the whole window: a transformed ancestor (the view's
+   enter animation, frozen at translate(0)) becomes the containing block for
+   position fixed and offsets the pane by the rail. Flatten it while a pane is
+   maximized. */
+.view-enter:has([data-pane][data-max]) { transform: none !important; animation: none !important; }
 html[data-resizing] { user-select: none; -webkit-user-select: none; }
 html[data-resizing="x"] * { cursor: col-resize !important; }
 html[data-resizing="y"] * { cursor: row-resize !important; }
+
+/* phone: every pane is a bottom sheet – full width, its own scroll, the
+   controls (and so close) stay reachable in the header; full screen is the
+   whole viewport, no corners, no shadow. */
+@media (max-width: 760px) {
+  [data-pane] {
+    position: fixed !important; inset: auto 0 0 0 !important; width: 100% !important; height: auto !important;
+    max-width: none !important; max-height: 78vh; border-radius: 0; border-left: 0; border-right: 0;
+    border-top: 1px solid var(--line-2); transform: none !important; box-shadow: none;
+  }
+  .scrim.clear:has(> .settings) { align-items: flex-end; }
+  [data-pane][data-max] {
+    inset: 0 0 0 0 !important; max-height: none; height: 100% !important; border: 0; box-shadow: none;
+  }
+}
 
 .split { position: relative; grid-template-columns: var(--list-w, 340px) minmax(0, 1fr); }
 /* integration: the g1 grab strip sits wholly right of the list boundary, so it
@@ -64,6 +100,10 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
    here – git.css's older override is gone. */
 .split > .grip { right: auto; width: 28px; left: calc(var(--list-w, 340px) + 1px); }
 .split > .grip::after { right: auto; left: 2px; }
+/* Query – the 28px strip reaches the results table's first cell (its button
+   starts at 12px of cell padding); a hairline grip keeps the list side clear
+   and the row buttons clickable. */
+.split.kq > .grip { width: 8px; }
 
 .inspector { width: var(--size-inspector, 380px); }
 .graph-wrap.inspecting .zoom { right: calc(var(--size-inspector, 380px) + 24px); }
@@ -79,6 +119,8 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .split-canvas { grid-template-columns: minmax(160px, var(--size-before, 1fr)) minmax(160px, 1fr); }
 
 .settings { position: relative; width: min(var(--size-settings, 380px), 100vw); }
+.code-panel { width: min(var(--size-code, 620px), calc(100vw - 24px)); }
+.contrast-panel .cp-head .row { display: flex; align-items: center; gap: 8px; }
 
 @media (max-width: 760px) {
   .grip { display: none; }
@@ -108,7 +150,7 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .af-area .af-pop { top: calc(100% - 2px); }
 .af-grp { padding: 6px 8px 3px; font: 600 9.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
 .af-opt { display: grid; grid-template-columns: 18px auto minmax(0, 1fr); align-items: center; gap: 8px; padding: 5px 8px; cursor: pointer; font-size: 12px; }
-.af-opt.on { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+.af-opt.on { background: var(--bg-3); }
 .af-ico { width: 16px; text-align: center; color: var(--text-3); }
 .af-label { white-space: nowrap; }
 .af-hint { color: var(--text-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -125,7 +167,7 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .set-nav button { text-align: left; padding: 7px 10px; font: inherit; font-size: 12.5px; color: var(--text-2); background: none; border: 0; border-left: 2px solid transparent; cursor: pointer; }
 .settings.dialog .set-row.toggle { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
 .set-nav button:hover { color: var(--text); background: var(--bg-2); }
-.set-nav button.on { color: var(--text); border-left-color: var(--accent); background: var(--bg-2); }
+.set-nav button.on { color: var(--text); background: var(--bg-3); }
 .settings.dialog .set-body { padding: 4px 22px 20px; }
 @media (max-width: 760px) {
   .scrim:has(.settings.dialog) { padding-top: 16px; }
@@ -178,3 +220,16 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 @media (max-width: 760px) {
   .cpl-row { min-height: 40px; }
 }
+
+/* ================================================================ i1 · Embeddings section (I1) */
+/* Two-column check table, one progress bar, all palette tokens – no new colours. */
+.embed-check { margin: 8px 0 4px; }
+.embed-check .kv-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid var(--line-2, #24201d); }
+.embed-check .kv-row .k { color: var(--text-2, #a89f93); font-size: 11px; }
+.embed-progress { margin: 8px 0 4px; display: flex; flex-direction: column; gap: 6px; }
+.embed-progress .bar { height: 4px; background: var(--line-1, #1a1714); border-radius: 4px; overflow: hidden; }
+.embed-progress .bar i { display: block; height: 100%; background: var(--accent, #f97f3a); transition: width .4s ease; }
+/* Indeterminate state – install and the first embed batch have no total yet.
+   A dimmed full-width bar, no fake percentage, no animation. */
+.embed-progress .bar.idle i { background: var(--line-2, #24201d); }
+@media (prefers-reduced-motion: reduce) { .embed-progress .bar i { transition: none; } }

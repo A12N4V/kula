@@ -1,6 +1,6 @@
 // Cross-view navigation: any view can send the user somewhere specific.
 
-export type View = "overview" | "graph" | "changes" | "history" | "branches" | "proposals" | "issues" | "notes" | "flows" | "agents" | "query" | "console";
+export type View = "overview" | "graph" | "map" | "changes" | "history" | "branches" | "proposals" | "issues" | "notes" | "flows" | "agents" | "query" | "console" | "flow-lab"; // F1 · dev-only lab route, never in the nav
 
 export interface Target {
   issue?: number;
@@ -13,8 +13,12 @@ export interface Target {
   contrast?: { base: string; head: string; mode?: ContrastMode };
   /** Open the graph with the fences overlay: "" for what is in force now, or a workflow to preview. */
   fences?: string;
-  /** A tab inside a view (Agents: workflows, fences, memory, docs, connect). */
+  /** A tab inside a view (Agents: workflows, teams, skills, fences, connect, settings, …). */
   tab?: string;
+  /** MapView: the drilled block for a deep link (#map/<blockId>). */
+  block?: string;
+  /** MapView: the agent to select on arrival (#map with an agent from the Agents page). */
+  agent?: string;
 }
 /** Contrast shows two revisions overlaid, side by side, or as a textual report. */
 export type ContrastMode = "overlay" | "split" | "report";
@@ -30,7 +34,7 @@ export interface Shortcut { keys: string; label: string }
 /** Active in every view; each one is proven working by an e2e test (N1.2). */
 export const GLOBAL_SHORTCUTS: Shortcut[] = [
   { keys: "⌘K /", label: "Command palette – symbols, #issues, @branches, >commands" },
-  { keys: "1 – 9 0 a q", label: "Go to a view (the rail shows which key)" },
+  { keys: "1 – 9 0 a q y", label: "Go to a view (the rail shows which key)" },
   { keys: "?", label: "This sheet" },
   { keys: ",", label: "Settings" },
   { keys: "⌥← ⌥→", label: "Back / forward through views" },

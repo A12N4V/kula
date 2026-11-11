@@ -1,0 +1,57 @@
+# Gold set – the vendored dtolnay/miniserde fixture (MIT, commit 90ff7ed1).
+# Hand-written from the README's outcomes (json::from_str builds a value,
+# json::to_string writes one) and the source files that implement them.
+# Not copied from engine output; producibility is checked afterwards with
+# KULA_BENCH_DEBUG=1. Bench code excluded as the bench filters it.
+repo = "miniserde"
+description = "miniserde – data structure serialization for Rust, a minimal serde"
+
+[[flow]]
+name = "Deserialize a value from JSON"
+outcome = "Build a Rust data structure from a JSON string."
+keywords = ["deserialize", "json", "parse"]
+members = [
+  "src/json/de.rs::from_str",
+  "src/json/de.rs::from_str_impl",
+  "src/json/de.rs::event",
+  "src/json/de.rs::bump",
+  "src/json/de.rs::next",
+  "src/json/de.rs::next_or_eof",
+  "src/json/de.rs::next_or_nul",
+  "src/json/de.rs::parse_ident",
+  "src/json/de.rs::parse_number",
+  "src/json/de.rs::parse_integer",
+  "src/json/de.rs::parse_long_integer",
+  "src/json/de.rs::parse_decimal",
+  "src/json/de.rs::parse_exponent",
+  "src/json/de.rs::parse_exponent_overflow",
+  "src/json/de.rs::parse_escape",
+  "src/json/de.rs::parse_str",
+  "src/json/de.rs::f64_from_parts",
+  "src/json/de.rs::decode_hex_escape",
+  "src/json/array.rs::new",
+  "src/json/array.rs::take",
+  "src/json/object.rs::take",
+  "src/de/impls.rs::element",
+  "src/de/impls.rs::finish",
+  "src/de/impls.rs::key",
+  "src/de/impls.rs::shift"
+]
+[[flow]]
+name = "Serialize a value to JSON"
+outcome = "Turn a Rust data structure into a JSON string."
+keywords = ["serialize", "json", "string"]
+members = [
+  "src/json/ser.rs::to_string",
+  "src/json/ser.rs::to_string_impl",
+  "src/json/ser.rs::escape_str",
+  "src/ser/mod.rs::begin",
+  "src/ser/mod.rs::next",
+  "src/ser/mod.rs::Serialize",
+  "src/ser/mod.rs::Fragment",
+  "src/ser/mod.rs::Map",
+  "src/ser/impls.rs::begin",
+  "src/ser/impls.rs::stream_slice",
+  "src/ser/impls.rs::SliceStream",
+  "src/json/value.rs::begin"
+]

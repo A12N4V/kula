@@ -1,0 +1,63 @@
+/* Bottom dock – VS Code's panel: console and run log under every view.
+   A 35px title row of uppercase tabs (1px underline on the active one),
+   icon actions on the right, a sash that snaps the panel shut. */
+:root { --dock-h: 0px; }
+.main > .view-enter { bottom: var(--dock-h); }
+.dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; background: var(--bg); border-top: 1px solid var(--line); }
+.dock-grip { position: absolute; top: -2px; left: 0; right: 0; height: 4px; cursor: ns-resize; z-index: 1; }
+.dock-grip:hover, .dock-grip:active { background: var(--accent); transition: background .1s .3s; }
+.dock-bar { display: flex; align-items: stretch; gap: 0; height: 35px; flex: none; padding: 0 8px 0 4px; background: var(--bg); }
+.dock-tab { display: inline-flex; align-items: center; gap: 6px; height: auto; padding: 0 10px; border-radius: 0; background: none; border: 0; font: inherit; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
+.dock-tab svg { width: 13px; height: 13px; }
+.dock-tab:hover { background: none; color: var(--text); }
+.dock-tab.on { background: none; color: var(--text); box-shadow: inset 0 -1px 0 var(--text); }
+.dock-n { font: 10px var(--mono); line-height: 16px; min-width: 18px; text-align: center; color: var(--text-2); padding: 0 5px; border-radius: 0; background: var(--bg-2); }
+.dock-btn { height: 22px; padding: 0 8px; color: var(--text-3); font: inherit; font-size: 12px; border-radius: 6px; display: inline-flex; align-items: center; }
+.dock-btn:hover { color: var(--text); background: var(--bg-2); }
+.dock-body { flex: 1; min-height: 0; overflow: hidden; }
+.dock-body .console { height: 100%; }
+.dock-empty { padding: 18px; color: var(--text-3); font-size: 12.5px; }
+.dock-empty b { color: var(--accent); }
+.dock-log { height: 100%; overflow: auto; padding: 8px 12px; font: 12px/1.55 var(--mono); }
+.dl { display: grid; grid-template-columns: 64px 120px 1fr; gap: 10px; animation: dl-in .2s var(--ease) both; }
+.dl-t { color: var(--text-3); }
+.dl-src { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-x { color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
+.dl-ok .dl-x { color: var(--green); }
+.dl-err .dl-x { color: var(--red); }
+.dl-warn .dl-x { color: var(--yellow, #d9b54a); }
+@keyframes dl-in { from { opacity: 0; transform: translateX(-4px); } }
+@media (prefers-reduced-motion: reduce) { .dock, .dock-body, .dl { transition: none; animation: none; } }
+@media (max-width: 640px) { .dl { grid-template-columns: 56px 1fr; } .dl-src { display: none; } }
+.dock-logs { height: 100%; display: grid; grid-template-columns: 240px 1fr; min-height: 0; }
+.dock-logs > .dock-log:only-child { grid-column: 1 / -1; }
+.dock-tree { border-right: 1px solid var(--line); overflow: auto; padding: 0; display: flex; flex-direction: column; gap: 0; }
+.dt-row { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 8px; padding: 0 10px; height: 22px; border-radius: 0; background: none; border: 0; font: inherit; font-size: 12px; color: var(--text-2); text-align: left; cursor: pointer; }
+.dt-row:hover { background: var(--bg-2); color: var(--text); }
+.dt-row.on { background: var(--bg-2); color: var(--text); }
+.dt-run { font-weight: 600; }
+.dt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-ms { font-size: 10.5px; color: var(--text-3); }
+.dt-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); }
+.dt-running, .dt-waiting { background: var(--accent); animation: ws-pulse 1.2s ease-in-out infinite; }
+.dt-success, .dt-passed { background: var(--green); }
+.dt-error, .dt-failed { background: var(--red); }
+.dt-skipped, .dt-stopped { background: var(--text-3); }
+@media (max-width: 640px) { .dock-logs { grid-template-columns: 1fr; } .dock-tree { display: none; } }
+
+/* VS Code's terminal: output padded 20px, 12px mono, and the terminal list as
+   a narrow column on the right with + and clear above it. */
+.dock .console { display: grid !important; grid-template-columns: 1fr 160px; grid-template-rows: 1fr; height: 100%; }
+.dock .console .out { grid-column: 1; grid-row: 1; padding: 6px 20px; font: 12px/1.4 var(--mono); overflow: auto; }
+.dock .term-bar { grid-column: 2; grid-row: 1; flex-direction: column; height: auto; border-bottom: 0; border-left: 1px solid var(--line); background: var(--bg); overflow-y: auto; }
+.dock .term-tab { height: 22px; flex: none; padding: 0 4px 0 10px; border-right: 0; font-size: 12px; }
+.dock .term-tab.on { background: var(--bg-2); box-shadow: none; }
+.dock .term-tab > :not(.term-x):not(svg) { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.dock .term-x { width: 20px; height: 20px; }
+.dock .term-btn { height: 22px; min-width: 0; justify-content: start; padding: 0 10px; display: flex; align-items: center; }
+.dock .term-bar .spacer { flex: 1; }
+@media (max-width: 640px) { .dock .console { grid-template-columns: 1fr; } .dock .term-bar { display: none; } }
+.dock-act { align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--text-3); cursor: pointer; }
+.dock-act svg { width: 15px; height: 15px; }
+.dock-act:hover { background: var(--bg-2); color: var(--text); }
+.dock-act .ws-chev { transform: none; } .dock-act .ws-chev.up { transform: rotate(180deg); }

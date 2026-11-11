@@ -289,6 +289,12 @@ export function TabStrip({ items, cur, onPick, onAdd, onRename, label, addLabel 
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [val, setVal] = useState("");
+  const strip = useRef<HTMLDivElement>(null);
+  // A created or picked item must be visible, not just selected: the selected
+  // tab scrolls into view whenever the selection moves.
+  useEffect(() => {
+    strip.current?.querySelector("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [cur]);
   const begin = (it: TabItem) => { if (onRename && !it.fixed) { setEditing(it.key); setVal(it.label); } };
   const commit = () => {
     const it = items.find((x) => x.key === editing);
@@ -296,7 +302,7 @@ export function TabStrip({ items, cur, onPick, onAdd, onRename, label, addLabel 
     setEditing(null);
   };
   return (
-    <div className="team-tabs tab-strip" role="tablist" aria-label={label}>
+    <div className="team-tabs tab-strip" role="tablist" aria-label={label} ref={strip}>
       {items.map((it) => editing === it.key ? (
         <input key={it.key} className="tab-rename mono" autoFocus value={val} size={Math.max(6, val.length + 1)} aria-label={`Rename ${it.label}`}
           onChange={(e) => setVal(e.target.value.replace(/[^\w-]/g, ""))} onBlur={commit}

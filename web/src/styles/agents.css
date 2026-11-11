@@ -44,7 +44,7 @@
 .ag-target:hover { color: var(--accent); }
 .ag-tool { display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); gap: 12px; padding: 4px 0; font-size: 12px; border-bottom: 1px dashed var(--line); }
 .ti { position: relative; }
-.ti-pop { position: absolute; top: 36px; left: 0; right: 0; z-index: 6; padding: 4px; background: var(--panel); box-shadow: var(--shadow); }
+.ti-pop { position: absolute; top: 36px; left: 0; right: 0; z-index: 6; padding: 4px; background: var(--panel); border: 1px solid var(--line-2); }
 .snippet { position: relative; margin: 0 0 10px; }
 .snippet pre.code { margin: 0; padding: 10px 72px 10px 12px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 11.5px; border: 1px solid var(--line); background: var(--bg); }
 .snippet-copy { position: absolute; top: 6px; right: 6px; height: 22px; font-size: 11px; }
@@ -68,7 +68,7 @@
 .ag-tabs button:hover { color: var(--text-2); }
 .ag-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
 .ag-tabs button svg { width: 14px; height: 14px; }
-.ag-tabs .badge { min-width: 15px; height: 15px; padding: 0 4px; background: var(--accent); color: var(--accent-ink); font-size: 9.5px; font-weight: 700; line-height: 15px; text-align: center; }
+.ag-tabs .badge { color: var(--text-3); font: 11px var(--mono); }
 .ag-panel { animation: view-in .25s var(--ease) both; }
 .ag-strip { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
 .ag-strip .kpi-cell { cursor: pointer; }
@@ -110,7 +110,7 @@
 .wf-tile[role="button"] { cursor: pointer; }
 .wf-tile[role="button"]:hover { border-color: var(--line-2); }
 .wf-tile.on { border-color: var(--accent); background: var(--panel); }
-.wf-tile.active { box-shadow: inset 2px 0 0 var(--accent); }
+.wf-tile.active { background: var(--bg-3); }
 .wf-tile b { font-size: 13px; }
 .wf-src { font-size: 10.5px; white-space: nowrap; }
 /* a tile's head wraps instead of spilling: name and tags, then where it comes from */
@@ -263,7 +263,7 @@
 .conn-wires li span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
 .mod { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg-2); font-size: 11.5px; line-height: 1.5; }
-.mod.on { border-left: 2px solid var(--green); }
+.mod.on { background: var(--bg-3); }
 .mod-mark { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); color: var(--text); background: var(--bg); }
 .mod-mark:hover { border-color: var(--accent); }
 .mod-body { display: grid; gap: 3px; min-width: 0; }
@@ -279,13 +279,15 @@
   .run-by { display: none; }
 }
 
-/* D1: hover/focus system – decoration shadows go, 1px borders replace them. */
-.ti-pop { box-shadow: none; border: 1px solid var(--line-2); }
+/* the workspace rail's add buttons and harmonograph marks – flat, square, obvious */
+.lib-add { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border: 1px solid var(--line); background: none; color: var(--text-2); font: 11.5px var(--mono); cursor: pointer; flex: none; }
+.lib-add:hover { border-color: var(--accent); color: var(--text); }
+.lib-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--line); color: var(--text); background: var(--bg); flex: none; }
 
 /* ================================================================ A1: agents tabs – tables, keyboard navigation, path test */
 /* Keyboard navigation (j/k/enter/esc) marks the roving selection on list
-   rows; the accent line keeps it readable without moving layout. */
-.kb-sel { box-shadow: inset 2px 0 0 var(--accent); background: var(--accent-soft); }
+   rows – selection is a fill, like every list in the design. */
+.kb-sel { background: var(--bg-3); }
 .wf-tile.kb-sel, .doc-item.kb-sel { border-color: var(--accent); }
 
 /* sortable lists */
@@ -336,7 +338,7 @@
 .page { min-height: 0; }
 
 /* Workflows as tabs, like Research and Teams */
-.wf-tabs { display: grid; gap: 10px; min-width: 0; }
+.wf-tabs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
 .wf-tabs .need.sugg { padding: 10px 12px; border: 1px dashed var(--accent); background: var(--bg-2); }
 .wf-from { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; }
 
@@ -348,7 +350,7 @@
 .roster-row { width: 100%; min-height: 30px; padding: 4px 8px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
 .roster-row.odd { background: var(--bg-2); }
 .roster-row:hover { background: var(--panel-2); color: var(--text); }
-.roster-row.kb-sel { box-shadow: inset 2px 0 0 var(--accent); background: var(--accent-soft); }
+.roster-row.kb-sel { background: var(--bg-3); color: var(--text); }
 .roster-agent { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .roster-agent b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .roster-wired { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -411,12 +413,12 @@
   .ag-control .stat-table tr.go th, .ag-control .stat-table tr.go td { padding-top: 11px; padding-bottom: 11px; }
   .roster-row, .loop-row { min-height: 40px; }
   .roster { overflow-x: visible; }
-  .roster-head, .roster-row { grid-template-columns: minmax(0, 1fr) auto; min-width: 0; }
   .roster-head { display: none; }
-  .roster-row > span { grid-column: auto; }
-  .roster-row .roster-agent { grid-column: 1; grid-row: 1; }
-  .roster-row .roster-wired { grid-column: 2; grid-row: 1; }
-  .roster-row .roster-num { grid-column: 1 / 3; grid-row: 2; min-height: 28px; }
+  /* The agent on its own line, then wiring and counts side by side – a grid
+     here stacked every count into one cell. */
+  .roster-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; min-width: 0; }
+  .roster-row .roster-agent { flex: 1 0 100%; min-width: 0; }
+  .roster-row .roster-num { min-height: 28px; }
   .rf-time-svg { min-width: 480px; }
 }
 /* A2: the control row – loops, teams and the stat table side by side */
@@ -426,4 +428,211 @@
    and org-card floors folded in here – one block, not two) */
 @media (max-width: 760px) {
   .team-tabs button, .team-tabs .team-tab-add, .tpl-card, .chip-toggle, .org-card { min-height: 40px; min-width: 40px; }
+}
+
+/* ================================================================ R1: the one add flow – a single + control per kind,
+   opening the compact form in place (agents tabs, roster header, Workspace HUD) */
+.ag-add { flex: none; }
+.ag-add-form { display: grid; align-content: start; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-2); background: var(--bg-2); margin: 0 0 10px; min-width: 0; }
+.ag-add-kind { font: 600 10.5px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--accent); }
+.ag-add-err { color: var(--red); font-size: 12px; }
+.ag-add-actions { flex-wrap: wrap; gap: 6px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.ag-add-form .mi-field { min-width: 0; }
+.ag-add-form .input, .ag-add-form textarea { width: 100%; max-width: 100%; box-sizing: border-box; }
+.ag-add-seats { display: grid; gap: 6px; min-width: 0; }
+.ag-add-seat { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 28px; gap: 6px; align-items: center; }
+.ag-add-seat .input { min-width: 0; }
+/* On the phone the form is a full-width sheet above the statusbar, with
+   touch-sized targets; on the agents page it stays in flow. */
+@media (max-width: 480px) {
+  /* the Workspace rail's Library card hosts the same form – it must break out
+     of the sidebar and become the same full-width sheet. Two traps: ws-card's
+     pop-in animation leaves an identity transform behind (which traps
+     position:fixed against the 317px card), and the view wrapper's enter
+     animation does the same – both are dropped at the sheet breakpoint. */
+  .ws-card.ws-lib, .view-enter { animation: none; transform: none; }
+  .map-insp .ag-add-form, .ws-lib .ag-add-form { position: fixed; left: 0; right: 0; bottom: 28px; z-index: 40; border-left: 0; border-right: 0; border-bottom: 0; background: var(--panel); max-height: calc(100dvh - 120px); overflow: auto; }
+  .ag-add-form .input, .ag-add-form textarea { min-height: 40px; }
+  .ag-add-form .btn { min-height: 40px; }
+  .ag-add-seat { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ag-add-seat .input, .ag-add-seat select { min-height: 40px; }
+  /* the roster header's actions wrap instead of colliding with the statusbar */
+  .page { padding-bottom: 64px; }
+}
+/* Phone: the teams card head sits just under the statusbar band at 390 – give
+   the stack a clear break there so no control is clipped behind the statusbar. */
+@media (max-width: 480px) {
+  .ag-control > .card:nth-child(2) { margin-top: 48px; }
+}
+
+/* Agents page: config tabs, then the record as icon-only tabs after a rule */
+.ag-tab-wrap { display: contents; }
+.ag-tabs-sep { flex: none; width: 1px; height: 16px; margin: 9px 6px 0; background: var(--line); }
+.ag-tabs button.compact { padding: 0 10px; }
+/* Settings tab */
+.set-grid .ag-wide { grid-column: 1 / -1; }
+.ags-row { display: flex; align-items: center; gap: 8px; min-height: 34px; border-bottom: 1px solid var(--line); }
+.ags-row:last-child { border-bottom: 0; }
+.ags-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.ags-row .seg button { display: inline-flex; align-items: center; gap: 6px; }
+.set-import .ag-body { display: grid; gap: 10px; }
+.set-import-text { width: 100%; resize: vertical; min-height: 96px; }
+.set-import-src label { cursor: pointer; }
+.agents .page-head { align-items: flex-start; gap: 12px; }
+
+/* Agents as a menu + listing (Flows-style split): the menu on the left */
+.ag-split .ag-menu { display: flex; flex-direction: column; }
+.ag-menu .ag-tabs { display: flex; flex-direction: column; gap: 1px; border: 0; margin: 0; padding: 6px 8px 16px; overflow: visible; }
+.ag-group { padding: 14px 8px 6px; font: 600 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
+.ag-menu .ag-tabs button.ag-mi { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 10px; border: 0; margin: 0; background: none; color: var(--text-2); font-size: 13px; text-align: left; }
+.ag-menu .ag-tabs button.ag-mi:hover { background: var(--panel-2); color: var(--text); }
+.ag-menu .ag-tabs button.ag-mi.on { background: var(--accent-soft); color: var(--text); }
+.ag-menu .ag-tabs button.ag-mi.on svg { color: var(--accent); }
+.ag-mi svg { width: 15px; height: 15px; flex: none; }
+.ag-mi-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-mi-n { font: 11px var(--mono); color: var(--text-3); }
+.ag-detail { max-width: 1100px; }
+.ag-detail .page-head { margin-bottom: 16px; }
+@media (max-width: 760px) {
+  .ag-split { display: flex; flex-direction: column; overflow: auto; }
+  .ag-split > .list.ag-menu { flex: none; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+  .ag-split > .grip { display: none; }
+  .ag-menu .ag-tabs { flex-direction: row; overflow-x: auto; scrollbar-width: none; padding: 4px 8px 8px; gap: 4px; }
+  .ag-menu .ag-group { display: none; }
+  .ag-menu .ag-tabs button.ag-mi { width: auto; height: 40px; white-space: nowrap; }
+  .ag-split > .detail { display: block; overflow: visible; } /* the menu is a strip on phones, so the listing stays */
+}
+
+/* the agents (workflows) list */
+.wf-list { display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--panel); }
+.wf-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 14px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); text-align: left; cursor: pointer; }
+.wf-row:last-child { border-bottom: 0; }
+.wf-row:hover { background: var(--panel-2); }
+.wf-row.on { background: var(--accent-soft); }
+.wf-row.on .wf-row-name { color: var(--accent); }
+.wf-dot { width: 7px; height: 7px; flex: none; border: 1px solid var(--line-2); }
+.wf-dot.live { background: var(--accent); border-color: var(--accent); }
+.wf-row-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.wf-row-name { font-size: 13px; }
+.wf-row-about { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-row-tags { display: flex; align-items: center; gap: 6px; flex: none; }
+.wf-row-n { font: 11px var(--mono); }
+.wf-add { color: var(--text-3); min-height: 40px; }
+.wf-add svg { width: 14px; height: 14px; }
+@media (max-width: 760px) { .wf-row-tags .tag { display: none; } }
+
+/* skills index + instructions */
+.sx { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.sx-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sx-q { display: flex; align-items: center; gap: 6px; flex: 1 1 220px; min-width: 0; padding-left: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text-3); }
+.sx-q svg { width: 14px; height: 14px; flex: none; }
+.sx-q .input { flex: 1; min-width: 0; border: 0; background: none; }
+.sx-n { font: 11px var(--mono); color: var(--text-3); }
+.sx-agents { display: flex; gap: 2px; }
+.sx-agent { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--line); background: var(--panel); color: var(--text-2); cursor: pointer; }
+.sx-agent.on { border-color: var(--accent); background: var(--accent-soft); }
+.sx-agent svg { width: 14px; height: 14px; }
+.sx-list { display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--panel); }
+.sx-row { border-bottom: 1px solid var(--line); }
+.sx-row:last-child { border-bottom: 0; }
+.sx-row.on { background: var(--bg-2); }
+.sx-head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 8px 14px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.sx-head:hover:not(:disabled) { background: var(--panel-2); }
+.sx-head:disabled { cursor: default; }
+.sx-mark { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border: 1px solid var(--line); color: var(--text-2); }
+.sx-mark svg { width: 14px; height: 14px; }
+.sx-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.sx-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-desc { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-tags { display: flex; align-items: center; gap: 6px; flex: none; }
+.sx-caret { display: grid; place-items: center; color: var(--text-3); transition: transform var(--dur) var(--ease); }
+.sx-caret svg { width: 14px; height: 14px; }
+.sx-caret.on { transform: rotate(180deg); }
+.sx-detail { display: grid; gap: 10px; padding: 4px 14px 14px 52px; }
+.sx-facts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--text-2); }
+.sx-facts b { font-weight: 600; color: var(--text-3); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-right: 4px; }
+.sx-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.sx-body { margin: 0; max-height: 280px; overflow: auto; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg); font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.sx-where summary, .sx-more summary { cursor: pointer; color: var(--text-3); font-size: 12px; padding: 4px 0; }
+.sx-where ul { margin: 6px 0 0; padding-left: 18px; font-size: 11.5px; color: var(--text-3); }
+.sx-more { margin: 4px 0 12px; }
+/* a closed disclosure must lay out nothing: the view-enter animation on the
+   Skills card leaks it past the summary into the Import card (view-in with
+   fill:both keeps the box painted) – hide closed content explicitly */
+.sx-more:not([open]) > :not(summary) { display: none; }
+.sx-more[open] > summary { margin-bottom: 10px; }
+.sx-lede { margin: 0; max-width: 72ch; font-size: 12.5px; }
+.sx-group { display: grid; gap: 6px; }
+.sx-group .section-title { display: flex; align-items: center; gap: 6px; }
+@media (max-width: 760px) { .sx-detail { padding-left: 14px; } .sx-tags .tag + .tag { display: none; } }
+
+/* ── U15: agents as portfolio cards + the agent sidebar ──────────────── */
+.ag-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 232px), 1fr)); gap: clamp(14px, 1.4vw, 20px); }
+.ag-card { display: flex; flex-direction: column; min-width: 0; padding: 0; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+  text-align: left; cursor: pointer; font: inherit; transition: border-color var(--dur) var(--ease); }
+.ag-card:hover { border-color: var(--line-2); }
+.ag-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card__art { display: block; width: 100%; aspect-ratio: 4 / 3; border-bottom: 1px solid var(--line); background: var(--bg); overflow: hidden; }
+.ag-card .card__art svg.ag-card-art-svg { display: block; width: 100%; height: 100%; padding: 5%; box-sizing: border-box; }
+/* the curve draws itself, slowly, once; reduced motion keeps it still */
+.ag-card-hg { stroke-dasharray: 1; stroke-dashoffset: 1; animation: ag-draw 9s var(--ease) forwards; }
+.ag-card-seg { vector-effect: non-scaling-stroke; stroke-width: .8px; }
+@keyframes ag-draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .ag-card-hg { animation: none; stroke-dashoffset: 0; } }
+.card__body { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; padding: 16px 16px 18px; }
+.card__meta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font: 11px var(--mono); letter-spacing: .14em; color: var(--text-3); }
+.card__meta .mono { letter-spacing: .14em; }
+.ag-card-live { color: var(--accent); }
+.card__t { font: 300 clamp(18px, 1.5vw, 23px)/1.08 var(--display); text-transform: uppercase; letter-spacing: .03em; overflow-wrap: anywhere; }
+.card__d { color: var(--text-2); flex: 1; font: italic 15px/1.55 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.card__fmt { margin-top: 10px; color: var(--accent); font: 11px/1.6 var(--mono); letter-spacing: .16em; text-transform: uppercase; }
+.ag-card-add .card__art { display: grid; place-items: center; color: var(--text-3); border-bottom-style: dashed; }
+.ag-card-add { border-style: dashed; color: var(--text-2); }
+.ag-card-add .card__art svg { width: 22px; height: 22px; }
+.ag-card-add .card__t { color: var(--text); }
+.ag-card-add:hover { color: var(--text); border-color: var(--text-3); }
+@media (max-width: 760px) { .card__body { padding: 16px; } }
+
+/* the sidebar – the code panel's pane, at the right edge */
+.ag-side { position: fixed; top: 49px; bottom: 27px; right: 0; width: min(560px, 58vw); z-index: 40;
+  display: flex; flex-direction: column; border: 1px solid var(--line-2); border-right: 0; background: var(--panel);
+  animation: ag-side-in .25s var(--ease) both; outline: none; }
+@keyframes ag-side-in { from { transform: translateX(16px); opacity: 0; } }
+.ag-side-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
+.ag-side-head h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+.ag-side-scroll { flex: 1; overflow: auto; padding: 14px; min-width: 0; }
+.ag-side .wf-actions, .ag-side .wf-native-row { flex-wrap: wrap; }
+.ag-side .wf-run { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.ag-side .wf-edit { min-width: 0; }
+.ag-side .wf-edit { padding: 0; border: 0; background: none; animation: none; }
+
+/* ============================== X10 · skills: local + GitHub search ============================== */
+/* The two-way switch in the search bar reuses .seg; the GitHub side adds its
+   own mark, a hit list with repo + curated badge, and a data-pane preview. */
+.sx-mode button { display: flex; align-items: center; gap: 6px; }
+.sx-mode svg { width: 14px; height: 14px; flex: none; }
+.sx { position: relative; }
+.sx-gh { display: grid; gap: 8px; }
+.sx-gh-note { font-size: 12px; padding: 2px 0; }
+.sx-link { color: var(--text-3); text-decoration: none; font-size: 13px; padding: 2px 4px; flex: none; }
+.sx-link:hover { color: var(--accent); }
+/* The pane is portaled to document.body (same rule as every sidebar in this
+   run – a transformed view-enter ancestor must not be its containing block). */
+.sx-pane { position: fixed; top: 49px; right: 27px; bottom: 27px; width: min(460px, 62vw); z-index: 8; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); }
+.sx-pane-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.sx-pane-head .sx-desc { font-size: 11.5px; }
+.sx-pane-body { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 12px; font: 12px/1.6 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.sx-pane-err { padding: 12px; font-size: 12.5px; color: var(--yellow); }
+.sx-pane-foot { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--line); }
+/* Settings: the paste importer behind a disclosure row */
+.set-import-more summary { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-2); font-size: 13px; padding: 10px 0; border-top: 1px solid var(--line); list-style: none; }
+.set-import-more summary::-webkit-details-marker { display: none; }
+.set-import-more summary::after { content: "+"; margin-left: auto; color: var(--text-3); font: 14px var(--mono); }
+.set-import-more[open] summary::after { content: "–"; }
+.set-import-more[open] > summary { margin-bottom: 10px; }
+.set-import-more .set-import-src { margin-bottom: 8px; }
+/* phone floor: every hit target is at least 40 px */
+@media (max-width: 900px) {
+  .sx-mode button, .sx-link { min-height: 40px; }
+  .sx-pane { width: 100%; }
 }

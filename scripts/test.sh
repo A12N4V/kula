@@ -37,6 +37,11 @@ if want web; then
     run "pnpm install" pnpm -C web install --frozen-lockfile
     run "typecheck" pnpm -C web typecheck
     run "vite build" pnpm -C web exec vite build
+    # D1 design lint: the selftest seeds one violation of every rule into a
+    # scratch tree (fails = linter broken); the tree scan reports in report
+    # mode – KULA_LINT_STRICT=1 turns it into a gate once the tree is clean.
+    run "design lint (selftest)" node web/scripts/design-lint.mjs --selftest
+    run "design lint (tree scan)" node web/scripts/design-lint.mjs
   else bad "pnpm not found"; fi
 fi
 
@@ -104,6 +109,15 @@ if want e2e; then
     curl -s "${H[@]}" "$U/api/meta" | grep -q 'p1-cache-freshness' && ok "P1: /api/meta shows a fresh note right after write" || bad "P1: /api/meta shows a fresh note right after write"
     SH() { node -e 'const o=JSON.parse(require("fs").readFileSync(0));const k=x=>typeof x==="object"&&x!==null?Array.isArray(x)?x.map(k):Object.keys(x).sort().join(","):typeof x;console.log(k(o))'; }
     [ "$(echo "$A1" | SH)" = "$(echo "$A2" | SH)" ] && ok "P1: /api/agents response shape unchanged (e2e)" || bad "P1: /api/agents response shape unchanged (e2e)"
+    # E1: embed APIs – off by default, the check refuses while [embed] is disabled.
+    curl -s "${H[@]}" "$U/api/embed/status" | grep -q '"enabled":false' && ok "E1: GET /api/embed/status (off by default)" || bad "E1: GET /api/embed/status (off by default)"
+    curl -s "${H[@]}" "$U/api/embed/check" | grep -q '"verdict":"refuse"' && ok "E1: GET /api/embed/check (refuses while disabled)" || bad "E1: GET /api/embed/check (refuses while disabled)"
+    curl -s "${H[@]}" "$U/api/embed/check" | grep -q '"ram_total_gb"' && ok "E1: GET /api/embed/check returns the stats table" || bad "E1: GET /api/embed/check returns the stats table"
+    # E1: run + cancel over the API – the run refuses while disabled, cancel always answers.
+    curl -s "${H[@]}" -X POST "$U/api/embed/cancel" | grep -q '"cancelled":true' && ok "E1: POST /api/embed/cancel" || bad "E1: POST /api/embed/cancel"
+    curl -s "${H[@]}" -X POST "$U/api/embed/run" | grep -q '"started":true' && ok "E1: POST /api/embed/run starts" || bad "E1: POST /api/embed/run starts"
+    sleep 1
+    curl -s "${H[@]}" "$U/api/embed/status" | grep -qE '"error":"embedding is off' && ok "E1: API run refuses while disabled (error in status)" || bad "E1: API run refuses while disabled (error in status)"
   fi
   kill $SRV 2>/dev/null; wait $SRV 2>/dev/null
 fi

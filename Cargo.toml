@@ -30,6 +30,7 @@ tree-sitter-javascript = "0.25"
 tree-sitter-typescript = "0.23"
 tree-sitter-go = "0.25"
 ignore = "0.4"
+rayon = "1.10"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time"] }
 axum = "0.8"
 rust-embed = "8"
@@ -49,6 +50,18 @@ sha2 = "0.10"
 oxigraph = { version = "0.5", default-features = false }
 globset = "0.4"
 toml_edit = { version = "0.23", default-features = false, features = ["parse", "display"] }
+libc = "0.2"
+
+[features]
+default = []
+# The EmbeddingGemma runtime – opt-in so the default binary never links ONNX.
+embed = ["dep:fastembed"]
+
+[dependencies.fastembed]
+# Git: EmbeddingGemma variants shipped after the last crates.io release (4.9.1).
+# Its default features bring hf-hub (model download) and ort's prebuilt binaries.
+git = "https://github.com/Anush008/fastembed-rs"
+optional = true
 
 [dev-dependencies]
 tempfile = "3"
