@@ -30,10 +30,10 @@ Order: **features first, complex CLI second, web UI last.** Written 2026-11-08.
 | P0.4 | DONE: `@kula-cli/kula` is live on npm (MIT); README is accurate | YOU | P0.2 | Done |
 | P0.5 | DONE 2026-11-11: stale tags and releases deleted; only v0.3.0 remains | YOU | P0.2 | Done |
 | P0.6 | DONE 2026-11-11: report in `docs/audits/2026-11-baseline.md`; no blockers. Follow-ups: filing local issues for majors 2-4 | CRITIC | P0.3 | Done |
-| P0.7 | Split `src/main.rs` (~2,000 lines) into per-command modules before it grows | WORKER | P0.3 | No behaviour change; `tests/cli.rs` green; `main.rs` under ~400 lines |
+| P0.7 | DONE 2026-11-11: `main.rs` is 90 lines; CLI types in `src/cli.rs`, handlers in `src/cmd/*.rs`; fmt, clippy and tests green | WORKER | P0.3 | Done |
 | P0.8 | DONE 2026-11-11 (`scripts/stats.sh`). Telemetry-free usage signal: decide how we will know adoption (GitHub traffic, release downloads, crates/pypi/brew counts) and script it | MAIN | – | `scripts/stats.sh` prints stars, views, clones, downloads per channel |
 
-Gate G0: P0.1–P0.3, P0.6 done. Fix any CRITIC "blocker" items before P1.
+Gate G0: PASSED 2026-11-11 (P0.1–P0.3, P0.6, P0.7 done; no blockers). Fix any CRITIC "blocker" items before P1.
 
 ---
 
