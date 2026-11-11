@@ -16,8 +16,8 @@ fn tools() -> Value {
           "inputSchema": s(json!({ "text": { "type": "string" }, "limit": { "type": "integer" } }), &["text"]) },
         { "name": "context", "description": "360° view of a symbol: callers, callees, container, cluster, source snippet and notes.",
           "inputSchema": s(json!({ "symbol": { "type": "string", "description": "name, path:name, or node id" } }), &["symbol"]) },
-        { "name": "impact", "description": "Blast radius of changing a symbol. direction=upstream (dependents, default) or downstream.",
-          "inputSchema": s(json!({ "symbol": { "type": "string" }, "direction": { "type": "string", "enum": ["upstream", "downstream"] }, "depth": { "type": "integer" } }), &["symbol"]) },
+        { "name": "impact", "description": "Blast radius of changing a symbol. direction=upstream (dependents, default) or downstream. Result counts edges per confidence tier; min_confidence drops weaker edges.",
+          "inputSchema": s(json!({ "symbol": { "type": "string" }, "direction": { "type": "string", "enum": ["upstream", "downstream"] }, "depth": { "type": "integer" }, "min_confidence": { "type": "string", "enum": ["guessed", "inferred", "resolved"] } }), &["symbol"]) },
         { "name": "trace", "description": "Shortest call path between two symbols.",
           "inputSchema": s(json!({ "from": { "type": "string" }, "to": { "type": "string" } }), &["from", "to"]) },
         { "name": "compare", "description": "Graph-aware diff between two revisions: changed symbols and what they ripple into.",
@@ -124,7 +124,14 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             let s = st()?;
             let n = graph::resolve_one(&s, &str_arg("symbol"))?;
             refuse_hidden(&g, &n)?;
-            let mut i = graph::impact(&s, n.id, str_arg("direction") != "downstream", int_arg("depth", 3))?;
+            let mc = str_arg("min_confidence");
+            let mut i = graph::impact_min(
+                &s,
+                n.id,
+                str_arg("direction") != "downstream",
+                int_arg("depth", 3),
+                if mc.is_empty() { "guessed" } else { &mc },
+            )?;
             i.hits.retain(|h| g.node(&h.node).level.readable());
             json!(i)
         }

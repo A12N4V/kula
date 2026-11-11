@@ -24,6 +24,20 @@ pub struct Edge {
     pub dst: i64,
     pub kind: String,
     pub weight: f64,
+    /// How sure the linker is: `resolved` (structural or exactly resolved),
+    /// `inferred` (a unique name match in the same file or an imported file) or
+    /// `guessed` (one of several name matches, weighted 1/n).
+    pub confidence: String,
+}
+
+impl Edge {
+    pub fn new(src: i64, dst: i64, kind: &str, weight: f64) -> Edge {
+        Edge { src, dst, kind: kind.into(), weight, confidence: "resolved".into() }
+    }
+    pub fn with(mut self, confidence: &str) -> Edge {
+        self.confidence = confidence.into();
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -39,13 +53,16 @@ pub struct Store {
     staged: Option<(std::path::PathBuf, std::path::PathBuf)>,
 }
 
+/// Bumped when the index layout changes; older indexes read as stale and rebuild.
+pub const SCHEMA_VERSION: &str = "2";
+
 const SCHEMA: &str = r#"
 PRAGMA journal_mode = DELETE;
 CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, path TEXT NOT NULL,
   lang TEXT, start_line INTEGER, end_line INTEGER, parent INTEGER, community INTEGER
 );
-CREATE TABLE IF NOT EXISTS edges (src INTEGER, dst INTEGER, kind TEXT, weight REAL);
+CREATE TABLE IF NOT EXISTS edges (src INTEGER, dst INTEGER, kind TEXT, weight REAL, confidence TEXT NOT NULL DEFAULT 'resolved');
 CREATE TABLE IF NOT EXISTS communities (id INTEGER PRIMARY KEY, label TEXT, size INTEGER);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE INDEX IF NOT EXISTS edges_src ON edges(src, kind);
@@ -124,7 +141,11 @@ impl Store {
     /// How the graph stands against HEAD: "missing", "current" or "stale". A repo
     /// with no commits yet is current once indexed (its HEAD is recorded as "").
     pub fn freshness(repo: &Repo) -> &'static str {
-        match Store::open(repo).ok().and_then(|s| s.meta("indexed_head")) {
+        let st = Store::open(repo).ok();
+        if st.as_ref().is_some_and(|s| s.meta("schema").as_deref() != Some(SCHEMA_VERSION)) {
+            return "stale";
+        }
+        match st.and_then(|s| s.meta("indexed_head")) {
             None => "missing",
             Some(i) if i == repo.head().unwrap_or_default() => "current",
             _ => "stale",
@@ -138,6 +159,12 @@ impl Store {
         }
         let conn = Connection::open(&p)?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        // Indexes built before edge confidence existed: add the column so reads work.
+        // `freshness` reports them stale (no `schema` marker), so the next index rebuilds them.
+        let has_conf = conn.prepare("SELECT confidence FROM edges LIMIT 0").is_ok();
+        if !has_conf {
+            let _ = conn.execute("ALTER TABLE edges ADD COLUMN confidence TEXT NOT NULL DEFAULT 'inferred'", []);
+        }
         Ok(Store { conn, staged: None })
     }
 
@@ -151,9 +178,9 @@ impl Store {
                 // Split camelCase / snake_case so partial words match.
                 f.execute(params![x.id, format!("{} {}", x.name, split_ident(&x.name)), x.path.replace('/', " ")])?;
             }
-            let mut e = tx.prepare("INSERT INTO edges VALUES (?1,?2,?3,?4)")?;
+            let mut e = tx.prepare("INSERT INTO edges (src, dst, kind, weight, confidence) VALUES (?1,?2,?3,?4,?5)")?;
             for x in edges {
-                e.execute(params![x.src, x.dst, x.kind, x.weight])?;
+                e.execute(params![x.src, x.dst, x.kind, x.weight, x.confidence])?;
             }
             let mut c = tx.prepare("INSERT INTO communities VALUES (?1,?2,?3)")?;
             for x in communities {
@@ -184,9 +211,9 @@ impl Store {
     }
 
     pub fn all_edges(&self) -> Result<Vec<Edge>> {
-        let mut st = self.conn.prepare("SELECT src, dst, kind, weight FROM edges")?;
+        let mut st = self.conn.prepare("SELECT src, dst, kind, weight, confidence FROM edges")?;
         let rows = st
-            .query_map([], |r| Ok(Edge { src: r.get(0)?, dst: r.get(1)?, kind: r.get(2)?, weight: r.get(3)? }))?
+            .query_map([], |r| Ok(Edge { src: r.get(0)?, dst: r.get(1)?, kind: r.get(2)?, weight: r.get(3)?, confidence: r.get(4)? }))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
@@ -205,6 +232,18 @@ impl Store {
             "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community, e.weight FROM edges e JOIN nodes n ON n.id = e.dst WHERE e.src = ?1 AND e.kind = ?2"
         } else {
             "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community, e.weight FROM edges e JOIN nodes n ON n.id = e.src WHERE e.dst = ?1 AND e.kind = ?2"
+        };
+        let mut st = self.conn.prepare(sql)?;
+        let rows = st.query_map(params![id, kind], |r| Ok((row_node(r)?, r.get(9)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Like `neighbours`, but also returns each edge's confidence tier.
+    pub fn neighbours_conf(&self, id: i64, kind: &str, out: bool) -> Result<Vec<(Node, String)>> {
+        let sql = if out {
+            "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community, e.confidence FROM edges e JOIN nodes n ON n.id = e.dst WHERE e.src = ?1 AND e.kind = ?2"
+        } else {
+            "SELECT n.id, n.kind, n.name, n.path, n.lang, n.start_line, n.end_line, n.parent, n.community, e.confidence FROM edges e JOIN nodes n ON n.id = e.src WHERE e.dst = ?1 AND e.kind = ?2"
         };
         let mut st = self.conn.prepare(sql)?;
         let rows = st.query_map(params![id, kind], |r| Ok((row_node(r)?, r.get(9)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;

@@ -367,10 +367,10 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Cmd::Impact { symbol, down, depth } => {
+        Cmd::Impact { symbol, down, depth, min_confidence } => {
             let st = Store::open(&repo)?;
             let n = graph::resolve_one(&st, &symbol)?;
-            let imp = graph::impact(&st, n.id, !down, depth)?;
+            let imp = graph::impact_min(&st, n.id, !down, depth, &min_confidence)?;
             if json {
                 out(&imp);
                 return Ok(());
@@ -383,6 +383,7 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
                 imp.files,
                 imp.communities.len()
             );
+            println!("  edges: {} resolved · {} inferred · {} guessed\n", imp.tiers[0], imp.tiers[1], imp.tiers[2]);
             for d in 1..=depth {
                 let layer: Vec<_> = imp.hits.iter().filter(|h| h.depth == d).collect();
                 if layer.is_empty() {

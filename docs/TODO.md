@@ -45,7 +45,7 @@ Gate G0: PASSED 2026-11-11 (P0.1–P0.3, P0.6, P0.7 done; no blockers). Fix any 
 |---|---|---|---|---|
 | P1.1.1 | Design doc: resolution architecture. Per-language resolvers vs SCIP ingest; edge schema with `confidence` = resolved / inferred / guessed; migration of existing index | PLAN | G0 | `docs/design/resolution.md` reviewed by YOU |
 | P1.1.2 | Ground-truth set: label call edges by hand or from compiler/LSP output on 4 repos (one each: TS, Python, Rust, Go), ~300 edges each | WORKER | P1.1.1 | `bench/edges/*.json` + scorer script reporting precision and recall per confidence tier |
-| P1.1.3 | Add `confidence` to the edges table, tag every existing edge `guessed` or `inferred` (same-file, imported), index version bump | MAIN | P1.1.1 | Old indexes rebuild cleanly; `impact`/`trace` output shows confidence |
+| P1.1.3 | DONE 2026-11-11: Add `confidence` to the edges table, tag every existing edge `guessed` or `inferred` (same-file, imported), index version bump | MAIN | P1.1.1 | Old indexes rebuild cleanly; `impact`/`trace` output shows confidence |
 | P1.1.4 | Resolver: TypeScript/JavaScript (imports, re-exports, barrel files, `this`, class members, path aliases from tsconfig) | WORKER | P1.1.3 | Recall on the TS set rises vs baseline; precision of `resolved` tier ≥ 95% |
 | P1.1.5 | Resolver: Python (imports, relative imports, `self`, class attributes, `__init__` re-exports) | WORKER | P1.1.3 | Same bar on the Python set |
 | P1.1.6 | Resolver: Rust (`use` trees, `mod` paths, `impl` blocks, trait methods by receiver where cheap) | WORKER | P1.1.3 | Same bar on the Rust set |

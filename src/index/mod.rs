@@ -769,9 +769,9 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
             match owner {
                 Some(o) if o != i => {
                     nodes[ids[i]].parent = Some(ids[o] as i64);
-                    edges.push(Edge { src: ids[o] as i64, dst: ids[i] as i64, kind: "CONTAINS".into(), weight: 1.0 });
+                    edges.push(Edge::new(ids[o] as i64, ids[i] as i64, "CONTAINS", 1.0));
                 }
-                _ => edges.push(Edge { src: fid as i64, dst: ids[i] as i64, kind: "CONTAINS".into(), weight: 1.0 }),
+                _ => edges.push(Edge::new(fid as i64, ids[i] as i64, "CONTAINS", 1.0)),
             }
         }
         sym_ids.push(ids);
@@ -804,13 +804,13 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                         nodes.len() - 1
                     });
                     if pkg_edges.insert((fid, pid)) {
-                        edges.push(Edge { src: fid as i64, dst: pid as i64, kind: "IMPORTS".into(), weight: 1.0 });
+                        edges.push(Edge::new(fid as i64, pid as i64, "IMPORTS", 1.0));
                     }
                 }
             }
             for target in targets {
                 if target != fid && imports_of.entry(fid).or_default().insert(target) {
-                    edges.push(Edge { src: fid as i64, dst: target as i64, kind: "IMPORTS".into(), weight: 1.0 });
+                    edges.push(Edge::new(fid as i64, target as i64, "IMPORTS", 1.0));
                 }
             }
         }
@@ -843,6 +843,7 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
             }
             let common = COMMON.contains(&name.as_str());
             let local: Vec<usize> = cands.iter().copied().filter(|c| nodes[*c].path == pf.path).collect();
+            let mut conf = "inferred";
             let targets: Vec<usize> = if !local.is_empty() {
                 local
             } else if common {
@@ -856,15 +857,19 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                 if !via_import.is_empty() {
                     via_import
                 } else if cands.len() <= 3 {
+                    conf = "guessed";
                     cands.clone()
                 } else {
                     continue; // too ambiguous to guess
                 }
             };
             let w = 1.0 / targets.len() as f64;
+            if targets.len() > 1 {
+                conf = "guessed";
+            }
             for t in targets {
                 if t != caller && call_set.insert((caller, t)) {
-                    edges.push(Edge { src: caller as i64, dst: t as i64, kind: "CALLS".into(), weight: w });
+                    edges.push(Edge::new(caller as i64, t as i64, "CALLS", w).with(conf));
                 }
             }
         }
@@ -899,6 +904,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     PROGRESS.phase(5, 0);
     let store = Store::create(repo)?;
     store.write_all(&nodes, &edges, &communities)?;
+    store.set_meta("schema", crate::store::SCHEMA_VERSION)?;
     store.set_meta("indexed_head", &repo.head().unwrap_or_default())?;
     store.set_meta(
         "indexed_at",

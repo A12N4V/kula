@@ -309,7 +309,7 @@ mod tests {
         }
     }
     fn e(src: i64, dst: i64, kind: &str) -> Edge {
-        Edge { src, dst, kind: kind.into(), weight: 1.0 }
+        Edge::new(src, dst, kind, 1.0)
     }
 
     #[test]

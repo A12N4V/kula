@@ -93,6 +93,12 @@ fn index_and_graph_queries() {
     for want in ["hashToken", "validate", "login", "handleLogin"] {
         assert!(names.contains(&want), "missing {want} in {names:?}");
     }
+    // Every hit carries a confidence tier, and tiers sum to the hit count.
+    let tiers: usize = imp["tiers"].as_array().unwrap().iter().map(|t| t.as_u64().unwrap() as usize).sum();
+    assert_eq!(tiers, imp["hits"].as_array().unwrap().len());
+    assert!(imp["hits"][0]["confidence"].is_string());
+    let strict = kula_json(d, &["impact", "salt", "--depth", "5", "--min-confidence", "resolved"]);
+    assert!(strict["hits"].as_array().unwrap().len() <= imp["hits"].as_array().unwrap().len());
 
     // Python cross-file + Rust mod resolution.
     let py = kula_json(d, &["impact", "push_redis"]);

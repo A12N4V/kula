@@ -124,6 +124,17 @@ pub struct ImpactHit {
     pub node: Node,
     pub depth: usize,
     pub via: Option<i64>,
+    /// Weakest edge tier on the path from the root: resolved > inferred > guessed.
+    pub confidence: String,
+}
+
+/// Rank of a confidence tier (higher is stronger).
+pub fn conf_rank(c: &str) -> u8 {
+    match c {
+        "resolved" => 2,
+        "inferred" => 1,
+        _ => 0,
+    }
 }
 
 #[derive(Serialize)]
@@ -134,13 +145,22 @@ pub struct Impact {
     pub files: usize,
     pub communities: Vec<String>,
     pub risk: String,
+    /// Hit counts per tier: resolved / inferred / guessed.
+    pub tiers: [usize; 3],
 }
 
 /// Blast radius: who (transitively) depends on `id` (upstream) or what it relies on (downstream).
 pub fn impact(store: &Store, id: i64, upstream: bool, max_depth: usize) -> Result<Impact> {
+    impact_min(store, id, upstream, max_depth, "guessed")
+}
+
+/// Like `impact`, but ignores call edges weaker than `min_conf`.
+pub fn impact_min(store: &Store, id: i64, upstream: bool, max_depth: usize, min_conf: &str) -> Result<Impact> {
+    let floor = conf_rank(min_conf);
     let Some(root) = store.node(id)? else { bail!("no node {id}") };
     let mut seen: HashSet<i64> = HashSet::from([id]);
     let mut q: VecDeque<(i64, usize)> = VecDeque::from([(id, 0)]);
+    let mut path_conf: HashMap<i64, String> = HashMap::new();
     // A file's impact is the union of its symbols' impact plus its importers.
     if root.kind == "file" {
         for (c, _) in store.neighbours(id, "CONTAINS", true)? {
@@ -153,13 +173,19 @@ pub fn impact(store: &Store, id: i64, upstream: bool, max_depth: usize) -> Resul
         if d >= max_depth {
             continue;
         }
-        let mut next = store.neighbours(cur, "CALLS", !upstream)?;
+        let mut next = store.neighbours_conf(cur, "CALLS", !upstream)?;
         if root.kind == "file" {
-            next.extend(store.neighbours(cur, "IMPORTS", !upstream)?);
+            next.extend(store.neighbours_conf(cur, "IMPORTS", !upstream)?);
         }
-        for (n, _) in next {
+        let base = path_conf.get(&cur).cloned().unwrap_or_else(|| "resolved".into());
+        for (n, c) in next {
+            if conf_rank(&c) < floor {
+                continue;
+            }
             if seen.insert(n.id) {
-                hits.push(ImpactHit { node: n.clone(), depth: d + 1, via: Some(cur) });
+                let conf = if conf_rank(&c) < conf_rank(&base) { c } else { base.clone() };
+                path_conf.insert(n.id, conf.clone());
+                hits.push(ImpactHit { node: n.clone(), depth: d + 1, via: Some(cur), confidence: conf });
                 q.push_back((n.id, d + 1));
             }
         }
@@ -183,7 +209,12 @@ pub fn impact(store: &Store, id: i64, upstream: bool, max_depth: usize) -> Resul
         (_, 0, _) => "none",
         _ => "low",
     };
+    let mut tiers = [0usize; 3];
+    for h in &hits {
+        tiers[2 - conf_rank(&h.confidence) as usize] += 1;
+    }
     Ok(Impact {
+        tiers,
         root,
         direction: if upstream { "upstream" } else { "downstream" }.into(),
         files: files.len(),
@@ -355,7 +386,15 @@ pub fn export(store: &Store, level: &str, limit: usize) -> Result<GraphExport> {
              WHERE e.kind = 'IMPORTS'",
         )?;
         let edges = st
-            .query_map([], |r| Ok(Edge { src: r.get(0)?, dst: r.get(1)?, kind: r.get(2)?, weight: r.get::<_, i64>(3)? as f64 }))?
+            .query_map([], |r| {
+                Ok(Edge {
+                    src: r.get(0)?,
+                    dst: r.get(1)?,
+                    kind: r.get(2)?,
+                    weight: r.get::<_, i64>(3)? as f64,
+                    confidence: "resolved".into(),
+                })
+            })?
             .filter_map(|e| e.ok())
             .filter(|e| ids.contains(&e.src) && ids.contains(&e.dst))
             .collect();

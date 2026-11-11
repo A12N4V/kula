@@ -190,6 +190,9 @@ pub(crate) enum Cmd {
         down: bool,
         #[arg(short, long, default_value_t = 3)]
         depth: usize,
+        /// Ignore call edges weaker than this tier: guessed, inferred or resolved.
+        #[arg(long, default_value = "guessed", value_parser = ["guessed", "inferred", "resolved"])]
+        min_confidence: String,
     },
     /// Shortest call path between two symbols.
     #[command(after_help = "Examples:\n  kula trace handleLogin salt")]
