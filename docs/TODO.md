@@ -31,7 +31,7 @@ Order: **features first, complex CLI second, web UI last.** Written 2026-11-08.
 | P0.5 | DONE 2026-11-11: stale tags and releases deleted; only v0.3.0 remains | YOU | P0.2 | Done |
 | P0.6 | Baseline audit of the current code against README claims | CRITIC | P0.3 | Ranked report in `docs/audits/2026-11-baseline.md`; every "claim vs code" gap is a filed local issue |
 | P0.7 | Split `src/main.rs` (~2,000 lines) into per-command modules before it grows | WORKER | P0.3 | No behaviour change; `tests/cli.rs` green; `main.rs` under ~400 lines |
-| P0.8 | Telemetry-free usage signal: decide how we will know adoption (GitHub traffic, release downloads, crates/pypi/brew counts) and script it | MAIN | – | `scripts/stats.sh` prints stars, views, clones, downloads per channel |
+| P0.8 | DONE 2026-11-11 (`scripts/stats.sh`). Telemetry-free usage signal: decide how we will know adoption (GitHub traffic, release downloads, crates/pypi/brew counts) and script it | MAIN | – | `scripts/stats.sh` prints stars, views, clones, downloads per channel |
 
 Gate G0: P0.1–P0.3, P0.6 done. Fix any CRITIC "blocker" items before P1.
 
