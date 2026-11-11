@@ -31,6 +31,52 @@ pub struct Config {
     /// a workflow or task reuses one as `scope = ["@name"]`.
     #[serde(rename = "scope")]
     pub scopes: Vec<Scope>,
+    /// `[embed]` – optional EmbeddingGemma embeddings for Syntagm (E1). Off by default.
+    pub embed: Embed,
+}
+
+/// `[embed]` – the optional embedding engine behind Syntagm's refinement.
+///
+/// ```toml
+/// [embed]
+/// enabled = true       # off by default – nothing downloads without it
+/// threads = 0          # 0 = min(cores-2, 6)
+/// batch = 32           # texts per embedding batch, capped at 64
+/// ```
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct Embed {
+    /// Embeddings are opt-in: nothing downloads or runs until this is true.
+    pub enabled: bool,
+    /// Bounded worker pool for embedding; 0 picks min(cores-2, 6).
+    pub threads: usize,
+    /// Texts per embedding batch (hard cap 64).
+    pub batch: usize,
+}
+
+impl Default for Embed {
+    fn default() -> Self {
+        Embed { enabled: false, threads: 0, batch: 32 }
+    }
+}
+
+impl Embed {
+    /// Effective worker count per the performance rules.
+    pub fn pool(&self) -> usize {
+        if self.threads > 0 {
+            self.threads
+        } else {
+            std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).saturating_sub(2).clamp(1, 6)
+        }
+    }
+    /// Effective batch size, capped at 64.
+    pub fn batch_size(&self) -> usize {
+        if self.batch == 0 {
+            32
+        } else {
+            self.batch.min(64)
+        }
+    }
 }
 
 /// A named part of the codebase.
@@ -298,7 +344,9 @@ impl Config {
              # [[guard]]\n\
              # paths = [\"migrations/**\"]\n\
              # level = \"locked\"\n\
-             # reason = \"schema changes go through the DBA\"\n",
+             # reason = \"schema changes go through the DBA\"\n\n\
+             # [embed]\n\
+             # enabled = false    # optional EmbeddingGemma for Syntagm – downloads a model when true\n",
             q(&self.project.name),
             q(&self.project.default_branch),
             excl,

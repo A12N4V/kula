@@ -1,32 +1,17 @@
-/* ---------- shell ---------- */
-.shell { display: grid; grid-template-columns: 56px 1fr; grid-template-rows: 48px 1fr 26px; height: 100%; }
-.topbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 10px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: 0.02em; }
-.brand svg { width: 26px; height: 26px; }
-.crumb { color: var(--text-3); }
-.chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 0; background: var(--panel); color: var(--text-2); white-space: nowrap; }
+/* ---------- shell chrome – the layout itself lives in shell/shell.css;
+   these are the shared widget classes (chip, dot, statusbar) the views use ---------- */
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: var(--text-2); white-space: nowrap; }
 .chip b { color: var(--text); font-weight: 500; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); flex: none; }
 .dot.ok { background: var(--green); box-shadow: 0 0 0 3px rgba(143, 214, 148, 0.15); }
 .dot.warn { background: var(--yellow); box-shadow: 0 0 0 3px rgba(242, 204, 96, 0.15); }
 .dot.bad { background: var(--red); }
 .spacer { flex: 1; }
-.search-trigger { display: flex; align-items: center; gap: 8px; width: min(420px, 40vw); height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 0; background: var(--panel); color: var(--text-3); cursor: text; transition: border-color 0.15s; }
-.search-trigger:hover { border-color: var(--line-2); }
-kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radius: 0; border: 1px solid var(--line-2); color: var(--text-2); background: var(--bg-2); }
-.search-trigger kbd { margin-left: auto; }
+kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radius: var(--radius-sm); border: 1px solid var(--line-2); color: var(--text-2); background: var(--bg-2); }
 
-.rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; border-right: 1px solid var(--line); background: var(--bg-2); }
-.rail button { position: relative; width: 38px; height: 38px; display: grid; place-items: center; border: 0; border-radius: 0; background: transparent; color: var(--text-3); cursor: pointer; transition: color 0.15s, background 0.15s; }
-.rail button:hover { color: var(--text); background: var(--panel-2); }
-.rail button.on { color: var(--accent); background: var(--accent-soft); }
-.rail button.on::before { content: ""; position: absolute; left: -9px; top: 9px; bottom: 9px; width: 3px; border-radius: 0; background: var(--accent); }
-.rail .badge { position: absolute; top: 4px; right: 3px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 0; background: var(--accent); color: var(--accent-ink); font-size: 9.5px; font-weight: 700; line-height: 15px; }
-.rail svg { width: 19px; height: 19px; }
-.rail [data-tip]:hover::after { content: attr(data-tip); position: absolute; left: 48px; top: 50%; transform: translateY(-50%); padding: 4px 8px; border-radius: 0; background: var(--panel-2); border: 1px solid var(--line-2); color: var(--text); font-size: 12px; white-space: nowrap; z-index: 50; pointer-events: none; }
+/* – rail and shell layout: owned by shell/shell.css; nothing duplicated here – */
 
-.main { position: relative; overflow: hidden; min-width: 0; }
-.statusbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 0 12px; border-top: 1px solid var(--line); background: var(--bg-2); color: var(--text-3); font-size: 11.5px; }
+.statusbar { display: flex; align-items: center; gap: 16px; padding: 0 12px; border-top: 1px solid var(--line); background: var(--bg-2); color: var(--text-3); font-size: 11.5px; }
 .statusbar span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .statusbar svg { width: 13px; height: 13px; }
 
@@ -47,10 +32,10 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 
 /* ---------- palette ---------- */
 .scrim { position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.45); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; animation: rise 0.15s ease-out; }
-.palette { width: min(640px, calc(100vw - 32px)); border-radius: 0; background: var(--panel); box-shadow: var(--shadow); overflow: hidden; }
+.palette { width: min(640px, calc(100vw - 32px)); border-radius: var(--radius-sm); background: var(--panel); box-shadow: var(--shadow); overflow: hidden; }
 .palette input { width: 100%; height: 52px; padding: 0 18px; border: 0; border-bottom: 1px solid var(--line); background: transparent; outline: none; font-size: 15px; }
 .palette .results { max-height: 52vh; overflow: auto; padding: 6px; }
-.palette .res { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 0; cursor: pointer; }
+.palette .res { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--radius-sm); cursor: pointer; }
 .palette .res.on { background: var(--panel-2); }
 .palette .res .p { margin-left: auto; color: var(--text-3); font-size: 11.5px; }
 .palette .grp { padding: 8px 12px 4px; font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-3); }
@@ -58,7 +43,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 
 /* ---------- toast ---------- */
 .toasts { position: fixed; right: 16px; bottom: 40px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
-.toast { max-width: 420px; padding: 10px 14px; border-radius: 0; background: var(--panel-2); box-shadow: var(--shadow); animation: slide 0.25s var(--ease); white-space: pre-wrap; font-size: 12.5px; }
+.toast { max-width: 420px; padding: 10px 14px; border-radius: var(--radius-sm); background: var(--panel-2); box-shadow: var(--shadow); animation: slide 0.25s var(--ease); white-space: pre-wrap; font-size: 12.5px; }
 .toast { border: 1px solid var(--line-2); }
 .toast.err { border-color: color-mix(in srgb, var(--red) 70%, transparent); color: var(--text); }
 .toast.ok { border-color: color-mix(in srgb, var(--green) 60%, transparent); }
@@ -67,12 +52,8 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
   .split { grid-template-columns: 1fr; }
   .split > .detail { display: none; }
   .inspector { left: 12px; width: auto; }
-  .search-trigger { width: 32px; flex: none; justify-content: center; padding: 0; }
-  .search-trigger .st-label { display: none; }
-  .search-trigger kbd, .topbar .btn.sm:not(.ghost) { display: none; }
   .statusbar .sb-stats, .statusbar .mono { display: none; }
-  .topbar { gap: 8px; }
-  .brand .crumb, .chip.hide-sm { display: none; }
+  .chip.hide-sm { display: none; }
 }
 
 .detail svg:not([width]):not(.lane-svg) { width: 18px; height: 18px; flex: none; }
@@ -80,15 +61,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 
 /* ================================================================ v0.1 polish */
 
-/* navigation chrome */
-.brand { background: none; border: 0; padding: 4px 6px 4px 2px; margin-left: -2px; border-radius: 0; cursor: pointer; color: var(--text); font: inherit; font-weight: 600; transition: background .15s; }
-.brand:hover { background: var(--panel-2); }
-.crumb-repo { font-weight: 500; }
-.crumb-view { color: var(--text-2); }
-.rail { gap: 0; }
-.rail-group { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
-.rail-group + .rail-group { border-top: 1px solid var(--line); }
-.rail-group:last-child { margin-top: auto; }
+/* navigation chrome – brand/crumb died with the top navbar; the rail lives in shell/shell.css */
 .dot.pulse { animation: dotpulse 1.2s ease-in-out infinite; }
 @keyframes dotpulse { 50% { opacity: .35; } }
 .sb-help { border: 0; background: none; color: var(--text-3); font: inherit; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
@@ -146,16 +119,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 @media (max-width: 760px) { .op-foot { flex-direction: column; align-items: flex-start; } .op-facts { min-width: 0; width: 100%; } .op-dither { inset: 8% 4% 44% 4%; } }
 
 /* Homonin type: one-line search hint in mono, lining figures in the serif */
-.search-trigger .st-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* top bar at tablet widths: search gives way first, then a long branch name truncates – settings never leaves the screen */
-.topbar > * { flex-shrink: 0; }
-.topbar .search-trigger { flex: 0 1 420px; width: auto; min-width: 120px; }
-.topbar .chip { flex-shrink: 1; min-width: 0; max-width: 240px; }
-.topbar .chip b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.topbar .crumb-repo, .topbar .crumb-view { white-space: nowrap; }
-@media (max-width: 760px) { .topbar .search-trigger { flex: none; width: 32px; min-width: 0; } }
-@media (max-width: 900px) { .topbar .crumb:nth-of-type(2), .topbar .crumb-view { display: none; } .topbar .chip { max-width: 170px; } .topbar .search-trigger { min-width: 96px; } }
 /* status bar: the stats line truncates before anything is pushed off the edge */
 .statusbar { min-width: 0; overflow: hidden; }
 .statusbar > * { flex-shrink: 0; white-space: nowrap; }
@@ -163,52 +127,22 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .statusbar > .sb-stats { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* icons without their own size take the text's */
 .chip svg, .btn svg, .tag svg { width: 14px; height: 14px; flex: none; }
-.rail button svg { width: 18px; height: 18px; }
 
-/* ================================================================ phones: logo and the sidebar toggle on the left, search and settings on the right;
-   the sidebar is a drawer with labels, summoned and dismissed from the top bar */
-.rail-toggle, .rail-label, .rail-scrim { display: none; }
+/* ================================================================ phones – the old top-bar drawer is gone; the
+   docked rail and its buttons are styled entirely in shell/shell.css */
 @media (max-width: 760px) {
   html, body { overflow-x: hidden; }
-  .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px 1fr 40px; }
-  /* the statusbar row grows to the 40px control floor so .sb-help cannot poke into the view above */
-  .main { min-width: 0; grid-column: 1; }
-  .statusbar { grid-column: 1; min-width: 0; overflow: hidden; }
-  .topbar { gap: 4px; padding: 0 6px 0 8px; }
-  .topbar .crumb, .topbar .crumb-repo, .topbar .crumb-view, .topbar .chip { display: none; }
-  .topbar .search-trigger + .spacer { display: none; }
-  .brand span { display: none; }
-  .rail-toggle { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; }
-  .rail-toggle:hover, .rail-open .rail-toggle { color: var(--text); background: var(--panel-2); }
-  .topbar .search-trigger, .topbar .btn.sm.ghost { width: 34px; height: 34px; min-width: 0; padding: 0; display: grid; place-items: center; border: 0; background: none; }
-  .rail { position: fixed; z-index: 60; top: 48px; bottom: 40px; left: 0; width: min(240px, 78vw); align-items: stretch; padding: 6px 0; overflow-y: auto;
-    border-right: 1px solid var(--line-2); transform: translateX(-100%); visibility: hidden; transition: transform .22s var(--ease), visibility 0s .22s; }
-  .rail-open .rail { transform: none; visibility: visible; transition: transform .22s var(--ease); }
-  .rail-group { align-items: stretch; }
-  .rail button { width: auto; height: 40px; display: flex; justify-content: flex-start; gap: 12px; padding: 0 16px; }
-  .rail button.on::before { left: 0; }
-  .rail [data-tip]:hover::after { display: none; }
-  .rail .badge { position: static; margin-left: auto; }
-  .rail-label { display: inline; font: 500 12.5px var(--mono); }
-  .rail-scrim { display: block; position: fixed; z-index: 59; inset: 48px 0 40px; background: rgba(0, 0, 0, .55); }
 }
-
-/* ---------- topbar actions: back, search, settings ---------- */
-.top-actions { display: flex; align-items: center; gap: 2px; }
-.top-search { gap: 8px; padding: 0 8px; }
-.top-search kbd { font-size: 10px; }
-.btn.icon-only.sm { width: 28px; }
 
 /* D1: hover/focus system – decoration shadows go, 1px borders replace them;
    rail tooltips get the shared delay and border language. */
 .dot.ok { box-shadow: none; }
 .dot.warn { box-shadow: none; }
-.rail [data-tip]:hover::after { box-shadow: none; border: 1px solid var(--line-2); }
 .palette { box-shadow: none; border: 1px solid var(--line-2); }
 .toast { box-shadow: none; border: 1px solid var(--line-2); }
 .item, .sym, .ov-row, .kpi, .cp-stat, .hot-row { transition: background var(--dur), border-color var(--dur), color var(--dur), opacity var(--dur); }
 .chip { height: 28px; }
-.sb-help { height: 28px; padding: 0 6px; }
+.sb-help { height: 28px; padding: 0 6px; min-width: 28px; justify-content: center; }
 
 /* ================================================================ N1: shell */
 
@@ -236,17 +170,11 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .settings.dialog:has(.set-search .input:not(:placeholder-shown)) .set-nav { display: none; }
 .settings.dialog:has(.set-search .input:not(:placeholder-shown)) .set-main { grid-template-columns: 1fr; }
 
-/* – phones: every shell control meets the 40px floor – */
+/* – phones: every shell control meets the 40px floor –
+   (the docked rail buttons meet it in shell/shell.css) */
 @media (max-width: 760px) {
-  .brand { min-width: 40px; min-height: 40px; }
-  .rail-toggle, .topbar .search-trigger, .topbar .btn.sm.ghost { width: 40px; height: 40px; }
-  .sb-help { height: 40px; }
+  .sb-help { height: 40px; min-width: 40px; }
+  .statusbar { padding: 0 6px; }
   .shell-error .shell-error-actions { flex-direction: column; gap: 8px; }
   .set-search { padding: 8px 10px; }
-}
-
-/* ================================================================ integration: 40px phone hit targets in the chrome */
-@media (max-width: 760px) {
-  .brand, .rail-toggle, .topbar .btn.sm, .sb-help { min-width: 40px; min-height: 40px; }
-  /* stat rows are navigable targets – keep them at the floor on phones */
 }

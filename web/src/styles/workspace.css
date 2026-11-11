@@ -1,0 +1,91 @@
+/* ================================================================ workspace
+   Canvas on top, a resizable and collapsible information pane below, and a
+   node sidebar that slides in from the right over the canvas. */
+
+.ws { position: relative; display: grid; height: 100%; min-height: 0; grid-template-rows: minmax(0, 1fr) var(--pane, 42%); }
+.ws.pane-closed { grid-template-rows: minmax(0, 1fr) 40px; }
+.ws-canvas { position: relative; min-height: 0; overflow: hidden; }
+.ws-pane { position: relative; display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--line-2); background: var(--bg-2); }
+.ws-grip { position: absolute; left: 0; right: 0; top: -4px; height: 8px; cursor: row-resize; z-index: 5; touch-action: none; }
+.ws-grip:hover, .ws-grip:active { background: linear-gradient(to bottom, transparent 3px, var(--accent) 3px, var(--accent) 4px, transparent 4px); }
+.ws.pane-closed .ws-grip { display: none; }
+.ws-pane-head { display: flex; align-items: center; gap: 8px; height: 40px; flex: none; padding: 0 8px 0 6px; border-bottom: 1px solid var(--line); }
+.ws-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.ws-tabs::-webkit-scrollbar { display: none; }
+.ws-tab {
+  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; flex: none;
+  color: var(--text-3); font: 500 11.5px var(--mono); cursor: pointer; border: 1px solid transparent; transition: color var(--dur), background var(--dur), border-color var(--dur);
+}
+.ws-tab svg { width: 14px; height: 14px; }
+.ws-tab:hover { color: var(--text); background: var(--panel-2); }
+.ws-tab.on { color: var(--text); border-color: var(--line-2); background: var(--panel); }
+.ws-tab.on svg { color: var(--accent); }
+.ws-tab:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.ws-tab[data-tip]:hover::after { display: none; }
+.ws-count { font-size: 10px; color: var(--text-3); }
+.ws-pane-body { flex: 1; min-height: 0; overflow: auto; animation: tip-in .16s var(--ease) both; }
+/* views mounted in the pane fill it rather than the window */
+.ws-pane-body > .split, .ws-pane-body > .page, .ws-pane-body > .overview { height: 100%; }
+
+.ws-side {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(380px, 100%); z-index: 6; display: flex; flex-direction: column;
+  background: var(--panel); border-left: 1px solid var(--line-2); box-shadow: -12px 0 32px -16px rgba(0, 0, 0, .6);
+  transform: translateX(102%); visibility: hidden; transition: transform .22s var(--ease), visibility 0s .22s; pointer-events: none;
+}
+.ws-side.in { transform: none; visibility: visible; pointer-events: auto; transition: transform .22s var(--ease); }
+.ws-side-head { display: flex; align-items: flex-start; gap: 10px; padding: 12px 10px 10px 14px; border-bottom: 1px solid var(--line); }
+.ws-side-head h2 { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.ws-side-head .sub { color: var(--text-3); font-size: 11px; margin-top: 2px; overflow-wrap: anywhere; }
+.ws-side-ico { display: inline-flex; padding-top: 1px; color: var(--accent); }
+.ws-sheet-grab { display: none; }
+.ws-side-body { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; }
+.ws-side-foot { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--line); }
+.side-sections { display: flex; flex-direction: column; gap: 16px; }
+.side-sections h3 { margin: 0 0 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-3); font-weight: 600; }
+.side-link { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 8px; width: 100%; min-height: 26px; padding: 2px 6px; cursor: pointer; font-size: 12px; }
+.side-link:hover { background: var(--panel-2); }
+.side-link .mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-pre { margin: 0; padding: 8px 10px; max-height: 260px; overflow: auto; background: var(--bg); border: 1px solid var(--line); font-size: 11px; line-height: 1.5; white-space: pre; }
+.side-field { display: flex; flex-direction: column; gap: 4px; }
+.side-field > span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-3); }
+.side-field input, .side-field select, .side-field textarea { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; background: var(--bg); border: 1px solid var(--line-2); color: var(--text); font: 12px var(--mono); border-radius: var(--radius-sm); }
+.side-field textarea { height: 84px; padding: 6px 8px; resize: vertical; }
+.side-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* pane tables: hairline rows, the selected one lit, linked to the canvas */
+.ptable { display: flex; flex-direction: column; min-width: 0; }
+.pt-row { display: grid; grid-template-columns: 64px minmax(0, 1.2fr) minmax(0, 1.4fr); gap: 12px; align-items: center; min-height: 32px; padding: 4px 14px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 12px; }
+.pt-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-row:hover { background: var(--panel-2); }
+.pt-row.on { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.pt-head { position: sticky; top: 0; z-index: 1; min-height: 28px; background: var(--bg-2); cursor: default; font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-3); }
+.pt-head:hover { background: var(--bg-2); }
+.pane-pad { padding: 14px; }
+.pane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; padding: 14px; align-items: start; }
+
+@media (max-width: 760px) {
+  /* phones: the pane is always there – canvas top half, information bottom half */
+  .ws { grid-template-rows: minmax(0, 1fr) 50%; }
+  .ws.pane-closed { grid-template-rows: minmax(0, 1fr) 40px; }
+  .ws-grip { display: none; }
+  .ws-sheet-grab { display: block; position: absolute; left: 50%; top: 5px; width: 36px; height: 3px; margin-left: -18px; background: var(--line-2); }
+  .ws-side-head { position: relative; padding-top: 16px; touch-action: none; }
+  .ws-tab .ws-tab-l { display: none; }
+  .ws-tab { width: 40px; padding: 0; justify-content: center; position: relative; min-height: 40px; }
+  .ws-count { position: absolute; top: 1px; right: 2px; font-size: 9px; }
+  /* the node sidebar is a sheet that slides up over the information half */
+  .ws-side { top: auto; height: 50%; max-height: 100%; width: 100%; border-left: 0; border-top: 1px solid var(--accent); transform: translateY(104%); box-shadow: 0 -16px 32px -16px rgba(0, 0, 0, .7); }
+  .ws-canvas { overflow: visible; z-index: 2; }
+  .ws.side-open .ws-side { position: fixed; left: 0; right: 0; bottom: 0; }
+  .ws-side.in { transform: none; }
+  .pt-row { grid-template-columns: 44px minmax(0, 1fr); }
+  .pt-row > span:nth-child(3) { display: none; }
+  .pane-grid { grid-template-columns: minmax(0, 1fr); padding: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .ws-side { transition: none; } }
+
+/* Code: the symbols graph sits in the canvas slot with the mode switch under it */
+.code-graph { position: relative; height: 100%; }
+.code-graph > .kc-pick { top: auto; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 20; }
+.kc-pick .btn:not(.primary) { background: var(--panel); }
+.kc-pick .btn.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }

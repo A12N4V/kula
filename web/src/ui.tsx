@@ -61,6 +61,16 @@ export const Icon = {
   chevron: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m6 9 6 6 6-6" /></svg>),
   sun: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>),
   check: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>),
+  map: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3" y="5" width="6" height="5" /><rect x="15" y="14" width="6" height="5" /><path d="M9 7.5h3a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2" /><circle cx="6" cy="16.5" r="2" /></svg>),
+  flame: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 21c-3.9 0-6.5-2.6-6.5-6 0-3.5 3-5.5 4-9 2 1.5 3 3.5 3 5 1-.8 1.5-2 1.5-3 2 1.6 4.5 4 4.5 7 0 3.4-2.6 6-6.5 6z" /></svg>),
+  langs: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16" /></svg>),
+  link: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M10 14l4-4M8.5 11.5 6 14a3 3 0 0 0 4 4l2.5-2.5M15.5 12.5 18 10a3 3 0 0 0-4-4l-2.5 2.5" /></svg>),
+  runs: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 6h10M4 12h16M4 18h7" /><rect x="16" y="4" width="4" height="4" fill="currentColor" /></svg>),
+  fit: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg>),
+  minimap: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="5" width="17" height="14" /><rect x="12" y="11" width="6" height="5" /></svg>),
+  paneBottom: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="4.5" width="17" height="15" /><path d="M3.5 14h17" /></svg>),
+  paneRight: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="4.5" width="17" height="15" /><path d="M14.5 4.5v15" /></svg>),
+  code: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="4.5" width="17" height="15" /><path d="m8 10 2.5 2L8 14M12.5 15h4" /></svg>),
 };
 /**
  * The mark: the kula ring drawn with kula rings (src/mark.ts). Small sizes show
