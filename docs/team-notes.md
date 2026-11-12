@@ -22,8 +22,9 @@
 ## K2.2 – architecture checks
 - Added src/map/arch.rs (pure, deterministic): file-level dependency graph from store edges, DFS cycle detection (sorted, deduped chains), god modules (fan_in+fan_out above p95 and loc above 1000), coupling (normalised mean fan_in), dead candidates (functions/methods with no incoming edges). Report carries schema:1 and renders md or JSON.
 - `kula check <target>`: optional positional; `architecture` runs the report and exits non-zero when any cycle exists, other values error with a hint, no target keeps the existing blast-radius CI gate.
-- tests/map.rs: check_architecture_cycle – seeded net/a↔net/b cycle exits non-zero, the same repo with the cycle imports removed exits zero; lib report shows the cycle. Full suite green (all test binaries), cargo check and web tsc pass.
-- Needs a human check: dead_candidates is name-based and informational (no entry-point awareness yet); cycle detection is file-level, module-level cycles could be added later by grouping file cycles.
+- tests/map.rs: check_architecture_cycle – seeded net↔codec cross-module cycle exits non-zero, the same repo with the cycle imports removed exits zero; lib report names the two modules. Full suite green (all test binaries), cargo check and web tsc pass.
+- Needs a human check: dead_candidates is name-based and informational (no entry-point awareness yet).
+- K2 blocker fix: `arch::check(tree, db)` now matches the spec contract and detects module cycles over the tree's modules (`module_cycle_graph`, longest-prefix bucketing by module directory); `entry_points(db)` takes the repo root from `Store::root`; the test fixture seeds the cycle between two modules (net ↔ codec), not two files. explain.rs and render.rs keep the directory-level `module_graph`, and explain.rs still uses the file-level graph for per-file dependency lines.
 
 ## K2.3: kula map and kula explain
 - New src/map/explain.rs (purpose from cluster name, public surface, depends on / used by, hot spots by churn x fan_in, memories passed in) and src/map/render.rs (md, json with schema 1, mermaid starting with flowchart; zoom filters repo/package/module/symbol).

@@ -49,6 +49,8 @@ pub struct Community {
 
 pub struct Store {
     pub conn: Connection,
+    /// Repo root the index belongs to; readers of file text (map entries) use it.
+    pub root: std::path::PathBuf,
     /// Set while a fresh index is being built: (temporary file, final path). See `publish`.
     staged: Option<(std::path::PathBuf, std::path::PathBuf)>,
 }
@@ -120,13 +122,13 @@ impl Store {
         let _ = std::fs::remove_file(&tmp);
         let conn = Connection::open(&tmp)?;
         conn.execute_batch(SCHEMA)?;
-        Ok(Store { conn, staged: Some((tmp, dest)) })
+        Ok(Store { conn, root: repo.root.clone(), staged: Some((tmp, dest)) })
     }
 
     /// Swap a freshly built index in for the live one. Readers holding the old
     /// file keep reading it until they close; new opens get the new one.
     pub fn publish(self) -> Result<()> {
-        let Store { conn, staged } = self;
+        let Store { conn, staged, .. } = self;
         let Some((tmp, dest)) = staged else { return Ok(()) };
         conn.close().map_err(|(_, e)| e)?;
         // Indexes from before this change used WAL; unlink (never truncate) its files
@@ -165,7 +167,7 @@ impl Store {
         if !has_conf {
             let _ = conn.execute("ALTER TABLE edges ADD COLUMN confidence TEXT NOT NULL DEFAULT 'inferred'", []);
         }
-        Ok(Store { conn, staged: None })
+        Ok(Store { conn, root: repo.root.clone(), staged: None })
     }
 
     pub fn write_all(&self, nodes: &[Node], edges: &[Edge], communities: &[Community]) -> Result<()> {

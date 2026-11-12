@@ -894,7 +894,7 @@ pub fn sync(repo: &Repo, only: &[String]) -> Result<Vec<String>> {
         .ok()
         .and_then(|_| crate::store::Store::open(repo).ok())
         .map(|st| {
-            let r = crate::map::brief::report(&repo.root, &crate::map::tree::module_tree(&repo.root, &st), &st);
+            let r = crate::map::brief::report(&crate::map::tree::module_tree(&repo.root, &st), &st);
             crate::map::brief::markdown(&r)
         })
         .unwrap_or_default();

@@ -36,9 +36,9 @@ pub struct BriefReport {
 
 /// Build the report from the already-built tree (call `tree::module_tree`
 /// once and share it). Deterministic: sorted everywhere, truncated by budget.
-pub fn report(root: &std::path::Path, tree: &ModuleTree, db: &crate::store::Store) -> BriefReport {
-    let entries = entries::entry_points(root, db);
-    let ArchReport { cycles, god_modules, coupling, .. } = arch::check(db);
+pub fn report(tree: &ModuleTree, db: &crate::store::Store) -> BriefReport {
+    let entries = entries::entry_points(db);
+    let ArchReport { cycles, god_modules, coupling, .. } = arch::check(tree, db);
     let hot = hot_spots(tree);
 
     BriefReport {

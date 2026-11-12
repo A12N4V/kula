@@ -1,6 +1,7 @@
 //! Architecture checks (K2): cycles, god modules, coupling, dead candidates.
 //! Pure and deterministic; reads the graph, never the network.
 
+use super::tree::{ModuleTree, TreeNode};
 use crate::store::{Node, Store};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -231,24 +232,99 @@ pub fn dead_candidates(db: &Store, by_id: &HashMap<i64, Node>) -> Vec<String> {
     out
 }
 
-/// Full architecture report.
-pub fn check(db: &Store) -> ArchReport {
-    let (g, by_id) = module_graph(db);
-    // Loc per module: sum of symbol locs in that directory.
+/// Module directories from the tree: dir path → module name. Cycles are
+/// detected between these, matching the spec (not between files).
+pub fn module_dirs(tree: &ModuleTree) -> BTreeMap<String, String> {
+    fn walk(node: &TreeNode, out: &mut BTreeMap<String, String>) {
+        if node.kind == "module" {
+            out.insert(node.path.clone(), node.name.clone());
+        }
+        for c in &node.children {
+            walk(c, out);
+        }
+    }
+    let mut out = BTreeMap::new();
+    for p in &tree.packages {
+        for c in &p.children {
+            walk(c, &mut out);
+        }
+    }
+    out
+}
+
+/// The module a file path belongs to: the longest tree-module directory that is
+/// the file's directory or an ancestor of it; files outside any module keep
+/// their own directory as the bucket.
+fn resolve(mods: &BTreeMap<String, String>, dir: &str) -> String {
+    let mut best: Option<&str> = None;
+    for m in mods.keys() {
+        if dir == m.as_str() || dir.starts_with(&format!("{m}/")) {
+            best = match best {
+                Some(b) if b.len() >= m.len() => best,
+                _ => Some(m.as_str()),
+            };
+        }
+    }
+    best.unwrap_or(dir).to_string()
+}
+
+fn dir_of(path: &str) -> String {
+    path.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_else(|| ".".into())
+}
+
+/// Module-level dependency graph over the tree's modules: symbol edges bucketed
+/// to the module that owns the endpoint's file. Keys are module directory
+/// paths; `check` renders them as module names.
+pub fn module_cycle_graph(db: &Store, mods: &BTreeMap<String, String>) -> BTreeMap<String, BTreeSet<String>> {
+    let nodes = db.nodes_where("id >= 0", []).unwrap_or_default();
+    let by_id: HashMap<i64, Node> = nodes.iter().map(|n| (n.id, n.clone())).collect();
+    let bucket = |id: i64| -> Option<String> {
+        let file = match by_id.get(&id).map(|n| n.kind.as_str()) {
+            Some("file") => by_id.get(&id).map(|n| n.path.clone()),
+            Some(_) => sym_file_path(&by_id, id),
+            None => None,
+        }?;
+        Some(resolve(mods, &dir_of(&file)))
+    };
+    let mut g: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for e in db.all_edges().unwrap_or_default() {
+        if e.kind == "CONTAINS" {
+            continue;
+        }
+        if let (Some(a), Some(b)) = (bucket(e.src), bucket(e.dst)) {
+            if a != b {
+                g.entry(a).or_default().insert(b);
+            }
+        }
+    }
+    g
+}
+
+/// Full architecture report against the module tree: cycles are module cycles
+/// (the tree's modules), god modules, coupling and dead candidates come from
+/// the directory graph as before.
+pub fn check(tree: &ModuleTree, db: &Store) -> ArchReport {
+    let mods = module_dirs(tree);
+    let g = module_cycle_graph(db, &mods);
+    let (_, by_id) = module_graph(db);
+    // Loc per bucket: sum of symbol locs whose file resolves to that module.
     let mut loc: HashMap<String, usize> = HashMap::new();
     for n in by_id.values() {
         if n.kind == "file" || n.kind == "package" {
             continue;
         }
-        let file = sym_file_path(&by_id, n.id);
-        if let Some(f) = file {
-            let dir = f.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_else(|| ".".into());
-            *loc.entry(dir).or_default() += (n.end_line - n.start_line + 1).max(0) as usize;
+        if let Some(f) = sym_file_path(&by_id, n.id) {
+            let key = resolve(&mods, &dir_of(&f));
+            *loc.entry(key).or_default() += (n.end_line - n.start_line + 1).max(0) as usize;
         }
     }
+    let cycles = find_cycles(&g)
+        .into_iter()
+        .map(|c| c.into_iter().map(|d| mods.get(&d).cloned().unwrap_or(d)).collect())
+        .collect();
     ArchReport {
         schema: 1,
-        cycles: find_cycles(&file_graph(db)),
+        cycles,
         god_modules: god_modules(&g, &loc),
         coupling: coupling(&g),
         dead_candidates: dead_candidates(db, &by_id),

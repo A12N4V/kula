@@ -34,7 +34,8 @@ fn index(dir: &Path) {
 }
 
 /// Two packages (core: Rust, webui: TypeScript) plus a top-level Python tool,
-/// and a seeded module cycle net/a → net/b → net/a inside core.
+/// and a seeded module cycle net → codec → net inside core (cross-directory:
+/// core/src/net and core/src/codec are separate tree modules).
 fn fixture() -> TempDir {
     let t = tempfile::tempdir().unwrap();
     let d = t.path();
@@ -43,14 +44,15 @@ fn fixture() -> TempDir {
     git(d, &["config", "user.email", "t@example.com"]);
     git(d, &["config", "commit.gpgsign", "false"]);
     write(d, "core/Cargo.toml", "[package]\nname = \"core\"\nversion = \"0.1.0\"\nedition = \"2021\"\n");
-    write(d, "core/src/lib.rs", "pub mod net;\npub fn run(input: &str) -> String { net::a::pong(input) }\n");
-    write(d, "core/src/net/mod.rs", "pub mod a;\npub mod b;\n");
+    write(d, "core/src/lib.rs", "pub mod codec;\npub mod net;\npub fn run(input: &str) -> String { net::a::pong(input) }\n");
+    write(d, "core/src/net/mod.rs", "pub mod a;\n");
     write(
         d,
         "core/src/net/a.rs",
-        "use crate::net::b::ping;\npub fn pong(s: &str) -> String { format!(\"{s}{}\", ping(s)) }\n",
+        "use crate::codec::b::ping;\npub fn pong(s: &str) -> String { format!(\"{s}{}\", ping(s)) }\n",
     );
-    write(d, "core/src/net/b.rs", "use crate::net::a::pong;\npub fn ping(s: &str) -> String { s.to_string() }\n");
+    write(d, "core/src/codec/mod.rs", "pub mod b;\n");
+    write(d, "core/src/codec/b.rs", "use crate::net::a::pong;\npub fn ping(s: &str) -> String { s.to_string() }\n");
     write(d, "core/src/main.rs", "fn main() { println!(\"{}\", core::run(\"hi\")); }\n");
     write(d, "webui/package.json", "{\n  \"name\": \"webui\",\n  \"version\": \"0.1.0\"\n}\n");
     write(d, "webui/src/index.ts", "export function renderApp(target: string) { return target; }\n");
@@ -91,7 +93,7 @@ fn map_tree_names_entries() {
     }
 
     // Entries: CLI main, an HTTP handler by name and one by decorator, API export.
-    let es = entries::entry_points(d, &st);
+    let es = entries::entry_points(&st);
     assert!(
         es.iter().any(|e| e.kind == "cli" && e.symbol == "main" && e.file == "core/src/main.rs"),
         "entries: {es:?}"
@@ -111,23 +113,29 @@ fn map_tree_names_entries() {
     assert_eq!(n1, n3, "names not stable across re-indexes: {n1:?} vs {n3:?}");
 }
 
-/// `kula check architecture` exits non-zero on the seeded a→b→a cycle and zero
-/// on a clean copy of the same repo.
+/// `kula check architecture` exits non-zero on the seeded net→codec→net module
+/// cycle and zero on a clean copy of the same repo.
 #[test]
 fn check_architecture_cycle() {
-    // Seeded cycle: the lib report has the cycle, and the CLI exits non-zero.
+    // Seeded cycle: the lib report has the module cycle, and the CLI exits non-zero.
     let t = fixture();
     let d = t.path();
     index(d);
     let repo = Repo::discover(d).unwrap();
     let st = Store::open(&repo).unwrap();
-    let r = kula::map::arch::check(&st);
+    let mt = tree::module_tree(d, &st);
+    let r = kula::map::arch::check(&mt, &st);
     assert!(!r.cycles.is_empty(), "expected a cycle, got {r:?}");
     assert!(r.cycles.iter().any(|c| c.len() > 1 && c.iter().any(|m| m.contains("net"))), "cycles: {:?}", r.cycles);
+    assert!(
+        r.cycles.iter().any(|c| c.iter().any(|m| m.contains("codec"))),
+        "cycle must span two modules, not files: {:?}",
+        r.cycles
+    );
     let out = Command::new(KULA).arg("-C").arg(d).args(["check", "architecture"]).output().unwrap();
     assert!(!out.status.success(), "cycle fixture must exit non-zero: {}", String::from_utf8_lossy(&out.stdout));
 
-    // Clean copy: same repo without the a→b→a imports exits zero.
+    // Clean copy: same repo without the net↔codec imports exits zero.
     let c = fixture();
     let cd = c.path();
     std::fs::write(
@@ -135,7 +143,7 @@ fn check_architecture_cycle() {
         "pub fn pong(s: &str) -> String { format!(\"{s}\") }\n",
     )
     .unwrap();
-    std::fs::write(cd.join("core/src/net/b.rs"), "pub fn ping(s: &str) -> String { s.to_string() }\n").unwrap();
+    std::fs::write(cd.join("core/src/codec/b.rs"), "pub fn ping(s: &str) -> String { s.to_string() }\n").unwrap();
     git(cd, &["add", "-A"]);
     git(cd, &["commit", "-qm", "break cycle"]);
     index(cd);

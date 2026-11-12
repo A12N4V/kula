@@ -6,9 +6,10 @@ use crate::*;
 /// `kula check architecture`: cycles, god modules, coupling, dead candidates.
 /// Exits non-zero (Err) when any module cycle exists.
 pub(crate) fn check_architecture(repo: &Repo, md: bool, json: bool) -> Result<()> {
-    use kula::map::arch;
+    use kula::map::{arch, tree};
     let st = Store::open(repo)?;
-    let r = arch::check(&st);
+    let mt = tree::module_tree(&repo.root, &st);
+    let r = arch::check(&mt, &st);
     if json {
         let mut v = serde_json::to_value(&r)?;
         v["ok"] = serde_json::json!(r.cycles.is_empty());

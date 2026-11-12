@@ -18,7 +18,7 @@ pub(crate) fn run_map(repo: &Repo, zoom: &str, format: &str, json_flag: bool) ->
 /// `kula brief`: one page for an agent new to this repo. Under 1500 tokens.
 pub(crate) fn run_brief(repo: &Repo, format: &str, json_flag: bool) -> Result<()> {
     let st = open_or_index(repo)?;
-    let r = map::brief::report(&repo.root, &map::tree::module_tree(&repo.root, &st), &st);
+    let r = map::brief::report(&map::tree::module_tree(&repo.root, &st), &st);
     let format = if json_flag { "json" } else { format };
     if format == "json" {
         println!("{}", serde_json::to_string_pretty(&r)?);

@@ -5,7 +5,6 @@ use super::file_of;
 use crate::store::{Node, Store};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Entry {
@@ -16,7 +15,7 @@ pub struct Entry {
 
 const HTTP_PREFIX: &[&str] = &["get_", "post_", "put_", "delete_", "patch_", "route_"];
 
-pub fn entry_points(root: &Path, db: &Store) -> Vec<Entry> {
+pub fn entry_points(db: &Store) -> Vec<Entry> {
     let nodes = db.nodes_where("id >= 0", []).unwrap_or_default();
     let by_id: HashMap<i64, Node> = nodes.iter().map(|n| (n.id, n.clone())).collect();
     let mut file_syms: BTreeMap<i64, Vec<Node>> = BTreeMap::new();
@@ -32,7 +31,7 @@ pub fn entry_points(root: &Path, db: &Store) -> Vec<Entry> {
 
     let mut out: Vec<Entry> = Vec::new();
     for f in nodes.iter().filter(|n| n.kind == "file") {
-        let text = std::fs::read_to_string(root.join(&f.path)).unwrap_or_default();
+        let text = std::fs::read_to_string(db.root.join(&f.path)).unwrap_or_default();
         let lang = f.lang.as_str();
         let syms = file_syms.get(&f.id).cloned().unwrap_or_default();
         for s in &syms {
