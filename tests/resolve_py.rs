@@ -88,6 +88,10 @@ fn fixture() -> tempfile::TempDir {
         "scoped.py",
         "class Widget:\n    def draw(self):\n        return 1\n\n\ndef make_widget():\n    w = Widget()\n    return w\n\n\ndef draw_other():\n    w = 0\n    return w.draw()\n",
     );
+    // Two classes of the same name: an unimported base is ambiguous.
+    write(d, "ax.py", "class Amb:\n    def paint_a(self):\n        return 1\n");
+    write(d, "bx.py", "class Amb:\n    def paint_b(self):\n        return 2\n");
+    write(d, "amb.py", "class Child2(Amb):\n    def splash(self):\n        return self.paint_a()\n");
     write(d, "cyc/__init__.py", "from .a import *\n");
     write(d, "cyc/a.py", "from .b import *\n\n\ndef from_a():\n    return 1\n");
     write(d, "cyc/b.py", "from .a import *\n\n\ndef from_b():\n    return from_a()\n");
@@ -183,4 +187,16 @@ fn py_same_name_in_two_files_picks_the_imported_one() {
     let d1 = kula_json(d, &["context", "dup_a.py:shared"]);
     let callers1: Vec<&str> = d1["callers"].as_array().unwrap().iter().map(|n| n["name"].as_str().unwrap()).collect();
     assert!(!callers1.contains(&"pick_b"), "dup_a must have no callers: {callers1:?}");
+}
+
+#[test]
+fn py_ambiguous_base_does_not_force_resolved() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+
+    // `Amb` exists twice and amb.py imports neither: the resolver must emit
+    // nothing, so the call stays below the resolved tier.
+    let callers = resolved_callers(d, "paint_a");
+    assert!(!has(&callers, "splash", "amb.py"), "ambiguous base forced resolved: {callers:?}");
 }
