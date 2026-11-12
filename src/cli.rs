@@ -130,10 +130,19 @@ pub(crate) enum Cmd {
     },
     /// Before editing a symbol: callers, tests that reach it, co-changing files, risk, advice.
     #[command(after_help = "Examples:\n  kula before hashToken")]
-    Before { symbol: String },
+    Before {
+        symbol: String,
+        /// Ignore call edges weaker than this tier: guessed, inferred or resolved.
+        #[arg(long, default_value = "guessed", value_parser = ["guessed", "inferred", "resolved"])]
+        min_confidence: String,
+    },
     /// After editing: the worktree against HEAD through the graph; exits 2 on dangling callers.
     #[command(after_help = "Examples:\n  kula verify")]
-    Verify,
+    Verify {
+        /// Report and act only on call edges at or above this tier: guessed, inferred or resolved.
+        #[arg(long, default_value = "guessed", value_parser = ["guessed", "inferred", "resolved"])]
+        min_confidence: String,
+    },
     /// CI gate: the graph blast radius of HEAD against a base; fails above max_risk.
     #[command(after_help = "Examples:\n  kula check --base origin/main --md   ·  kula check --max-risk low")]
     Check {

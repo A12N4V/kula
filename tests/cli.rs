@@ -412,6 +412,54 @@ fn agent_before_and_verify_bracket_an_edit() {
 }
 
 #[test]
+fn confidence_tiers_gate_trace_verify_and_pre_edit() {
+    let t = fixture();
+    let d = t.path();
+    // Two functions named `dup` in different files: the name linker can only
+    // guess pickDup's call, so its edge lands in the guessed tier.
+    write(
+        d,
+        "src/util/dups.ts",
+        "export function dup() { return 1; }\nexport function dupToo() { return 2; }\n",
+    );
+    write(d, "src/api/other.ts", "export function dup() { return 3; }\n");
+    write(
+        d,
+        "src/api/pick.ts",
+        "export function pickDup() { return dup() + dupToo(); }\n",
+    );
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "dup names"]);
+    kula(d, &["index"]);
+
+    // pre_edit reports per-tier counts, all tiers present by default.
+    let b = kula_json(d, &["before", "dup"]);
+    let tiers: usize = b["tiers"].as_array().unwrap().iter().map(|t| t.as_u64().unwrap() as usize).sum();
+    assert_eq!(tiers, b["dependents"].as_u64().unwrap() as usize, "{b}");
+    assert!(b["tiers"][2].as_u64().unwrap() >= 1, "a guessed caller is counted: {b}");
+
+    // trace --min-confidence actually filters: the strict path is shorter or empty.
+    let loose = kula_json(d, &["trace", "pickDup", "dup"]);
+    let loose_names: Vec<&str> = loose["path"].as_array().unwrap().iter().map(|n| n["name"].as_str().unwrap()).collect();
+    assert_eq!(loose_names, vec!["pickDup", "dup"]);
+    let strict = kula_json(d, &["trace", "pickDup", "dup", "--min-confidence", "resolved"]);
+    assert!(strict["path"].as_array().unwrap().is_empty(), "{strict}");
+    assert!(strict["tiers"].as_array().unwrap().iter().all(|t| t.as_u64().unwrap() == 0), "{strict}");
+
+    // Remove one dup: the dangling caller is only reachable via the guessed
+    // edge, and guessed edges never block.
+    write(d, "src/util/dups.ts", "export function dupToo() { return 2; }\n");
+    let v = kula_json(d, &["verify"]);
+    assert_eq!(v["ok"], true, "guessed dangling must not block: {v}");
+    assert!(v["dangling"].as_array().unwrap().is_empty(), "{v}");
+    assert!(v["tiers"].as_array().unwrap().iter().map(|t| t.as_u64().unwrap() as usize).sum::<usize>() >= 1, "{v}");
+
+    // A stronger floor changes the verdict: at `resolved`, the guessed edge is not evidence at all.
+    let strict_v = kula_json(d, &["verify", "--min-confidence", "resolved"]);
+    assert!(strict_v["tiers"].as_array().unwrap()[0].as_u64().unwrap() >= 1, "resolved tier counted");
+}
+
+#[test]
 fn mcp_lists_and_runs_the_agent_tools() {
     let t = fixture();
     let d = t.path();

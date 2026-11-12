@@ -18,8 +18,8 @@ fn tools() -> Value {
           "inputSchema": s(json!({ "symbol": { "type": "string", "description": "name, path:name, or node id" } }), &["symbol"]) },
         { "name": "impact", "description": "Blast radius of changing a symbol. direction=upstream (dependents, default) or downstream. Result counts edges per confidence tier; min_confidence drops weaker edges.",
           "inputSchema": s(json!({ "symbol": { "type": "string" }, "direction": { "type": "string", "enum": ["upstream", "downstream"] }, "depth": { "type": "integer" }, "min_confidence": { "type": "string", "enum": ["guessed", "inferred", "resolved"] } }), &["symbol"]) },
-        { "name": "trace", "description": "Shortest call path between two symbols.",
-          "inputSchema": s(json!({ "from": { "type": "string" }, "to": { "type": "string" } }), &["from", "to"]) },
+        { "name": "trace", "description": "Shortest call path between two symbols. BREAKING (P1.1.9): result changed from an edge array to { path, tiers } where tiers are resolved/inferred/guessed counts along the path; min_confidence (default guessed) drops weaker edges.",
+          "inputSchema": s(json!({ "from": { "type": "string" }, "to": { "type": "string" }, "min_confidence": { "type": "string", "enum": ["guessed", "inferred", "resolved"] } }), &["from", "to"]) },
         { "name": "compare", "description": "Graph-aware diff between two revisions: changed symbols and what they ripple into.",
           "inputSchema": s(json!({ "base": { "type": "string" }, "head": { "type": "string" } }), &["base"]) },
         { "name": "graph_diff", "description": "Contrast the knowledge graphs of two revisions (head may be WORKTREE): symbols added/removed/modified and call edges gained/lost.",
@@ -35,9 +35,9 @@ fn tools() -> Value {
         { "name": "context_pack", "description": "The code you need for a task, not whole files: give symbols, files or a plain-language question; get their definitions plus what they use, who uses them, containers and tests, ranked by graph distance and fitted to a token budget (big bodies shrink to signatures). Use it before reading files.",
           "inputSchema": s(json!({ "targets": { "type": "array", "items": { "type": "string" }, "description": "symbol names, path:name, file paths, or a question" }, "budget": { "type": "integer", "description": "token budget (default 6000)" } }), &["targets"]) },
         { "name": "pre_edit", "description": "Call before changing a symbol: direct callers, total dependents and risk, the tests that reach it through the call graph, files that historically change with it, human notes, and concrete advice.",
-          "inputSchema": s(json!({ "symbol": { "type": "string" } }), &["symbol"]) },
+          "inputSchema": s(json!({ "symbol": { "type": "string" }, "min_confidence": { "type": "string", "enum": ["guessed", "inferred", "resolved"], "description": "ignore call edges weaker than this tier" } }), &["symbol"]) },
         { "name": "verify_edit", "description": "Call after editing: the working tree against HEAD through the graph – symbols added/removed/modified, callers left pointing at removed code (dangling), callers of modified symbols in other files to re-check, and edits to code you may not change (guard_violations). ok=false means something is broken or fenced.",
-          "inputSchema": s(json!({}), &[]) },
+          "inputSchema": s(json!({ "min_confidence": { "type": "string", "enum": ["guessed", "inferred", "resolved"], "description": "count and act only on call edges at or above this tier; guessed edges never block" } }), &[]) },
         { "name": "guards", "description": "What you may change. Lists the repository's guard rules (locked: read only; hidden: never shown to you; review: a person reviews it), the active task and its scope, and – given paths – the verdict for each. Check before editing files you have not been asked to touch.",
           "inputSchema": s(json!({ "paths": { "type": "array", "items": { "type": "string" } } }), &[]) },
         { "name": "remember", "description": "Save a durable fact about this code for future sessions: why something is the way it is, a pitfall, a flaky test, a decision. Pin it to a symbol, a file (file:<path>) or `repo`. It is stored in git with the code and marked stale when that code changes. One fact per memory, at most 2000 characters; never secrets.",
@@ -161,7 +161,7 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             let y = graph::resolve_one(&s, &str_arg("to"))?;
             refuse_hidden(&g, &x)?;
             refuse_hidden(&g, &y)?;
-            json!(graph::trace_conf(&s, x.id, y.id, "guessed")?)
+            json!(graph::trace_conf(&s, x.id, y.id, &a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed"))?)
         }
         "compare" => {
             let head = a.get("head").and_then(|v| v.as_str()).map(String::from).unwrap_or_else(|| repo.branch());
@@ -209,9 +209,11 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
         "pre_edit" => {
             let s = st()?;
             refuse_hidden(&g, &graph::resolve_one(&s, &str_arg("symbol"))?)?;
-            json!(crate::agent::pre_edit(repo, &s, &str_arg("symbol"))?)
+            json!(crate::agent::pre_edit_conf(repo, &s, &str_arg("symbol"), &a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed"))?)
         }
-        "verify_edit" => json!(crate::agent::verify_edit(repo, CLIENT.get().map(String::as_str))?),
+        "verify_edit" => {
+            json!(crate::agent::verify_edit_conf(repo, CLIENT.get().map(String::as_str), &a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed"))?)
+        }
         "guards" => {
             let paths: Vec<String> = a
                 .get("paths")

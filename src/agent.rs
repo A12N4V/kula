@@ -212,9 +212,9 @@ pub fn co_changes(repo: &Repo, path: &str, limit: usize) -> Vec<(String, usize)>
     v
 }
 
-pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
+pub fn pre_edit_conf(repo: &Repo, store: &Store, symbol: &str, min_conf: &str) -> Result<PreEdit> {
     let n = graph::resolve_one(store, symbol)?;
-    let up = graph::impact(store, n.id, true, 6)?;
+    let up = graph::impact_min(store, n.id, true, 6, min_conf)?;
     let direct: Vec<String> =
         up.hits.iter().filter(|h| h.depth == 1).map(|h| format!("{} ({}:{})", h.node.name, h.node.path, h.node.start_line)).collect();
     let mut tests: Vec<String> =
@@ -307,7 +307,11 @@ pub struct Verify {
 }
 
 /// `agent`: whose fences to check against (a team gives each agent its own).
-pub fn verify_edit(repo: &Repo, agent: Option<&str>) -> Result<Verify> {
+pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
+    pre_edit_conf(repo, store, symbol, "guessed")
+}
+
+pub fn verify_edit_conf(repo: &Repo, agent: Option<&str>, min_conf: &str) -> Result<Verify> {
     let base = crate::index::snapshot_any(repo, "HEAD")?;
     let head = crate::index::worktree(repo);
     let d = graph::graph_diff(&base, &head, "HEAD", "WORKTREE", Some(false));
@@ -323,9 +327,14 @@ pub fn verify_edit(repo: &Repo, agent: Option<&str>) -> Result<Verify> {
     let mut recheck: HashSet<String> = HashSet::new();
     let mut recheck_refs: Vec<Ref> = Vec::new();
     let mut tiers = [0usize; 3];
+    let floor = graph::conf_rank(min_conf);
     for e in &d.edges {
         let (Some(a), Some(b)) = (by.get(&e.src), by.get(&e.dst)) else { continue };
         if e.kind != "CALLS" {
+            continue;
+        }
+        // Edges weaker than the floor are not evidence at this confidence level.
+        if graph::conf_rank(&e.confidence) < floor {
             continue;
         }
         tiers[2 - graph::conf_rank(&e.confidence) as usize] += 1;
@@ -375,4 +384,8 @@ pub fn verify_edit(repo: &Repo, agent: Option<&str>) -> Result<Verify> {
         guard_violations,
         tiers,
     })
+}
+
+pub fn verify_edit(repo: &Repo, agent: Option<&str>) -> Result<Verify> {
+    verify_edit_conf(repo, agent, "guessed")
 }

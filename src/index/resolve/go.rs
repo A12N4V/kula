@@ -36,9 +36,13 @@ impl Resolver for Go {
                 Some(recv) => pkg.selector(recv, name, byte),
                 None => None,
             };
-            if let Some(t) = target {
+            if let Some((t, soft)) = target {
                 out.claimed.insert(byte);
-                out.edges.push((byte, t));
+                if soft {
+                    out.soft.push((byte, t));
+                } else {
+                    out.edges.push((byte, t));
+                }
             }
         }
         out
@@ -67,10 +71,11 @@ impl<'a> Pkg<'a> {
     }
 
     /// A selector call: `pkg.Func(...)` when `recv` names an imported package,
-    /// else `recv.Name(...)` on a typed local.
-    fn selector(&self, recv: &str, name: &str, byte: usize) -> Option<usize> {
+    /// else `recv.Name(...)` on a typed local. `Some((target, soft))`: `soft`
+    /// means the edge is proven bound but only by name match (`inferred`).
+    fn selector(&self, recv: &str, name: &str, byte: usize) -> Option<(usize, bool)> {
         if let Some(b) = self.pf().import_bindings.iter().find(|b| b.local == recv) {
-            return self.pkg_symbol(&b.module, name);
+            return self.pkg_symbol(&b.module, name).map(|t| (t, false));
         }
         self.typed_method(recv, name, byte)
     }
@@ -111,10 +116,11 @@ impl<'a> Pkg<'a> {
     }
 
     /// `recv.Name()`: the receiver variable's type is known from a
-    /// `:=`/`var` binding, the type is declared in this package, and exactly
-    /// one method of that type has the called name. An interface type yields
-    /// no method set here, so the byte stays with the name linker (inferred).
-    fn typed_method(&self, recv: &str, name: &str, byte: usize) -> Option<usize> {
+    /// `:=`/`var` binding (or a parameter), the type is declared in this
+    /// package, and exactly one method of that type has the called name. An
+    /// interface type is satisfaction by method-name match instead: an
+    /// `inferred` edge, never `resolved`.
+    fn typed_method(&self, recv: &str, name: &str, byte: usize) -> Option<(usize, bool)> {
         if !recv.chars().all(|c| c.is_alphanumeric() || c == '_') {
             return None;
         }
@@ -125,6 +131,9 @@ impl<'a> Pkg<'a> {
             return None;
         }
         let ty = ty.trim_start_matches('*').trim_start_matches("[]").trim_start_matches("map[string]");
+        if self.is_interface(ty) {
+            return self.iface_satisfaction(ty, name);
+        }
         // The type lives in this package: same directory, one declaration.
         let ty_file = self
             .ctx
@@ -157,7 +166,45 @@ impl<'a> Pkg<'a> {
                     && n.parent.is_some_and(|p| self.ctx.nodes[p as usize].name == ty)
             })
             .collect();
-        (hit.len() == 1).then(|| hit[0])
+        (hit.len() == 1).then(|| (hit[0], false))
+    }
+
+    /// Interface satisfaction by method-name match: the receiver's declared
+    /// type is an interface. Prefer the unique concrete method of that name
+    /// in the repo; with no concrete method, the interface's own method node
+    /// is the target. Always `inferred`, never `resolved`.
+    fn iface_satisfaction(&self, iface: &str, name: &str) -> Option<(usize, bool)> {
+        let concrete: Vec<usize> = self
+            .ctx
+            .by_name
+            .get(name)
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(|id| {
+                let n = &self.ctx.nodes[*id];
+                n.path.ends_with(".go") && n.parent.is_some_and(|p| self.ctx.nodes[p as usize].name != iface)
+            })
+            .collect();
+        if concrete.len() == 1 {
+            return Some((concrete[0], true));
+        }
+        if concrete.is_empty() {
+            let own: Vec<usize> = self
+                .ctx
+                .by_name
+                .get(name)
+                .into_iter()
+                .flatten()
+                .copied()
+                .filter(|id| {
+                    let n = &self.ctx.nodes[*id];
+                    n.path.ends_with(".go") && n.parent.is_some_and(|p| self.ctx.nodes[p as usize].name == iface)
+                })
+                .collect();
+            return (own.len() == 1).then(|| (own[0], true));
+        }
+        None
     }
 }
 
@@ -222,6 +269,27 @@ pub fn scan(tree: &tree_sitter::Tree, src: &str, pf: &mut ParsedFile) {
                             if !o.is_empty() && o.len() <= 80 && !o.contains('\n') {
                                 pf.receivers.insert(field.start_byte(), o.to_string());
                             }
+                        }
+                    }
+                }
+            }
+            "type_spec" => {
+                // `type Greeter interface { ... }`: the name is an interface
+                // type; its method set is matched by name, never resolved.
+                let ty = n.child_by_field_name("type");
+                if ty.is_some_and(|t| t.kind() == "interface_type") {
+                    if let Some(nm) = n.child_by_field_name("name").and_then(|x| x.utf8_text(bytes).ok()) {
+                        pf.interfaces.push(nm.to_string());
+                    }
+                }
+            }
+            "parameter_declaration" => {
+                // A parameter's declared type pins the receiver for method
+                // calls and interface satisfaction inside the function.
+                if let (Some(nm), Some(ty)) = (n.child_by_field_name("name"), n.child_by_field_name("type")) {
+                    if let (Ok(v), Some(t)) = (nm.utf8_text(bytes), plain_type(ty, bytes)) {
+                        if !v.is_empty() && v != "_" {
+                            assigned.push((v.to_string(), t, scope_start_of(pf, n.start_byte())));
                         }
                     }
                 }

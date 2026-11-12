@@ -2,6 +2,8 @@
 
 (method_declaration name: (field_identifier) @def.method)
 
+(method_elem name: (field_identifier) @def.method)
+
 (type_spec name: (type_identifier) @def.class)
 
 (call_expression function: (identifier) @call)

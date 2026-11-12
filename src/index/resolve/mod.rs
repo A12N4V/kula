@@ -82,6 +82,10 @@ impl<'a> ResolveCtx<'a> {
 pub struct ResolveOut {
     /// `(call byte, target node id)` → applied as `resolved`.
     pub edges: Vec<(usize, usize)>,
+    /// `(call byte, target node id)` → applied as `inferred`: the byte is
+    /// proven bound (claimed), but only by method-name match, so it must never
+    /// carry the `resolved` tier. Used for Go interface satisfaction.
+    pub soft: Vec<(usize, usize)>,
     /// Call bytes the name linker must skip.
     pub claimed: HashSet<usize>,
 }
@@ -102,6 +106,7 @@ pub fn run(ctx: &ResolveCtx) -> ResolveOut {
         if r.langs().contains(&ctx.file.lang) {
             let o = r.resolve(ctx);
             out.edges.extend(o.edges);
+            out.soft.extend(o.soft);
             out.claimed.extend(o.claimed);
         }
     }

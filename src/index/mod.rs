@@ -235,6 +235,8 @@ pub(crate) struct ParsedFile {
     receivers: HashMap<usize, String>,
     /// Local variables and parameters whose type is known (`const f = new Foo()` → `f: Foo`).
     var_types: HashMap<String, String>,
+    /// Type names declared as interfaces (filled by the Go scan).
+    interfaces: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -893,6 +895,14 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
             let caller = caller_of(*byte);
             if *target != caller && call_set.insert((caller, *target)) {
                 edges.push(Edge::new(caller as i64, *target as i64, "CALLS", 1.0).with("resolved"));
+            }
+        }
+        // Interface satisfaction and other name-only matches: proven bound, but
+        // never the `resolved` tier.
+        for (byte, target) in &rout.soft {
+            let caller = caller_of(*byte);
+            if *target != caller && call_set.insert((caller, *target)) {
+                edges.push(Edge::new(caller as i64, *target as i64, "CALLS", 1.0).with("inferred"));
             }
         }
         for (name, byte) in &pf.calls {

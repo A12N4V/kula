@@ -1,9 +1,12 @@
 mod agents;
 mod dispatch;
+mod agent_cmds;
+mod graph_cmds;
 mod graph;
 mod guard;
 mod kg;
 mod memory;
+mod project_cmds;
 mod research;
 mod skill;
 mod task;

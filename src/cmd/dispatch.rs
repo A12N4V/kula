@@ -43,6 +43,15 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
     let repo = Repo::discover(&cwd)?;
     let out = |v: &dyn erased::Json| println!("{}", v.to_json());
 
+    if let Cmd::Before { symbol, min_confidence } = &cmd {
+        return cmd::agent_cmds::before(&repo, symbol, min_confidence, json);
+    }
+    if let Cmd::Verify { min_confidence } = &cmd {
+        return cmd::agent_cmds::verify(&repo, min_confidence, json);
+    }
+    if matches!(cmd, Cmd::Impact { .. } | Cmd::Trace { .. } | Cmd::Flows { .. }) {
+        return cmd::graph_cmds::run(&repo, &cmd, json);
+    }
     match cmd {
         Cmd::Index { if_stale, quiet } => {
             if if_stale && Store::freshness(&repo) == "current" {
@@ -121,130 +130,7 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Cmd::Before { symbol } => {
-            let st = open_or_index(&repo)?;
-            let r = agent::pre_edit(&repo, &st, &symbol)?;
-            if json {
-                out(&serde_json::to_value(&r)?);
-            } else {
-                header(&format!("before editing {}", r.symbol.name));
-                println!("  risk {}  ·  {} dependents in {} files", risk(&r.risk), r.dependents, r.files);
-                if r.guard.level != guard::Level::Open {
-                    println!("  {} {}  {}", level_tag(r.guard.level), dim(&r.guard.rule), r.guard.reason);
-                }
-                let list = |t: &str, v: &[String]| {
-                    if !v.is_empty() {
-                        println!("\n  {}", dim(t));
-                        v.iter().take(12).for_each(|x| println!("    {x}"));
-                    }
-                };
-                list("direct callers", &r.direct_callers);
-                list("tests that reach it", &r.tests);
-                list("changes with", &r.co_changes.iter().map(|(f, c)| format!("{f}  {}", dim(&format!("{c}×")))).collect::<Vec<_>>());
-                list("notes", &r.notes);
-                list(
-                    "memories",
-                    &r.memories
-                        .iter()
-                        .map(|m| {
-                            format!(
-                                "{} {}  {}",
-                                if m.stale { yellow("stale") } else { green("fresh") },
-                                m.body.lines().next().unwrap_or(""),
-                                dim(&m.via)
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                );
-                println!();
-                r.advice.iter().for_each(|a| println!("  {} {a}", accent("›")));
-            }
-        }
-        Cmd::Verify => {
-            let r = agent::verify_edit(&repo, agents::agent_from_env().as_deref())?;
-            if json {
-                out(&serde_json::to_value(&r)?);
-            } else {
-                header(&format!("verify · {} changed", r.changed.len()));
-                r.changed.iter().for_each(|c| println!("  {c}"));
-                r.dangling.iter().for_each(|c| println!("  {} {c}", red("✗")));
-                if !r.recheck.is_empty() {
-                    println!("\n  {}", dim("re-read these callers"));
-                    r.recheck.iter().for_each(|c| println!("    {c}"));
-                }
-                for (p, v) in &r.guard_violations {
-                    println!("  {} {}  {}  {}", red("⊘"), level_tag(v.level), bold(p), dim(&v.reason));
-                }
-                println!(
-                    "\n  {}",
-                    if r.ok {
-                        green("✓ no dangling calls, nothing fenced touched")
-                    } else if !r.dangling.is_empty() {
-                        red("✗ callers point at removed code")
-                    } else {
-                        red("✗ guarded code changed")
-                    }
-                );
-            }
-            if !r.ok {
-                std::process::exit(2);
-            }
-        }
-        Cmd::Check { base, max_risk, md } => {
-            let cfg = config::Config::load(&repo.root)?;
-            let base = base.unwrap_or_else(|| project::default_branch(&repo, &cfg));
-            let max = max_risk.unwrap_or(cfg.check.max_risk);
-            let st = Store::open(&repo).ok();
-            let r = project::check(&repo, st.as_ref(), &base, &max)?;
-            let dangling = match (&st, crate::guard::Guards::load(&repo)) {
-                (Some(s), Ok(g)) => g.dangling_symbols(s),
-                _ => vec![],
-            };
-            if json {
-                let mut v = serde_json::to_value(&r)?;
-                v["dangling_guards"] = serde_json::json!(dangling);
-                out(&v);
-            } else if md {
-                print!("{}", project::check_markdown(&r));
-            } else {
-                header(&format!("check {} {} {}", r.base, dim("…"), r.head));
-                println!(
-                    "  risk {} {}  ·  {} files · {} symbols touched · {} dependents",
-                    risk(&r.risk),
-                    dim(&format!("(gate {})", r.max_risk)),
-                    r.files,
-                    r.touched,
-                    r.affected
-                );
-                for (n, p, d) in &r.top {
-                    println!("    {} {}  {}", dim(&"·".repeat(*d)), bold(n), dim(p));
-                }
-                if !dangling.is_empty() {
-                    println!("  {} guard names a symbol that no longer exists (fence is inactive): {}", yellow("!"), dangling.join(", "));
-                }
-                if !r.undeclared.is_empty() {
-                    println!("  {} undeclared: {}", yellow("!"), r.undeclared.join(", "));
-                }
-                for (p, level, reason) in &r.guarded {
-                    let tag = if level == "review" { yellow(level) } else { red(level) };
-                    println!("  {} {}  {}  {}", red("⊘"), tag, bold(p), dim(reason));
-                }
-                let fenced = r.guarded.iter().any(|g| g.1 == "locked" || g.1 == "hidden");
-                println!(
-                    "\n  {}",
-                    if r.pass {
-                        green("✓ within the gate")
-                    } else if fenced {
-                        red("✗ changes guarded code – a person must approve it")
-                    } else {
-                        red("✗ above the gate")
-                    }
-                );
-            }
-            if !r.pass {
-                std::process::exit(2);
-            }
-        }
+        Cmd::Check { base, max_risk, md } => cmd::project_cmds::check(&repo, base, max_risk, md, json)?,
         Cmd::Hooks { action } => match action.as_str() {
             "install" => println!("{} {} hooks installed", green("✓"), project::hooks_install(&repo)?),
             "uninstall" | "remove" => println!("{} {} hooks removed", green("✓"), project::hooks_uninstall(&repo)?),
@@ -376,85 +262,6 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Cmd::Impact { symbol, down, depth, min_confidence } => {
-            let st = Store::open(&repo)?;
-            let n = graph::resolve_one(&st, &symbol)?;
-            let imp = graph::impact_min(&st, n.id, !down, depth, &min_confidence)?;
-            if json {
-                out(&imp);
-                return Ok(());
-            }
-            header(&format!("impact of {} {}", bold(&imp.root.name), dim(&format!("({})", imp.direction))));
-            println!(
-                "  risk {}   {} symbols · {} files · {} clusters\n",
-                risk(&imp.risk),
-                imp.hits.len(),
-                imp.files,
-                imp.communities.len()
-            );
-            println!("  edges: {} resolved · {} inferred · {} guessed\n", imp.tiers[0], imp.tiers[1], imp.tiers[2]);
-            for d in 1..=depth {
-                let layer: Vec<_> = imp.hits.iter().filter(|h| h.depth == d).collect();
-                if layer.is_empty() {
-                    continue;
-                }
-                println!("  {} {}", accent(&format!("d{d}")), dim(if d == 1 { "direct" } else { "transitive" }));
-                for h in layer.iter().take(30) {
-                    print_node(&h.node);
-                }
-                if layer.len() > 30 {
-                    println!("  {}", dim(&format!("… {} more", layer.len() - 30)));
-                }
-            }
-        }
-        Cmd::Trace { from, to, min_confidence } => {
-            let st = Store::open(&repo)?;
-            let a = graph::resolve_one(&st, &from)?;
-            let b = graph::resolve_one(&st, &to)?;
-            let t = graph::trace_conf(&st, a.id, b.id, &min_confidence)?;
-            let path = &t.path;
-            if json {
-                out(&t);
-                return Ok(());
-            }
-            if path.is_empty() {
-                println!("{} no call path from {} to {}", dim("○"), a.name, b.name);
-            }
-            for (i, n) in path.iter().enumerate() {
-                println!(
-                    "  {}{} {}  {}",
-                    "  ".repeat(i),
-                    if i == 0 { accent("●") } else { dim("└→") },
-                    bold(&n.name),
-                    dim(&format!("{}:{}", n.path, n.start_line))
-                );
-            }
-            if !path.is_empty() {
-                println!(
-                    "  {} resolved {} · inferred {} · guessed {}",
-                    dim("tiers"),
-                    t.tiers[0],
-                    t.tiers[1],
-                    t.tiers[2]
-                );
-            }
-        }
-        Cmd::Flows { limit } => {
-            let st = Store::open(&repo)?;
-            let f = graph::flows(&st, limit)?;
-            if json {
-                out(&f);
-                return Ok(());
-            }
-            header("execution flows");
-            for fl in f {
-                println!("  {} {}  {} {}", accent("▶"), bold(&fl.entry.name), dim(&fl.entry.path), dim(&format!("reaches {}", fl.reach)));
-                let names: Vec<String> = fl.steps.iter().filter(|s| s.depth == 1).take(6).map(|s| s.node.name.clone()).collect();
-                if !names.is_empty() {
-                    println!("      {}", dim(&format!("→ {}", names.join(", "))));
-                }
-            }
-        }
         Cmd::Clusters => {
             let st = Store::open(&repo)?;
             let c = st.communities()?;
@@ -518,37 +325,11 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Memory(mc) => memory_cmd(&repo, mc, json)?,
         Cmd::Kg(kc) => kg_cmd(&repo, kc, json)?,
-        Cmd::Sync { remote, overwrite } => {
-            print!("{}", meta::sync(&repo, &remote, false)?);
-            match setup::pull(&repo, &remote, overwrite)? {
-                None => println!("remote has no shared agent setup"),
-                Some(r) => {
-                    for f in &r.written {
-                        println!("  {} {f}", green("+"));
-                    }
-                    for f in &r.kept {
-                        println!("  {} {f}  {}", yellow("="), dim("changed here, kept yours (--overwrite takes theirs)"));
-                    }
-                    let skills = skills::sync(&repo.root)?;
-                    let docs = agents::sync(&repo, &[])?;
-                    println!(
-                        "agent setup: {} files restored, {} kept, {} agent copies regenerated",
-                        r.written.len(),
-                        r.kept.len(),
-                        skills.len() + docs.len()
-                    );
-                }
-            }
-        }
-        Cmd::Share { remote } => {
-            let shared = setup::snapshot(&repo)?;
-            print!("{}", meta::sync(&repo, &remote, true)?);
-            setup::push(&repo, &remote)?;
-            println!("shared the agent setup ({} files) on {}", shared.len(), setup::REF);
-            println!("{}", dim("anyone who clones gets it with `kula sync` (a fork: `kula sync upstream`)"));
-        }
+        Cmd::Sync { remote, overwrite } => cmd::project_cmds::sync(&repo, remote, overwrite)?,
+        Cmd::Share { remote } => cmd::project_cmds::share(&repo, remote)?,
         Cmd::Mcp => mcp::run(repo)?,
         Cmd::Doctor | Cmd::Lang(_) | Cmd::Init { .. } | Cmd::Git { .. } | Cmd::External(_) => unreachable!(),
+        _ => unreachable!(),
     }
     Ok(())
 }
