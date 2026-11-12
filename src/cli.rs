@@ -42,6 +42,9 @@ Work with AI agents
   team         agent teams: each agent in its own workflow
   research     autoresearch: an agent improves a metric, kula measures and keeps score
   run          run any agent harness held to kula's fences: kula run -w fix -- aider
+  plan         split a goal into module slices: kula plan "retry uploads"
+  run-plan     run each slice in its own worktree, gated, a few at once
+  gate         judge a slice: pass, fix or reject
   task         the task an agent is on, its workflow, and the code it may change
   guard        fences agents may not cross: list, check, the pre-tool and pre-commit hooks
   memory       facts about the code that agents keep, marked stale when it changes
