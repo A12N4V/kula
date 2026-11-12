@@ -4,6 +4,7 @@
 
 pub mod blast;
 pub mod gate;
+pub mod learn;
 pub mod plan;
 pub mod retry;
 pub mod run;

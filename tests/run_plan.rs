@@ -316,3 +316,62 @@ fn a_redone_conflict_slice_runs_on_the_integration_branch_and_merges() {
     let f = git(d, &["show", "kula/t/integration:a/fake_1.txt"]);
     assert!(f.contains("b-merge"), "{f}");
 }
+
+/// The repo plus a/lib.py with one function, indexed.
+fn code_repo() -> TempDir {
+    let t = repo();
+    let d = t.path();
+    std::fs::write(d.join("a/lib.py"), "def greet():\n    return 'hi'\n").unwrap();
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "lib"]);
+    t
+}
+
+fn kula(d: &Path, args: &[&str]) -> String {
+    let o = Command::new(KULA).arg("-C").arg(d).args(args).env("KULA_NO_AGENT", "1").output().unwrap();
+    assert!(o.status.success(), "kula {:?}: {}", args, text(&o));
+    String::from_utf8_lossy(&o.stdout).into_owned()
+}
+
+#[test]
+fn slice_facts_become_symbol_memories_that_go_stale_after_edits() {
+    let t = code_repo();
+    let d = t.path();
+    write_plan(d, &["a"], "fake-agent", "true", 1);
+    let (o, p) = run(d, &[("FAKE_LEARN", "greet: returns a greeting, never None")]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert_eq!(p["slices"][0]["learned"][0]["target"], "greet", "{p}");
+    let (o, v) = train(d);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert_eq!(v["memories"].as_array().map(|a| a.len()), Some(1), "{v}");
+    let p: Value = serde_json::from_str(&std::fs::read_to_string(d.join(".kula/plan.json")).unwrap()).unwrap();
+    assert!(p["slices"][0].get("learned").is_none(), "facts are cleared once kept: {p}");
+
+    git(d, &["merge", "-q", "--no-ff", "-m", "integrate", "kula/t/integration"]);
+    kula(d, &["index", "-q"]);
+    let r: Value = serde_json::from_str(&kula(d, &["--json", "memory", "recall", "greet"])).unwrap();
+    assert_eq!(r[0]["target"], "symbol:a/lib.py:greet", "{r}");
+    assert_eq!(r[0]["stale"], false, "{r}");
+    assert!(r[0]["author"].as_str().unwrap_or("").contains("kula/t/a"), "{r}");
+
+    std::fs::write(d.join("a/lib.py"), "def greet():\n    return None\n").unwrap();
+    git(d, &["commit", "-qam", "break greet"]);
+    kula(d, &["index", "-q"]);
+    let r: Value = serde_json::from_str(&kula(d, &["--json", "memory", "recall", "greet"])).unwrap();
+    assert_eq!(r[0]["stale"], true, "{r}");
+}
+
+#[test]
+fn fence_suggestions_from_a_slice_wait_for_review_in_the_checkout() {
+    let t = code_repo();
+    let d = t.path();
+    write_plan(d, &["a"], "fake-agent", "true", 1);
+    let (o, p) = run(d, &[("FAKE_SUGGEST", "1")]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert!(p["slices"][0]["reasons"].to_string().contains("kula agents suggestions"), "{p}");
+    let s: Value = serde_json::from_str(&std::fs::read_to_string(d.join(".kula/suggestions.json")).unwrap()).unwrap();
+    assert_eq!(s[0]["guard"]["paths"], json!(["a/lib.py"]), "{s}");
+    assert!(s[0]["by"].as_str().unwrap().contains("(slice a)"), "{s}");
+    let files = git(d, &["show", "--name-only", "--format=", "kula/t/a"]);
+    assert!(!files.contains(".kula"), "{files}");
+}

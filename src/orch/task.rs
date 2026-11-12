@@ -55,6 +55,16 @@ pub struct Slice {
     /// Files outside the scope expected to feel the change (its blast radius).
     #[serde(default)]
     pub blast: Vec<String>,
+    /// Facts the agent learned, waiting to become memories once the slice is merged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub learned: Vec<Learned>,
+}
+
+/// A fact about the code a slice's agent wants kept: `<symbol or file>: <fact>`.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct Learned {
+    pub target: String,
+    pub text: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

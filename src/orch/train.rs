@@ -23,6 +23,8 @@ pub struct Train {
     pub verdict: String,
     pub reasons: Vec<String>,
     pub notes: Vec<String>,
+    /// Memories made from what the merged slices learned, once the gate passed.
+    pub memories: Vec<u64>,
 }
 
 impl Train {
@@ -99,6 +101,18 @@ pub fn train(repo: &Repo, plan: &mut Plan) -> Result<Train> {
     t.verdict = v.verdict.as_str().to_string();
     t.reasons = v.reasons;
     t.notes = v.notes;
+
+    if t.verdict == Outcome::Pass.as_str() {
+        let pid = plan.id.clone();
+        for s in plan.slices.iter_mut().filter(|s| t.merged.contains(&s.id)) {
+            let (ids, why) = super::learn::adopt(&w, &s.learned, &format!("kula/{pid}/{}", s.id));
+            if why.is_empty() {
+                s.learned.clear();
+            }
+            t.memories.extend(ids);
+            t.notes.extend(why);
+        }
+    }
 
     plan.slices.extend(redo);
     repo.run(&["worktree", "remove", "--force", &wt.to_string_lossy()])?;

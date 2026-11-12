@@ -108,6 +108,8 @@ fn launch(
         .env("KULA_SCOPE", scope)
         .env("KULA_RUN_STATE", state)
         .env("KULA_PROMPT_FILE", &pf)
+        .env("KULA_LEARNED", log_dir.join("learned.txt"))
+        .env("KULA_EXE", exe)
         .output();
     match out {
         Ok(o) => (o.status.code().unwrap_or(1), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))),
@@ -254,18 +256,24 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                             })
                         },
                     );
+                    // What it learned and the fences it suggested outlive its worktree.
+                    let (learned, sugg) = super::learn::harvest(repo, &wt, &log_dir, &id);
                     let kept = match &r {
                         Ok(o) if o.state == SliceState::Passed => keep(repo, &wt, &snap, &id).err(),
                         _ => None,
                     };
                     sh.update(|p| {
                         let s = p.slice_mut(&id).unwrap();
+                        s.learned = learned;
                         match (r, kept) {
                             (Ok(o), None) => {
                                 s.state = o.state;
                                 s.attempts = o.attempts;
                                 s.escalate = o.escalate;
                                 s.reasons = o.reasons;
+                                if sugg > 0 {
+                                    s.reasons.push(format!("{sugg} fence suggestion(s) wait for review: kula agents suggestions"));
+                                }
                             }
                             (Ok(_), Some(e)) | (Err(e), _) => {
                                 s.state = SliceState::Failed;

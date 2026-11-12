@@ -26,6 +26,7 @@ pub fn prompt(plan: &Plan, s: &Slice, attempt: u32, reasons: &[String]) -> Strin
         p.push_str(&format!("Tests for it, which you may also change: {}.\n", s.tests.join(", ")));
     }
     p.push_str("Do not commit; kula gates and commits the slice.\n");
+    p.push_str("Facts worth keeping about this code go one per line in the file $KULA_LEARNED, as `<symbol or file>: <fact>`. A fence worth adding goes to kula's `suggest` tool.\n");
     if attempt > 1 && !reasons.is_empty() {
         p.push_str(&format!("\nAttempt {attempt}. The gate sent the last attempt back:\n"));
         for r in reasons {

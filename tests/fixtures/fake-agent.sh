@@ -6,6 +6,8 @@
 #   FAKE_SEEN=dir      copy the run state there as seen-<slice>-<attempt>.json
 #   FAKE_INTRUDER=id FAKE_INTO=dir  slice <id> writes into <dir> instead of its own scope
 #   FAKE_PROBE=dir     copy the worktree's .claude/settings.json there as hooks-<slice>.json
+#   FAKE_LEARN=line    append "<target>: <fact>" to $KULA_LEARNED
+#   FAKE_SUGGEST=1     queue a guard suggestion in the worktree's .kula/suggestions.json
 echo "fake-agent slice=$KULA_SLICE attempt=$KULA_ATTEMPT"
 if [ -n "$FAKE_SEEN" ] && [ -n "$KULA_RUN_STATE" ]; then
   mkdir -p "$FAKE_SEEN"
@@ -16,6 +18,13 @@ if [ -n "$FAKE_PROBE" ] && [ -f .claude/settings.json ]; then
   cp .claude/settings.json "$FAKE_PROBE/hooks-$KULA_SLICE.json"
 fi
 sleep "${FAKE_SLEEP:-0}"
+if [ -n "$FAKE_LEARN" ] && [ -n "$KULA_LEARNED" ]; then
+  echo "$FAKE_LEARN" >> "$KULA_LEARNED"
+fi
+if [ -n "$FAKE_SUGGEST" ]; then
+  mkdir -p .kula
+  printf '[{"id":1,"kind":"guard","guard":{"paths":["a/lib.py"],"level":"review"},"why":"fragile","by":"fake","created":0}]' > .kula/suggestions.json
+fi
 if [ -n "$FAKE_INTRUDER" ] && [ "$KULA_SLICE" = "$FAKE_INTRUDER" ]; then
   mkdir -p "$FAKE_INTO"
   echo "from $KULA_SLICE" > "$FAKE_INTO/intruder.txt"
