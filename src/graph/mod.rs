@@ -278,6 +278,12 @@ pub fn export(store: &Store, level: &str, limit: usize) -> Result<GraphExport> {
 
 /// Pick the single best node for a reference, preferring definitions.
 pub fn resolve_one(store: &Store, r: &str) -> Result<Node> {
+    // `table:users` names a table node from an ORM model or migration.
+    if let Some(t) = r.strip_prefix("table:") {
+        if let Some(n) = store.nodes_where("kind = 'table' AND name = ?1", [t])?.into_iter().next() {
+            return Ok(n);
+        }
+    }
     let hits = store.resolve(r)?;
     if let Some(h) = hits.first() {
         return Ok(h.clone());

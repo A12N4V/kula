@@ -188,3 +188,23 @@ fn kg_export_counts_routes_and_parses() {
     assert!(lines > 10, "nt export too small: {lines}");
     assert!(ttl.lines().all(|l| l.trim().is_empty() || l.trim_end().ends_with('.')), "malformed n-triples");
 }
+
+#[test]
+fn tables_link_models_to_handlers_for_impact() {
+    let t = tempfile::tempdir().unwrap();
+    let d = t.path();
+    git(d, &["init", "-q", "-b", "main"]);
+    write(d, "models.py", "from sqlalchemy.orm import declarative_base\nBase = declarative_base()\n\nclass User(Base):\n    __tablename__ = \"users\"\n    id = 1\n");
+    write(d, "handlers.py", "from models import User\n\ndef list_users(session):\n    return session.query(User).all()\n\ndef route():\n    return list_users(None)\n");
+    write(d, "migrations/001.sql", "CREATE TABLE IF NOT EXISTS public.\"orders\" (id int);\n");
+    write(d, "report.py", "def totals(db):\n    return db.execute(\"select * from orders\")\n");
+    kula(d, &["index"]);
+    let users = kula_json(d, &["query", "table:users"]).to_string();
+    assert!(users.contains("models.py") && users.contains("list_users"), "table users: {users}");
+    let orders = kula_json(d, &["query", "table:orders"]).to_string();
+    assert!(orders.contains("001.sql") && orders.contains("totals"), "table orders: {orders}");
+    let imp = kula_json(d, &["impact", "table:users", "--depth", "3"]).to_string();
+    assert!(imp.contains("list_users") && imp.contains("route"), "table impact: {imp}");
+    let q = kula_json(d, &["kg", "sparql", "SELECT ?t WHERE { ?t a kula:Table }"]).to_string();
+    assert!(q.contains("users") && q.contains("orders"), "kg tables: {q}");
+}

@@ -17,67 +17,21 @@ use crate::git::Repo;
 use crate::guard::{Guards, Level};
 use crate::meta;
 use crate::store::{Node, Store};
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use oxigraph::io::{RdfFormat, RdfSerializer};
 use oxigraph::model::vocab::{rdf, rdfs, xsd};
 use oxigraph::model::{GraphNameRef, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
-use oxigraph::sparql::{QueryResults, SparqlEvaluator};
 use oxigraph::store::Store as Rdf;
-use serde_json::{json, Value};
 use std::collections::HashMap;
+
+mod query;
+mod vocab;
 
 pub const NS: &str = "https://kula.dev/ns#";
 pub const CODE: &str = "urn:kula:";
 
-/// Version of the published vocabulary: 1 = the original set, 2 adds
-/// Dependency, Env, usedBy and readsEnv (runtime layers), 3 adds Route and
-/// handles (HTTP endpoints).
-pub const VOCAB_VERSION: i64 = 3;
-
-/// Every class and property, with its meaning: loaded into the graph itself so
-/// a query can discover the schema (`SELECT ?p ?c { ?p rdfs:comment ?c }`).
-pub const SCHEMA: &[(&str, &str, &str)] = &[
-    ("Repository", "class", "The repository; code:repo."),
-    ("File", "class", "A source file, by repository-relative path."),
-    ("Symbol", "class", "Anything defined in code; every Function, Method, Class and Interface is one."),
-    ("Function", "class", "A free function."),
-    ("Method", "class", "A function that belongs to a class, type or impl."),
-    ("Class", "class", "A class, struct, enum, record, type or module."),
-    ("Interface", "class", "An interface, trait or protocol."),
-    ("Package", "class", "An external package the code imports."),
-    ("Dependency", "class", "An external package declared in a manifest."),
-    ("Env", "class", "An environment variable the code reads or a key in .env.example."),
-    ("Route", "class", "An HTTP endpoint declared in the code: Express, Fastify, Next.js, FastAPI, Flask, axum or Go net/http."),
-    ("Cluster", "class", "A functional cluster: symbols that call each other more than they call the rest."),
-    ("Note", "class", "A person's note on the repo, a file or a symbol."),
-    ("Memory", "class", "An agent's memory, anchored to the code it was written about."),
-    ("Issue", "class", "A local issue, stored in git."),
-    ("Guard", "class", "A rule from kula.toml that fences code off from agents."),
-    ("name", "property", "The symbol, file or package name."),
-    ("path", "property", "Repository-relative path of the file that defines it."),
-    ("language", "property", "rust, python, javascript, typescript, tsx, go, java, c, cpp, csharp, ruby or php."),
-    ("startLine", "property", "First line of the definition (1-based)."),
-    ("endLine", "property", "Last line of the definition."),
-    ("definedIn", "property", "Symbol → the File that defines it."),
-    ("memberOf", "property", "Method or nested symbol → its enclosing Class."),
-    ("calls", "property", "Symbol → Symbol it calls."),
-    ("imports", "property", "File → File or Package it imports."),
-    ("usedBy", "property", "Dependency → the File that imports it."),
-    ("readsEnv", "property", "Symbol or File → the Env variable it reads."),
-    ("handles", "property", "Route → the Symbol that serves it."),
-    ("vocabVersion", "property", "The vocabulary version of this export."),
-    ("inCluster", "property", "Symbol or File → its Cluster."),
-    ("label", "property", "A cluster's label."),
-    ("about", "property", "Note, Memory or Issue → the Repository, File or Symbol it is about."),
-    ("body", "property", "Text of a note, memory or issue."),
-    ("author", "property", "Who wrote it: a git user, or agent:<name>."),
-    ("created", "property", "When, as xsd:dateTime."),
-    ("stale", "property", "Memory: true when the code it was written about has changed since."),
-    ("status", "property", "Issue: open or closed."),
-    ("guardLevel", "property", "File or Symbol → open, review, scope, locked or hidden, for agents."),
-    ("reason", "property", "Why a guard applies."),
-    ("fences", "property", "Guard → each File it covers."),
-];
+pub use query::sparql;
+pub use vocab::{EXAMPLES, SCHEMA, VOCAB_VERSION};
 
 /// Prefixes every query may use without declaring them.
 pub const PREFIXES: &[(&str, &str)] = &[
@@ -123,6 +77,7 @@ fn class_of(kind: &str) -> &'static str {
         "dependency" => "Dependency",
         "route" => "Route",
         "env" => "Env",
+        "table" => "Table",
         _ => "Symbol",
     }
 }
@@ -167,6 +122,7 @@ fn symbol_iris(nodes: &[Node]) -> HashMap<i64, NamedNode> {
             // dep:npm:express → code:dep:npm/express · env:PORT → code:env:PORT
             "dependency" => format!("{CODE}dep:{}", enc(&n.path[4..].replace(':', "/"))),
             "env" => format!("{CODE}env:{}", enc(&n.name)),
+            "table" => format!("{CODE}table:{}", enc(&n.name)),
             // "GET /api/users" → code:route:GET%20/api/users
             "route" => format!("{CODE}route:{}", enc(&n.name)),
             _ => {
@@ -230,7 +186,7 @@ pub fn build(repo: &Repo, store: &Store) -> Result<Rdf> {
         }
         b.add(s, k("name"), Literal::new_simple_literal(&n.name));
         b.add(s, rdfs::LABEL.into_owned(), Literal::new_simple_literal(&n.name));
-        if matches!(n.kind.as_str(), "package" | "dependency" | "env") {
+        if matches!(n.kind.as_str(), "package" | "dependency" | "env" | "table") {
             continue;
         }
         b.add(s, k("path"), Literal::new_simple_literal(&n.path));
@@ -264,6 +220,9 @@ pub fn build(repo: &Repo, store: &Store) -> Result<Rdf> {
             "USED_BY" => b.add(s, k("usedBy"), o.clone()),
             "READS_ENV" => b.add(s, k("readsEnv"), o.clone()),
             "HANDLES" => b.add(s, k("handles"), o.clone()),
+            "MAPS_TABLE" => b.add(s, k("mapsTable"), o.clone()),
+            "MIGRATES_TABLE" => b.add(s, k("migratesTable"), o.clone()),
+            "USES_TABLE" => b.add(s, k("usesTable"), o.clone()),
             _ => {}
         }
     }
@@ -377,97 +336,6 @@ pub fn export(repo: &Repo, store: &Store, format: &str) -> Result<Vec<u8>> {
     }
     Ok(g.dump_graph_to_writer(GraphNameRef::DefaultGraph, ser, Vec::new())?)
 }
-
-/// A term as people read it: prefixed IRIs, plain literal values.
-fn show(t: &Term) -> Value {
-    match t {
-        Term::NamedNode(n) => {
-            let s = n.as_str();
-            for (p, iri) in PREFIXES {
-                if let Some(rest) = s.strip_prefix(iri) {
-                    return json!(format!("{p}:{rest}"));
-                }
-            }
-            json!(s)
-        }
-        Term::Literal(l) => {
-            let v = l.value();
-            match l.datatype() {
-                d if d == xsd::INTEGER => v.parse::<i64>().map(|i| json!(i)).unwrap_or(json!(v)),
-                d if d == xsd::BOOLEAN => json!(v == "true"),
-                d if d == xsd::DECIMAL || d == xsd::DOUBLE => v.parse::<f64>().map(|f| json!(f)).unwrap_or(json!(v)),
-                _ => json!(v),
-            }
-        }
-        other => json!(other.to_string()),
-    }
-}
-
-/// Run a read-only SPARQL query. SELECT gives {vars, rows}; ASK {boolean};
-/// CONSTRUCT and DESCRIBE {triples}. At most `limit` rows.
-pub fn sparql(repo: &Repo, store: &Store, query: &str, limit: usize) -> Result<Value> {
-    let g = build(repo, store)?;
-    sparql_on(&g, query, limit)
-}
-
-pub fn sparql_on(g: &Rdf, query: &str, limit: usize) -> Result<Value> {
-    // Built without an HTTP client, so SERVICE can never reach the network.
-    let mut ev = SparqlEvaluator::new();
-    for (p, iri) in PREFIXES {
-        ev = ev.with_prefix(*p, *iri).map_err(|e| anyhow!("{e}"))?;
-    }
-    let prepared = ev.parse_query(query).map_err(|e| anyhow!("SPARQL: {e}"))?;
-    match prepared.on_store(g).execute().map_err(|e| anyhow!("SPARQL: {e}"))? {
-        QueryResults::Solutions(sol) => {
-            let vars: Vec<String> = sol.variables().iter().map(|v| v.as_str().to_string()).collect();
-            let mut rows = vec![];
-            let mut more = false;
-            for s in sol {
-                if rows.len() >= limit {
-                    more = true;
-                    break;
-                }
-                let s = s.map_err(|e| anyhow!("SPARQL: {e}"))?;
-                rows.push(Value::Object(vars.iter().filter_map(|v| s.get(v.as_str()).map(|t| (v.clone(), show(t)))).collect()));
-            }
-            Ok(json!({ "vars": vars, "rows": rows, "truncated": more }))
-        }
-        QueryResults::Boolean(b) => Ok(json!({ "boolean": b })),
-        QueryResults::Graph(triples) => {
-            let mut out = vec![];
-            for t in triples.take(limit) {
-                let t = t.map_err(|e| anyhow!("SPARQL: {e}"))?;
-                out.push(json!([show(&Term::from(t.subject)), show(&Term::NamedNode(t.predicate)), show(&t.object)]));
-            }
-            Ok(json!({ "triples": out }))
-        }
-    }
-}
-
-/// Queries worth knowing, for `kula kg examples`, the UI and the MCP tool description.
-pub const EXAMPLES: &[(&str, &str)] = &[
-    (
-        "Most-called symbols",
-        "SELECT ?name ?path (COUNT(?caller) AS ?callers) WHERE {\n  ?s a kula:Symbol ; kula:name ?name ; kula:path ?path .\n  ?caller kula:calls ?s .\n} GROUP BY ?name ?path ORDER BY DESC(?callers) LIMIT 15",
-    ),
-    (
-        "Functions no test reaches (by name)",
-        "SELECT ?name ?path WHERE {\n  ?f a kula:Function ; kula:name ?name ; kula:path ?path .\n  FILTER NOT EXISTS { ?t kula:calls ?f ; kula:path ?tp . FILTER(CONTAINS(?tp, \"test\")) }\n  FILTER(!CONTAINS(?path, \"test\"))\n} ORDER BY ?path LIMIT 50",
-    ),
-    (
-        "Files importing each other",
-        "SELECT ?a ?b WHERE {\n  ?a kula:imports ?b . ?b kula:imports ?a .\n  FILTER(STR(?a) < STR(?b))\n}",
-    ),
-    (
-        "Stale agent memories",
-        "SELECT ?about ?body ?author WHERE {\n  ?m a kula:Memory ; kula:stale true ; kula:body ?body ; kula:author ?author ; kula:about ?about .\n}",
-    ),
-    (
-        "Guarded code",
-        "SELECT ?path ?level ?reason WHERE {\n  ?f a kula:File ; kula:path ?path ; kula:guardLevel ?level ; kula:reason ?reason .\n} ORDER BY ?level ?path",
-    ),
-    ("The vocabulary", "SELECT ?term ?meaning WHERE { ?term rdfs:comment ?meaning } ORDER BY ?term"),
-];
 
 #[cfg(test)]
 mod tests {

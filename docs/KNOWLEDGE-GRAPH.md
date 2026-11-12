@@ -49,6 +49,7 @@ classDiagram
     class Dependency { name }
     class Env { name }
     class Route { name path startLine }
+    class Table { name }
     class Cluster { label }
     class Note { body author created }
     class Memory { body author created stale }
@@ -68,6 +69,8 @@ classDiagram
     File --> Env : readsEnv
     Route --> Symbol : handles
     Route --> File : definedIn
+    Symbol --> Table : mapsTable · usesTable
+    File --> Table : migratesTable
     Symbol --> Cluster : inCluster
     Note --> Symbol : about
     Memory --> Symbol : about
@@ -85,6 +88,7 @@ classDiagram
 | `kula:Dependency` | an external package declared in a manifest (Cargo.toml, package.json, pyproject.toml, requirements.txt, go.mod) |
 | `kula:Env` | an environment variable the code reads, or a key in `.env.example` |
 | `kula:Route` | an HTTP endpoint declared in code: Express/Fastify, Next.js pages/api and app router, FastAPI, Flask, Axum, Go net/http. Path parameters normalise to `:param` |
+| `kula:Table` | a database table: a SQLAlchemy `__tablename__`, a Django model (`db_table` or `<app>_<model>`), a Prisma model (`@@map` wins), a Drizzle `pgTable`/`mysqlTable`/`sqliteTable`, or a SQL `CREATE`/`ALTER TABLE`. `kula query table:NAME` lists its users; `kula impact table:NAME` walks from them to their callers |
 | `kula:Cluster` | a functional cluster: symbols that call each other more than they call the rest |
 | `kula:Note` · `kula:Memory` | a person's note; an agent's memory, anchored to the code it was written about |
 | `kula:Issue` | a local issue, stored in git |
@@ -101,7 +105,10 @@ classDiagram
 | `kula:usedBy` | Dependency → the File that imports it; a dependency with no `usedBy` edge is unused |
 | `kula:readsEnv` | Symbol or File → the Env it reads (a `.env.example` File declares its keys) |
 | `kula:handles` | Route → the Symbol that serves it (resolved in the same file, inferred when one function anywhere has the name) |
-| `kula:vocabVersion` | the vocabulary version of this export (3 since routes were added) |
+| `kula:mapsTable` | model Symbol → the Table it maps |
+| `kula:migratesTable` | SQL migration File → the Table it creates or alters |
+| `kula:usesTable` | Symbol or File → a Table it reads or writes, through its model name or raw SQL (`from`, `join`, `into`, `update`) |
+| `kula:vocabVersion` | the vocabulary version of this export (4 since tables were added) |
 | `kula:inCluster` · `kula:label` | Symbol or File → its Cluster; a cluster's label |
 | `kula:about` | Note, Memory or Issue → the Repository, File or Symbol it is about |
 | `kula:body` · `kula:author` · `kula:created` | text, a git user or `agent:<name>`, an `xsd:dateTime` |

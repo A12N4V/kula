@@ -6,6 +6,7 @@ pub mod deps;
 pub mod env;
 pub mod route_scan;
 pub mod routes;
+pub mod tables;
 
 use crate::index::Reader;
 use crate::store::{Edge, Node};
@@ -27,4 +28,5 @@ pub(crate) fn apply(
     deps::apply(parsed, files, read, nodes, edges, file_id, hashes);
     env::apply(parsed, sym_ids, files, read, nodes, edges, file_id, hashes);
     routes::apply(parsed, sym_ids, files, read, nodes, edges, file_id, hashes);
+    tables::apply(parsed, sym_ids, files, read, nodes, edges, file_id, hashes);
 }

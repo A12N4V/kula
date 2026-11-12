@@ -243,6 +243,13 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
                 }
                 return Ok(());
             }
+            // `kula query table:NAME`: who maps, migrates and uses one table.
+            if let Some(name) = text.join(" ").strip_prefix("table:") {
+                let st = Store::open(&repo)?;
+                let users = layers::tables::users(&st, name)?;
+                layers::tables::print(&users, name, json);
+                return Ok(());
+            }
             // `kula query env:NAME`: who reads one env var (file, symbol, line).
             if let Some(name) = text.join(" ").strip_prefix("env:") {
                 let st = Store::open(&repo)?;
