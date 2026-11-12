@@ -180,3 +180,22 @@ fn status_shows_slices_and_starts_nothing() {
     let v: Value = serde_json::from_str(&st(&["--json"])).unwrap();
     assert_eq!(v["slices"][1]["state"], "passed");
 }
+
+#[test]
+fn run_is_kept_in_meta_and_restores_a_missing_plan() {
+    let t = repo();
+    let d = t.path();
+    write_plan(d, &["a"], "fake-agent", "true", 1);
+    let (o, _) = run(d, &[("FAKE_MODE", "clean")]);
+    assert!(o.status.success(), "{}", text(&o));
+    let log = git(d, &["log", "--format=%s", "refs/kula/meta"]);
+    assert!(log.contains("kula: run t: 1/1 passed"), "{log}");
+    let kept: Value = serde_json::from_str(&git(d, &["show", "refs/kula/meta:kula.json"])).unwrap();
+    assert_eq!(kept["plans"][0]["slices"][0]["state"], "passed");
+
+    // A cleaned .kula: status comes back from the meta ref.
+    std::fs::remove_dir_all(d.join(".kula")).unwrap();
+    let o = Command::new(KULA).arg("-C").arg(d).args(["run-plan", "--status"]).output().unwrap();
+    assert!(text(&o).contains("1 passed"), "{}", text(&o));
+    assert!(d.join(".kula/plan.json").exists());
+}

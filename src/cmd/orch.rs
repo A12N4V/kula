@@ -10,6 +10,9 @@ pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
             let p = plan::plan(repo, &st, plan::Opts { goal, agent, test_cmd, max_parallel, max_retries, mem_check })?;
             let path = out.unwrap_or_else(|| task::default_path(repo));
             p.save(&path)?;
+            if let Err(e) = task::record(repo, &p, &format!("plan {}", p.id)) {
+                eprintln!("{}", dim(&format!("plan not kept in refs/kula/meta: {e:#}")));
+            }
             if json {
                 println!("{}", serde_json::to_string_pretty(&p)?);
                 return Ok(());
@@ -25,7 +28,7 @@ pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
             println!("  {}", dim("run it: kula run-plan"));
         }
         Cmd::Gate { slice, plan, dir } => {
-            let path = plan.unwrap_or_else(|| task::default_path(repo));
+            let path = task::resolve(repo, plan)?;
             let p = task::Plan::load(&path)?;
             let Some(s) = p.slice(&slice) else { bail!("no slice called {slice} in {}", path.display()) };
             let dir = dir.unwrap_or_else(|| {
@@ -51,7 +54,7 @@ pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
             std::process::exit(v.verdict.code());
         }
         Cmd::RunPlan { plan, status } => {
-            let path = plan.unwrap_or_else(|| task::default_path(repo));
+            let path = task::resolve(repo, plan)?;
             let p = if status {
                 let saved = task::Plan::load(&path)?;
                 let live = saved.run_dir(repo).join("state.json");
@@ -61,7 +64,12 @@ pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
                     saved
                 }
             } else {
-                run::run_plan(repo, &path)?
+                let p = run::run_plan(repo, &path)?;
+                let passed = p.slices.iter().filter(|s| s.state == task::SliceState::Passed).count();
+                if let Err(e) = task::record(repo, &p, &format!("run {}: {passed}/{} passed", p.id, p.slices.len())) {
+                    eprintln!("{}", dim(&format!("run not kept in refs/kula/meta: {e:#}")));
+                }
+                p
             };
             if json {
                 println!("{}", serde_json::to_string_pretty(&p)?);

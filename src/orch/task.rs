@@ -147,6 +147,39 @@ pub fn in_scope(path: &str, scope: &[String]) -> bool {
     })
 }
 
+/// Records a plan in `refs/kula/meta`, replacing an earlier version with the same id.
+pub fn record(repo: &Repo, plan: &Plan, message: &str) -> Result<()> {
+    let mut m = crate::meta::load(repo)?;
+    m.plans.retain(|v| v["id"] != plan.id.as_str());
+    m.plans.push(serde_json::to_value(plan)?);
+    crate::meta::save(repo, &m, message)
+}
+
+/// The newest plan in `refs/kula/meta`, or the one called `id`.
+pub fn recorded(repo: &Repo, id: Option<&str>) -> Result<Option<Plan>> {
+    let m = crate::meta::load(repo)?;
+    let v = m.plans.iter().rev().find(|v| id.map_or(true, |id| v["id"] == id));
+    Ok(match v {
+        Some(v) => Some(serde_json::from_value(v.clone())?),
+        None => None,
+    })
+}
+
+/// The plan file to use: `given`, else `.kula/plan.json`, restored from
+/// `refs/kula/meta` when it is missing (a fresh clone, a cleaned `.kula`).
+pub fn resolve(repo: &Repo, given: Option<PathBuf>) -> Result<PathBuf> {
+    if let Some(p) = given {
+        return Ok(p);
+    }
+    let path = default_path(repo);
+    if !path.exists() {
+        if let Some(p) = recorded(repo, None)? {
+            p.save(&path)?;
+        }
+    }
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

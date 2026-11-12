@@ -21,6 +21,9 @@ pub struct Meta {
     pub proposals: Vec<Proposal>,
     #[serde(default)]
     pub notes: Vec<Note>,
+    /// Orchestration plans by id, newest last, as `kula plan` and `kula run-plan` left them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plans: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
