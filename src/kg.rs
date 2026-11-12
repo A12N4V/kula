@@ -30,8 +30,9 @@ pub const NS: &str = "https://kula.dev/ns#";
 pub const CODE: &str = "urn:kula:";
 
 /// Version of the published vocabulary: 1 = the original set, 2 adds
-/// Dependency, Env, usedBy and readsEnv (runtime layers).
-pub const VOCAB_VERSION: i64 = 2;
+/// Dependency, Env, usedBy and readsEnv (runtime layers), 3 adds Route and
+/// handles (HTTP endpoints).
+pub const VOCAB_VERSION: i64 = 3;
 
 /// Every class and property, with its meaning: loaded into the graph itself so
 /// a query can discover the schema (`SELECT ?p ?c { ?p rdfs:comment ?c }`).
@@ -46,6 +47,7 @@ pub const SCHEMA: &[(&str, &str, &str)] = &[
     ("Package", "class", "An external package the code imports."),
     ("Dependency", "class", "An external package declared in a manifest."),
     ("Env", "class", "An environment variable the code reads or a key in .env.example."),
+    ("Route", "class", "An HTTP endpoint declared in the code: Express, Fastify, Next.js, FastAPI, Flask, axum or Go net/http."),
     ("Cluster", "class", "A functional cluster: symbols that call each other more than they call the rest."),
     ("Note", "class", "A person's note on the repo, a file or a symbol."),
     ("Memory", "class", "An agent's memory, anchored to the code it was written about."),
@@ -62,6 +64,7 @@ pub const SCHEMA: &[(&str, &str, &str)] = &[
     ("imports", "property", "File → File or Package it imports."),
     ("usedBy", "property", "Dependency → the File that imports it."),
     ("readsEnv", "property", "Symbol or File → the Env variable it reads."),
+    ("handles", "property", "Route → the Symbol that serves it."),
     ("vocabVersion", "property", "The vocabulary version of this export."),
     ("inCluster", "property", "Symbol or File → its Cluster."),
     ("label", "property", "A cluster's label."),
@@ -118,6 +121,7 @@ fn class_of(kind: &str) -> &'static str {
         "file" => "File",
         "package" => "Package",
         "dependency" => "Dependency",
+        "route" => "Route",
         "env" => "Env",
         _ => "Symbol",
     }
@@ -163,6 +167,8 @@ fn symbol_iris(nodes: &[Node]) -> HashMap<i64, NamedNode> {
             // dep:npm:express → code:dep:npm/express · env:PORT → code:env:PORT
             "dependency" => format!("{CODE}dep:{}", enc(&n.path[4..].replace(':', "/"))),
             "env" => format!("{CODE}env:{}", enc(&n.name)),
+            // "GET /api/users" → code:route:GET%20/api/users
+            "route" => format!("{CODE}route:{}", enc(&n.name)),
             _ => {
                 let owner =
                     n.parent.and_then(|p| by_id.get(&p)).filter(|p| p.kind != "file").map(|p| format!("{}.", p.name)).unwrap_or_default();
@@ -257,6 +263,7 @@ pub fn build(repo: &Repo, store: &Store) -> Result<Rdf> {
             "IMPORTS" => b.add(s, k("imports"), o.clone()),
             "USED_BY" => b.add(s, k("usedBy"), o.clone()),
             "READS_ENV" => b.add(s, k("readsEnv"), o.clone()),
+            "HANDLES" => b.add(s, k("handles"), o.clone()),
             _ => {}
         }
     }

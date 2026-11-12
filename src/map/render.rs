@@ -36,10 +36,7 @@ pub fn markdown(tree: &ModuleTree, level: &str) -> String {
     let mut s = String::new();
     s.push_str(&format!("# {}\n\n", tree.name));
     for p in &tree.packages {
-        s.push_str(&format!(
-            "- {} (package, loc {}, fan_in {}, fan_out {}, churn {})\n",
-            p.path, p.loc, p.fan_in, p.fan_out, p.churn_30d
-        ));
+        s.push_str(&format!("- {} (package, loc {}, fan_in {}, fan_out {}, churn {})\n", p.path, p.loc, p.fan_in, p.fan_out, p.churn_30d));
         if level == "repo" {
             continue;
         }
@@ -90,15 +87,9 @@ pub fn mermaid(db: &Store, tree: &ModuleTree, level: &str) -> String {
         if level == "repo" {
             continue;
         }
-        let mut mi = 0;
-        for m in &p.children {
+        for (mi, m) in p.children.iter().enumerate() {
             let mid = format!("p{i}m{mi}");
-            mi += 1;
-            let label = if level == "package" {
-                m.name.clone()
-            } else {
-                format!("{} ({})", m.name, m.symbols.len())
-            };
+            let label = if level == "package" { m.name.clone() } else { format!("{} ({})", m.name, m.symbols.len()) };
             s.push_str(&format!("  {mid}[\"{}\"]\n", esc(&label)));
             s.push_str(&format!("  {pid} --> {mid}\n"));
             ids.push(mid);
@@ -109,11 +100,7 @@ pub fn mermaid(db: &Store, tree: &ModuleTree, level: &str) -> String {
         let (g, _) = arch::module_graph(db);
         let id_of = |dir: &str| -> Option<String> {
             tree.packages.iter().enumerate().find_map(|(i, p)| {
-                p.children
-                    .iter()
-                    .enumerate()
-                    .find(|(_, m)| m.kind == "module" && m.path == dir)
-                    .map(|(j, _)| format!("p{i}m{j}"))
+                p.children.iter().enumerate().find(|(_, m)| m.kind == "module" && m.path == dir).map(|(j, _)| format!("p{i}m{j}"))
             })
         };
         let mut keys: Vec<&String> = g.keys().collect();
@@ -141,8 +128,8 @@ fn esc(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::tree::TreeNode;
+    use super::*;
 
     fn node(name: &str, kind: &str) -> TreeNode {
         TreeNode {

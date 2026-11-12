@@ -220,6 +220,26 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
             )?;
         }
         Cmd::Query { text, limit } => {
+            // `kula query route:/PATH`: HTTP endpoints under a path, with handlers.
+            if let Some(prefix) = text.join(" ").strip_prefix("route:") {
+                let st = Store::open(&repo)?;
+                let rows = layers::routes::routes(&st, prefix)?;
+                if json {
+                    out(&rows);
+                    return Ok(());
+                }
+                if rows.is_empty() {
+                    println!("{}", dim("no routes"));
+                }
+                for r in &rows {
+                    let h = match (&r.handler, &r.confidence) {
+                        (Some(h), Some(c)) => format!("→ {h} {}", dim(c)),
+                        _ => dim("→ no handler found"),
+                    };
+                    println!("  {} {} {}", bold(&r.route), h, dim(&format!("{}:{}", r.file, r.line)));
+                }
+                return Ok(());
+            }
             // `kula query env:NAME`: who reads one env var (file, symbol, line).
             if let Some(name) = text.join(" ").strip_prefix("env:") {
                 let st = Store::open(&repo)?;

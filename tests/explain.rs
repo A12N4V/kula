@@ -24,11 +24,7 @@ fn fixture() -> tempfile::TempDir {
     git(&["config", "user.name", "Tester"]);
     git(&["config", "user.email", "t@example.com"]);
     git(&["config", "commit.gpgsign", "false"]);
-    write(
-        d,
-        "core/src/net/mod.rs",
-        "pub mod a;\npub mod b;\n",
-    );
+    write(d, "core/src/net/mod.rs", "pub mod a;\npub mod b;\n");
     write(
         d,
         "core/src/net/a.rs",
@@ -45,12 +41,7 @@ fn fixture() -> tempfile::TempDir {
 
 fn index(dir: &Path) {
     let out = Command::new(KULA).arg("-C").arg(dir).args(["index", "--quiet"]).output().unwrap();
-    assert!(
-        out.status.success(),
-        "index failed:\n{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
+    assert!(out.status.success(), "index failed:\n{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
 }
 
 fn kula(dir: &Path, args: &[&str]) -> std::process::Output {
@@ -63,12 +54,7 @@ fn explain_module_prints_sections() {
     let d = t.path();
     index(d);
     let out = kula(d, &["explain", "net"]);
-    assert!(
-        out.status.success(),
-        "explain net failed:\n{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
+    assert!(out.status.success(), "explain net failed:\n{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     for want in ["Surface", "Depends on", "Used by"] {
         assert!(text.contains(want), "missing section {want} in:\n{text}");
@@ -85,12 +71,7 @@ fn explain_symbol_prints_sections() {
     let d = t.path();
     index(d);
     let out = kula(d, &["explain", "pong"]);
-    assert!(
-        out.status.success(),
-        "explain pong failed:\n{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
+    assert!(out.status.success(), "explain pong failed:\n{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     for want in ["Surface", "Depends on", "Used by"] {
         assert!(text.contains(want), "missing section {want} in:\n{text}");

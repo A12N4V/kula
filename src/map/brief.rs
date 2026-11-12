@@ -109,9 +109,7 @@ fn packages(tree: &ModuleTree) -> Vec<String> {
         let loc: usize = p.loc + p.children.iter().map(|m| m.loc).sum::<usize>();
         let churn: i64 = p.churn_30d.max(p.children.iter().map(|m| m.churn_30d).max().unwrap_or(0));
         let hottest = p.children.iter().max_by_key(|m| (m.churn_30d, m.fan_in, reversed(&m.name))).cloned();
-        let hot = hottest
-            .map(|m| format!("hottest {}", m.name))
-            .unwrap_or_else(|| "no modules".into());
+        let hot = hottest.map(|m| format!("hottest {}", m.name)).unwrap_or_else(|| "no modules".into());
         rows.push((churn, p.name.clone(), format!("{} ({} modules, loc {}, churn {}): {}", p.name, p.children.len(), loc, churn, hot)));
     }
     // Hottest packages first; ties alphabetical by name.

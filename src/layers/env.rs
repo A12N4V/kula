@@ -109,6 +109,7 @@ fn env_node(key: &str, nodes: &mut Vec<Node>, hashes: &mut Vec<u64>, env_ids: &m
 }
 
 /// Insert env nodes and reads_env edges into a graph under construction.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn apply(
     parsed: &[crate::index::ParsedFile],
     sym_ids: &[Vec<usize>],
@@ -121,7 +122,14 @@ pub(crate) fn apply(
 ) {
     let mut env_ids: HashMap<String, usize> = HashMap::new();
     let mut linked: HashSet<(usize, usize, i64)> = HashSet::new();
-    let link = |reader: usize, key: &str, line: i64, edges: &mut Vec<Edge>, nodes: &mut Vec<Node>, hashes: &mut Vec<u64>, env_ids: &mut HashMap<String, usize>, linked: &mut HashSet<(usize, usize, i64)>| {
+    let link = |reader: usize,
+                key: &str,
+                line: i64,
+                edges: &mut Vec<Edge>,
+                nodes: &mut Vec<Node>,
+                hashes: &mut Vec<u64>,
+                env_ids: &mut HashMap<String, usize>,
+                linked: &mut HashSet<(usize, usize, i64)>| {
         let env = env_node(key, nodes, hashes, env_ids);
         if linked.insert((reader, env, line)) {
             edges.push(Edge::new(reader as i64, env as i64, "READS_ENV", line as f64));
@@ -176,11 +184,7 @@ pub fn readers(store: &Store, name: &str) -> Result<Vec<EnvReader>> {
     Ok(store
         .neighbours(env.id, "READS_ENV", false)?
         .into_iter()
-        .map(|(n, line)| EnvReader {
-            file: n.path.clone(),
-            symbol: (n.kind != "file").then(|| n.name.clone()),
-            line: line as i64,
-        })
+        .map(|(n, line)| EnvReader { file: n.path.clone(), symbol: (n.kind != "file").then(|| n.name.clone()), line: line as i64 })
         .collect())
 }
 

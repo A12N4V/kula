@@ -79,9 +79,7 @@ pub fn module_graph(db: &Store) -> (BTreeMap<String, BTreeSet<String>>, HashMap<
         }
         None
     };
-    let dir_of = |p: &str| -> String {
-        p.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_else(|| ".".into())
-    };
+    let dir_of = |p: &str| -> String { p.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_else(|| ".".into()) };
     let bucket = |id: i64| -> Option<String> {
         match by_id.get(&id).map(|n| n.kind.as_str()) {
             Some("file") => by_id.get(&id).map(|n| dir_of(&n.path)),
@@ -180,11 +178,8 @@ pub fn god_modules(g: &BTreeMap<String, BTreeSet<String>>, loc: &HashMap<String,
     let mut totals: Vec<f64> = fan.values().copied().collect();
     totals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let thr = p95(&totals);
-    let mut out: Vec<String> = fan
-        .into_iter()
-        .filter(|(m, f)| *f > thr && loc.get(m).copied().unwrap_or(0) > 1000)
-        .map(|(m, _)| m)
-        .collect();
+    let mut out: Vec<String> =
+        fan.into_iter().filter(|(m, f)| *f > thr && loc.get(m).copied().unwrap_or(0) > 1000).map(|(m, _)| m).collect();
     out.sort();
     out
 }
@@ -192,7 +187,7 @@ pub fn god_modules(g: &BTreeMap<String, BTreeSet<String>>, loc: &HashMap<String,
 /// Coupling: mean fan_in over modules, normalised to 0..1 by the max fan_in.
 pub fn coupling(g: &BTreeMap<String, BTreeSet<String>>) -> f64 {
     let mut in_deg: BTreeMap<String, usize> = BTreeMap::new();
-    for (_, bs) in g {
+    for bs in g.values() {
         for b in bs {
             *in_deg.entry(b.clone()).or_default() += 1;
         }
@@ -318,10 +313,7 @@ pub fn check(tree: &ModuleTree, db: &Store) -> ArchReport {
             *loc.entry(key).or_default() += (n.end_line - n.start_line + 1).max(0) as usize;
         }
     }
-    let cycles = find_cycles(&g)
-        .into_iter()
-        .map(|c| c.into_iter().map(|d| mods.get(&d).cloned().unwrap_or(d)).collect())
-        .collect();
+    let cycles = find_cycles(&g).into_iter().map(|c| c.into_iter().map(|d| mods.get(&d).cloned().unwrap_or(d)).collect()).collect();
     ArchReport {
         schema: 1,
         cycles,

@@ -31,11 +31,7 @@ pub(crate) fn run_brief(repo: &Repo, format: &str, json_flag: bool) -> Result<()
 /// `kula explain <module|symbol|file>`.
 pub(crate) fn run_explain(repo: &Repo, target: &str, json_flag: bool) -> Result<()> {
     let st = open_or_index(repo)?;
-    let memories = memory::recall(repo, &st, Some(target), None, 5)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|r| r.body)
-        .collect();
+    let memories = memory::recall(repo, &st, Some(target), None, 5).unwrap_or_default().into_iter().map(|r| r.body).collect();
     let r = map::explain::explain(repo, &st, target, memories)?;
     if json_flag {
         println!("{}", serde_json::to_string_pretty(&r)?);

@@ -25,12 +25,7 @@ fn git(dir: &Path, args: &[&str]) {
 
 fn index(dir: &Path) {
     let out = Command::new(KULA).arg("-C").arg(dir).args(["index", "--quiet"]).output().unwrap();
-    assert!(
-        out.status.success(),
-        "index failed:\n{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
+    assert!(out.status.success(), "index failed:\n{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
 }
 
 /// Two packages (core: Rust, webui: TypeScript) plus a top-level Python tool,
@@ -46,11 +41,7 @@ fn fixture() -> TempDir {
     write(d, "core/Cargo.toml", "[package]\nname = \"core\"\nversion = \"0.1.0\"\nedition = \"2021\"\n");
     write(d, "core/src/lib.rs", "pub mod codec;\npub mod net;\npub fn run(input: &str) -> String { net::a::pong(input) }\n");
     write(d, "core/src/net/mod.rs", "pub mod a;\n");
-    write(
-        d,
-        "core/src/net/a.rs",
-        "use crate::codec::b::ping;\npub fn pong(s: &str) -> String { format!(\"{s}{}\", ping(s)) }\n",
-    );
+    write(d, "core/src/net/a.rs", "use crate::codec::b::ping;\npub fn pong(s: &str) -> String { format!(\"{s}{}\", ping(s)) }\n");
     write(d, "core/src/codec/mod.rs", "pub mod b;\n");
     write(d, "core/src/codec/b.rs", "use crate::net::a::pong;\npub fn ping(s: &str) -> String { s.to_string() }\n");
     write(d, "core/src/main.rs", "fn main() { println!(\"{}\", core::run(\"hi\")); }\n");
@@ -61,7 +52,11 @@ fn fixture() -> TempDir {
         "webui/src/api/routes.ts",
         "import { renderApp } from \"../index\";\nexport function handleLogin(req: string) { return renderApp(req); }\n",
     );
-    write(d, "scripts/tool.py", "def main():\n    pass\n\n@app.route(\"/health\")\ndef health():\n    return \"ok\"\n\nif __name__ == \"__main__\":\n    main()\n");
+    write(
+        d,
+        "scripts/tool.py",
+        "def main():\n    pass\n\n@app.route(\"/health\")\ndef health():\n    return \"ok\"\n\nif __name__ == \"__main__\":\n    main()\n",
+    );
     write(d, "README.md", "# fixture\n");
     git(d, &["add", "-A"]);
     git(d, &["commit", "-qm", "initial"]);
@@ -94,10 +89,7 @@ fn map_tree_names_entries() {
 
     // Entries: CLI main, an HTTP handler by name and one by decorator, API export.
     let es = entries::entry_points(&st);
-    assert!(
-        es.iter().any(|e| e.kind == "cli" && e.symbol == "main" && e.file == "core/src/main.rs"),
-        "entries: {es:?}"
-    );
+    assert!(es.iter().any(|e| e.kind == "cli" && e.symbol == "main" && e.file == "core/src/main.rs"), "entries: {es:?}");
     assert!(es.iter().any(|e| e.kind == "http" && e.symbol == "handleLogin"), "entries: {es:?}");
     assert!(es.iter().any(|e| e.kind == "http" && e.symbol == "health"), "entries: {es:?}");
     assert!(es.iter().any(|e| e.kind == "api" && e.symbol == "renderApp"), "entries: {es:?}");
@@ -127,22 +119,14 @@ fn check_architecture_cycle() {
     let r = kula::map::arch::check(&mt, &st);
     assert!(!r.cycles.is_empty(), "expected a cycle, got {r:?}");
     assert!(r.cycles.iter().any(|c| c.len() > 1 && c.iter().any(|m| m.contains("net"))), "cycles: {:?}", r.cycles);
-    assert!(
-        r.cycles.iter().any(|c| c.iter().any(|m| m.contains("codec"))),
-        "cycle must span two modules, not files: {:?}",
-        r.cycles
-    );
+    assert!(r.cycles.iter().any(|c| c.iter().any(|m| m.contains("codec"))), "cycle must span two modules, not files: {:?}", r.cycles);
     let out = Command::new(KULA).arg("-C").arg(d).args(["check", "architecture"]).output().unwrap();
     assert!(!out.status.success(), "cycle fixture must exit non-zero: {}", String::from_utf8_lossy(&out.stdout));
 
     // Clean copy: same repo without the net↔codec imports exits zero.
     let c = fixture();
     let cd = c.path();
-    std::fs::write(
-        cd.join("core/src/net/a.rs"),
-        "pub fn pong(s: &str) -> String { format!(\"{s}\") }\n",
-    )
-    .unwrap();
+    std::fs::write(cd.join("core/src/net/a.rs"), "pub fn pong(s: &str) -> String { format!(\"{s}\") }\n").unwrap();
     std::fs::write(cd.join("core/src/codec/b.rs"), "pub fn ping(s: &str) -> String { s.to_string() }\n").unwrap();
     git(cd, &["add", "-A"]);
     git(cd, &["commit", "-qm", "break cycle"]);
@@ -186,4 +170,3 @@ fn map_formats_and_zooms() {
     let mm_text = String::from_utf8_lossy(&mm.stdout).to_string();
     assert!(mm_text.starts_with("flowchart"), "mermaid must start with flowchart:\n{mm_text}");
 }
-

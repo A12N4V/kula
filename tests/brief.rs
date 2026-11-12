@@ -19,11 +19,7 @@ fn git(dir: &Path, args: &[&str]) {
 
 fn kula(dir: &Path, args: &[&str]) -> (String, String, i32) {
     let out = Command::new(KULA).arg("-C").arg(dir).args(args).output().unwrap();
-    (
-        String::from_utf8_lossy(&out.stdout).into_owned(),
-        String::from_utf8_lossy(&out.stderr).into_owned(),
-        out.status.code().unwrap_or(-1),
-    )
+    (String::from_utf8_lossy(&out.stdout).into_owned(), String::from_utf8_lossy(&out.stderr).into_owned(), out.status.code().unwrap_or(-1))
 }
 
 fn index(dir: &Path) {
@@ -41,11 +37,7 @@ fn fixture() -> tempfile::TempDir {
     write(d, "core/Cargo.toml", "[package]\nname = \"core\"\nversion = \"0.1.0\"\nedition = \"2021\"\n");
     write(d, "core/src/lib.rs", "pub mod net;\npub fn run(input: &str) -> String { net::a::pong(input) }\n");
     write(d, "core/src/net/mod.rs", "pub mod a;\npub mod b;\n");
-    write(
-        d,
-        "core/src/net/a.rs",
-        "use crate::net::b::ping;\npub fn pong(s: &str) -> String { format!(\"{s}{}\", ping(s)) }\n",
-    );
+    write(d, "core/src/net/a.rs", "use crate::net::b::ping;\npub fn pong(s: &str) -> String { format!(\"{s}{}\", ping(s)) }\n");
     write(d, "core/src/net/b.rs", "use crate::net::a::pong;\npub fn ping(s: &str) -> String { s.to_string() }\n");
     write(d, "core/src/main.rs", "fn main() { println!(\"{}\", core::run(\"hi\")); }\n");
     write(d, "webui/package.json", "{\n  \"name\": \"webui\",\n  \"version\": \"0.1.0\"\n}\n");

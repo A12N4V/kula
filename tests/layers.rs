@@ -48,21 +48,9 @@ fn fixture() -> tempfile::TempDir {
         "server.ts",
         "import express from \"express\";\nexport function start() {\n  const port = process.env.PORT;\n  console.log(port);\n}\n",
     );
-    write(
-        d,
-        "worker.py",
-        "import os\n\ndef load():\n    return os.environ[\"API_KEY\"]\n",
-    );
-    write(
-        d,
-        "main.rs",
-        "fn boot() {\n    let token = std::env::var(\"TOKEN\");\n    println!(\"{token:?}\");\n}\n",
-    );
-    write(
-        d,
-        "cmd/main.go",
-        "package main\n\nimport \"os\"\n\nfunc main() {\n    region := os.Getenv(\"REGION\")\n    _ = region\n}\n",
-    );
+    write(d, "worker.py", "import os\n\ndef load():\n    return os.environ[\"API_KEY\"]\n");
+    write(d, "main.rs", "fn boot() {\n    let token = std::env::var(\"TOKEN\");\n    println!(\"{token:?}\");\n}\n");
+    write(d, "cmd/main.go", "package main\n\nimport \"os\"\n\nfunc main() {\n    region := os.Getenv(\"REGION\")\n    _ = region\n}\n");
     write(d, ".env.example", "SESSION_TTL=3600\n");
     t
 }
@@ -125,4 +113,78 @@ fn env_reads_in_four_languages_plus_env_example() {
     assert_eq!(ttl[0]["line"], 1);
     // nothing reads a key nobody mentioned
     assert!(read("NOPE").is_empty());
+}
+
+/// One route per framework plus a TS client calling the Python API.
+fn routes_fixture() -> tempfile::TempDir {
+    let t = tempfile::tempdir().unwrap();
+    let d = t.path();
+    git(d, &["init", "-q", "-b", "main"]);
+    write(d, "server.ts", "const app = express();\napp.get(\"/users\", listUsers);\nfunction listUsers(req, res) {\n  res.send([]);\n}\n");
+    write(d, "api.py", "from fastapi import FastAPI\napp = FastAPI()\n\n@app.get(\"/items/{id}\")\ndef get_item(id):\n    return id\n");
+    write(d, "legacy.py", "from flask import Flask\napp = Flask(__name__)\n\n@app.route(\"/ping\")\ndef ping():\n    return \"ok\"\n");
+    write(
+        d,
+        "main.rs",
+        "fn app() -> Router {\n    Router::new().route(\"/health\", get(health))\n}\nasync fn health() -> &'static str {\n    \"ok\"\n}\n",
+    );
+    write(d, "work.go", "package main\n\nimport \"net/http\"\n\nfunc workHandler(w http.ResponseWriter, r *http.Request) {}\n\nfunc main() {\n\thttp.HandleFunc(\"/work\", workHandler)\n}\n");
+    write(d, "app/api/orders/route.ts", "export async function GET() {\n  return Response.json([]);\n}\n");
+    write(d, "client.ts", "export async function loadItem() {\n  return fetch(\"/items/7\");\n}\n");
+    t
+}
+
+#[test]
+fn routes_found_per_framework_with_handlers() {
+    let t = routes_fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+    let rows = kula_json(d, &["query", "route:"]);
+    let rows = rows.as_array().expect("route rows");
+    let find = |needle: &str| rows.iter().find(|r| r["route"].as_str().unwrap_or("").contains(needle)).cloned();
+    for (path, handler) in [
+        ("/users", "listUsers"),
+        ("/items/:param", "get_item"),
+        ("/ping", "ping"),
+        ("/health", "health"),
+        ("/work", "workHandler"),
+        ("/api/orders", "GET"),
+    ] {
+        let r = find(path).unwrap_or_else(|| panic!("route {path} missing: {rows:?}"));
+        assert_eq!(r["handler"].as_str(), Some(handler), "handler for {path}: {r}");
+    }
+    let only = kula_json(d, &["query", "route:/items"]);
+    assert_eq!(only.as_array().unwrap().len(), 1, "prefix filter: {only}");
+}
+
+#[test]
+fn ts_fetch_links_to_python_handler_as_inferred() {
+    let t = routes_fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+    let c = kula_json(d, &["context", "api.py:get_item"]);
+    let callers: Vec<&str> = c["callers"].as_array().unwrap().iter().map(|n| n["name"].as_str().unwrap_or("")).collect();
+    assert!(callers.contains(&"loadItem"), "get_item callers: {callers:?}");
+    // A resolved-only impact must not include the cross-language guess.
+    let imp = kula_json(d, &["impact", "api.py:get_item", "--depth", "4", "--min-confidence", "resolved"]);
+    assert!(!imp.to_string().contains("loadItem"), "inferred link leaked into resolved impact: {imp}");
+}
+
+#[test]
+fn kg_export_counts_routes_and_parses() {
+    let t = routes_fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+    let n_routes = kula_json(d, &["query", "route:"]).as_array().unwrap().len();
+    let q = kula_json(d, &["kg", "sparql", "SELECT (COUNT(?r) AS ?n) WHERE { ?r a kula:Route }"]);
+    assert!(
+        q.to_string().contains(&format!("\"{n_routes}\"")) || q.to_string().contains(&format!(":{n_routes}")),
+        "sparql count {q} vs {n_routes}"
+    );
+    let h = kula_json(d, &["kg", "sparql", "SELECT ?r ?f WHERE { ?r kula:handles ?f }"]);
+    assert!(h.to_string().contains("get_item"), "handles triples: {h}");
+    let ttl = kula(d, &["kg", "export", "--format", "nt"]);
+    let lines = ttl.lines().filter(|l| !l.trim().is_empty()).count();
+    assert!(lines > 10, "nt export too small: {lines}");
+    assert!(ttl.lines().all(|l| l.trim().is_empty() || l.trim_end().ends_with('.')), "malformed n-triples");
 }

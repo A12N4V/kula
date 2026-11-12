@@ -30,7 +30,8 @@ fn manifest_file(name: &str) -> bool {
 /// Parse one manifest body into dependency names. Pure: takes path + content.
 pub fn parse_manifest(file: &str, body: &str, out: &mut Vec<ManifestDep>) {
     let mut add = |name: &str, eco: &'static str, from_lock: bool| {
-        let n: String = name.trim().trim_matches('"').chars().take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == '.').collect();
+        let n: String =
+            name.trim().trim_matches('"').chars().take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == '.').collect();
         if !n.is_empty() && n != "python" {
             out.push(ManifestDep { name: n, eco, from_lock });
         }
@@ -202,11 +203,8 @@ pub fn report(store: &Store) -> Result<Vec<Dep>> {
     let mut declared: HashSet<(String, String)> = HashSet::new();
     for n in store.nodes_where("kind = 'dependency' ORDER BY id", [])? {
         let eco = eco_str(&n.lang);
-        let importers: i64 = store.conn.query_row(
-            "SELECT COUNT(*) FROM edges WHERE src = ?1 AND kind = 'USED_BY'",
-            [n.id],
-            |r| r.get(0),
-        )?;
+        let importers: i64 =
+            store.conn.query_row("SELECT COUNT(*) FROM edges WHERE src = ?1 AND kind = 'USED_BY'", [n.id], |r| r.get(0))?;
         declared.insert((eco.to_string(), norm(eco, &n.name)));
         out.push(Dep { name: n.name, ecosystem: eco, importers: importers as usize, declared: true, builtin: false });
     }
@@ -220,11 +218,10 @@ pub fn report(store: &Store) -> Result<Vec<Dep>> {
         if declared.contains(&(eco.to_string(), norm(eco, &p.name))) {
             continue;
         }
-        let importers: i64 = store.conn.query_row(
-            "SELECT COUNT(DISTINCT e.src) FROM edges e WHERE e.dst = ?1 AND e.kind = 'IMPORTS'",
-            [p.id],
-            |r| r.get(0),
-        )?;
+        let importers: i64 =
+            store
+                .conn
+                .query_row("SELECT COUNT(DISTINCT e.src) FROM edges e WHERE e.dst = ?1 AND e.kind = 'IMPORTS'", [p.id], |r| r.get(0))?;
         out.push(Dep {
             name: p.name.clone(),
             ecosystem: eco,

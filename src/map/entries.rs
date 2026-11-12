@@ -48,11 +48,7 @@ pub fn entry_points(db: &Store) -> Vec<Entry> {
         }
         // Python mains: `if __name__ == "__main__":` guards.
         if lang == "python" && text.contains("if __name__") {
-            let sym = if syms.iter().any(|s| s.name == "main") {
-                "main".to_string()
-            } else {
-                stem(&f.path)
-            };
+            let sym = if syms.iter().any(|s| s.name == "main") { "main".to_string() } else { stem(&f.path) };
             push(&mut out, &sym, "cli", &f.path);
         }
         // Decorator-routed HTTP handlers (`@app.route`, `@get`, …).
@@ -94,7 +90,12 @@ fn test_file(path: &str) -> bool {
     let (dir, file) = path.rsplit_once('/').unwrap_or(("", path));
     let stem = stem(path).to_lowercase();
     let dir = dir.to_lowercase();
-    dir.ends_with("test") || dir.ends_with("tests") || file.starts_with("test_") || file.ends_with("_test.go") || file.contains(".test.") || stem.ends_with("_spec")
+    dir.ends_with("test")
+        || dir.ends_with("tests")
+        || file.starts_with("test_")
+        || file.ends_with("_test.go")
+        || file.contains(".test.")
+        || stem.ends_with("_spec")
 }
 
 fn stem(path: &str) -> String {
@@ -127,7 +128,14 @@ fn decorated_handlers(text: &str) -> Vec<String> {
 
 fn is_http_decorator(d: &str) -> bool {
     let d = d.to_lowercase();
-    d.contains(".route(") || d.contains("route(") || d.contains(".get(") || d.contains(".post(") || d.contains(".put(") || d.contains(".delete(") || d.contains(".patch(") || ["@get(", "@post(", "@put(", "@delete(", "@patch("].iter().any(|p| d.starts_with(p))
+    d.contains(".route(")
+        || d.contains("route(")
+        || d.contains(".get(")
+        || d.contains(".post(")
+        || d.contains(".put(")
+        || d.contains(".delete(")
+        || d.contains(".patch(")
+        || ["@get(", "@post(", "@put(", "@delete(", "@patch("].iter().any(|p| d.starts_with(p))
 }
 
 fn def_name(line: &str) -> Option<String> {
@@ -190,10 +198,7 @@ fn export_names(text: &str) -> Vec<String> {
 
 /// First identifier in a string: `fn run() -> …` → `run`.
 fn ident(s: &str) -> String {
-    s.trim_start_matches(|c: char| !c.is_alphanumeric() && c != '_')
-        .chars()
-        .take_while(|c| c.is_alphanumeric() || *c == '_')
-        .collect()
+    s.trim_start_matches(|c: char| !c.is_alphanumeric() && c != '_').chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect()
 }
 
 #[cfg(test)]

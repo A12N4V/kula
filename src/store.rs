@@ -57,7 +57,8 @@ pub struct Store {
 
 /// Bumped when the index layout changes; older indexes read as stale and rebuild.
 /// 3: runtime layers added `dependency` and `env` nodes (`used_by`, `reads_env` edges).
-pub const SCHEMA_VERSION: &str = "3";
+/// 4: `route` nodes and `HANDLES` edges (HTTP endpoints).
+pub const SCHEMA_VERSION: &str = "4";
 
 const SCHEMA: &str = r#"
 PRAGMA journal_mode = DELETE;

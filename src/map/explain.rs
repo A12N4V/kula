@@ -43,8 +43,9 @@ pub fn explain(repo: &Repo, db: &Store, target: &str, memories: Vec<String>) -> 
     }
     // Then a module: a directory name or path known to the tree.
     let tree = super::tree::module_tree(&repo.root, db);
-    let want = |m: &super::tree::TreeNode| m.kind == "module" && (m.path == target || m.name == target || m.path.ends_with(&format!("/{target}")));
-    if let Some(p) = tree.packages.iter().find(|p| p.children.iter().any(|m| want(m))) {
+    let want =
+        |m: &super::tree::TreeNode| m.kind == "module" && (m.path == target || m.name == target || m.path.ends_with(&format!("/{target}")));
+    if let Some(p) = tree.packages.iter().find(|p| p.children.iter().any(&want)) {
         let m = p.children.iter().find(|m| want(m)).unwrap();
         return module_report(repo, db, target, m, memories);
     }
@@ -77,26 +78,11 @@ fn symbol_or_file(repo: &Repo, db: &Store, _target: &str, node: Node, kind: Stri
     };
 
     // A symbol is on the public surface when its file declares it pub/export.
-    let surface = if kind == "symbol" && is_public(&repo.root.join(&file), &node.name) {
-        vec![node.name.clone()]
-    } else {
-        vec![]
-    };
+    let surface = if kind == "symbol" && is_public(&repo.root.join(&file), &node.name) { vec![node.name.clone()] } else { vec![] };
     let fan_in = if kind == "symbol" { db.neighbours(node.id, "CALLS", false).map(|v| v.len() as i64).unwrap_or(0) } else { 0 };
     let hot_spots = if fan_in > 0 { vec![HotSpot { symbol: node.name.clone(), fan_in, score: fan_in }] } else { vec![] };
 
-    Ok(ExplainReport {
-        schema: 1,
-        target: node.name.clone(),
-        kind,
-        file,
-        purpose,
-        surface,
-        depends_on,
-        used_by,
-        hot_spots,
-        memories,
-    })
+    Ok(ExplainReport { schema: 1, target: node.name.clone(), kind, file, purpose, surface, depends_on, used_by, hot_spots, memories })
 }
 
 fn module_report(repo: &Repo, db: &Store, _target: &str, m: &super::tree::TreeNode, memories: Vec<String>) -> Result<ExplainReport> {
@@ -153,9 +139,8 @@ fn cluster_of(db: &Store, node: &Node) -> Option<String> {
 /// directory.
 fn module_cluster(db: &Store, dir: &str) -> Option<String> {
     let cs = clusters(db);
-    let best = cs
-        .iter()
-        .max_by_key(|c| c.members.iter().filter(|m| m.path.starts_with(&format!("{dir}/")) || m.path.starts_with(dir)).count())?;
+    let best =
+        cs.iter().max_by_key(|c| c.members.iter().filter(|m| m.path.starts_with(&format!("{dir}/")) || m.path.starts_with(dir)).count())?;
     let in_dir = best.members.iter().any(|m| m.path.starts_with(dir));
     if !in_dir {
         return None;
@@ -169,13 +154,8 @@ fn cluster_name(_db: &Store, cs: &[Cluster], c: &Cluster) -> String {
 }
 
 fn call_neighbours(db: &Store, id: i64, out: bool) -> Vec<String> {
-    let mut v: Vec<String> = db
-        .neighbours(id, "CALLS", out)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(n, _)| n.name)
-        .filter(|n| !n.is_empty())
-        .collect();
+    let mut v: Vec<String> =
+        db.neighbours(id, "CALLS", out).unwrap_or_default().into_iter().map(|(n, _)| n.name).filter(|n| !n.is_empty()).collect();
     v.sort();
     v.dedup();
     v
@@ -265,8 +245,6 @@ fn section(s: &mut String, title: &str, items: &[String]) {
         s.push('\n');
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

@@ -146,7 +146,9 @@ pub(crate) enum Cmd {
         min_confidence: String,
     },
     /// CI gate: the graph blast radius of HEAD against a base; fails above max_risk.
-    #[command(after_help = "Examples:\n  kula check --base origin/main --md   ·  kula check --max-risk low\n  kula check architecture              ·  cycle, god module and coupling report")]
+    #[command(
+        after_help = "Examples:\n  kula check --base origin/main --md   ·  kula check --max-risk low\n  kula check architecture              ·  cycle, god module and coupling report"
+    )]
     Check {
         /// Base ref (defaults to kula.toml's default_branch).
         #[arg(long)]
@@ -168,7 +170,9 @@ pub(crate) enum Cmd {
         action: String,
     },
     /// Semantic map: packages, modules and symbols with loc, fan-in/out and churn.
-    #[command(after_help = "Examples:\n  kula map                        ·  kula map --zoom repo --format json\n  kula map --format mermaid       ·  kula map --zoom symbol")]
+    #[command(
+        after_help = "Examples:\n  kula map                        ·  kula map --zoom repo --format json\n  kula map --format mermaid       ·  kula map --zoom symbol"
+    )]
     Map {
         /// How deep: repo | package | module | symbol.
         #[arg(long, default_value = "module", value_parser = ["repo", "package", "module", "symbol"])]

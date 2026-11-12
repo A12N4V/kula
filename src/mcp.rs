@@ -161,7 +161,7 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             let y = graph::resolve_one(&s, &str_arg("to"))?;
             refuse_hidden(&g, &x)?;
             refuse_hidden(&g, &y)?;
-            json!(graph::trace_conf(&s, x.id, y.id, &a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed"))?)
+            json!(graph::trace_conf(&s, x.id, y.id, a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed"))?)
         }
         "compare" => {
             let head = a.get("head").and_then(|v| v.as_str()).map(String::from).unwrap_or_else(|| repo.branch());
@@ -213,14 +213,14 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
                 repo,
                 &s,
                 &str_arg("symbol"),
-                &a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed")
+                a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed")
             )?)
         }
         "verify_edit" => {
             json!(crate::agent::verify_edit_conf(
                 repo,
                 CLIENT.get().map(String::as_str),
-                &a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed")
+                a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed")
             )?)
         }
         "guards" => {

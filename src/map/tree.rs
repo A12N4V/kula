@@ -25,8 +25,7 @@ pub struct ModuleTree {
     pub packages: Vec<TreeNode>,
 }
 
-const SKIP: &[&str] =
-    &[".git", ".kula", "target", "node_modules", "dist", "build", "vendor", ".venv", "__pycache__", "coverage"];
+const SKIP: &[&str] = &[".git", ".kula", "target", "node_modules", "dist", "build", "vendor", ".venv", "__pycache__", "coverage"];
 
 struct Pkg {
     name: String,
@@ -201,11 +200,8 @@ fn churn_under(churn: &BTreeSet<String>, dir: &str) -> i64 {
 }
 
 fn changed_files(root: &Path) -> BTreeSet<String> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["log", "--since=30.days", "--name-only", "--pretty=format:"])
-        .output();
+    let out =
+        std::process::Command::new("git").arg("-C").arg(root).args(["log", "--since=30.days", "--name-only", "--pretty=format:"]).output();
     let mut set = BTreeSet::new();
     if let Ok(o) = out {
         if o.status.success() {
@@ -223,18 +219,15 @@ fn changed_files(root: &Path) -> BTreeSet<String> {
 /// Directories holding a Cargo.toml / package.json / pyproject.toml / go.mod.
 fn find_packages(root: &Path) -> Vec<Pkg> {
     let mut found: Vec<(PathBuf, String)> = Vec::new();
-    walk(root, root, 0, &mut found);
+    walk(root, 0, &mut found);
     found.sort_by(|a, b| a.0.cmp(&b.0));
     found
         .into_iter()
-        .map(|(dir, name)| Pkg {
-            name,
-            rel: dir.strip_prefix(root).unwrap_or(dir.as_path()).to_string_lossy().replace('\\', "/"),
-        })
+        .map(|(dir, name)| Pkg { name, rel: dir.strip_prefix(root).unwrap_or(dir.as_path()).to_string_lossy().replace('\\', "/") })
         .collect()
 }
 
-fn walk(base: &Path, dir: &Path, depth: usize, out: &mut Vec<(PathBuf, String)>) {
+fn walk(dir: &Path, depth: usize, out: &mut Vec<(PathBuf, String)>) {
     if depth > 8 {
         return;
     }
@@ -244,7 +237,7 @@ fn walk(base: &Path, dir: &Path, depth: usize, out: &mut Vec<(PathBuf, String)>)
         if p.is_dir() {
             let n = e.file_name().to_string_lossy().to_string();
             if !SKIP.contains(&n.as_str()) {
-                walk(base, &p, depth + 1, out);
+                walk(&p, depth + 1, out);
             }
         } else if let Some(name) = manifest_name(&p) {
             out.push((dir.to_path_buf(), name));
@@ -255,23 +248,12 @@ fn walk(base: &Path, dir: &Path, depth: usize, out: &mut Vec<(PathBuf, String)>)
 fn manifest_name(p: &Path) -> Option<String> {
     let body = std::fs::read_to_string(p).ok()?;
     match p.file_name()?.to_str()? {
-        "Cargo.toml" => toml::from_str::<toml::Table>(&body)
-            .ok()?
-            .get("package")?
-            .get("name")?
-            .as_str()
-            .map(String::from),
+        "Cargo.toml" => toml::from_str::<toml::Table>(&body).ok()?.get("package")?.get("name")?.as_str().map(String::from),
         "package.json" => serde_json::from_str::<serde_json::Value>(&body).ok()?["name"].as_str().map(String::from),
-        "pyproject.toml" => toml::from_str::<toml::Table>(&body)
-            .ok()?
-            .get("project")?
-            .get("name")?
-            .as_str()
-            .map(String::from),
-        "go.mod" => body
-            .lines()
-            .find_map(|l| l.trim().strip_prefix("module "))
-            .map(|m| m.trim().rsplit('/').next().unwrap_or(m).trim().to_string()),
+        "pyproject.toml" => toml::from_str::<toml::Table>(&body).ok()?.get("project")?.get("name")?.as_str().map(String::from),
+        "go.mod" => {
+            body.lines().find_map(|l| l.trim().strip_prefix("module ")).map(|m| m.trim().rsplit('/').next().unwrap_or(m).trim().to_string())
+        }
         _ => None,
     }
 }

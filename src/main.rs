@@ -13,8 +13,8 @@ mod guard;
 mod index;
 mod isolate;
 mod kg;
-mod layers;
 mod lang_cmd;
+mod layers;
 mod mcp;
 mod memory;
 mod meta;
@@ -31,9 +31,9 @@ use anyhow::{bail, Result};
 use clap::Parser;
 use cli::*;
 use cmd::*;
-pub use kula::{git, map, store};
 use kula::git::Repo;
 use kula::store::Store;
+pub use kula::{git, map, store};
 use term::*;
 
 fn main() {

@@ -23,6 +23,7 @@ Instances are `urn:kula:` IRIs (prefix `code:`), built from paths and names rath
 | a package | `<urn:kula:pkg:serde>` |
 | a dependency | `<urn:kula:dep:npm/express>` |
 | an env var | `<urn:kula:env:PORT>` |
+| an HTTP route | `<urn:kula:route:GET%20/items/:param>` (method, then normalised path) |
 | a cluster | `code:cluster:3` |
 | a note or memory | `code:note:12` |
 | an issue | `code:issue:4` |
@@ -47,6 +48,7 @@ classDiagram
     class Package { name }
     class Dependency { name }
     class Env { name }
+    class Route { name path startLine }
     class Cluster { label }
     class Note { body author created }
     class Memory { body author created stale }
@@ -64,6 +66,8 @@ classDiagram
     Dependency --> File : usedBy
     Symbol --> Env : readsEnv
     File --> Env : readsEnv
+    Route --> Symbol : handles
+    Route --> File : definedIn
     Symbol --> Cluster : inCluster
     Note --> Symbol : about
     Memory --> Symbol : about
@@ -80,6 +84,7 @@ classDiagram
 | `kula:Package` | an external package the code imports |
 | `kula:Dependency` | an external package declared in a manifest (Cargo.toml, package.json, pyproject.toml, requirements.txt, go.mod) |
 | `kula:Env` | an environment variable the code reads, or a key in `.env.example` |
+| `kula:Route` | an HTTP endpoint declared in code: Express/Fastify, Next.js pages/api and app router, FastAPI, Flask, Axum, Go net/http. Path parameters normalise to `:param` |
 | `kula:Cluster` | a functional cluster: symbols that call each other more than they call the rest |
 | `kula:Note` · `kula:Memory` | a person's note; an agent's memory, anchored to the code it was written about |
 | `kula:Issue` | a local issue, stored in git |
@@ -91,11 +96,12 @@ classDiagram
 | `kula:startLine` · `kula:endLine` | a definition's lines, 1-based |
 | `kula:definedIn` | Symbol → its File |
 | `kula:memberOf` | Method or nested symbol → its enclosing Class |
-| `kula:calls` | Symbol → Symbol |
+| `kula:calls` | Symbol → Symbol; includes cross-language links from a literal `fetch`/`axios`/`requests` URL to the matched route's handler (inferred tier) |
 | `kula:imports` | File → File or Package |
 | `kula:usedBy` | Dependency → the File that imports it; a dependency with no `usedBy` edge is unused |
 | `kula:readsEnv` | Symbol or File → the Env it reads (a `.env.example` File declares its keys) |
-| `kula:vocabVersion` | the vocabulary version of this export |
+| `kula:handles` | Route → the Symbol that serves it (resolved in the same file, inferred when one function anywhere has the name) |
+| `kula:vocabVersion` | the vocabulary version of this export (3 since routes were added) |
 | `kula:inCluster` · `kula:label` | Symbol or File → its Cluster; a cluster's label |
 | `kula:about` | Note, Memory or Issue → the Repository, File or Symbol it is about |
 | `kula:body` · `kula:author` · `kula:created` | text, a git user or `agent:<name>`, an `xsd:dateTime` |

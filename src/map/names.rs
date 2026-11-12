@@ -4,8 +4,31 @@
 use super::Cluster;
 use std::collections::{BTreeMap, BTreeSet};
 
-const STOP: &[&str] =
-    &["the", "and", "for", "with", "from", "into", "self", "new", "get", "set", "let", "mut", "pub", "fn", "use", "src", "lib", "mod", "std", "str", "string", "impl", "node_modules"];
+const STOP: &[&str] = &[
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "into",
+    "self",
+    "new",
+    "get",
+    "set",
+    "let",
+    "mut",
+    "pub",
+    "fn",
+    "use",
+    "src",
+    "lib",
+    "mod",
+    "std",
+    "str",
+    "string",
+    "impl",
+    "node_modules",
+];
 
 /// One name per cluster, in input order. Top two vocabulary words joined with
 /// a space, ties broken alphabetically; collisions get a numeral appended.
