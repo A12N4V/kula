@@ -1,6 +1,7 @@
 //! `kula gate <slice>`: judge a slice's tree. Scope and fences reject; dangling
 //! callers, failing tests and new module cycles send it back to be fixed.
 
+use super::blast;
 use super::task::{in_scope, Plan, Slice};
 use crate::git::Repo;
 use crate::map::{arch, tree};
@@ -41,6 +42,9 @@ pub struct Verdict {
     pub reasons: Vec<String>,
     /// Files the slice changed or added.
     pub changed: Vec<String>,
+    /// Worth a look but not blocking: the change reaching past its blast radius.
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 /// Files changed against `base` plus untracked ones git does not ignore,
@@ -95,14 +99,16 @@ fn run_tests(plan: &Plan, slice: &Slice, dir: &Path) -> Option<(bool, String)> {
     }
 }
 
-/// Module cycles in `dir`'s tree that were not there when the plan was made.
-fn new_cycles(plan: &Plan, repo: &Repo) -> Vec<Vec<String>> {
-    if crate::index::run(repo, true).is_err() {
-        return vec![];
-    }
-    let Ok(st) = Store::open(repo) else { return vec![] };
-    let mt = tree::module_tree(&repo.root, &st);
-    arch::check(&mt, &st)
+/// The tree's graph, freshly indexed.
+fn fresh_store(repo: &Repo) -> Option<Store> {
+    crate::index::run(repo, true).ok()?;
+    Store::open(repo).ok()
+}
+
+/// Module cycles in the tree that were not there when the plan was made.
+fn new_cycles(plan: &Plan, repo: &Repo, st: &Store) -> Vec<Vec<String>> {
+    let mt = tree::module_tree(&repo.root, st);
+    arch::check(&mt, st)
         .cycles
         .into_iter()
         .map(|mut c| {
@@ -119,6 +125,7 @@ pub fn gate(plan: &Plan, slice: &Slice, dir: &Path) -> Result<Verdict> {
     let changed = changed_files(&repo, &slice.base_ref);
     let mut reject = Vec::new();
     let mut fix = Vec::new();
+    let mut notes = Vec::new();
 
     for f in &changed {
         if !in_scope(f, &slice.scope) && !slice.tests.contains(f) {
@@ -139,8 +146,20 @@ pub fn gate(plan: &Plan, slice: &Slice, dir: &Path) -> Result<Verdict> {
                 fix.push(format!("tests failed:\n{out}"));
             }
         }
-        for c in new_cycles(plan, &repo) {
-            fix.push(format!("new module cycle: {}", c.join(" ↔ ")));
+        if let Some(st) = fresh_store(&repo) {
+            for c in new_cycles(plan, &repo, &st) {
+                fix.push(format!("new module cycle: {}", c.join(" ↔ ")));
+            }
+            if !changed.is_empty() {
+                let mut expected = slice.blast.clone();
+                expected.extend(slice.tests.iter().cloned());
+                let far = blast::beyond(&blast::radius(&st, &changed), &expected, &slice.scope);
+                if !far.is_empty() {
+                    let shown: Vec<&str> = far.iter().take(5).map(String::as_str).collect();
+                    let more = if far.len() > 5 { format!(" and {} more", far.len() - 5) } else { String::new() };
+                    notes.push(format!("reaches past the planned blast radius: {}{more}", shown.join(", ")));
+                }
+            }
         }
     }
 
@@ -151,7 +170,7 @@ pub fn gate(plan: &Plan, slice: &Slice, dir: &Path) -> Result<Verdict> {
     } else {
         (Outcome::Pass, vec![])
     };
-    Ok(Verdict { verdict, reasons, changed })
+    Ok(Verdict { verdict, reasons, changed, notes })
 }
 
 #[cfg(test)]

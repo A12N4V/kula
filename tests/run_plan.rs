@@ -142,3 +142,41 @@ fn no_real_agent_under_kula_no_agent() {
     assert!(text(&o).contains("KULA_NO_AGENT"), "{}", text(&o));
     assert!(!marker.exists(), "a real agent CLI was started");
 }
+
+#[test]
+fn memory_check_holds_slices_back() {
+    let t = repo();
+    let d = t.path();
+    write_plan(d, &["a", "b", "c"], "fake-agent", "true", 1);
+    // Enough memory for the first slice only.
+    let (o, p) = run(d, &[("KULA_MEM_CHECK", "[ ! -e .mem ] && touch .mem || { echo 'free 3%' >&2; exit 1; }")]);
+    assert_eq!(o.status.code(), Some(1), "{}", text(&o));
+    let s = p["slices"].as_array().unwrap();
+    assert_eq!(s[0]["state"], "passed", "{p}");
+    for x in &s[1..] {
+        assert_eq!(x["state"], "failed", "{p}");
+        assert_eq!(x["escalate"], true, "{p}");
+        assert_eq!(x["attempts"], 0, "{p}");
+        assert!(x["reasons"][0].as_str().unwrap().contains("not enough memory to start: free 3%"), "{p}");
+    }
+    assert!(!d.join(".kula/worktrees/t/b").exists());
+}
+
+#[test]
+fn status_shows_slices_and_starts_nothing() {
+    let t = repo();
+    let d = t.path();
+    write_plan(d, &["a", "b"], "fake-agent", "true", 1);
+    let st = |extra: &[&str]| {
+        let o = Command::new(KULA).arg("-C").arg(d).args(["run-plan", "--status"]).args(extra).env("KULA_NO_AGENT", "1").output().unwrap();
+        assert!(o.status.success(), "{}", text(&o));
+        text(&o)
+    };
+    assert!(st(&[]).contains("2 queued · 0 running"), "{}", st(&[]));
+    assert!(!d.join(".kula/worktrees").exists(), "status must not start slices");
+    let (o, _) = run(d, &[]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert!(st(&[]).contains("0 queued · 0 running · 0 gating · 2 passed"), "{}", st(&[]));
+    let v: Value = serde_json::from_str(&st(&["--json"])).unwrap();
+    assert_eq!(v["slices"][1]["state"], "passed");
+}

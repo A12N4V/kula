@@ -35,7 +35,8 @@ pub fn prompt(plan: &Plan, s: &Slice, attempt: u32, reasons: &[String]) -> Strin
     p
 }
 
-fn record(dir: &Path, n: u32, prompt: &str, code: i32, output: &str, verdict: &str, reasons: &[String]) {
+#[allow(clippy::too_many_arguments)]
+fn record(dir: &Path, n: u32, prompt: &str, code: i32, output: &str, verdict: &str, reasons: &[String], notes: &[String]) {
     let _ = std::fs::create_dir_all(dir);
     let mut md = format!(
         "# attempt {n}\n\n## prompt\n\n{prompt}\n## agent\n\nexit {code}\n\n```\n{}\n```\n\n## verdict: {verdict}\n\n",
@@ -43,6 +44,9 @@ fn record(dir: &Path, n: u32, prompt: &str, code: i32, output: &str, verdict: &s
     );
     for r in reasons {
         md.push_str(&format!("- {r}\n"));
+    }
+    for r in notes {
+        md.push_str(&format!("- note: {r}\n"));
     }
     let _ = std::fs::write(dir.join(format!("attempt-{n}.md")), md);
 }
@@ -65,7 +69,7 @@ pub fn drive(
         let (code, out) = launch(n, &p);
         on_state(SliceState::Gating, n, &reasons);
         let v = gate::gate(plan, slice, tree)?;
-        let (mut outcome, mut why) = (v.verdict, v.reasons);
+        let (mut outcome, mut why, notes) = (v.verdict, v.reasons, v.notes);
         if code == FENCE_BREACH {
             outcome = Outcome::Reject;
             why.insert(0, "the agent changed fenced files; kula put them back".into());
@@ -73,7 +77,7 @@ pub fn drive(
             outcome = Outcome::Fix;
             why.push(format!("the agent exited with code {code}"));
         }
-        record(log_dir, n, &p, code, &out, outcome.as_str(), &why);
+        record(log_dir, n, &p, code, &out, outcome.as_str(), &why, &notes);
         match outcome {
             Outcome::Pass => return Ok(SliceEnd { state: SliceState::Passed, attempts: n, escalate: false, reasons: vec![] }),
             Outcome::Reject => return Ok(SliceEnd { state: SliceState::Rejected, attempts: n, escalate: false, reasons: why }),

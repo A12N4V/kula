@@ -5,9 +5,9 @@ use crate::*;
 
 pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
     match cmd {
-        Cmd::Plan { goal, agent, out, test_cmd, max_parallel, max_retries } => {
+        Cmd::Plan { goal, agent, out, test_cmd, max_parallel, max_retries, mem_check } => {
             let st = open_or_index(repo)?;
-            let p = plan::plan(repo, &st, plan::Opts { goal, agent, test_cmd, max_parallel, max_retries })?;
+            let p = plan::plan(repo, &st, plan::Opts { goal, agent, test_cmd, max_parallel, max_retries, mem_check })?;
             let path = out.unwrap_or_else(|| task::default_path(repo));
             p.save(&path)?;
             if json {
@@ -44,15 +44,45 @@ pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
                 for r in &v.reasons {
                     println!("  {} {r}", dim("·"));
                 }
+                for r in &v.notes {
+                    println!("  {}", dim(&format!("note: {r}")));
+                }
             }
             std::process::exit(v.verdict.code());
         }
-        Cmd::RunPlan { plan } => {
+        Cmd::RunPlan { plan, status } => {
             let path = plan.unwrap_or_else(|| task::default_path(repo));
-            let p = run::run_plan(repo, &path)?;
+            let p = if status {
+                let saved = task::Plan::load(&path)?;
+                let live = saved.run_dir(repo).join("state.json");
+                if live.exists() {
+                    task::Plan::load(&live)?
+                } else {
+                    saved
+                }
+            } else {
+                run::run_plan(repo, &path)?
+            };
             if json {
                 println!("{}", serde_json::to_string_pretty(&p)?);
             } else {
+                if status {
+                    let n = |st: task::SliceState| p.slices.iter().filter(|s| s.state == st).count();
+                    use task::SliceState::*;
+                    println!(
+                        "{}  {}",
+                        bold(&p.id),
+                        dim(&format!(
+                            "{} queued · {} running · {} gating · {} passed · {} failed · {} rejected",
+                            n(Queued),
+                            n(Running),
+                            n(Gating),
+                            n(Passed),
+                            n(Failed),
+                            n(Rejected)
+                        ))
+                    );
+                }
                 for s in &p.slices {
                     let tag = format!("{:?}", s.state).to_lowercase();
                     println!(
@@ -65,6 +95,9 @@ pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
                         println!("      {}", dim(r.lines().next().unwrap_or("")));
                     }
                 }
+            }
+            if status {
+                return Ok(());
             }
             let ok = p.slices.iter().all(|s| s.state == task::SliceState::Passed);
             std::process::exit(if ok { 0 } else { 1 });

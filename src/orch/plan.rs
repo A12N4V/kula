@@ -1,6 +1,7 @@
 //! `kula plan "<goal>"`: split a goal into module slices from the graph alone.
 //! Deterministic: the same index and goal give the same plan.
 
+use super::blast;
 use super::task::{in_scope, slug, Plan, Slice, SliceState};
 use crate::agent::is_test_path;
 use crate::git::Repo;
@@ -16,6 +17,7 @@ pub struct Opts {
     pub test_cmd: Option<String>,
     pub max_parallel: usize,
     pub max_retries: u32,
+    pub mem_check: Option<String>,
 }
 
 const STOP: &[&str] = &["the", "and", "for", "with", "into", "from", "that", "this", "add", "fix", "make", "use", "all"];
@@ -118,9 +120,14 @@ pub fn plan(repo: &Repo, st: &Store, o: Opts) -> Result<Plan> {
         s.tests = tests;
     }
 
+    // 5. Expected blast radius per slice.
+    for s in by_dir.values_mut() {
+        s.blast = blast::radius(st, &blast::scope_files(st, &s.scope)).into_iter().filter(|f| !in_scope(f, &s.scope)).collect();
+    }
+
     let slices = topo(by_dir.into_values().collect());
 
-    // 5. Risk.
+    // 6. Risk.
     let guards = Guards::for_agent(repo, Some(&o.agent))?;
     let fenced = all_files.iter().any(|f| slices.iter().any(|s| in_scope(f, &s.scope)) && !guards.path(f).level.editable());
     let risk = if fenced || slices.len() > 4 {
@@ -154,6 +161,7 @@ pub fn plan(repo: &Repo, st: &Store, o: Opts) -> Result<Plan> {
         test_cmd: o.test_cmd.or_else(|| detect_test_cmd(&repo.root)),
         baseline_cycles: baseline,
         agents: BTreeMap::new(),
+        mem_check: o.mem_check,
         slices,
     })
 }

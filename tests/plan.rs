@@ -106,3 +106,31 @@ fn gate_rejects_fixes_and_passes() {
     assert_eq!(o.status.code(), Some(2), "outside: {}", text(&o));
     assert!(text(&o).contains("README.md"), "{}", text(&o));
 }
+
+#[test]
+fn plan_records_blast_radius_and_gate_notes_reach_past_it() {
+    let t = fixture();
+    let d = t.path();
+    let mut p = plan(d, "ping pong");
+    let codec = slice_id(&p, "codec").to_string();
+    let c = p["slices"].as_array().unwrap().iter().find(|s| s["id"] == codec.as_str()).unwrap();
+    let blast: Vec<&str> = c["blast"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(blast.contains(&"core/src/net/a.rs"), "codec's callers: {blast:?}");
+
+    // A change inside the planned radius: no note.
+    write(d, "core/src/codec/b.rs", "pub fn ping(s: &str) -> String { s.to_uppercase() }\n");
+    let o = kula(d, &["gate", &codec]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert!(!text(&o).contains("blast radius"), "{}", text(&o));
+
+    // The same change against a plan that expected no one to feel it: a note, still a pass.
+    for s in p["slices"].as_array_mut().unwrap() {
+        s["blast"] = serde_json::json!([]);
+    }
+    std::fs::write(d.join(".kula/plan.json"), serde_json::to_string(&p).unwrap()).unwrap();
+    let o = kula(d, &["gate", &codec, "--json"]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+    let note = v["notes"][0].as_str().unwrap_or_default();
+    assert!(note.contains("blast radius") && note.contains("core/src/net/a.rs"), "{v}");
+}

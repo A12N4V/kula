@@ -52,6 +52,9 @@ pub struct Slice {
     /// The last gate's reasons.
     #[serde(default)]
     pub reasons: Vec<String>,
+    /// Files outside the scope expected to feel the change (its blast radius).
+    #[serde(default)]
+    pub blast: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -73,6 +76,10 @@ pub struct Plan {
     /// Command per agent id; `{prompt}` becomes the prompt.
     #[serde(default)]
     pub agents: BTreeMap<String, Vec<String>>,
+    /// Shell command run before each slice starts; non zero means not enough
+    /// memory. Falls back to `KULA_MEM_CHECK`.
+    #[serde(default)]
+    pub mem_check: Option<String>,
     pub slices: Vec<Slice>,
 }
 

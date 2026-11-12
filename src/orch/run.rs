@@ -112,6 +112,24 @@ fn launch(
     }
 }
 
+/// The memory check for this plan: its own, else `KULA_MEM_CHECK`.
+fn mem_check_cmd(plan: &Plan) -> Option<String> {
+    plan.mem_check.clone().or_else(|| std::env::var("KULA_MEM_CHECK").ok()).filter(|c| !c.trim().is_empty())
+}
+
+/// Runs the memory check; `Err` holds why a slice may not start.
+fn mem_ok(cmd: &str, root: &Path) -> std::result::Result<(), String> {
+    match Command::new("sh").arg("-c").arg(cmd).current_dir(root).output() {
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) => {
+            let text = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+            let line = text.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();
+            Err(if line.is_empty() { format!("`{cmd}` said no") } else { line })
+        }
+        Err(e) => Err(format!("could not run `{cmd}`: {e}")),
+    }
+}
+
 pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     let plan = Plan::load(plan_path)?;
     if std::env::var_os("KULA_NO_AGENT").is_some() {
@@ -170,8 +188,31 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                 drop(sh.cv.wait(p).unwrap());
                 continue;
             }
+            if let Some(cmd) = mem_check_cmd(&p) {
+                if let Err(why) = mem_ok(&cmd, &repo.root) {
+                    let msg = format!("not enough memory to start: {why}");
+                    if active > 0 {
+                        // A running slice may free some; try again when one ends.
+                        for id in &ready {
+                            p.slice_mut(id).unwrap().reasons = vec![msg.clone()];
+                        }
+                        let _ = p.save(&sh.state_path);
+                        drop(sh.cv.wait(p).unwrap());
+                        continue;
+                    }
+                    for s in p.slices.iter_mut().filter(|s| s.state == SliceState::Queued) {
+                        s.state = SliceState::Failed;
+                        s.escalate = true;
+                        s.reasons = vec![msg.clone()];
+                    }
+                    let _ = p.save(&sh.state_path);
+                    return Ok(());
+                }
+            }
             for id in &ready {
-                p.slice_mut(id).unwrap().state = SliceState::Running;
+                let s = p.slice_mut(id).unwrap();
+                s.state = SliceState::Running;
+                s.reasons.clear();
             }
             let _ = p.save(&sh.state_path);
             let snapshot = p.clone();

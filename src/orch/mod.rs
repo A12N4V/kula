@@ -2,6 +2,7 @@
 //! its own worktree under fences, gate the result, retry on `fix`.
 //! See docs/design/orchestration.md.
 
+pub mod blast;
 pub mod gate;
 pub mod plan;
 pub mod retry;

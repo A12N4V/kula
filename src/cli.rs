@@ -42,7 +42,7 @@ Work with AI agents
   team         agent teams: each agent in its own workflow
   research     autoresearch: an agent improves a metric, kula measures and keeps score
   run          run any agent harness held to kula's fences: kula run -w fix -- aider
-  plan         split a goal into module slices: kula plan "retry uploads"
+  plan         split a goal into module slices: kula plan \"retry uploads\"
   run-plan     run each slice in its own worktree, gated, a few at once
   gate         judge a slice: pass, fix or reject
   task         the task an agent is on, its workflow, and the code it may change
@@ -331,6 +331,9 @@ pub(crate) enum Cmd {
         max_parallel: usize,
         #[arg(long, default_value_t = 2)]
         max_retries: u32,
+        /// Shell command run before each slice starts; non zero waits (e.g. a memguard script).
+        #[arg(long)]
+        mem_check: Option<String>,
     },
     /// Gate one slice of a plan: exit 0 pass, 1 fix, 2 reject.
     #[command(after_help = "Examples:\n  kula gate net  ·  kula gate net --dir .")]
@@ -343,8 +346,13 @@ pub(crate) enum Cmd {
         dir: Option<std::path::PathBuf>,
     },
     /// Run every slice of a plan: own worktree, agent under fences, gate, retries.
-    #[command(name = "run-plan", after_help = "Examples:\n  kula run-plan  ·  kula run-plan .kula/plan.json")]
-    RunPlan { plan: Option<std::path::PathBuf> },
+    #[command(name = "run-plan", after_help = "Examples:\n  kula run-plan  ·  kula run-plan .kula/plan.json  ·  kula run-plan --status")]
+    RunPlan {
+        plan: Option<std::path::PathBuf>,
+        /// Show where each slice is, from the live run state; starts nothing.
+        #[arg(long)]
+        status: bool,
+    },
     /// Run any agent harness held to kula's fences: `kula run -w fix -- aider`.
     #[command(after_help = "Examples:\n  kula run -w fix --agent aider -- aider")]
     Run {
