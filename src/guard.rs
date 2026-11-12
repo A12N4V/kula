@@ -30,6 +30,10 @@ use anyhow::{bail, Result};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 
+mod bypass;
+
+type Vars = std::collections::HashMap<String, String>;
+
 /// Files that are secrets more often than not; hidden when `agents.hide_secrets` is on.
 pub const SECRETS: &[&str] = &[
     "**/.env",
@@ -68,9 +72,10 @@ pub const OWN: &[&str] = &[
 /// Whether a path is kula's own config or agent wiring.
 pub fn is_own(path: &str) -> bool {
     static OWN_SET: std::sync::OnceLock<GlobSet> = std::sync::OnceLock::new();
-    OWN_SET
-        .get_or_init(|| globset(&OWN.iter().map(|s| s.to_string()).collect::<Vec<_>>()).unwrap_or_else(|_| GlobSet::empty()))
-        .is_match(path.trim_start_matches("./"))
+    let set = OWN_SET.get_or_init(|| globset(&OWN.iter().map(|s| s.to_string()).collect::<Vec<_>>()).unwrap_or_else(|_| GlobSet::empty()));
+    // a directory that holds kula's state (`.kula`) is kula's too
+    let d = path.trim_start_matches("./").trim_end_matches('/');
+    set.is_match(d) || (!d.is_empty() && set.is_match(format!("{d}/_")))
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -615,9 +620,13 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
     }
     // segments split on ; && || and newlines, each with its own cwd
     let mut cd = cwd_rel.trim_matches('/').to_string();
-    let mut vars: std::collections::HashMap<String, String> = Default::default();
-    for seg in unquoted.split([';', '\n']).flat_map(|s| s.split("&&")).map(str::trim).filter(|s| !s.is_empty()) {
-        let ws = words(seg);
+    let mut vars: Vars = Default::default();
+    for seg in unquoted.split([';', '\n']).flat_map(|s| s.split("&&")).flat_map(|s| s.split("||")).map(str::trim).filter(|s| !s.is_empty())
+    {
+        let ws: Vec<String> = words(seg)
+            .into_iter()
+            .skip_while(|w| matches!(w.as_str(), "{" | "}" | "!" | "if" | "then" | "else" | "elif" | "do" | "while" | "until" | "time"))
+            .collect();
         let mut k = 0;
         // assignments and identity scrubbing
         while k < ws.len() {
@@ -644,11 +653,15 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
         let ws = &ws[k.min(ws.len())..];
         let Some(name) = ws.first().map(|w| w.rsplit('/').next().unwrap_or(w)) else { continue };
         // `cd` before a write: the target's cwd is where it lands
-        let is_cd = name == "cd";
-        if is_cd {
-            if let Some(d) = ws.get(1) {
-                cd = expand(d, &vars, cwd_rel);
-            }
+        if name == "cd" || name == "pushd" {
+            cd = match ws.get(1) {
+                Some(d) => bypass::cd_to(&cd, d, &vars, cwd_rel),
+                None => bypass::LOST.into(),
+            };
+            continue;
+        }
+        if name == "popd" {
+            cd = cwd_rel.trim_matches('/').to_string();
             continue;
         }
         if name == "env" {
@@ -662,11 +675,17 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
         if seg.contains("<<") && matches!(name, "python" | "python3" | "node" | "ruby" | "perl" | "php" | "sh" | "bash" | "zsh" | "awk") {
             return (extra, refuse("a heredoc script can write anything"));
         }
+        if let Some(why) = bypass::segment(seg, ws, &cd, &vars, cwd_rel, fenced, hidden, &mut extra) {
+            return (extra, Some(why));
+        }
         // `awk -i inplace` edits files in place
         let writes = name == "awk" && (ws.iter().any(|w| w == "-i") || ws.iter().any(|w| w == "inplace"));
         if name == "git" {
             let args: Vec<&str> = ws.iter().skip(1).map(String::as_str).collect();
             if let Some(why) = git_guard(&args, &mut cd, &vars, cwd_rel, fenced, hidden, &mut extra) {
+                return (extra, Some(why));
+            }
+            if let Some(why) = bypass::git_moves(args.first().copied().unwrap_or(""), &args, &cd, fenced, hidden) {
                 return (extra, Some(why));
             }
             continue;
@@ -715,7 +734,7 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
             continue;
         }
         // redirections in this segment: > and >> targets
-        if let Some(t) = redirect_target(seg) {
+        for t in redirect_targets(seg) {
             if let Some(why) = check_target(&t, &cd, &vars, cwd_rel, fenced, &mut extra) {
                 return (extra, Some(why));
             }
@@ -738,7 +757,7 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
 fn git_guard(
     args: &[&str],
     cd: &mut str,
-    vars: &std::collections::HashMap<String, String>,
+    vars: &Vars,
     cwd: &str,
     fenced: &[String],
     hidden: &[String],
@@ -809,7 +828,7 @@ fn git_guard(
             let paths: Vec<&str> = args.iter().skip(1).filter(|a| !a.starts_with('-')).map(|a| a.trim_start_matches("-- ")).collect();
             for p in paths {
                 let full = join_rel(cd, expand(p, vars, cwd).as_str());
-                if fenced.iter().any(|f| *f == full || f.starts_with(&format!("{full}/"))) {
+                if fenced.iter().any(|f| bypass::covers(&full, f)) {
                     return refuse(format!("`git {sub}` would overwrite fenced file(s) under {full}").as_str());
                 }
             }
@@ -819,7 +838,7 @@ fn git_guard(
     None
 }
 
-fn expand(w: &str, vars: &std::collections::HashMap<String, String>, _cwd: &str) -> String {
+fn expand(w: &str, vars: &Vars, _cwd: &str) -> String {
     let mut s = w.to_string();
     for (k, v) in vars {
         s = s.replace(&format!("${k}"), v).replace(&format!("${{{k}}}"), v);
@@ -868,8 +887,9 @@ fn words(cmd: &str) -> Vec<String> {
     out
 }
 
-/// The file a `>` or `>>` in one segment writes, if it is a plain word.
-fn redirect_target(seg: &str) -> Option<String> {
+/// The files the `>`, `>>` and `<>` redirections in one segment write.
+fn redirect_targets(seg: &str) -> Vec<String> {
+    let mut out = vec![];
     let bytes: Vec<char> = seg.chars().collect();
     let mut i = 0;
     while i < bytes.len() {
@@ -891,7 +911,8 @@ fn redirect_target(seg: &str) -> Option<String> {
                     j += 1;
                 }
                 if bytes.get(j) == Some(&'&') {
-                    return None;
+                    i = j + 1;
+                    continue;
                 }
                 while j < bytes.len() && bytes[j].is_whitespace() {
                     j += 1;
@@ -903,15 +924,16 @@ fn redirect_target(seg: &str) -> Option<String> {
                 }
                 let t = t.trim_matches(['"', '\'']).to_string();
                 if !t.is_empty() && t != "/dev/null" && !t.starts_with("/dev/") {
-                    return Some(t);
+                    out.push(t);
                 }
-                return None;
+                i = j;
+                continue;
             }
             _ => {}
         }
         i += 1;
     }
-    None
+    out
 }
 
 /// The file a `<` in one segment feeds from, if it is a plain word (not a heredoc).
@@ -956,26 +978,28 @@ fn input_target(seg: &str) -> Option<String> {
     None
 }
 
-fn check_target(
-    t: &str,
-    cd: &str,
-    vars: &std::collections::HashMap<String, String>,
-    cwd: &str,
-    fenced: &[String],
-    extra: &mut Vec<String>,
-) -> Option<String> {
+fn check_target(t: &str, cd: &str, vars: &Vars, cwd: &str, fenced: &[String], extra: &mut Vec<String>) -> Option<String> {
     let expanded = expand(t, vars, cwd);
     if expanded.contains('$') || expanded.contains('`') {
         return Some(format!(
             "kula guard: refused – the write target {t:?} does not resolve to a path in this fenced repository (variable or command substitution)."
         ));
     }
-    if expanded.starts_with('/') || expanded.starts_with('~') {
-        return None; // outside this repository: not ours to fence
-    }
-    let full = join_rel(cd, &expanded);
-    if fenced.iter().any(|f| *f == full || f.starts_with(&format!("{full}/")) || full.starts_with(&format!("{f}/"))) {
-        return Some(format!("kula guard: refused – {full} is fenced for agents."));
+    let full = if expanded.starts_with('/') {
+        bypass::inside(&expanded)? // outside this repository: not ours to fence
+    } else if expanded.starts_with('~') {
+        return None;
+    } else if cd == bypass::LOST {
+        return Some(format!("kula guard: refused – cannot tell which directory {t} is written from; use a repo path."));
+    } else {
+        join_rel(cd, &expanded)
+    };
+    if let Some(f) = fenced.iter().find(|f| bypass::covers(&full, f) || full.starts_with(&format!("{f}/"))) {
+        return Some(if *f == full {
+            format!("kula guard: refused – {full} is fenced for agents.")
+        } else {
+            format!("kula guard: refused – {full} reaches {f}, which is fenced for agents.")
+        });
     }
     extra.push(full.clone());
     None

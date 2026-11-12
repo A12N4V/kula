@@ -11,12 +11,6 @@ pub(crate) fn level_tag(l: guard::Level) -> String {
     }
 }
 
-/// Whether a whitespace-split word of `cmd` equals `w` (no quote smarts –
-/// a cheap pre-filter before the strict shell layer runs).
-pub(crate) fn words_has(cmd: &str, w: &str) -> bool {
-    cmd.split_whitespace().any(|x| x.trim_matches(|c| c == '\'' || c == '"') == w)
-}
-
 /// A path as the repository sees it: relative, forward slashes, symlinks
 /// resolved. A path that does not exist yet is resolved through its nearest
 /// existing ancestor, so a new file behind a symlinked directory (or behind
@@ -196,25 +190,19 @@ pub(crate) fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
             let payload_cwd = v["cwd"].as_str().unwrap_or("");
             let cwd_rel = if payload_cwd.is_empty() { String::new() } else { repo_rel(repo, payload_cwd) };
             let cmd = v["tool_input"]["command"].as_str().unwrap_or("");
-            let suspicious = cmd.contains('$')
-                || cmd.contains('`')
-                || cmd.contains("<<")
-                || words_has(cmd, "eval")
-                || words_has(cmd, "git")
-                || words_has(cmd, "awk")
-                || words_has(cmd, "find")
-                || words_has(cmd, "chmod")
-                || words_has(cmd, "chown")
-                || words_has(cmd, "patch")
-                || words_has(cmd, "env")
-                || words_has(cmd, "unset")
-                || words_has(cmd, "cd");
-            if suspicious {
+            {
                 let fenced = guard::fenced_paths(repo, &g, st.as_ref());
                 let hidden = guard::hidden_paths(repo, &g);
                 if !fenced.is_empty() || !hidden.is_empty() {
                     let (more, why) = guard::shell_guard(cmd, &cwd_rel, &fenced, &hidden);
-                    if let Some(why) = why {
+                    if let Some(mut why) = why {
+                        // Name the fence's reason for the first fenced path the refusal names.
+                        if let Some(f) = fenced.iter().find(|f| why.contains(f.as_str())) {
+                            let v = g.edit(st.as_ref(), f);
+                            if !v.level.editable() && !v.reason.is_empty() {
+                                why = format!("{} – {} ({}).", why.trim_end_matches('.'), v.reason, v.rule);
+                            }
+                        }
                         deny(why);
                     }
                     for p in more {

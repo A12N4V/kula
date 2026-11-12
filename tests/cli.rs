@@ -1104,6 +1104,22 @@ fn shell_bypasses_are_refused_in_a_fenced_repo() {
         "git update-ref -d refs/kula/meta",
         "git show HEAD:.env",
         "echo x > tests/../tests/login.test.ts",
+        "sed -i '' s/a/b/ tests/login.test.ts",
+        "perl -pi -e s/a/b/ tests/login.test.ts",
+        "ln -sf /dev/null tests/login.test.ts",
+        "cd tests; cd ..; cd tests && echo x > login.test.ts",
+        "cd / && echo x > tests/login.test.ts",
+        "printf x | xargs touch",
+        "find . -name '*.ts' -exec rm {} +",
+        "echo 'rm tests/login.test.ts' | sh",
+        "true || echo x > tests/login.test.ts",
+        "{ echo x > tests/login.test.ts; }",
+        "grep -r SECRET .",
+        "tar -cf /tmp/all.tar .",
+        "git clean -fdx",
+        "git pull",
+        "git worktree add ../w",
+        "git checkout -f main",
     ] {
         let (_, why) = kula_code(d, &["guard", "hook"], Some(&bash(cmd)), 2);
         assert!(why.contains("refused") || why.contains("is locked") || why.contains("is hidden"), "{cmd} -> {why}");
@@ -1126,6 +1142,14 @@ fn shell_bypasses_are_refused_in_a_fenced_repo() {
         "T=worker; echo x > $T/note.md",
         "cd worker && echo x > note.md",
         "python3 -c 'print(1)'",
+        "sed -n 1p tests/login.test.ts",
+        "grep -rn salt worker",
+        "find worker -name '*.py' -delete",
+        "cd worker; cd ..; echo x > note.md",
+        "git clean -n",
+        "git status",
+        "tar -cf /tmp/w.tar worker",
+        "git rebase --abort",
     ] {
         kula_code(d, &["guard", "hook"], Some(&bash(cmd)), 0);
     }
