@@ -1,0 +1,9 @@
+{
+  // JSONC: a comment and a trailing comma must not break the resolver.
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@lib/*": ["lib/*"],
+    },
+  },
+}
