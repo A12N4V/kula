@@ -196,7 +196,13 @@ pub(crate) enum Cmd {
     },
     /// Shortest call path between two symbols.
     #[command(after_help = "Examples:\n  kula trace handleLogin salt")]
-    Trace { from: String, to: String },
+    Trace {
+        from: String,
+        to: String,
+        /// Ignore call edges weaker than this tier: guessed, inferred or resolved.
+        #[arg(long, default_value = "guessed", value_parser = ["guessed", "inferred", "resolved"])]
+        min_confidence: String,
+    },
     /// Execution flows discovered from entry points.
     #[command(after_help = "Examples:\n  kula flows   ·  kula flows --limit 20")]
     Flows {

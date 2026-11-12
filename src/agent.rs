@@ -169,6 +169,8 @@ pub struct PreEdit {
     pub risk: String,
     pub dependents: usize,
     pub files: usize,
+    /// Edge counts per tier among its dependents: resolved / inferred / guessed.
+    pub tiers: [usize; 3],
     pub direct_callers: Vec<String>,
     pub tests: Vec<String>,
     pub co_changes: Vec<(String, usize)>,
@@ -269,6 +271,7 @@ pub fn pre_edit(repo: &Repo, store: &Store, symbol: &str) -> Result<PreEdit> {
         risk: up.risk.clone(),
         dependents: up.hits.len(),
         files: up.files,
+        tiers: up.tiers,
         direct_callers: direct,
         tests,
         co_changes: co,
@@ -293,6 +296,8 @@ pub struct Verify {
     /// Existing callers of modified symbols, in other files: re-read them.
     pub recheck: Vec<String>,
     pub ok: bool,
+    /// CALLS edge counts per tier in the diff: resolved / inferred / guessed.
+    pub tiers: [usize; 3],
     /// Structured twins of changed, dangling and recheck.
     pub changed_refs: Vec<Ref>,
     pub dangling_refs: Vec<Ref>,
@@ -317,12 +322,15 @@ pub fn verify_edit(repo: &Repo, agent: Option<&str>) -> Result<Verify> {
     let mut dangling_refs = Vec::new();
     let mut recheck: HashSet<String> = HashSet::new();
     let mut recheck_refs: Vec<Ref> = Vec::new();
+    let mut tiers = [0usize; 3];
     for e in &d.edges {
         let (Some(a), Some(b)) = (by.get(&e.src), by.get(&e.dst)) else { continue };
         if e.kind != "CALLS" {
             continue;
         }
-        if e.status == "removed" && b.status == "removed" && a.status != "removed" {
+        tiers[2 - graph::conf_rank(&e.confidence) as usize] += 1;
+        // Guessed edges are name-linker fallbacks, not evidence: they never block.
+        if e.status == "removed" && b.status == "removed" && a.status != "removed" && e.confidence != "guessed" {
             dangling.push(format!("{} ({}:{}) called {} which is gone", a.name, a.path, a.start_line, b.name));
             dangling_refs.push(dref(a, b.name.clone()));
         }
@@ -365,5 +373,6 @@ pub fn verify_edit(repo: &Repo, agent: Option<&str>) -> Result<Verify> {
         dangling_refs,
         recheck_refs,
         guard_violations,
+        tiers,
     })
 }

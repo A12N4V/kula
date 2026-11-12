@@ -226,23 +226,42 @@ pub fn impact_min(store: &Store, id: i64, upstream: bool, max_depth: usize, min_
 
 /// Shortest call path from `a` to `b`.
 pub fn trace(store: &Store, a: i64, b: i64) -> Result<Vec<Node>> {
-    let mut prev: HashMap<i64, i64> = HashMap::new();
+    Ok(trace_conf(store, a, b, "guessed")?.path)
+}
+
+#[derive(Serialize)]
+pub struct TracePath {
+    pub path: Vec<Node>,
+    /// Edge tiers along the path: resolved / inferred / guessed counts.
+    pub tiers: [usize; 3],
+}
+
+/// Like `trace`, but ignores call edges weaker than `min_conf` and reports the path's tier counts.
+pub fn trace_conf(store: &Store, a: i64, b: i64, min_conf: &str) -> Result<TracePath> {
+    let floor = conf_rank(min_conf);
+    let mut prev: HashMap<i64, (i64, String)> = HashMap::new();
     let mut q = VecDeque::from([a]);
     let mut seen = HashSet::from([a]);
     while let Some(cur) = q.pop_front() {
         if cur == b {
             let mut path = vec![b];
+            let mut tiers = [0usize; 3];
             let mut c = b;
-            while let Some(p) = prev.get(&c) {
-                path.push(*p);
-                c = *p;
+            while let Some(&(p, ref conf)) = prev.get(&c) {
+                tiers[2 - conf_rank(conf) as usize] += 1;
+                path.push(p);
+                c = p;
             }
             path.reverse();
-            return path.into_iter().filter_map(|id| store.node(id).ok().flatten()).map(Ok).collect();
+            let path = path.into_iter().filter_map(|id| store.node(id).ok().flatten()).collect();
+            return Ok(TracePath { path, tiers });
         }
-        for (n, _) in store.neighbours(cur, "CALLS", true)? {
+        for (n, c) in store.neighbours_conf(cur, "CALLS", true)? {
+            if conf_rank(&c) < floor {
+                continue;
+            }
             if seen.insert(n.id) {
-                prev.insert(n.id, cur);
+                prev.insert(n.id, (cur, c));
                 q.push_back(n.id);
             }
         }
@@ -250,7 +269,7 @@ pub fn trace(store: &Store, a: i64, b: i64) -> Result<Vec<Node>> {
             break;
         }
     }
-    Ok(vec![])
+    Ok(TracePath { path: vec![], tiers: [0, 0, 0] })
 }
 
 #[derive(Serialize)]
@@ -441,6 +460,8 @@ pub struct DiffEdge {
     pub dst: i64,
     pub kind: String,
     pub status: &'static str,
+    /// Confidence tier carried from the side the edge came from.
+    pub confidence: String,
 }
 
 #[derive(Serialize, Default)]
@@ -560,8 +581,8 @@ pub fn graph_diff(
     }
     summary.files_touched = touched_files.len();
 
-    let ekeys = |b: &crate::index::Built, keys: &[String]| -> HashSet<(String, String, String)> {
-        b.edges.iter().map(|e| (keys[e.src as usize].clone(), keys[e.dst as usize].clone(), e.kind.clone())).collect()
+    let ekeys = |b: &crate::index::Built, keys: &[String]| -> HashSet<(String, String, String, String)> {
+        b.edges.iter().map(|e| (keys[e.src as usize].clone(), keys[e.dst as usize].clone(), e.kind.clone(), e.confidence.clone())).collect()
     };
     let (be, he) = (ekeys(base, &bk), ekeys(head, &hk));
     let mut edges = Vec::new();
@@ -578,7 +599,7 @@ pub fn graph_diff(
                 if st == "removed" && k.2 != "CONTAINS" {
                     summary.edges_removed += 1;
                 }
-                edges.push(DiffEdge { src: s, dst: d, kind: k.2.clone(), status: st });
+                edges.push(DiffEdge { src: s, dst: d, kind: k.2.clone(), status: st, confidence: k.3.clone() });
             }
         }
     }

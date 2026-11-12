@@ -104,8 +104,11 @@ fn index_and_graph_queries() {
     let py = kula_json(d, &["impact", "push_redis"]);
     assert!(py["hits"].to_string().contains("schedule_nightly"), "{py}");
     let rs = kula_json(d, &["trace", "run", "split_ws"]);
-    let path: Vec<&str> = rs.as_array().unwrap().iter().map(|n| n["name"].as_str().unwrap()).collect();
+    let path: Vec<&str> = rs["path"].as_array().unwrap().iter().map(|n| n["name"].as_str().unwrap()).collect();
     assert_eq!(path, vec!["run", "tokenize", "split_ws"]);
+    // The path reports its edge tiers, and they sum to the edges walked.
+    let tiers: usize = rs["tiers"].as_array().unwrap().iter().map(|t| t.as_u64().unwrap() as usize).sum();
+    assert_eq!(tiers, path.len() - 1);
 
     // Flows and clusters exist.
     assert!(!kula_json(d, &["flows"]).as_array().unwrap().is_empty());

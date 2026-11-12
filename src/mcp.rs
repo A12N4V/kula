@@ -161,7 +161,7 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             let y = graph::resolve_one(&s, &str_arg("to"))?;
             refuse_hidden(&g, &x)?;
             refuse_hidden(&g, &y)?;
-            json!(graph::trace(&s, x.id, y.id)?)
+            json!(graph::trace_conf(&s, x.id, y.id, "guessed")?)
         }
         "compare" => {
             let head = a.get("head").and_then(|v| v.as_str()).map(String::from).unwrap_or_else(|| repo.branch());

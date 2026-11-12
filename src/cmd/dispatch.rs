@@ -407,13 +407,14 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Cmd::Trace { from, to } => {
+        Cmd::Trace { from, to, min_confidence } => {
             let st = Store::open(&repo)?;
             let a = graph::resolve_one(&st, &from)?;
             let b = graph::resolve_one(&st, &to)?;
-            let path = graph::trace(&st, a.id, b.id)?;
+            let t = graph::trace_conf(&st, a.id, b.id, &min_confidence)?;
+            let path = &t.path;
             if json {
-                out(&path);
+                out(&t);
                 return Ok(());
             }
             if path.is_empty() {
@@ -426,6 +427,15 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
                     if i == 0 { accent("●") } else { dim("└→") },
                     bold(&n.name),
                     dim(&format!("{}:{}", n.path, n.start_line))
+                );
+            }
+            if !path.is_empty() {
+                println!(
+                    "  {} resolved {} · inferred {} · guessed {}",
+                    dim("tiers"),
+                    t.tiers[0],
+                    t.tiers[1],
+                    t.tiers[2]
                 );
             }
         }

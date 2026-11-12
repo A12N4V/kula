@@ -39,6 +39,17 @@ Order: TypeScript/JavaScript (imports, re-exports, barrels, `this`, class member
 
 Recorded 2026-11-12 (`python3 bench/edges/score.py --kula target/debug/kula`; the PATH `kula` may be stale and must not be used): overall precision 1.00 recall 1.00 (tp 58 fp 0 fn 0); `resolved` tier 46/46 = 1.00, `inferred` 10/10, `guessed` 2/2. `resolved` precision is above the 0.95 bar on every fixture set (ts, py, rs, go).
 
+Per language, same run (the scorer prints a per-language summary since 2026-11-12):
+
+| lang | precision | recall | edges | `resolved` before → after |
+|---|---|---|---|---|
+| ts | 1.00 | 1.00 | 14 | 13/16 → 13/14 resolved-tier precision |
+| py | 1.00 | 1.00 | 21 | 3/5 → 16/21 resolved-tier precision |
+| rs | 1.00 | 1.00 | 20 | 0/3 → 17/20 resolved-tier precision |
+| go | 1.00 | 1.00 | 3 | 0/3 → all 3 `resolved` (P1.1.7 closed) |
+
+Before/after tier detail per language is in `docs/TODO.md` on the P1.1.4–P1.1.7 lines; the Go resolver's first recorded run is this one: 3/3 edges `resolved`, precision 1.00 recall 1.00, above the 0.95 bar.
+
 ## Migration
 
 `SCHEMA_VERSION` is stored in meta key `schema`. A mismatch reads as `stale` and triggers a rebuild. Opening an old DB adds the `confidence` column (default `inferred`) so reads never fail before the rebuild runs.

@@ -18,6 +18,7 @@ while a:
 truth = json.load(open(os.path.join(here, "truth.json")))
 tot = {"tp": 0, "fp": 0, "fn": 0}
 tier = {}
+langs = {}
 for lang, edges in truth.items():
     d = tempfile.mkdtemp()
     try:
@@ -44,6 +45,9 @@ for lang, edges in truth.items():
         for m in sorted(miss): print(f"  [{lang}] missed {m[0]} -> {m[1]}")
         for e, c in sorted(got.items()):
             if e not in want: print(f"  [{lang}] wrong  {e[0]} -> {e[1]} ({c})")
+        langs[lang] = {"tp": tot["tp"] - sum(v["tp"] for v in langs.values()),
+                       "fp": tot["fp"] - sum(v["fp"] for v in langs.values()),
+                       "fn": tot["fn"] - sum(v["fn"] for v in langs.values())}
     finally:
         shutil.rmtree(d, ignore_errors=True)
 p = tot["tp"] / max(1, tot["tp"] + tot["fp"])
@@ -51,4 +55,8 @@ r = tot["tp"] / max(1, tot["tp"] + tot["fn"])
 print(f"overall precision {p:.2f} recall {r:.2f}  (tp {tot['tp']} fp {tot['fp']} fn {tot['fn']})")
 for c, v in sorted(tier.items()):
     print(f"  {c:9} precision {v['tp']/max(1,v['tp']+v['fp']):.2f}  ({v['tp']}/{v['tp']+v['fp']})")
+for lang, v in langs.items():
+    lp = v["tp"] / max(1, v["tp"] + v["fp"])
+    lr = v["tp"] / max(1, v["tp"] + v["fn"])
+    print(f"  {lang:4} precision {lp:.2f} recall {lr:.2f}  (tp {v['tp']} fp {v['fp']} fn {v['fn']})")
 sys.exit(1 if p < min_p else 0)
