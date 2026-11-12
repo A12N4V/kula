@@ -7,7 +7,13 @@
          ["useCyc","fromB"],
          ["usePathAlias","deepFn"],
          ["pick","dup"]],
-  "py": [["get","hash_it"],["put","get"],["run","pad"],["run","get"],["pad","hash_it"]],
+  "py": [["get","hash_it"],["put","get"],["run","pad"],["run","get"],["pad","hash_it"],
+         ["build","make"],["shout","greet"],["run","greet"],
+         ["build_item","Item"],["build_item","use"],["make","Item"],
+         ["via_relative","helper"],["via_module","helper"],["deep","helper"],
+         ["through_alias","helper"],["through_barrel","helper"],
+         ["pick_b","shared"],
+         ["use_cycle","from_b"],["use_cycle_two","from_a"],["from_b","from_a"]],
   "rs": [["run","pad"],["top","run"],["pad","hash_it"]],
   "go": [["Run","Pad"],["Top","Run"],["Pad","hashIt"]]
 }
