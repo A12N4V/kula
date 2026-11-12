@@ -302,6 +302,22 @@ impl Store {
     }
 }
 
+impl Node {
+    /// The file node id that ultimately contains this node.
+    pub fn parent_file(&self, nodes: &[Node]) -> usize {
+        let mut cur = self;
+        let mut guard = 0;
+        while cur.kind != "file" && guard < 8 {
+            match cur.parent {
+                Some(p) => cur = &nodes[p as usize],
+                None => break,
+            }
+            guard += 1;
+        }
+        cur.id as usize
+    }
+}
+
 /// `parseHttpRequest` → `parse http request`, `load_user_v2` → `load user v2`.
 pub fn split_ident(s: &str) -> String {
     let mut out = String::new();

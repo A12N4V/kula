@@ -12,3 +12,9 @@
 - P1.1.9 closing changes: `trace` gained `--min-confidence` + tier counts (new JSON shape `{path, tiers}`), `verify_edit` reports per-tier counts and its dangling check ignores guessed edges, `pre_edit` reports tier counts. tests/cli.rs updated for the trace shape.
 - Gate: cargo check, tsc --noEmit, all 6 test binaries green; scorer 1.00 everywhere.
 - Needs a human: P1.1.8 SCIP still open as a backlog item; confirm the trace JSON shape change is acceptable for any external MCP clients.
+
+## K2.1 – semantic map: tree, clusters, entries
+- Added src/map/{mod,tree,names,entries}.rs: module tree (packages from manifests, modules = dirs, symbols with loc/fan-in-out/30d churn), tf-idf cluster naming (unique, deterministic), entry points (cli/http/test/api).
+- Added lib target (src/lib.rs) exposing git, store, map; main.rs re-exports kula::{git,store}; moved Node::parent_file impl into store.rs for orphan rules.
+- tests/map.rs: fixture repo (core+webui, seeded net/a<->net/b cycle for the arch step) – tree packages, stable cluster names across 3 re-indexes, entries for main/handleLogin/health/renderApp. All pass.
+- Needs a human check: nothing yet wired into the CLI; kula map/explain/check/brief commands and arch.rs are the next K2 steps.

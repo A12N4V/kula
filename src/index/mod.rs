@@ -1132,22 +1132,6 @@ pub fn snapshot(repo: &Repo, rev: &str) -> Result<Built> {
     Ok(build(&files, &read))
 }
 
-impl Node {
-    /// The file node id that ultimately contains this node.
-    fn parent_file(&self, nodes: &[Node]) -> usize {
-        let mut cur = self;
-        let mut guard = 0;
-        while cur.kind != "file" && guard < 8 {
-            match cur.parent {
-                Some(p) => cur = &nodes[p as usize],
-                None => break,
-            }
-            guard += 1;
-        }
-        cur.id as usize
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

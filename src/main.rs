@@ -8,7 +8,6 @@ mod clean;
 mod cli;
 mod cmd;
 mod config;
-mod git;
 mod graph;
 mod guard;
 mod index;
@@ -24,7 +23,6 @@ mod run;
 mod server;
 mod setup;
 mod skills;
-mod store;
 mod term;
 mod workflow;
 
@@ -32,8 +30,9 @@ use anyhow::{bail, Result};
 use clap::Parser;
 use cli::*;
 use cmd::*;
-use git::Repo;
-use store::Store;
+pub use kula::{git, store};
+use kula::git::Repo;
+use kula::store::Store;
 use term::*;
 
 fn main() {
