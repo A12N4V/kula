@@ -450,6 +450,9 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
     if lang.id == "rust" {
         resolve::rs::scan(&tree, src, &mut pf);
     }
+    if lang.id == "go" {
+        resolve::go::scan(&tree, src, &mut pf);
+    }
     pf.defs.sort_by_key(|d| (d.start_byte, std::cmp::Reverse(d.end_byte)));
     Some(pf)
 }
