@@ -7,6 +7,7 @@ mod guard;
 mod kg;
 mod map;
 mod memory;
+mod orch;
 mod project_cmds;
 mod research;
 mod skill;

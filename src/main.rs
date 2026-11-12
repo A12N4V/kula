@@ -18,6 +18,7 @@ mod layers;
 mod mcp;
 mod memory;
 mod meta;
+mod orch;
 mod project;
 mod research;
 mod run;

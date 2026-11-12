@@ -311,6 +311,37 @@ pub(crate) enum Cmd {
     )]
     #[command(subcommand)]
     Skill(SkillCmd),
+    /// Split a goal into module slices from the graph: `kula plan "retry failed uploads"`.
+    #[command(after_help = "Examples:\n  kula plan \"retry failed uploads\"  ·  kula plan \"rename Client\" --agent codex --json")]
+    Plan {
+        goal: String,
+        /// Which agent each slice goes to.
+        #[arg(short, long, default_value = "claude")]
+        agent: String,
+        /// Where to write the plan (default .kula/plan.json).
+        #[arg(short, long)]
+        out: Option<std::path::PathBuf>,
+        /// Shell command the gate runs; `{tests}` becomes the slice's test files.
+        #[arg(long)]
+        test_cmd: Option<String>,
+        #[arg(long, default_value_t = 2)]
+        max_parallel: usize,
+        #[arg(long, default_value_t = 2)]
+        max_retries: u32,
+    },
+    /// Gate one slice of a plan: exit 0 pass, 1 fix, 2 reject.
+    #[command(after_help = "Examples:\n  kula gate net  ·  kula gate net --dir .")]
+    Gate {
+        slice: String,
+        #[arg(short, long)]
+        plan: Option<std::path::PathBuf>,
+        /// The tree to gate (default the slice's worktree, else this checkout).
+        #[arg(short, long)]
+        dir: Option<std::path::PathBuf>,
+    },
+    /// Run every slice of a plan: own worktree, agent under fences, gate, retries.
+    #[command(name = "run-plan", after_help = "Examples:\n  kula run-plan  ·  kula run-plan .kula/plan.json")]
+    RunPlan { plan: Option<std::path::PathBuf> },
     /// Run any agent harness held to kula's fences: `kula run -w fix -- aider`.
     #[command(after_help = "Examples:\n  kula run -w fix --agent aider -- aider")]
     Run {

@@ -58,6 +58,9 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
     if let Cmd::Explain { target } = &cmd {
         return cmd::map::run_explain(&repo, target, json);
     }
+    if matches!(cmd, Cmd::Plan { .. } | Cmd::Gate { .. } | Cmd::RunPlan { .. }) {
+        return cmd::orch::run(&repo, cmd, json);
+    }
     if let Cmd::Brief { format } = &cmd {
         return cmd::map::run_brief(&repo, format, json);
     }

@@ -250,7 +250,7 @@ pub fn module_dirs(tree: &ModuleTree) -> BTreeMap<String, String> {
 /// The module a file path belongs to: the longest tree-module directory that is
 /// the file's directory or an ancestor of it; files outside any module keep
 /// their own directory as the bucket.
-fn resolve(mods: &BTreeMap<String, String>, dir: &str) -> String {
+pub fn resolve(mods: &BTreeMap<String, String>, dir: &str) -> String {
     let mut best: Option<&str> = None;
     for m in mods.keys() {
         if dir == m.as_str() || dir.starts_with(&format!("{m}/")) {
@@ -263,7 +263,7 @@ fn resolve(mods: &BTreeMap<String, String>, dir: &str) -> String {
     best.unwrap_or(dir).to_string()
 }
 
-fn dir_of(path: &str) -> String {
+pub fn dir_of(path: &str) -> String {
     path.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_else(|| ".".into())
 }
 
