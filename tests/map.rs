@@ -148,3 +148,34 @@ fn check_architecture_cycle() {
     );
 }
 
+/// `kula map` renders all three formats and honours zoom; mermaid starts with
+/// `flowchart` and json carries `"schema": 1` at the top.
+#[test]
+fn map_formats_and_zooms() {
+    let t = fixture();
+    let d = t.path();
+    index(d);
+
+    let md = Command::new(KULA).arg("-C").arg(d).args(["map", "--zoom", "module", "--format", "md"]).output().unwrap();
+    assert!(md.status.success(), "{}", String::from_utf8_lossy(&md.stderr));
+    let text = String::from_utf8_lossy(&md.stdout).to_string();
+    assert!(text.contains("core"), "md map should list packages:\n{text}");
+    assert!(text.contains("webui"), "md map should list webui:\n{text}");
+    assert!(text.contains("net"), "md map should list modules:\n{text}");
+
+    // Zoom levels narrow the output.
+    let repo = Command::new(KULA).arg("-C").arg(d).args(["map", "--zoom", "repo"]).output().unwrap();
+    let repo_text = String::from_utf8_lossy(&repo.stdout).to_string();
+    assert!(repo_text.contains("core") && !repo_text.contains("pong"), "repo zoom shows packages only:\n{repo_text}");
+
+    let js = Command::new(KULA).arg("-C").arg(d).args(["map", "--format", "json"]).output().unwrap();
+    assert!(js.status.success());
+    let js_text = String::from_utf8_lossy(&js.stdout).to_string();
+    assert!(js_text.contains("\"schema\""), "json map needs schema at the top:\n{js_text}");
+
+    let mm = Command::new(KULA).arg("-C").arg(d).args(["map", "--format", "mermaid"]).output().unwrap();
+    assert!(mm.status.success());
+    let mm_text = String::from_utf8_lossy(&mm.stdout).to_string();
+    assert!(mm_text.starts_with("flowchart"), "mermaid must start with flowchart:\n{mm_text}");
+}
+

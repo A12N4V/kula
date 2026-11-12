@@ -5,6 +5,7 @@ mod graph;
 mod graph_cmds;
 mod guard;
 mod kg;
+mod map;
 mod memory;
 mod project_cmds;
 mod research;

@@ -52,6 +52,12 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
     if matches!(cmd, Cmd::Impact { .. } | Cmd::Trace { .. } | Cmd::Flows { .. }) {
         return cmd::graph_cmds::run(&repo, &cmd, json);
     }
+    if let Cmd::Map { zoom, format } = &cmd {
+        return cmd::map::run_map(&repo, zoom, format, json);
+    }
+    if let Cmd::Explain { target } = &cmd {
+        return cmd::map::run_explain(&repo, target, json);
+    }
     match cmd {
         Cmd::Index { if_stale, quiet } => {
             if if_stale && Store::freshness(&repo) == "current" {

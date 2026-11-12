@@ -30,7 +30,7 @@ use anyhow::{bail, Result};
 use clap::Parser;
 use cli::*;
 use cmd::*;
-pub use kula::{git, store};
+pub use kula::{git, map, store};
 use kula::git::Repo;
 use kula::store::Store;
 use term::*;

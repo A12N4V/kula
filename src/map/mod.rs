@@ -3,7 +3,9 @@
 
 pub mod arch;
 pub mod entries;
+pub mod explain;
 pub mod names;
+pub mod render;
 pub mod tree;
 
 use crate::store::{Node, Store};

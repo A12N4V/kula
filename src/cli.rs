@@ -24,6 +24,8 @@ Explore the code
   clusters     functional clusters
   deps         external packages: imported, declared, unused
   kg           the graph as RDF: export it, or ask it in SPARQL
+  map          semantic map: packages, modules, symbols, cycles and coupling
+  explain      one page about a module, file or symbol
 
 Review changes
   lg           commit graph
@@ -164,6 +166,23 @@ pub(crate) enum Cmd {
     Hooks {
         #[arg(default_value = "status")]
         action: String,
+    },
+    /// Semantic map: packages, modules and symbols with loc, fan-in/out and churn.
+    #[command(after_help = "Examples:\n  kula map                        ·  kula map --zoom repo --format json\n  kula map --format mermaid       ·  kula map --zoom symbol")]
+    Map {
+        /// How deep: repo | package | module | symbol.
+        #[arg(long, default_value = "module", value_parser = ["repo", "package", "module", "symbol"])]
+        zoom: String,
+        /// md | json | mermaid.
+        #[arg(long, default_value = "md", value_parser = ["md", "json", "mermaid"])]
+        format: String,
+    },
+    /// One page about a module, file or symbol: purpose, surface, dependents, hot spots.
+    #[command(after_help = "Examples:\n  kula explain src/map   ·  kula explain pong")]
+    Explain {
+        /// A module (directory), a file path or a symbol name.
+        #[arg(required = true)]
+        target: String,
     },
     /// Open the web UI (graph, changes, history, branches, issues, notes).
     #[command(after_help = "Examples:\n  kula view   ·  kula view --port 7420 --no-open")]

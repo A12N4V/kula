@@ -24,3 +24,9 @@
 - `kula check <target>`: optional positional; `architecture` runs the report and exits non-zero when any cycle exists, other values error with a hint, no target keeps the existing blast-radius CI gate.
 - tests/map.rs: check_architecture_cycle – seeded net/a↔net/b cycle exits non-zero, the same repo with the cycle imports removed exits zero; lib report shows the cycle. Full suite green (all test binaries), cargo check and web tsc pass.
 - Needs a human check: dead_candidates is name-based and informational (no entry-point awareness yet); cycle detection is file-level, module-level cycles could be added later by grouping file cycles.
+
+## K2.3: kula map and kula explain
+- New src/map/explain.rs (purpose from cluster name, public surface, depends on / used by, hot spots by churn x fan_in, memories passed in) and src/map/render.rs (md, json with schema 1, mermaid starting with flowchart; zoom filters repo/package/module/symbol).
+- Thin glue in src/cmd/map.rs; Cmd::Map and Cmd::Explain added to src/cli.rs and wired in src/cmd/dispatch.rs; main.rs re-exports kula::map.
+- tests/map.rs gained map_formats_and_zooms (md/json/mermaid + zoom narrowing); new tests/explain.rs covers module/symbol sections, json schema and the non-zero exit with hint for unknown targets. All pass, plus cargo check and web tsc --noEmit clean.
+- Needs a human check: calls nested inside format!/macro arguments produce no CALLS edge, so explain "Depends on" can look empty for such symbols (fixture was adjusted to use a statement call).
