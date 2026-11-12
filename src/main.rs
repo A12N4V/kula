@@ -13,6 +13,7 @@ mod guard;
 mod index;
 mod isolate;
 mod kg;
+mod layers;
 mod lang_cmd;
 mod mcp;
 mod memory;

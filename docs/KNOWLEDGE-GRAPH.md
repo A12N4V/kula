@@ -21,6 +21,8 @@ Instances are `urn:kula:` IRIs (prefix `code:`), built from paths and names rath
 | a file | `<urn:kula:file:src/git.rs>` |
 | a symbol | `<urn:kula:sym:src/git.rs#Repo.status>` (container-qualified) |
 | a package | `<urn:kula:pkg:serde>` |
+| a dependency | `<urn:kula:dep:npm/express>` |
+| an env var | `<urn:kula:env:PORT>` |
 | a cluster | `code:cluster:3` |
 | a note or memory | `code:note:12` |
 | an issue | `code:issue:4` |
@@ -43,6 +45,8 @@ classDiagram
     class Class
     class Interface
     class Package { name }
+    class Dependency { name }
+    class Env { name }
     class Cluster { label }
     class Note { body author created }
     class Memory { body author created stale }
@@ -57,6 +61,9 @@ classDiagram
     Symbol --> Symbol : calls
     File --> File : imports
     File --> Package : imports
+    Dependency --> File : usedBy
+    Symbol --> Env : readsEnv
+    File --> Env : readsEnv
     Symbol --> Cluster : inCluster
     Note --> Symbol : about
     Memory --> Symbol : about
@@ -71,6 +78,8 @@ classDiagram
 | `kula:Symbol` | anything defined in code; every Function, Method, Class and Interface is one |
 | `kula:Function` · `kula:Method` · `kula:Class` · `kula:Interface` | the kinds of symbol (Class covers structs, enums, records, types and modules; Interface covers traits and protocols) |
 | `kula:Package` | an external package the code imports |
+| `kula:Dependency` | an external package declared in a manifest (Cargo.toml, package.json, pyproject.toml, requirements.txt, go.mod) |
+| `kula:Env` | an environment variable the code reads, or a key in `.env.example` |
 | `kula:Cluster` | a functional cluster: symbols that call each other more than they call the rest |
 | `kula:Note` · `kula:Memory` | a person's note; an agent's memory, anchored to the code it was written about |
 | `kula:Issue` | a local issue, stored in git |
@@ -84,6 +93,9 @@ classDiagram
 | `kula:memberOf` | Method or nested symbol → its enclosing Class |
 | `kula:calls` | Symbol → Symbol |
 | `kula:imports` | File → File or Package |
+| `kula:usedBy` | Dependency → the File that imports it; a dependency with no `usedBy` edge is unused |
+| `kula:readsEnv` | Symbol or File → the Env it reads (a `.env.example` File declares its keys) |
+| `kula:vocabVersion` | the vocabulary version of this export |
 | `kula:inCluster` · `kula:label` | Symbol or File → its Cluster; a cluster's label |
 | `kula:about` | Note, Memory or Issue → the Repository, File or Symbol it is about |
 | `kula:body` · `kula:author` · `kula:created` | text, a git user or `agent:<name>`, an `xsd:dateTime` |

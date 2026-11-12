@@ -29,6 +29,10 @@ use std::collections::HashMap;
 pub const NS: &str = "https://kula.dev/ns#";
 pub const CODE: &str = "urn:kula:";
 
+/// Version of the published vocabulary: 1 = the original set, 2 adds
+/// Dependency, Env, usedBy and readsEnv (runtime layers).
+pub const VOCAB_VERSION: i64 = 2;
+
 /// Every class and property, with its meaning: loaded into the graph itself so
 /// a query can discover the schema (`SELECT ?p ?c { ?p rdfs:comment ?c }`).
 pub const SCHEMA: &[(&str, &str, &str)] = &[
@@ -40,6 +44,8 @@ pub const SCHEMA: &[(&str, &str, &str)] = &[
     ("Class", "class", "A class, struct, enum, record, type or module."),
     ("Interface", "class", "An interface, trait or protocol."),
     ("Package", "class", "An external package the code imports."),
+    ("Dependency", "class", "An external package declared in a manifest."),
+    ("Env", "class", "An environment variable the code reads or a key in .env.example."),
     ("Cluster", "class", "A functional cluster: symbols that call each other more than they call the rest."),
     ("Note", "class", "A person's note on the repo, a file or a symbol."),
     ("Memory", "class", "An agent's memory, anchored to the code it was written about."),
@@ -54,6 +60,9 @@ pub const SCHEMA: &[(&str, &str, &str)] = &[
     ("memberOf", "property", "Method or nested symbol → its enclosing Class."),
     ("calls", "property", "Symbol → Symbol it calls."),
     ("imports", "property", "File → File or Package it imports."),
+    ("usedBy", "property", "Dependency → the File that imports it."),
+    ("readsEnv", "property", "Symbol or File → the Env variable it reads."),
+    ("vocabVersion", "property", "The vocabulary version of this export."),
     ("inCluster", "property", "Symbol or File → its Cluster."),
     ("label", "property", "A cluster's label."),
     ("about", "property", "Note, Memory or Issue → the Repository, File or Symbol it is about."),
@@ -108,6 +117,8 @@ fn class_of(kind: &str) -> &'static str {
         "interface" => "Interface",
         "file" => "File",
         "package" => "Package",
+        "dependency" => "Dependency",
+        "env" => "Env",
         _ => "Symbol",
     }
 }
@@ -149,6 +160,9 @@ fn symbol_iris(nodes: &[Node]) -> HashMap<i64, NamedNode> {
         let s = match n.kind.as_str() {
             "file" => file_iri(&n.path),
             "package" => format!("{CODE}pkg:{}", enc(&n.name)),
+            // dep:npm:express → code:dep:npm/express · env:PORT → code:env:PORT
+            "dependency" => format!("{CODE}dep:{}", enc(&n.path[4..].replace(':', "/"))),
+            "env" => format!("{CODE}env:{}", enc(&n.name)),
             _ => {
                 let owner =
                     n.parent.and_then(|p| by_id.get(&p)).filter(|p| p.kind != "file").map(|p| format!("{}.", p.name)).unwrap_or_default();
@@ -191,6 +205,7 @@ pub fn build(repo: &Repo, store: &Store) -> Result<Rdf> {
     let repo_iri = iri(format!("{CODE}repo"));
     b.a(&repo_iri, "Repository");
     b.add(&repo_iri, k("name"), Literal::new_simple_literal(repo.name()));
+    b.add(&repo_iri, k("vocabVersion"), Literal::from(VOCAB_VERSION));
 
     let clusters: HashMap<i64, String> = store.communities()?.into_iter().map(|c| (c.id, c.label)).collect();
     for (id, label) in &clusters {
@@ -204,12 +219,12 @@ pub fn build(repo: &Repo, store: &Store) -> Result<Rdf> {
     for n in &nodes {
         let s = &ids[&n.id];
         b.a(s, class_of(&n.kind));
-        if !matches!(n.kind.as_str(), "file" | "package") {
+        if matches!(n.kind.as_str(), "function" | "method" | "class" | "interface") {
             b.a(s, "Symbol"); // stated, not inferred: queries need no reasoner
         }
         b.add(s, k("name"), Literal::new_simple_literal(&n.name));
         b.add(s, rdfs::LABEL.into_owned(), Literal::new_simple_literal(&n.name));
-        if n.kind == "package" {
+        if matches!(n.kind.as_str(), "package" | "dependency" | "env") {
             continue;
         }
         b.add(s, k("path"), Literal::new_simple_literal(&n.path));
@@ -240,6 +255,8 @@ pub fn build(repo: &Repo, store: &Store) -> Result<Rdf> {
         match e.kind.as_str() {
             "CALLS" => b.add(s, k("calls"), o.clone()),
             "IMPORTS" => b.add(s, k("imports"), o.clone()),
+            "USED_BY" => b.add(s, k("usedBy"), o.clone()),
+            "READS_ENV" => b.add(s, k("readsEnv"), o.clone()),
             _ => {}
         }
     }

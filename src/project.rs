@@ -420,7 +420,7 @@ const PY_STDLIB: &[&str] = &[
     "__future__",
 ];
 
-fn ecosystem(lang: &str) -> &'static str {
+pub(crate) fn ecosystem(lang: &str) -> &'static str {
     match lang {
         "javascript" | "typescript" | "tsx" => "npm",
         "python" => "pypi",
@@ -430,7 +430,7 @@ fn ecosystem(lang: &str) -> &'static str {
     }
 }
 
-fn builtin(eco: &str, name: &str) -> bool {
+pub(crate) fn builtin(eco: &str, name: &str) -> bool {
     match eco {
         "npm" => name.starts_with("node:") || NODE_BUILTINS.contains(&name),
         "pypi" => PY_STDLIB.contains(&name),
@@ -441,7 +441,7 @@ fn builtin(eco: &str, name: &str) -> bool {
 }
 
 /// Normalise a declared name to how code imports it.
-fn norm(eco: &str, name: &str) -> String {
+pub(crate) fn norm(eco: &str, name: &str) -> String {
     match eco {
         "cargo" => name.replace('-', "_"),
         "pypi" => name.to_ascii_lowercase().replace('-', "_"),

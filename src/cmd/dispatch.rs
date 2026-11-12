@@ -88,8 +88,8 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Deps { undeclared, unused } => {
             let st = open_or_index(&repo)?;
-            let all = project::deps(&repo, &st)?;
-            let list: Vec<&project::Dep> = all
+            let all = layers::deps::report(&st)?;
+            let list: Vec<&layers::deps::Dep> = all
                 .iter()
                 .filter(|d| {
                     (!undeclared || (!d.declared && !d.builtin && d.importers > 0)) && (!unused || (d.declared && d.importers == 0))
@@ -220,6 +220,25 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
             )?;
         }
         Cmd::Query { text, limit } => {
+            // `kula query env:NAME`: who reads one env var (file, symbol, line).
+            if let Some(name) = text.join(" ").strip_prefix("env:") {
+                let st = Store::open(&repo)?;
+                let readers = layers::env::readers(&st, name)?;
+                if json {
+                    out(&readers);
+                    return Ok(());
+                }
+                if readers.is_empty() {
+                    println!("{}", dim(format!("no reader of {name}").as_str()));
+                }
+                for r in &readers {
+                    match &r.symbol {
+                        Some(s) => println!("  {} {} {} {}", bold(&r.file), s, dim(&format!("line {}", r.line)), dim("reads")),
+                        None => println!("  {} {} {}", bold(&r.file), dim(&format!("line {}", r.line)), dim("declares")),
+                    }
+                }
+                return Ok(());
+            }
             let st = Store::open(&repo)?;
             let hits = st.search(&text.join(" "), limit)?;
             if json {

@@ -207,36 +207,36 @@ const COMMON: &[&str] = &[
 ];
 
 #[derive(Debug, Default)]
-struct Def {
-    name: String,
-    kind: &'static str,
-    start_line: u32,
-    end_line: u32,
-    start_byte: usize,
-    end_byte: usize,
-    parent_name: Option<String>,
+pub(crate) struct Def {
+    pub(crate) name: String,
+    pub(crate) kind: &'static str,
+    pub(crate) start_line: u32,
+    pub(crate) end_line: u32,
+    pub(crate) start_byte: usize,
+    pub(crate) end_byte: usize,
+    pub(crate) parent_name: Option<String>,
     /// Hash of the definition's source text, used to detect modified symbols.
-    hash: u64,
+    pub(crate) hash: u64,
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct ParsedFile {
-    path: String,
-    lang: &'static str,
-    loc: u32,
-    defs: Vec<Def>,
-    calls: Vec<(String, usize)>,
+    pub(crate) path: String,
+    pub(crate) lang: &'static str,
+    pub(crate) loc: u32,
+    pub(crate) defs: Vec<Def>,
+    pub(crate) calls: Vec<(String, usize)>,
     /// Start bytes of calls whose receiver is `this`/`self`: `this.get()` binds to the enclosing class.
-    self_calls: HashSet<usize>,
-    imports: Vec<String>,
+    pub(crate) self_calls: HashSet<usize>,
+    pub(crate) imports: Vec<String>,
     /// Structured import/re-export bindings, filled by the language resolvers.
-    import_bindings: Vec<resolve::ImportBinding>,
+    pub(crate) import_bindings: Vec<resolve::ImportBinding>,
     /// Member-call receivers, by call start byte (`NS.fn()` → `NS`).
-    receivers: HashMap<usize, String>,
+    pub(crate) receivers: HashMap<usize, String>,
     /// Local variables and parameters whose type is known (`const f = new Foo()` → `f: Foo`).
-    var_types: HashMap<String, String>,
+    pub(crate) var_types: HashMap<String, String>,
     /// Type names declared as interfaces (filled by the Go scan).
-    interfaces: Vec<String>,
+    pub(crate) interfaces: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -284,6 +284,10 @@ fn walk(root: &Path) -> Vec<(String, Option<&'static str>)> {
         };
         let lang = langs::for_path(&rel);
         out.push((rel, lang));
+    }
+    // Dotfiles are hidden from the walk, but `.env.example` declares env keys.
+    if root.join(".env.example").is_file() {
+        out.push((".env.example".into(), None));
     }
     out.sort();
     out
@@ -963,6 +967,9 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
             }
         }
     }
+
+    // Runtime layers: dependencies, env vars (routes come later).
+    crate::layers::apply(&parsed, &sym_ids, files, read, &mut nodes, &mut edges, &file_id, &mut hashes);
 
     // Communities.
     if let Some(p) = progress {

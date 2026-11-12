@@ -36,3 +36,9 @@
 - `kula brief`: one-page semantic brief (packages hottest first, entry points, cycles, god modules, hot spots, coupling) from `src/map/brief.rs`; hard-capped at 1500 tokens (4 chars/token). `--format json` carries `"schema": 1`.
 - `kula agents sync` now includes the semantic brief inside the kula block (skipped silently when no index exists).
 - Tests: tests/brief.rs (2 passing). Still needs a human check: nothing beyond normal review.
+
+## 2026-11-12 K3.1 runtime layers: deps + env
+- New src/layers/{deps,env}.rs. Index build now inserts `dependency` nodes (path `dep:<eco>:<name>`) from Cargo.toml (+Cargo.lock aliases), package.json, pyproject.toml, requirements*.txt and go.mod, `used_by` edges dependency → importing file, `env` nodes (path `env:<KEY>`) and `reads_env` edges (reader → env, edge weight = line of the read) for process.env.X / os.environ / os.getenv / std::env::var / os.Getenv plus keys in .env.example (the walk now force-includes that dotfile).
+- `kula deps` now reads the graph (layers::deps::report); output shape unchanged, existing tests pass. New `kula query env:NAME` lists readers (file, symbol, line).
+- kg: Dependency/Env classes, usedBy/readsEnv/vocabVersion properties (VOCAB_VERSION=2), IRIs code:dep:<eco>/<name> and code:env:<KEY>; SCHEMA_VERSION bumped 2→3 so old indexes rebuild.
+- Needs a human check: routes.rs (K3.2) still open; lock-only Cargo.lock names are matching aliases, never nodes; snapshot graphs (git revisions) skip manifests and .env.example, so layers only appear in working-tree indexes.
