@@ -184,6 +184,13 @@ pub(crate) enum Cmd {
         #[arg(required = true)]
         target: String,
     },
+    /// One page for an agent new to this repo: packages, entries, hot spots, warnings.
+    #[command(after_help = "Examples:\n  kula brief   ·  kula brief --format json")]
+    Brief {
+        /// md | json.
+        #[arg(long, default_value = "md", value_parser = ["md", "json"])]
+        format: String,
+    },
     /// Open the web UI (graph, changes, history, branches, issues, notes).
     #[command(after_help = "Examples:\n  kula view   ·  kula view --port 7420 --no-open")]
     View {

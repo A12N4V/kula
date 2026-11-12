@@ -58,6 +58,9 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
     if let Cmd::Explain { target } = &cmd {
         return cmd::map::run_explain(&repo, target, json);
     }
+    if let Cmd::Brief { format } = &cmd {
+        return cmd::map::run_brief(&repo, format, json);
+    }
     match cmd {
         Cmd::Index { if_stale, quiet } => {
             if if_stale && Store::freshness(&repo) == "current" {

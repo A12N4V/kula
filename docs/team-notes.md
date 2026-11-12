@@ -30,3 +30,8 @@
 - Thin glue in src/cmd/map.rs; Cmd::Map and Cmd::Explain added to src/cli.rs and wired in src/cmd/dispatch.rs; main.rs re-exports kula::map.
 - tests/map.rs gained map_formats_and_zooms (md/json/mermaid + zoom narrowing); new tests/explain.rs covers module/symbol sections, json schema and the non-zero exit with hint for unknown targets. All pass, plus cargo check and web tsc --noEmit clean.
 - Needs a human check: calls nested inside format!/macro arguments produce no CALLS edge, so explain "Depends on" can look empty for such symbols (fixture was adjusted to use a statement call).
+
+## K2.4 brief
+- `kula brief`: one-page semantic brief (packages hottest first, entry points, cycles, god modules, hot spots, coupling) from `src/map/brief.rs`; hard-capped at 1500 tokens (4 chars/token). `--format json` carries `"schema": 1`.
+- `kula agents sync` now includes the semantic brief inside the kula block (skipped silently when no index exists).
+- Tests: tests/brief.rs (2 passing). Still needs a human check: nothing beyond normal review.

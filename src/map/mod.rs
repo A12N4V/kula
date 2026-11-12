@@ -2,6 +2,7 @@
 //! no LLM, fully offline and deterministic.
 
 pub mod arch;
+pub mod brief;
 pub mod entries;
 pub mod explain;
 pub mod names;

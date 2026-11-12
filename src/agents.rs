@@ -888,8 +888,21 @@ fn short(v: &[String]) -> String {
 /// that exist), replacing an earlier brief and keeping the rest of the file.
 pub fn sync(repo: &Repo, only: &[String]) -> Result<Vec<String>> {
     let cfg = Config::load(&repo.root)?;
-    let block =
-        format!("{BEGIN} – written by `kula agents sync` from kula.toml; edit kula.toml, not this block -->\n{}{END}\n", brief(&cfg));
+    // The semantic map brief rides in the same block, so `agents sync`
+    // refreshes it; skipped quietly when there is no index yet.
+    let map_brief = std::fs::File::open(crate::store::Store::path(repo))
+        .ok()
+        .and_then(|_| crate::store::Store::open(repo).ok())
+        .map(|st| {
+            let r = crate::map::brief::report(&repo.root, &crate::map::tree::module_tree(&repo.root, &st), &st);
+            crate::map::brief::markdown(&r)
+        })
+        .unwrap_or_default();
+    let block = format!(
+        "{BEGIN} – written by `kula agents sync` from kula.toml; edit kula.toml, not this block -->\n{}{}{END}\n",
+        brief(&cfg),
+        map_brief
+    );
     let targets: Vec<String> = if only.is_empty() {
         INSTRUCTIONS
             .iter()
