@@ -98,6 +98,20 @@ fn fixture() -> tempfile::TempDir {
     write(d, "cyc_user.py", "from cyc import from_b\n\n\ndef use_cycle():\n    return from_b()\n");
     write(d, "cyc_user2.py", "from cyc import from_a\n\n\ndef use_cycle_two():\n    return from_a()\n");
 
+    // Unaliased `import pkg2.b` binds the package `pkg2`; `pkg2.dup` is an
+    // attribute of pkg2/__init__.py, which re-exports it from c.py (not b.py).
+    write(d, "pkg2/__init__.py", "from .c import dup\n");
+    write(d, "pkg2/b.py", "def dup():\n    return \"b\"\n");
+    write(d, "pkg2/c.py", "def dup():\n    return \"c\"\n");
+    write(d, "pkg2/user.py", "import pkg2.b\n\n\ndef pick_dup():\n    return pkg2.dup()\n");
+    // A name that lives only in a submodule is not an attribute of the package.
+    write(d, "pkg3/__init__.py", "def pkgfn():\n    return 1\n");
+    write(d, "pkg3/core.py", "def corefn():\n    return 2\n");
+    write(d, "use3.py", "import pkg3.core\n\n\ndef good():\n    return pkg3.pkgfn()\n\n\ndef bad():\n    return pkg3.corefn()\n");
+    // A class unique repo-wide but not in scope (never defined or imported here)
+    // must not become an exact edge: Python raises NameError.
+    write(d, "clsuser.py", "def unimported():\n    return Widget.draw()\n");
+
     git(d, &["add", "-A"]);
     git(d, &["commit", "-qm", "fixture"]);
     t
@@ -199,4 +213,48 @@ fn py_ambiguous_base_does_not_force_resolved() {
     // nothing, so the call stays below the resolved tier.
     let callers = resolved_callers(d, "paint_a");
     assert!(!has(&callers, "splash", "amb.py"), "ambiguous base forced resolved: {callers:?}");
+}
+
+/// Callers of `path:name` at any tier, by caller name.
+fn callers_of(dir: &Path, target: &str) -> Vec<String> {
+    let d = kula_json(dir, &["context", target]);
+    d["callers"].as_array().unwrap().iter().map(|n| n["name"].as_str().unwrap_or("").to_string()).collect()
+}
+
+#[test]
+fn py_unaliased_import_uses_the_package_init() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+
+    // `import pkg2.b; pkg2.dup()` – `pkg2.dup` is the name re-exported by
+    // pkg2/__init__.py from c.py, so the edge must target c.py, not b.py.
+    assert!(callers_of(d, "pkg2/c.py:dup").contains(&"pick_dup".to_string()), "re-export target missing");
+    assert!(!callers_of(d, "pkg2/b.py:dup").contains(&"pick_dup".to_string()), "wrong target b.py");
+}
+
+#[test]
+fn py_unaliased_import_does_not_reach_a_submodule_name() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+
+    // `pkg3.pkgfn` is defined on the package __init__ – an exact edge.
+    assert!(has(&resolved_callers(d, "pkgfn"), "good", "use3.py"), "package attribute not resolved");
+    // `pkg3.corefn` only exists in pkg3/core.py, so `pkg3.corefn()` is an
+    // AttributeError – it must not be an exact edge.
+    let bad = resolved_callers(d, "corefn");
+    assert!(!has(&bad, "bad", "use3.py"), "submodule name wrongly exact: {bad:?}");
+}
+
+#[test]
+fn py_out_of_scope_class_does_not_force_resolved() {
+    let t = fixture();
+    let d = t.path();
+    kula(d, &["index"]);
+
+    // `Widget` is unique repo-wide but clsuser.py neither defines nor imports
+    // it, so `Widget.draw()` is a NameError, not an exact edge.
+    let callers = resolved_callers(d, "draw");
+    assert!(!has(&callers, "unimported", "clsuser.py"), "out-of-scope class forced resolved: {callers:?}");
 }
