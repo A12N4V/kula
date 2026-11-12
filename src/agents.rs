@@ -37,7 +37,7 @@ pub struct Connection {
     pub files: Vec<&'static str>,
 }
 
-fn files_for(id: &str) -> Vec<&'static str> {
+pub fn files_for(id: &str) -> Vec<&'static str> {
     match id {
         "claude" => vec![".mcp.json", ".claude/settings.json"],
         "cursor" => vec![".cursor/mcp.json", ".cursor/hooks.json"],
@@ -150,7 +150,7 @@ pub fn connect(root: &Path, id: &str) -> Result<Vec<&'static str>> {
     Ok(files)
 }
 
-fn connect_files(root: &Path, id: &str) -> Result<Vec<&'static str>> {
+pub fn connect_files(root: &Path, id: &str) -> Result<Vec<&'static str>> {
     let p = |f: &str| root.join(f);
     match id {
         // Claude Code: .mcp.json, and a PreToolUse hook (exit 2 blocks, stderr goes to the agent).

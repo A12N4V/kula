@@ -8,3 +8,4 @@ pub mod plan;
 pub mod retry;
 pub mod run;
 pub mod task;
+pub mod wire;

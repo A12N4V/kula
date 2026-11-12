@@ -63,6 +63,7 @@ fn prepare_worktree(repo: &Repo, plan: &Plan, slice: &str) -> Result<PathBuf> {
 /// Commits a passing slice on its branch and removes its worktree.
 fn keep(repo: &Repo, wt: &Path, plan: &Plan, slice: &str) -> Result<()> {
     let w = Repo::discover(wt)?;
+    super::wire::unwire(&w)?;
     w.run(&["add", "-A", "--", ".", ":(exclude).kula"])?;
     if !w.run(&["diff", "--cached", "--name-only"])?.trim().is_empty() {
         let msg = format!("kula: {} ({})", plan.goal, slice);
@@ -218,7 +219,8 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
             let snapshot = p.clone();
             drop(p);
             for id in ready {
-                let wt = match prepare_worktree(repo, &snapshot, &id) {
+                let agent = snapshot.slice(&id).map(|s| s.agent.clone()).unwrap_or_default();
+                let wt = match prepare_worktree(repo, &snapshot, &id).and_then(|wt| super::wire::wire(&wt, &agent).map(|_| wt)) {
                     Ok(w) => w,
                     Err(e) => {
                         sh.update(|p| {

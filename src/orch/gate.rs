@@ -50,9 +50,10 @@ pub struct Verdict {
 /// Files changed against `base` plus untracked ones git does not ignore,
 /// leaving out kula's own state.
 pub fn changed_files(repo: &Repo, base: &str) -> Vec<String> {
+    let wired = super::wire::wired(&repo.root);
     let mut out: Vec<String> = Vec::new();
     let mut add = |s: String| {
-        for l in s.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with(".kula/")) {
+        for l in s.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with(".kula/") && !wired.iter().any(|w| w == l)) {
             if !out.iter().any(|o| o == l) {
                 out.push(l.to_string());
             }

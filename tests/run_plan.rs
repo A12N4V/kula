@@ -199,3 +199,37 @@ fn run_is_kept_in_meta_and_restores_a_missing_plan() {
     assert!(text(&o).contains("1 passed"), "{}", text(&o));
     assert!(d.join(".kula/plan.json").exists());
 }
+
+#[test]
+fn slices_are_wired_to_their_agent_and_the_wiring_is_not_committed() {
+    let t = repo();
+    let d = t.path();
+    let p = write_plan(d, &["a"], "claude", "true", 1);
+    // "claude" here runs the fake agent; the slice still gets Claude Code's wiring.
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+    v["agents"] = json!({"claude": [fake(), "{prompt}"]});
+    std::fs::write(&p, v.to_string()).unwrap();
+    let probe = d.join("probe");
+    let (o, plan) = run(d, &[("FAKE_PROBE", probe.to_str().unwrap())]);
+    assert_eq!(plan["slices"][0]["state"], "passed", "{}", text(&o));
+    let hooks = std::fs::read_to_string(probe.join("hooks-a.json")).expect("no hooks in the worktree");
+    assert!(hooks.contains("kula guard hook"), "{hooks}");
+    let files = git(d, &["show", "--name-only", "--format=", "kula/t/a"]);
+    assert!(files.contains("a/fake_1.txt") && !files.contains(".claude") && !files.contains(".mcp.json"), "{files}");
+}
+
+#[test]
+fn a_slice_cannot_land_changes_in_another_slices_files() {
+    let t = repo();
+    let d = t.path();
+    write_plan(d, &["a", "b"], "fake-agent", "true", 2);
+    let (o, plan) = run(d, &[("FAKE_INTRUDER", "b"), ("FAKE_INTO", "a"), ("FAKE_SLEEP", "1")]);
+    let st = |i: usize| plan["slices"][i]["state"].as_str().unwrap_or_default().to_string();
+    assert_eq!(st(0), "passed", "{}", text(&o));
+    assert_eq!(st(1), "rejected", "{plan}");
+    assert!(plan["slices"][1]["reasons"].to_string().contains("a/intruder.txt"), "{plan}");
+    // Nothing of b's reached a's branch or the base.
+    let a_files = git(d, &["show", "--name-only", "--format=", "kula/t/a"]);
+    assert!(!a_files.contains("intruder"), "{a_files}");
+    assert!(!d.join("a/intruder.txt").exists());
+}
