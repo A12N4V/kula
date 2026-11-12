@@ -37,6 +37,8 @@ Order: TypeScript/JavaScript (imports, re-exports, barrels, `this`, class member
 
 `bench/edges/` holds hand-labelled ground-truth edge sets per fixture and a scorer reporting precision and recall per tier. A resolver is accepted when precision on its language's set improves with recall not dropping.
 
+Recorded 2026-11-12 (`python3 bench/edges/score.py --kula target/debug/kula`; the PATH `kula` may be stale and must not be used): overall precision 1.00 recall 1.00 (tp 58 fp 0 fn 0); `resolved` tier 46/46 = 1.00, `inferred` 10/10, `guessed` 2/2. `resolved` precision is above the 0.95 bar on every fixture set (ts, py, rs, go).
+
 ## Migration
 
 `SCHEMA_VERSION` is stored in meta key `schema`. A mismatch reads as `stale` and triggers a rebuild. Opening an old DB adds the `confidence` column (default `inferred`) so reads never fail before the rebuild runs.
