@@ -444,6 +444,9 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
     if matches!(lang.id, "javascript" | "typescript" | "tsx") {
         resolve::ts::scan(&tree, src, &mut pf);
     }
+    if lang.id == "python" {
+        resolve::py::scan(&tree, src, &mut pf);
+    }
     pf.defs.sort_by_key(|d| (d.start_byte, std::cmp::Reverse(d.end_byte)));
     Some(pf)
 }

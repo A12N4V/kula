@@ -13,6 +13,7 @@ use crate::store::Node;
 
 use super::ParsedFile;
 
+pub mod py;
 pub mod ts;
 
 /// How an imported (or re-exported) name reaches this file.
@@ -90,7 +91,7 @@ pub trait Resolver {
 
 /// Every resolver, in order. Each wave appends exactly one entry here
 /// (R1 built the seam; R2–R4 add `&py::Py`, `&rs::Rust`, `&go::Go`).
-pub const RESOLVERS: &[&dyn Resolver] = &[&ts::Ts];
+pub const RESOLVERS: &[&dyn Resolver] = &[&ts::Ts, &py::Py];
 
 /// Run every resolver that claims this file's language and merge the results.
 pub fn run(ctx: &ResolveCtx) -> ResolveOut {
