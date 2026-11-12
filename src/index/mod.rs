@@ -1271,6 +1271,18 @@ mod tests {
     }
 
     #[test]
+    fn zz_dump_sexp() {
+        let src = "export default function foo() {}\nexport default class Bar {}\nexport default (x) => x;\nexport function fn() {}\nexport class C {}\nexport const arr = () => {};\nexport * as nsx from \"./star\";\n";
+        for id in ["javascript", "typescript"] {
+            let Some(lang) = langs::get(id) else { continue };
+            let mut parser = Parser::new();
+            parser.set_language(&lang.language).unwrap();
+            let tree = parser.parse(src, None).unwrap();
+            eprintln!("== {id} ==\n{}", tree.root_node().to_sexp());
+        }
+    }
+
+    #[test]
     fn generic_imports_resolve() {
         let mut by_stem: HashMap<String, Vec<usize>> = HashMap::new();
         by_stem.insert("src/Data/Util".into(), vec![1]);
