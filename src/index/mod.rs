@@ -225,6 +225,8 @@ struct ParsedFile {
     loc: u32,
     defs: Vec<Def>,
     calls: Vec<(String, usize)>,
+    /// Start bytes of calls whose receiver is `this`/`self`: `this.get()` binds to the enclosing class.
+    self_calls: HashSet<usize>,
     imports: Vec<String>,
 }
 
@@ -399,6 +401,17 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
                     });
                 } else if cname == "call" {
                     if !text.is_empty() && text.len() <= 100 && !text.contains('\n') {
+                        // Receiver check: the call name's parent is a member access whose object is this/self.
+                        let recv_self = node.parent().is_some_and(|par| {
+                            par.child(0).is_some_and(|o| {
+                                o.id() != node.id()
+                                    && o.end_byte() <= node.start_byte()
+                                    && matches!(o.utf8_text(bytes), Ok("this" | "self" | "Self"))
+                            })
+                        });
+                        if recv_self {
+                            pf.self_calls.insert(node.start_byte());
+                        }
                         pf.calls.push((text, node.start_byte()));
                     }
                 } else if cname == "import" {
@@ -825,14 +838,32 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
         let imported = imports_of.get(&fid);
         for (name, byte) in &pf.calls {
             // Innermost enclosing def that is callable (or any def) → caller.
-            let caller = pf
+            let enclosing = pf
                 .defs
                 .iter()
                 .enumerate()
                 .filter(|(_, d)| d.start_byte <= *byte && *byte < d.end_byte)
                 .min_by_key(|(_, d)| d.end_byte - d.start_byte)
-                .map(|(i, _)| ids[i])
-                .unwrap_or(fid);
+                .map(|(i, _)| i);
+            let caller = enclosing.map(|i| ids[i]).unwrap_or(fid);
+            // `this.x()` / `self.x()`: bind to a member of the caller's own class, exactly.
+            if pf.self_calls.contains(byte) {
+                if let Some(owner) = enclosing.and_then(|i| pf.defs[i].parent_name.as_deref()) {
+                    let hit: Vec<usize> = by_name
+                        .get(name)
+                        .into_iter()
+                        .flatten()
+                        .copied()
+                        .filter(|c| nodes[*c].path == pf.path && nodes[*c].parent.is_some_and(|p| nodes[p as usize].name == owner))
+                        .collect();
+                    if hit.len() == 1 {
+                        if hit[0] != caller && call_set.insert((caller, hit[0])) {
+                            edges.push(Edge::new(caller as i64, hit[0] as i64, "CALLS", 1.0));
+                        }
+                        continue;
+                    }
+                }
+            }
             let Some(cands) = by_name.get(name) else { continue };
             // A name only links within one language family: a TypeScript call to
             // `confirm` is never the Rust function of the same name.
