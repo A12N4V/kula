@@ -206,15 +206,20 @@ fn lookup_member(
     None
 }
 
-/// The class nodes `ty` may name, from this file's bindings when the name is
-/// not defined locally.
+/// The class nodes `ty` may name **and that are in scope** in file `from`.
+/// A class is in scope when it is defined in `from` or reached through one of
+/// `from`'s named import bindings. A name that is merely unique repo-wide does
+/// not count: `Widget.static()` in a file that neither defines nor imports
+/// `Widget` is a `NameError` in Python, so it must not become a `resolved` edge.
 fn class_ids(ctx: &ResolveCtx, ty: &str, from: &str) -> Vec<usize> {
-    let mut ids: Vec<usize> = ctx.by_name.get(ty).into_iter().flatten().copied().filter(|c| ctx.nodes[*c].kind == "class").collect();
-    ids.sort_unstable();
-    ids.dedup();
-    if ids.len() == 1 {
-        return ids;
-    }
+    let mut in_scope: Vec<usize> = ctx
+        .by_name
+        .get(ty)
+        .into_iter()
+        .flatten()
+        .copied()
+        .filter(|c| ctx.nodes[*c].kind == "class" && ctx.nodes[*c].path == from)
+        .collect();
     // Imported class: `from a import Base`.
     let bindings = if from == ctx.file.path { ctx.file.import_bindings.clone() } else { bindings_of(ctx, from) };
     for b in bindings.iter().filter(|b| b.local == ty && b.kind == ImportKind::Named) {
@@ -226,12 +231,14 @@ fn class_ids(ctx: &ResolveCtx, ty: &str, from: &str) -> Vec<usize> {
             }
             if let Some(t) = resolve_export(ctx, &targets[0], exported, 0, &HashSet::new()) {
                 if ctx.nodes[t].kind == "class" {
-                    return vec![t];
+                    in_scope.push(t);
                 }
             }
         }
     }
-    Vec::new()
+    in_scope.sort_unstable();
+    in_scope.dedup();
+    in_scope
 }
 
 /// Import bindings of another file, parsed from its source text.
@@ -348,7 +355,14 @@ fn resolve_module(ctx: &ResolveCtx, spec: &str, from: &str) -> Vec<String> {
     for _ in 1..lead {
         base = base.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_default();
     }
-    let key = normalize(&format!("{base}/{body}"));
+    let key = if lead > 0 {
+        // Relative: the dots resolve against the directory holding the file.
+        normalize(&format!("{base}/{body}"))
+    } else {
+        // Absolute: a Python module path is rooted at the repo (sys.path root),
+        // never at the importing file's directory.
+        normalize(&body)
+    };
     let lookup = |k: String| -> Vec<String> {
         let ids = if let Some(v) = ctx.by_stem.get(&k) {
             v.clone()
@@ -545,8 +559,18 @@ fn parse_import_stmt(stmt: &str, out: &mut Vec<ImportBinding>) {
             if module.is_empty() {
                 continue;
             }
-            // `import a.b` binds `a`; the alias form binds the alias.
-            let local = alias.unwrap_or_else(|| module.split('.').next().unwrap_or(&module).to_string());
+            // `import a.b as c` binds `c` to the module `a.b`.
+            // Plain `import a.b` binds the top-level package `a`, so `a.name`
+            // is an attribute of `a/__init__.py`, not of `a/b.py`. Binding the
+            // dotted path here made `a.name()` resolve against `a/b.py` – a
+            // wrong `resolved` edge on valid Python.
+            let (local, module) = match alias {
+                Some(a) => (a, module),
+                None => {
+                    let top = module.split('.').next().unwrap_or(&module).to_string();
+                    (top.clone(), top)
+                }
+            };
             out.push(ImportBinding { local, module, exported: None, kind: ImportKind::Namespace });
         }
     }
@@ -604,10 +628,26 @@ mod tests {
     }
 
     #[test]
-    fn plain_import_binds_the_first_segment() {
+    fn plain_import_binds_the_top_level_package() {
+        // `import a.b` binds `a` to the package `a`, not to the dotted `a.b`:
+        // `a.name()` looks the name up on `a/__init__.py`.
         let b = bindings("import a.b\n");
         assert_eq!(b[0].local, "a");
-        assert_eq!(b[0].module, "a.b");
+        assert_eq!(b[0].module, "a");
+        assert_eq!(b[0].kind, ImportKind::Namespace);
+    }
+
+    #[test]
+    fn plain_import_of_a_plain_module_binds_it() {
+        let b = bindings("import core\n");
+        assert_eq!((b[0].local.as_str(), b[0].module.as_str()), ("core", "core"));
+    }
+
+    #[test]
+    fn aliased_dotted_import_keeps_the_full_module() {
+        // `import a.b as c` binds `c` to `a.b`.
+        let b = bindings("import a.b as c\n");
+        assert_eq!((b[0].local.as_str(), b[0].module.as_str()), ("c", "a.b"));
     }
 
     #[test]
