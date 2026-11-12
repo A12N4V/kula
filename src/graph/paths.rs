@@ -35,10 +35,15 @@ pub fn impact_min(store: &Store, id: i64, upstream: bool, max_depth: usize, min_
     let mut hits = Vec::new();
     // A table's impact starts at the code that maps, migrates or uses it.
     if root.kind == "table" && upstream {
-        for kind in ["MAPS_TABLE", "MIGRATES_TABLE", "USES_TABLE"] {
+        // Declarations are certain; uses are read from names and SQL strings.
+        for (kind, conf) in [("MAPS_TABLE", "resolved"), ("MIGRATES_TABLE", "resolved"), ("USES_TABLE", "inferred")] {
+            if conf_rank(conf) < floor {
+                continue;
+            }
             for (n, _) in store.neighbours(id, kind, false)? {
                 if seen.insert(n.id) {
-                    hits.push(ImpactHit { node: n.clone(), depth: 1, via: Some(id), confidence: "resolved".into() });
+                    path_conf.insert(n.id, conf.into());
+                    hits.push(ImpactHit { node: n.clone(), depth: 1, via: Some(id), confidence: conf.into() });
                     q.push_back((n.id, 1));
                 }
             }

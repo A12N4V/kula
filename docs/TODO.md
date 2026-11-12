@@ -80,7 +80,7 @@ Gate G0: PASSED 2026-11-11 (P0.1–P0.3, P0.6, P0.7 done; no blockers). Fix any 
 | P1.3.5 | DONE 2026-11-12 (src/layers/tables.rs; tests/layers.rs `tables_link_models_to_handlers_for_impact`; vocab 4): DB models and tables: SQLAlchemy/Django ORM, Prisma, Drizzle, SQL migrations | WORKER | P1.3.1 | Model → table nodes; `impact` of a table reaches handlers that use it |
 | P1.3.6 | DONE 2026-11-12 (K3, 476c430; tests/layers.rs): Cross-language links: client call → route by path string and OpenAPI spec | WORKER | P1.3.4 | A TS fetch of `/api/x` links to the Python handler on a two-language fixture |
 | P1.3.7 | DONE 2026-11-12 (K3, 476c430; tests/layers.rs): Extend SPARQL vocabulary and `kg export` with the new classes and properties; version the vocab | MAIN | P1.3.2–P1.3.5 | `docs/KNOWLEDGE-GRAPH.md` updated; export round-trips |
-| P1.3.8 | Audit | CRITIC | P1.3.7 | Report triaged |
+| P1.3.8 | Audit | CRITIC | P1.3.7 | DONE – 14 findings fixed, see `docs/audits/2026-11-tables.md` |
 
 ### P1.4 Active orchestration (plan, run, gate)
 

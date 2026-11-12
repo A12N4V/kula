@@ -198,11 +198,25 @@ fn tables_link_models_to_handlers_for_impact() {
     write(d, "handlers.py", "from models import User\n\ndef list_users(session):\n    return session.query(User).all()\n\ndef route():\n    return list_users(None)\n");
     write(d, "migrations/001.sql", "CREATE TABLE IF NOT EXISTS public.\"orders\" (id int);\n");
     write(d, "report.py", "def totals(db):\n    return db.execute(\"select * from orders\")\n");
+    // Look-alikes that must not link: a local User, a comment, code `from`/`update`.
+    write(
+        d,
+        "other.py",
+        "class User:\n    pass\n\ndef noise(d, orders):\n    # delete from orders\n    d.update(orders)\n    return User()\n",
+    );
+    write(d, "ui.ts", "export function Row(items: string[]) {\n  return Array.from(orders);\n}\n");
     kula(d, &["index"]);
     let users = kula_json(d, &["query", "table:users"]).to_string();
     assert!(users.contains("models.py") && users.contains("list_users"), "table users: {users}");
     let orders = kula_json(d, &["query", "table:orders"]).to_string();
     assert!(orders.contains("001.sql") && orders.contains("totals"), "table orders: {orders}");
+    for leak in ["other.py", "ui.ts", "noise", "Row"] {
+        assert!(!users.contains(leak) && !orders.contains(leak), "{leak} leaked: {users} {orders}");
+    }
+    let strict = kula_json(d, &["impact", "table:users", "--min-confidence", "resolved"]).to_string();
+    assert!(strict.contains("User") && !strict.contains("list_users"), "uses are inferred: {strict}");
+    let miss = Command::new(KULA).arg("-C").arg(d).args(["impact", "table:nosuch"]).output().unwrap();
+    assert!(!miss.status.success(), "unknown table must fail");
     let imp = kula_json(d, &["impact", "table:users", "--depth", "3"]).to_string();
     assert!(imp.contains("list_users") && imp.contains("route"), "table impact: {imp}");
     let q = kula_json(d, &["kg", "sparql", "SELECT ?t WHERE { ?t a kula:Table }"]).to_string();

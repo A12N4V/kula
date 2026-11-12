@@ -70,7 +70,7 @@ classDiagram
     Route --> Symbol : handles
     Route --> File : definedIn
     Symbol --> Table : mapsTable · usesTable
-    File --> Table : migratesTable
+    File --> Table : mapsTable · migratesTable · usesTable
     Symbol --> Cluster : inCluster
     Note --> Symbol : about
     Memory --> Symbol : about
@@ -88,7 +88,7 @@ classDiagram
 | `kula:Dependency` | an external package declared in a manifest (Cargo.toml, package.json, pyproject.toml, requirements.txt, go.mod) |
 | `kula:Env` | an environment variable the code reads, or a key in `.env.example` |
 | `kula:Route` | an HTTP endpoint declared in code: Express/Fastify, Next.js pages/api and app router, FastAPI, Flask, Axum, Go net/http. Path parameters normalise to `:param` |
-| `kula:Table` | a database table: a SQLAlchemy `__tablename__`, a Django model (`db_table` or `<app>_<model>`), a Prisma model (`@@map` wins), a Drizzle `pgTable`/`mysqlTable`/`sqliteTable`, or a SQL `CREATE`/`ALTER TABLE`. `kula query table:NAME` lists its users; `kula impact table:NAME` walks from them to their callers |
+| `kula:Table` | a database table: a SQLAlchemy `__tablename__`, a Django model (`db_table` or `<app>_<model>`; abstract models skipped), a Prisma model (`@@map` wins), a Drizzle `pgTable`/`mysqlTable`/`sqliteTable`, schema `.table` or `pgTableCreator` template, or a SQL `CREATE`/`ALTER TABLE`. Names are case folded, so Prisma `User` and SQL `user` meet. `kula query table:NAME` lists its users; `kula impact table:NAME` walks from them to their callers |
 | `kula:Cluster` | a functional cluster: symbols that call each other more than they call the rest |
 | `kula:Note` · `kula:Memory` | a person's note; an agent's memory, anchored to the code it was written about |
 | `kula:Issue` | a local issue, stored in git |
@@ -105,9 +105,9 @@ classDiagram
 | `kula:usedBy` | Dependency → the File that imports it; a dependency with no `usedBy` edge is unused |
 | `kula:readsEnv` | Symbol or File → the Env it reads (a `.env.example` File declares its keys) |
 | `kula:handles` | Route → the Symbol that serves it (resolved in the same file, inferred when one function anywhere has the name) |
-| `kula:mapsTable` | model Symbol → the Table it maps |
+| `kula:mapsTable` | model Symbol → the Table it maps (the schema File for Prisma) |
 | `kula:migratesTable` | SQL migration File → the Table it creates or alters |
-| `kula:usesTable` | Symbol or File → a Table it reads or writes, through its model name or raw SQL (`from`, `join`, `into`, `update`) |
+| `kula:usesTable` | Symbol or File → a Table it reads or writes: a model name it imports (Prisma's `prisma.user`/`db.user`), or raw SQL inside a string literal after `from`, `join`, `into` or `update`. Read from text, so impact rates it inferred |
 | `kula:vocabVersion` | the vocabulary version of this export (4 since tables were added) |
 | `kula:inCluster` · `kula:label` | Symbol or File → its Cluster; a cluster's label |
 | `kula:about` | Note, Memory or Issue → the Repository, File or Symbol it is about |
