@@ -233,3 +233,86 @@ fn a_slice_cannot_land_changes_in_another_slices_files() {
     assert!(!a_files.contains("intruder"), "{a_files}");
     assert!(!d.join("a/intruder.txt").exists());
 }
+
+fn train(d: &Path) -> (Output, Value) {
+    let o = Command::new(KULA).arg("-C").arg(d).args(["--json", "merge-train"]).env("KULA_NO_AGENT", "1").output().unwrap();
+    let v = serde_json::from_slice(&o.stdout).unwrap_or(Value::Null);
+    (o, v)
+}
+
+#[test]
+fn merge_train_integrates_passing_slices_and_leaves_main_alone() {
+    let t = repo();
+    let d = t.path();
+    write_plan(d, &["a", "b"], "fake-agent", "true", 2);
+    let (o, _) = run(d, &[]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    let main = git(d, &["rev-parse", "main"]);
+    let (o, v) = train(d);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert_eq!(v["verdict"], "pass", "{v}");
+    assert_eq!(v["merged"], json!(["a", "b"]));
+    let files = git(d, &["ls-tree", "-r", "--name-only", "kula/t/integration"]);
+    assert!(files.contains("a/fake_1.txt") && files.contains("b/fake_1.txt"), "{files}");
+    assert_eq!(git(d, &["rev-parse", "main"]), main, "main must not move");
+    assert!(!d.join(".kula/worktrees/t/_integration").exists());
+}
+
+#[test]
+fn merge_conflict_becomes_a_new_slice_on_the_integration_branch() {
+    let t = repo();
+    let d = t.path();
+    let path = write_plan(d, &["a", "b"], "fake-agent", "true", 2);
+    // Both slices own a/, so both write a/fake_1.txt with different text.
+    let mut p: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    p["slices"][1]["scope"] = json!(["a"]);
+    std::fs::write(&path, serde_json::to_string(&p).unwrap()).unwrap();
+    let (o, _) = run(d, &[]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    let (o, v) = train(d);
+    assert_eq!(o.status.code(), Some(1), "{}", text(&o));
+    assert_eq!(v["merged"], json!(["a"]), "{v}");
+    assert_eq!(v["conflicts"][0][0], "b");
+    assert_eq!(v["conflicts"][0][1], json!(["a/fake_1.txt"]));
+    let p: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let redo = p["slices"].as_array().unwrap().iter().find(|s| s["id"] == "b-merge").expect("b-merge slice");
+    assert_eq!(redo["state"], "queued");
+    assert_eq!(redo["base_ref"], "kula/t/integration");
+}
+
+#[test]
+fn merge_train_gates_the_integrated_tree() {
+    let t = repo();
+    let d = t.path();
+    // Each slice alone passes; together they fail the tests.
+    write_plan(d, &["a", "b"], "fake-agent", "test ! -f a/fake_1.txt -o ! -f b/fake_1.txt", 2);
+    let (o, _) = run(d, &[]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    let (o, v) = train(d);
+    assert_eq!(o.status.code(), Some(1), "{}", text(&o));
+    assert_eq!(v["merged"], json!(["a", "b"]), "{v}");
+    assert_ne!(v["verdict"], "pass", "{v}");
+}
+
+#[test]
+fn a_redone_conflict_slice_runs_on_the_integration_branch_and_merges() {
+    let t = repo();
+    let d = t.path();
+    let path = write_plan(d, &["a", "b"], "fake-agent", "true", 2);
+    let mut p: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    p["slices"][1]["scope"] = json!(["a"]);
+    std::fs::write(&path, serde_json::to_string(&p).unwrap()).unwrap();
+    run(d, &[]);
+    let (o, _) = train(d);
+    assert_eq!(o.status.code(), Some(1), "{}", text(&o));
+    let (o, p) = run(d, &[]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert_eq!(p["slices"][2]["id"], "b-merge");
+    assert_eq!(p["slices"][2]["state"], "passed", "{p}");
+    let (o, v) = train(d);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert_eq!(v["merged"], json!(["a", "b-merge"]), "{v}");
+    assert_eq!(v["skipped"], json!(["b"]));
+    let f = git(d, &["show", "kula/t/integration:a/fake_1.txt"]);
+    assert!(f.contains("b-merge"), "{f}");
+}

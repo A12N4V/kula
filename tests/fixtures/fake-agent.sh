@@ -25,7 +25,7 @@ case "${FAKE_MODE:-clean}" in
   clean)
     dir=$(printf '%s' "$KULA_SCOPE" | cut -d: -f1)
     mkdir -p "$dir"
-    echo "// attempt $KULA_ATTEMPT" > "$dir/fake_$KULA_ATTEMPT.txt"
+    echo "// $KULA_SLICE attempt $KULA_ATTEMPT" > "$dir/fake_$KULA_ATTEMPT.txt"
     ;;
   outside)
     echo "touched" >> README.md

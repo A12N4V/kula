@@ -1,6 +1,6 @@
-//! `kula plan`, `kula gate`, `kula run-plan`: CLI glue over `crate::orch`.
+//! `kula plan`, `kula gate`, `kula run-plan`, `kula merge-train`: CLI glue over `crate::orch`.
 
-use crate::orch::{gate, plan, run, task};
+use crate::orch::{gate, plan, run, task, train};
 use crate::*;
 
 pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
@@ -109,6 +109,37 @@ pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
             }
             let ok = p.slices.iter().all(|s| s.state == task::SliceState::Passed);
             std::process::exit(if ok { 0 } else { 1 });
+        }
+        Cmd::MergeTrain { plan } => {
+            let path = task::resolve(repo, plan)?;
+            let mut p = task::Plan::load(&path)?;
+            let t = train::train(repo, &mut p)?;
+            p.save(&path)?;
+            let msg = format!("train {}: merged {}, conflicts {}, gate {}", p.id, t.merged.len(), t.conflicts.len(), t.verdict);
+            if let Err(e) = task::record(repo, &p, &msg) {
+                eprintln!("{}", dim(&format!("train not kept in refs/kula/meta: {e:#}")));
+            }
+            if json {
+                println!("{}", serde_json::to_string_pretty(&t)?);
+            } else {
+                println!("{}  {}", bold(&t.branch), dim(&format!("gate {}", t.verdict)));
+                for id in &t.merged {
+                    println!("  {} merged", accent(id));
+                }
+                for (id, files) in &t.conflicts {
+                    println!("  {} conflict  {}", accent(id), dim(&format!("{} queued as {id}-merge", files.join(", "))));
+                }
+                for id in &t.skipped {
+                    println!("  {} {}", accent(id), dim("not passed, left out"));
+                }
+                for r in &t.reasons {
+                    println!("      {}", dim(r.lines().next().unwrap_or("")));
+                }
+                for r in &t.notes {
+                    println!("      {}", dim(&format!("note: {}", r.lines().next().unwrap_or(""))));
+                }
+            }
+            std::process::exit(if t.ok() { 0 } else { 1 });
         }
         _ => unreachable!(),
     }

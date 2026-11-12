@@ -353,6 +353,9 @@ pub(crate) enum Cmd {
         #[arg(long)]
         status: bool,
     },
+    /// Merge passing slices into kula/<plan>/integration and gate the result; main is never touched.
+    #[command(name = "merge-train", after_help = "Examples:\n  kula merge-train  ·  kula merge-train .kula/plan.json --json")]
+    MergeTrain { plan: Option<std::path::PathBuf> },
     /// Run any agent harness held to kula's fences: `kula run -w fix -- aider`.
     #[command(after_help = "Examples:\n  kula run -w fix --agent aider -- aider")]
     Run {

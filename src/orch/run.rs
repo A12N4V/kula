@@ -54,7 +54,9 @@ fn prepare_worktree(repo: &Repo, plan: &Plan, slice: &str) -> Result<PathBuf> {
     }
     let _ = repo.run(&["worktree", "prune"]);
     std::fs::create_dir_all(wt.parent().unwrap())?;
-    let base = if plan.base_ref.is_empty() { "HEAD" } else { &plan.base_ref };
+    // A slice redone after a merge conflict starts from the integration branch.
+    let own = plan.slice(slice).map(|s| s.base_ref.as_str()).filter(|b| !b.is_empty());
+    let base = own.unwrap_or(if plan.base_ref.is_empty() { "HEAD" } else { &plan.base_ref });
     repo.run(&["worktree", "add", "-q", "-B", &plan.branch(slice), &wt.to_string_lossy(), base])
         .with_context(|| format!("could not make a worktree for slice {slice}"))?;
     Ok(wt)
