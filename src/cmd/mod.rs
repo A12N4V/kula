@@ -1,8 +1,8 @@
+mod agent_cmds;
 mod agents;
 mod dispatch;
-mod agent_cmds;
-mod graph_cmds;
 mod graph;
+mod graph_cmds;
 mod guard;
 mod kg;
 mod memory;

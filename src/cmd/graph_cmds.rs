@@ -1,7 +1,6 @@
 //! Graph query commands: impact, trace and flows.
 use crate::*;
 
-
 pub(crate) fn run(repo: &Repo, cmd: &Cmd, json: bool) -> Result<()> {
     let out = |v: &dyn erased::Json| println!("{}", v.to_json());
     match cmd {
@@ -59,13 +58,7 @@ pub(crate) fn run(repo: &Repo, cmd: &Cmd, json: bool) -> Result<()> {
                 );
             }
             if !path.is_empty() {
-                println!(
-                    "  {} resolved {} · inferred {} · guessed {}",
-                    dim("tiers"),
-                    t.tiers[0],
-                    t.tiers[1],
-                    t.tiers[2]
-                );
+                println!("  {} resolved {} · inferred {} · guessed {}", dim("tiers"), t.tiers[0], t.tiers[1], t.tiers[2]);
             }
         }
         Cmd::Flows { limit } => {

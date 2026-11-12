@@ -142,7 +142,6 @@ pub fn conf_rank(c: &str) -> u8 {
     }
 }
 
-
 #[derive(Serialize)]
 pub struct CompareFile {
     pub status: String,

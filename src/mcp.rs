@@ -209,10 +209,19 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
         "pre_edit" => {
             let s = st()?;
             refuse_hidden(&g, &graph::resolve_one(&s, &str_arg("symbol"))?)?;
-            json!(crate::agent::pre_edit_conf(repo, &s, &str_arg("symbol"), &a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed"))?)
+            json!(crate::agent::pre_edit_conf(
+                repo,
+                &s,
+                &str_arg("symbol"),
+                &a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed")
+            )?)
         }
         "verify_edit" => {
-            json!(crate::agent::verify_edit_conf(repo, CLIENT.get().map(String::as_str), &a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed"))?)
+            json!(crate::agent::verify_edit_conf(
+                repo,
+                CLIENT.get().map(String::as_str),
+                &a.get("min_confidence").and_then(|v| v.as_str()).unwrap_or("guessed")
+            )?)
         }
         "guards" => {
             let paths: Vec<String> = a

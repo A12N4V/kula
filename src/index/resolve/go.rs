@@ -70,6 +70,27 @@ impl<'a> Pkg<'a> {
         self.ctx.file
     }
 
+    /// Whether `ty` is declared as an interface in the file being resolved.
+    fn is_interface(&self, ty: &str) -> bool {
+        let ty = ty.rsplit('.').next().unwrap_or(ty);
+        if self.pf().interfaces.iter().any(|i| i == ty) {
+            return true;
+        }
+        // Declared in a sibling file of the same package.
+        let needle = format!("type {ty} interface");
+        let mut seen: Vec<&str> = Vec::new();
+        for id in self.ctx.by_name.get(ty).into_iter().flatten() {
+            let n = &self.ctx.nodes[*id];
+            if n.path.ends_with(".go") && !seen.contains(&n.path.as_str()) {
+                seen.push(n.path.as_str());
+                if (self.ctx.read)(&n.path).is_some_and(|t| t.contains(&needle)) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// A selector call: `pkg.Func(...)` when `recv` names an imported package,
     /// else `recv.Name(...)` on a typed local. `Some((target, soft))`: `soft`
     /// means the edge is proven bound but only by name match (`inferred`).
@@ -132,7 +153,7 @@ impl<'a> Pkg<'a> {
         }
         let ty = ty.trim_start_matches('*').trim_start_matches("[]").trim_start_matches("map[string]");
         if self.is_interface(ty) {
-            return self.iface_satisfaction(ty, name);
+            return self.iface_satisfaction(ty.rsplit('.').next().unwrap_or(ty), name);
         }
         // The type lives in this package: same directory, one declaration.
         let ty_file = self
@@ -183,7 +204,11 @@ impl<'a> Pkg<'a> {
             .copied()
             .filter(|id| {
                 let n = &self.ctx.nodes[*id];
-                n.path.ends_with(".go") && n.parent.is_some_and(|p| self.ctx.nodes[p as usize].name != iface)
+                n.path.ends_with(".go")
+                    && n.parent.is_some_and(|p| {
+                        let pn = &self.ctx.nodes[p as usize].name;
+                        pn != iface && !pn.ends_with(".go")
+                    })
             })
             .collect();
         if concrete.len() == 1 {
@@ -199,7 +224,11 @@ impl<'a> Pkg<'a> {
                 .copied()
                 .filter(|id| {
                     let n = &self.ctx.nodes[*id];
-                    n.path.ends_with(".go") && n.parent.is_some_and(|p| self.ctx.nodes[p as usize].name == iface)
+                    n.path.ends_with(".go")
+                        && n.parent.is_some_and(|p| {
+                            let pn = &self.ctx.nodes[p as usize].name;
+                            pn == iface || pn.ends_with(".go")
+                        })
                 })
                 .collect();
             return (own.len() == 1).then(|| (own[0], true));
@@ -220,7 +249,11 @@ fn package_dir_of(path: &str) -> String {
 
 /// The module path from a `go.mod` body.
 fn module_path(go_mod: &str) -> Option<String> {
-    go_mod.lines().map(str::trim).find_map(|l| l.strip_prefix("module ")).map(|m| m.trim().trim_matches('"').to_string())
+    go_mod
+        .lines()
+        .map(str::trim)
+        .find_map(|l| l.strip_prefix("module "))
+        .map(|m| m.trim().trim_matches('"').to_string())
         .filter(|m| !m.is_empty())
 }
 

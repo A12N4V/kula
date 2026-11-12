@@ -417,17 +417,9 @@ fn confidence_tiers_gate_trace_verify_and_pre_edit() {
     let d = t.path();
     // Two functions named `dup` in different files: the name linker can only
     // guess pickDup's call, so its edge lands in the guessed tier.
-    write(
-        d,
-        "src/util/dups.ts",
-        "export function dup() { return 1; }\nexport function dupToo() { return 2; }\n",
-    );
+    write(d, "src/util/dups.ts", "export function dup() { return 1; }\nexport function dupToo() { return 2; }\n");
     write(d, "src/api/other.ts", "export function dup() { return 3; }\n");
-    write(
-        d,
-        "src/api/pick.ts",
-        "export function pickDup() { return dup() + dupToo(); }\n",
-    );
+    write(d, "src/api/pick.ts", "export function pickDup() { return dup() + dupToo(); }\n");
     git(d, &["add", "-A"]);
     git(d, &["commit", "-qm", "dup names"]);
     kula(d, &["index"]);
