@@ -130,7 +130,13 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Cmd::Check { base, max_risk, md } => cmd::project_cmds::check(&repo, base, max_risk, md, json)?,
+        Cmd::Check { base, max_risk, md, target } => match target.as_deref() {
+            Some("architecture") => cmd::project_cmds::check_architecture(&repo, md, json)?,
+            Some(other) => {
+                return Err(anyhow::anyhow!("unknown check target '{other}'; try 'architecture' or no target for the blast radius gate"));
+            }
+            None => cmd::project_cmds::check(&repo, base, max_risk, md, json)?,
+        },
         Cmd::Hooks { action } => match action.as_str() {
             "install" => println!("{} {} hooks installed", green("✓"), project::hooks_install(&repo)?),
             "uninstall" | "remove" => println!("{} {} hooks removed", green("✓"), project::hooks_uninstall(&repo)?),

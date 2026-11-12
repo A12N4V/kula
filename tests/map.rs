@@ -110,3 +110,41 @@ fn map_tree_names_entries() {
     let n3 = names::name_clusters(&clusters(&Store::open(&repo).unwrap()));
     assert_eq!(n1, n3, "names not stable across re-indexes: {n1:?} vs {n3:?}");
 }
+
+/// `kula check architecture` exits non-zero on the seeded a→b→a cycle and zero
+/// on a clean copy of the same repo.
+#[test]
+fn check_architecture_cycle() {
+    // Seeded cycle: the lib report has the cycle, and the CLI exits non-zero.
+    let t = fixture();
+    let d = t.path();
+    index(d);
+    let repo = Repo::discover(d).unwrap();
+    let st = Store::open(&repo).unwrap();
+    let r = kula::map::arch::check(&st);
+    assert!(!r.cycles.is_empty(), "expected a cycle, got {r:?}");
+    assert!(r.cycles.iter().any(|c| c.len() > 1 && c.iter().any(|m| m.contains("net"))), "cycles: {:?}", r.cycles);
+    let out = Command::new(KULA).arg("-C").arg(d).args(["check", "architecture"]).output().unwrap();
+    assert!(!out.status.success(), "cycle fixture must exit non-zero: {}", String::from_utf8_lossy(&out.stdout));
+
+    // Clean copy: same repo without the a→b→a imports exits zero.
+    let c = fixture();
+    let cd = c.path();
+    std::fs::write(
+        cd.join("core/src/net/a.rs"),
+        "pub fn pong(s: &str) -> String { format!(\"{s}\") }\n",
+    )
+    .unwrap();
+    std::fs::write(cd.join("core/src/net/b.rs"), "pub fn ping(s: &str) -> String { s.to_string() }\n").unwrap();
+    git(cd, &["add", "-A"]);
+    git(cd, &["commit", "-qm", "break cycle"]);
+    index(cd);
+    let out = Command::new(KULA).arg("-C").arg(cd).args(["check", "architecture"]).output().unwrap();
+    assert!(
+        out.status.success(),
+        "clean copy must exit zero:\n{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+

@@ -1,6 +1,7 @@
 //! Semantic map (K2): module tree, cluster naming, entry points. Pure modules;
 //! no LLM, fully offline and deterministic.
 
+pub mod arch;
 pub mod entries;
 pub mod names;
 pub mod tree;

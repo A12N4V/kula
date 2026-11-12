@@ -18,3 +18,9 @@
 - Added lib target (src/lib.rs) exposing git, store, map; main.rs re-exports kula::{git,store}; moved Node::parent_file impl into store.rs for orphan rules.
 - tests/map.rs: fixture repo (core+webui, seeded net/a<->net/b cycle for the arch step) – tree packages, stable cluster names across 3 re-indexes, entries for main/handleLogin/health/renderApp. All pass.
 - Needs a human check: nothing yet wired into the CLI; kula map/explain/check/brief commands and arch.rs are the next K2 steps.
+
+## K2.2 – architecture checks
+- Added src/map/arch.rs (pure, deterministic): file-level dependency graph from store edges, DFS cycle detection (sorted, deduped chains), god modules (fan_in+fan_out above p95 and loc above 1000), coupling (normalised mean fan_in), dead candidates (functions/methods with no incoming edges). Report carries schema:1 and renders md or JSON.
+- `kula check <target>`: optional positional; `architecture` runs the report and exits non-zero when any cycle exists, other values error with a hint, no target keeps the existing blast-radius CI gate.
+- tests/map.rs: check_architecture_cycle – seeded net/a↔net/b cycle exits non-zero, the same repo with the cycle imports removed exits zero; lib report shows the cycle. Full suite green (all test binaries), cargo check and web tsc pass.
+- Needs a human check: dead_candidates is name-based and informational (no entry-point awareness yet); cycle detection is file-level, module-level cycles could be added later by grouping file cycles.

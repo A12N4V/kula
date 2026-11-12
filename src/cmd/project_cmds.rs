@@ -3,6 +3,38 @@
 use crate::erased::Json;
 use crate::*;
 
+/// `kula check architecture`: cycles, god modules, coupling, dead candidates.
+/// Exits non-zero (Err) when any module cycle exists.
+pub(crate) fn check_architecture(repo: &Repo, md: bool, json: bool) -> Result<()> {
+    use kula::map::arch;
+    let st = Store::open(repo)?;
+    let r = arch::check(&st);
+    if json {
+        let mut v = serde_json::to_value(&r)?;
+        v["ok"] = serde_json::json!(r.cycles.is_empty());
+        println!("{}", v.to_json());
+    } else if md {
+        print!("{}", arch::markdown(&r));
+    } else {
+        crate::term::header("check architecture");
+        if r.cycles.is_empty() {
+            println!("  {} no cycles", crate::term::green("✓"));
+        } else {
+            for c in &r.cycles {
+                println!("  {} cycle: {}", crate::term::red("✗"), c.join(" → "));
+            }
+        }
+        println!("  god modules: {}", if r.god_modules.is_empty() { "none".into() } else { r.god_modules.join(", ") });
+        println!("  coupling {:.3}", r.coupling);
+        println!("  dead candidates: {}", r.dead_candidates.len());
+    }
+    if r.cycles.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("{} module cycle(s) found", r.cycles.len()))
+    }
+}
+
 pub(crate) fn check(repo: &Repo, base: Option<String>, max_risk: Option<String>, md: bool, json: bool) -> Result<()> {
     let cfg = config::Config::load(&repo.root)?;
     let base = base.unwrap_or_else(|| project::default_branch(repo, &cfg));

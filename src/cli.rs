@@ -144,7 +144,7 @@ pub(crate) enum Cmd {
         min_confidence: String,
     },
     /// CI gate: the graph blast radius of HEAD against a base; fails above max_risk.
-    #[command(after_help = "Examples:\n  kula check --base origin/main --md   ·  kula check --max-risk low")]
+    #[command(after_help = "Examples:\n  kula check --base origin/main --md   ·  kula check --max-risk low\n  kula check architecture              ·  cycle, god module and coupling report")]
     Check {
         /// Base ref (defaults to kula.toml's default_branch).
         #[arg(long)]
@@ -155,6 +155,9 @@ pub(crate) enum Cmd {
         /// Markdown for a PR comment or job summary.
         #[arg(long)]
         md: bool,
+        /// `architecture` runs the architecture checks instead of the blast radius gate.
+        #[arg(value_name = "TARGET")]
+        target: Option<String>,
     },
     /// Git hooks that keep the graph current: install | uninstall | status.
     #[command(after_help = "Examples:\n  kula hooks install   ·  kula hooks status")]
