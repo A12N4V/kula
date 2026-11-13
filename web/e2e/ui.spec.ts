@@ -107,7 +107,7 @@ test.describe("shell", () => {
     await expect(page).toHaveURL(/#agents\/memory$/);
     await page.goBack();
     await expect(page).toHaveURL(/#agents$/);
-    await expect(page.getByRole("tab", { name: /Overview/ })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".main").getByRole("tab", { name: /Overview/ })).toHaveAttribute("aria-selected", "true");
     await page.goBack();
     await expect(page.locator(".ov-title h1")).toBeVisible();
     await page.keyboard.press("Alt+ArrowRight");

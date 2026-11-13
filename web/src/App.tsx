@@ -39,6 +39,30 @@ function prefetchViews() {
 }
 import { settings } from "./settings";
 import Opening from "./Opening";
+import ProjectTree from "./studio/ProjectTree";
+import Structure from "./studio/Structure";
+import FileEditor from "./studio/FileEditor";
+import EditorTabs, { tabKey, type Tab } from "./studio/EditorTabs";
+
+// Tool window widths survive a reload; storage may be blocked, so every touch is guarded.
+const store = {
+  get: (k: string, d: number) => { try { const v = Number(localStorage.getItem(k)); return v > 0 ? v : d; } catch { return d; } },
+  flag: (k: string, d: boolean) => { try { const v = localStorage.getItem(k); return v == null ? d : v === "1"; } catch { return d; } },
+  set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* blocked */ } },
+};
+
+function Resizer({ side, width, onWidth }: { side: "left" | "right"; width: number; onWidth: (w: number) => void }) {
+  const down = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = width;
+    const move = (m: PointerEvent) => onWidth(Math.max(180, Math.min(560, w0 + (side === "left" ? m.clientX - x0 : x0 - m.clientX))));
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); document.body.classList.remove("resizing"); };
+    document.body.classList.add("resizing");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  return <div className={`tw-resize ${side}`} onPointerDown={down} role="separator" aria-orientation="vertical" aria-label="Resize" />;
+}
 
 type Rail = { id: View; label: string; icon: () => React.ReactElement; key: string };
 // Grouped by intent: understand · change · collaborate · agents and the graph as data · escape hatch.
@@ -58,11 +82,12 @@ const GROUPS: Rail[][] = [
     { id: "issues", label: "Issues", icon: Icon.issues, key: "8" },
     { id: "notes", label: "Notes", icon: Icon.notes, key: "9" },
   ],
+  [{ id: "agents", label: "Agents", icon: Icon.agents, key: "a" }],
+  // Pinned to the foot of the stripe, the way an IDE keeps Terminal there.
   [
-    { id: "agents", label: "Agents", icon: Icon.agents, key: "a" },
     { id: "query", label: "Query (SPARQL)", icon: Icon.query, key: "q" },
+    { id: "console", label: "Console", icon: Icon.console, key: "0" },
   ],
-  [{ id: "console", label: "Console", icon: Icon.console, key: "0" }],
 ];
 const VIEWS = GROUPS.flat();
 
@@ -149,6 +174,8 @@ export default function App() {
       const p = parseHash();
       popping.current = true;
       setView(p.view); setTarget(p.target); setContrast(p.contrast); setFocus(p.focus);
+      setNoTabs(false); setFile(null);
+      setTabs((ts) => (ts.some((t) => t.kind === "view" && t.view === p.view) ? ts : [...ts, { kind: "view", view: p.view }]));
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -156,7 +183,32 @@ export default function App() {
 
   // Phones: the sidebar is a drawer, summoned from the top bar.
   const [rail, setRail] = useState(false);
+
+  // Editor tabs: every view you visit and every file you open; files live here only, not in the URL.
+  const [tabs, setTabs] = useState<Tab[]>([{ kind: "view", view: initial.view }]);
+  const [file, setFile] = useState<{ path: string; line?: number } | null>(null);
+  const [curLine, setCurLine] = useState<number | undefined>();
+  const [left, setLeft] = useState(() => store.flag("kula.studio.left", window.innerWidth >= 1440));
+  const [right, setRight] = useState(() => store.flag("kula.studio.right", false));
+  const [lw, setLw] = useState(() => store.get("kula.studio.lw", 260));
+  const [rw, setRw] = useState(() => store.get("kula.studio.rw", 260));
+  useEffect(() => { store.set("kula.studio.left", left ? "1" : "0"); store.set("kula.studio.right", right ? "1" : "0"); }, [left, right]);
+  useEffect(() => { store.set("kula.studio.lw", String(lw)); store.set("kula.studio.rw", String(rw)); }, [lw, rw]);
+  const showView = useCallback((v: View) => {
+    setFile(null);
+    setTabs((ts) => (ts.some((t) => t.kind === "view" && t.view === v) ? ts : [...ts, { kind: "view", view: v }]));
+  }, []);
+  const openFile = useCallback((path: string, line?: number) => {
+    setFile({ path, line }); setCurLine(line);
+    setTabs((ts) => (ts.some((t) => t.kind === "file" && t.path === path)
+      ? ts.map((t) => (t.kind === "file" && t.path === path ? { ...t, line } : t))
+      : [...ts, { kind: "file", path, line }]));
+    setRail(false);
+  }, []);
+  const [noTabs, setNoTabs] = useState(false);
+
   const go: Go = useCallback((v, t = {}) => {
+    showView(v); setNoTabs(false);
     setView(v);
     setTarget(t);
     if (v === "graph") {
@@ -164,11 +216,48 @@ export default function App() {
       if (t.symbol) setFocus(t.symbol);
       if (t.search) api.search(t.search).then((h) => { const hit = h.find((n) => n.path === t.search) ?? h[0]; if (hit) setFocus(hit.id); });
     }
-  }, []);
+  }, [showView]);
 
+  const activeKey = noTabs ? null : file ? `f:${file.path}` : `v:${view}`;
+  const pickTab = (t: Tab) => {
+    setNoTabs(false);
+    if (t.kind === "file") { setFile({ path: t.path, line: t.line }); setCurLine(t.line); }
+    else go(t.view as View);
+  };
+  const closeTab = (t: Tab) => {
+    const k = tabKey(t);
+    const i = tabs.findIndex((x) => tabKey(x) === k);
+    const rest = tabs.filter((x) => tabKey(x) !== k);
+    setTabs(rest);
+    if (k !== activeKey) return;
+    const next = rest[Math.min(i, rest.length - 1)];
+    if (!next) { setFile(null); setNoTabs(true); return; }
+    if (next.kind === "file") { setFile({ path: next.path, line: next.line }); setCurLine(next.line); }
+    else { setFile(null); setView(next.view as View); setTarget({}); }
+  };
+  const tabLabel = (t: Tab) => {
+    if (t.kind === "file") return { name: t.path.slice(t.path.lastIndexOf("/") + 1), icon: <Icon.file />, title: t.path };
+    const v = VIEWS.find((x) => x.id === t.view)!;
+    return { name: v.label, icon: <v.icon />, title: `${v.label}  ${v.key}` };
+  };
+
+  const lastShift = useRef(0);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Shift twice: Search Everywhere.
+      if (e.key === "Shift" && !e.repeat) {
+        const now = performance.now();
+        if (now - lastShift.current < 350) { lastShift.current = 0; setPalette(true); } else lastShift.current = now;
+        return;
+      }
+      lastShift.current = 0;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
+      // Tool windows by number, as in the IDE: ⌥1 Project, ⌥7 Structure.
+      if (e.altKey && !e.metaKey && !e.ctrlKey && (e.code === "Digit1" || e.code === "Digit7")) {
+        e.preventDefault();
+        if (e.code === "Digit1") setLeft((l) => !l); else setRight((r) => !r);
+        return;
+      }
       if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") history.back(); else history.forward(); return; }
       const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -197,29 +286,31 @@ export default function App() {
   const current = VIEWS.find((v) => v.id === view)!;
 
   return (
-    <CodeProvider onLocate={(id) => go("graph", { symbol: id })}>
-    <div className={`shell ${rail ? "rail-open" : ""}`}>
+    <CodeProvider onLocate={(id) => go("graph", { symbol: id })} onEdit={(t) => openFile(t.path, t.line)}>
+    <div className={`shell studio ${rail ? "rail-open" : ""} ${left ? "tw-l" : ""} ${right ? "tw-r" : ""}`}>
       <header className="topbar">
         <button className="brand" onClick={() => go("overview")} aria-label="Overview"><Logo /><span>kula</span></button>
         <button className="rail-toggle" onClick={() => setRail((r) => !r)} aria-label={rail ? "Hide sidebar" : "Show sidebar"} aria-expanded={rail} aria-controls="rail"><Icon.sidebar /></button>
-        <span className="crumb">/</span>
-        <span className="crumb-repo">{repo?.name ?? "…"}</span>
-        <span className="crumb">/</span>
-        <span className="crumb-view">{contrast && view === "graph" ? "Contrast" : current.label}</span>
-        <button className="chip" onClick={() => go("branches")} title="Current branch"><Icon.branches /><b className="mono">{repo?.branch ?? "…"}</b></button>
+        <button className="crumb-repo tb-widget" onClick={() => go("overview")} title="Project"><b>{repo?.name ?? "…"}</b><span className="tb-caret"><Icon.chevron /></span></button>
+        <button className="chip tb-widget" onClick={() => go("branches")} title="Current branch"><Icon.branches /><b className="mono">{repo?.branch ?? "…"}</b><span className="tb-caret"><Icon.chevron /></span></button>
         <span className="spacer" />
         <div className="top-actions">
           <button className="btn sm ghost icon-only" aria-label="Back" title="Back  ⌥←" onClick={() => history.back()}><Icon.back /></button>
-          <button className="btn sm ghost top-search" aria-label="Search" title="Search symbols, issues, branches, commands  ⌘K" onClick={() => setPalette(true)}><Icon.search /><kbd>⌘K</kbd></button>
+          <button className="btn sm ghost top-search" aria-label="Search" title="Search everywhere  ⇧⇧  ⌘K" onClick={() => setPalette(true)}><Icon.search /><kbd>⌘K</kbd></button>
           <button className="btn sm ghost icon-only" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.gear /></button>
         </div>
       </header>
 
       <nav className="rail" id="rail" aria-label="Views">
+        <div className="rail-group rail-tools">
+          <button className={left ? "on tool" : "tool"} onClick={() => setLeft((l) => !l)} data-tip="Project  ⌥1" aria-label="Project" aria-pressed={left}>
+            <Icon.project /><span className="rail-label">Project</span>
+          </button>
+        </div>
         {GROUPS.map((g, gi) => (
           <div key={gi} className="rail-group">
             {g.map((v) => (
-              <button key={v.id} className={view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
+              <button key={v.id} className={!file && !noTabs && view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
                 <v.icon />
                 <span className="rail-label">{v.label}</span>
                 {!!badge[v.id] && <span className="badge">{badge[v.id]}</span>}
@@ -230,53 +321,95 @@ export default function App() {
       </nav>
       {rail && <div className="rail-scrim" onClick={() => setRail(false)} aria-hidden="true" />}
 
-      <main className="main">
-        {/* Full panel only when nothing has loaded; once data is in, a failed poll
-            is a slim banner so the view (and its state) survives the blip. */}
-        {serverError && !repo ? (
-          <div className="shell-error" data-testid="server-error" role="alert">
-            <h2>Server unreachable</h2>
-            <p className="mono">{serverError}</p>
-            <p className="hint">kula's server answers every view – nothing can load until it is back.</p>
-            <div className="shell-error-actions">
-              <button className="btn primary" onClick={refresh}>Retry now</button>
-              <span className="muted">or restart with <code>kula serve</code></span>
+      {left && (
+        <aside className="tw tw-left" style={{ width: lw }} aria-label="Project">
+          <div className="tw-head"><span>Project</span><span className="spacer" /><button className="tw-hide" aria-label="Hide Project" title="Hide  ⌥1" onClick={() => setLeft(false)}><Icon.close /></button></div>
+          <ProjectTree repo={repo?.name ?? "…"} version={version} active={file?.path ?? null} onOpen={(p) => openFile(p)} />
+          <Resizer side="left" width={lw} onWidth={setLw} />
+        </aside>
+      )}
+
+      <section className="editor">
+        {tabs.length > 0 && <EditorTabs tabs={tabs} active={activeKey} label={tabLabel} onPick={pickTab} onClose={closeTab} />}
+        <main className="main">
+          {/* Full panel only when nothing has loaded; once data is in, a failed poll
+              is a slim banner so the view (and its state) survives the blip. */}
+          {serverError && !repo ? (
+            <div className="shell-error" data-testid="server-error" role="alert">
+              <h2>Server unreachable</h2>
+              <p className="mono">{serverError}</p>
+              <p className="hint">kula's server answers every view – nothing can load until it is back.</p>
+              <div className="shell-error-actions">
+                <button className="btn primary" onClick={refresh}>Retry now</button>
+                <span className="muted">or restart with <code>kula serve</code></span>
+              </div>
             </div>
+          ) : (
+          <>
+          {serverError && repo && (
+            <div className="server-note" data-testid="server-note" role="alert">
+              <span className="mono">{serverError}</span>
+              <button className="btn sm" onClick={refresh}>Retry</button>
+            </div>
+          )}
+          {noTabs ? (
+            <div className="editor-empty" data-testid="editor-empty">
+              <dl>
+                <dt>Search everywhere</dt><dd><kbd>⇧⇧</kbd></dd>
+                <dt>Project</dt><dd><kbd>⌥1</kbd></dd>
+                <dt>Structure</dt><dd><kbd>⌥7</kbd></dd>
+                <dt>Graph</dt><dd><kbd>2</kbd></dd>
+                <dt>Shortcuts</dt><dd><kbd>?</kbd></dd>
+              </dl>
+            </div>
+          ) : file ? (
+            <FileEditor path={file.path} line={file.line} onLine={setCurLine} />
+          ) : (
+          /* Keyed so each view change plays a short enter transition. */
+          <div className="view-enter" key={view + (contrast ? ":c" : "")}>
+            <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
+              {view === "overview" && <Overview repo={repo} version={version} go={go} />}
+              {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
+              {view === "changes" && <Changes {...nav} />}
+              {view === "history" && <History {...nav} />}
+              {view === "branches" && <Branches {...nav} />}
+              {view === "proposals" && <Proposals {...nav} />}
+              {view === "issues" && <Issues {...nav} />}
+              {view === "notes" && <Notes {...nav} />}
+              {view === "flows" && <Flows {...nav} />}
+              {view === "agents" && <Agents {...nav} />}
+              {view === "query" && <Query {...nav} />}
+              {view === "console" && <Console {...nav} />}
+            </Suspense>
           </div>
-        ) : (
-        <>
-        {serverError && repo && (
-          <div className="server-note" data-testid="server-note" role="alert">
-            <span className="mono">{serverError}</span>
-            <button className="btn sm" onClick={refresh}>Retry</button>
-          </div>
-        )}
-        {/* Keyed so each view change plays a short enter transition. */}
-        <div className="view-enter" key={view + (contrast ? ":c" : "")}>
-          <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
-            {view === "overview" && <Overview repo={repo} version={version} go={go} />}
-            {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
-            {view === "changes" && <Changes {...nav} />}
-            {view === "history" && <History {...nav} />}
-            {view === "branches" && <Branches {...nav} />}
-            {view === "proposals" && <Proposals {...nav} />}
-            {view === "issues" && <Issues {...nav} />}
-            {view === "notes" && <Notes {...nav} />}
-            {view === "flows" && <Flows {...nav} />}
-            {view === "agents" && <Agents {...nav} />}
-            {view === "query" && <Query {...nav} />}
-            {view === "console" && <Console {...nav} />}
-          </Suspense>
-        </div>
-        </>
-        )}
-      </main>
+          )}
+          </>
+          )}
+        </main>
+      </section>
+
+      {right && (
+        <aside className="tw tw-right" style={{ width: rw }} aria-label="Structure">
+          <Resizer side="right" width={rw} onWidth={setRw} />
+          <div className="tw-head"><span>Structure</span><span className="spacer" /><button className="tw-hide" aria-label="Hide Structure" title="Hide  ⌥7" onClick={() => setRight(false)}><Icon.close /></button></div>
+          <Structure path={file?.path ?? null} line={curLine} onJump={(n) => file && openFile(file.path, n)} />
+        </aside>
+      )}
+      <aside className="stripe-right" aria-label="Tool windows">
+        <button className={right ? "on" : ""} onClick={() => setRight((r) => !r)} data-tip="Structure  ⌥7" aria-label="Structure" aria-pressed={right}><Icon.structure /></button>
+      </aside>
 
       <footer className="statusbar">
         <span>kula {repo?.version}</span>
         {(indexing || repo?.index !== "current") && <span className="sb-warn">{indexing || repo?.index === "stale" ? "reindexing…" : "no graph – ⌘K, then Reindex"}</span>}
-        {repo?.stats && <span className="sb-stats">{repo.stats.files} files · {repo.stats.symbols} symbols · {repo.stats.edges} edges · {repo.stats.communities} clusters</span>}
+        <span className="sb-crumbs">
+          <span>{repo?.name ?? "…"}</span>
+          {(file ? file.path.split("/") : [contrast && view === "graph" ? "Contrast" : current.label]).map((p, i) => <span key={i}><i><Icon.chevron /></i>{p}</span>)}
+        </span>
         <span className="spacer" />
+        {repo?.stats && <span className="sb-stats">{repo.stats.files} files · {repo.stats.symbols} symbols · {repo.stats.edges} edges</span>}
+        {file && curLine && <span className="mono">Ln {curLine}</span>}
+        {file && <span className="sb-enc">UTF-8</span>}
         <span>{changes ? `${changes} changed` : "clean"}</span>
         <span className="mono">{repo?.head?.slice(0, 8)}</span>
         <span>{repo?.user}</span>

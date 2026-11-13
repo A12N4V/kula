@@ -1,0 +1,118 @@
+/* ================================================================ K5 · studio shell
+   An IDE frame in the IntelliJ New UI layout: main toolbar with project and
+   branch widgets, tool window stripes on both edges, Project and Structure
+   tool windows, editor tabs over the view, a status bar with breadcrumbs. */
+
+@media (min-width: 761px) {
+  .shell.studio { grid-template-columns: 40px auto minmax(0, 1fr) auto 32px; grid-template-rows: 40px minmax(0, 1fr) 24px; }
+  .studio > .topbar { grid-column: 1 / -1; grid-row: 1; }
+  .studio > .rail { grid-column: 1; grid-row: 2; }
+  .studio > .tw-left { grid-column: 2; grid-row: 2; }
+  .studio > .editor { grid-column: 3; grid-row: 2; }
+  .studio > .tw-right { grid-column: 4; grid-row: 2; }
+  .studio > .stripe-right { grid-column: 5; grid-row: 2; }
+  .studio > .statusbar { grid-column: 1 / -1; grid-row: 3; }
+  .code-panel { top: 41px; bottom: 25px; }
+}
+
+/* main toolbar */
+.studio .topbar { gap: 4px; padding: 0 8px 0 8px; }
+.studio .brand { margin-right: 6px; }
+.tb-widget { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 1px solid transparent; background: none; color: var(--text); font: inherit; font-size: 12.5px; cursor: pointer; }
+.tb-widget:hover { background: var(--hover-bg); border-color: var(--line); }
+.studio .topbar .chip.tb-widget { border-color: transparent; background: none; }
+.studio .topbar .chip.tb-widget:hover { border-color: var(--line); background: var(--hover-bg); }
+.tb-caret { display: inline-grid; color: var(--text-3); transform: rotate(90deg); }
+.tb-caret svg { width: 10px; height: 10px; }
+
+/* left stripe */
+.studio .rail { padding: 4px 0; }
+.studio .rail-group { gap: 2px; padding: 4px 0; }
+.studio .rail .rail-tools button.on { color: var(--text); background: var(--active-bg); }
+
+/* right stripe */
+.stripe-right { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-left: 1px solid var(--line); background: var(--bg-2); }
+.stripe-right button { position: relative; width: 26px; height: 26px; display: grid; place-items: center; border: 0; background: none; color: var(--text-3); cursor: pointer; }
+.stripe-right button:hover { color: var(--text); background: var(--hover-bg); }
+.stripe-right button.on { color: var(--text); background: var(--active-bg); }
+.stripe-right button svg { width: 16px; height: 16px; }
+.stripe-right button[data-tip]:hover::after { content: attr(data-tip); position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); white-space: pre; padding: 4px 8px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--text); font-size: 11.5px; z-index: 70; pointer-events: none; }
+
+/* tool windows */
+.tw { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-2); }
+.tw-left { border-right: 1px solid var(--line); }
+.tw-right { border-left: 1px solid var(--line); }
+.tw-head { display: flex; align-items: center; height: 32px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--text); flex: none; }
+.tw-hide { width: 22px; height: 22px; display: grid; place-items: center; border: 0; background: none; color: var(--text-3); cursor: pointer; }
+.tw-hide:hover { color: var(--text); background: var(--hover-bg); }
+.tw-hide svg { width: 12px; height: 12px; }
+.tw-body { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.tw-empty { padding: 12px; color: var(--text-3); font-size: 12px; }
+.tw-resize { position: absolute; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 5; }
+.tw-resize.left { right: -3px; }
+.tw-resize.right { left: -3px; }
+.tw-resize:hover { background: linear-gradient(var(--accent), var(--accent)) center / 1px 100% no-repeat; }
+body.resizing { cursor: col-resize; user-select: none; }
+
+/* project tree and structure rows */
+.pt-root { display: flex; align-items: center; gap: 6px; padding: 8px 12px 6px; font-size: 12px; flex: none; }
+.pt-root svg { width: 14px; height: 14px; color: var(--text-3); }
+.pt-root .muted { margin-left: auto; color: var(--text-3); font-size: 11px; }
+.pt-filter { margin: 0 8px 6px; height: 26px; padding: 0 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 12px; flex: none; }
+.pt-filter:focus { outline: none; border-color: var(--accent); }
+.pt-rows { overflow: auto; flex: 1; padding-bottom: 12px; }
+.pt-row { display: flex; align-items: center; gap: 6px; width: 100%; height: 24px; padding-right: 8px; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 12px; text-align: left; cursor: pointer; white-space: nowrap; }
+.pt-row:hover { background: var(--hover-bg); color: var(--text); }
+.pt-row.on { background: var(--sel-bg); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+.pt-row svg { width: 14px; height: 14px; flex: none; color: var(--text-3); }
+.pt-row.dir { color: var(--text); }
+.pt-row.mod .pt-name { color: var(--blue); }
+.pt-row.new .pt-name { color: var(--green); }
+.pt-name { overflow: hidden; text-overflow: ellipsis; }
+.pt-ln { margin-left: auto; color: var(--text-3); font-size: 11px; }
+.pt-caret { display: inline-grid; width: 10px; transition: transform var(--dur, .15s); }
+.pt-caret svg { width: 10px; height: 10px; }
+.pt-caret.open { transform: rotate(90deg); }
+
+/* editor column */
+.editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.editor > .main { flex: 1; min-height: 0; }
+.etabs { display: flex; height: 34px; flex: none; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--line); background: var(--bg-2); scrollbar-width: none; }
+.etabs::-webkit-scrollbar { display: none; }
+.etab { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 12px; border-right: 1px solid var(--line); color: var(--text-2); font-size: 12px; white-space: nowrap; cursor: pointer; flex: none; }
+.etab:hover { color: var(--text); background: var(--hover-bg); }
+.etab.on { color: var(--text); background: var(--bg); }
+.etab.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent); }
+.etab > svg { width: 14px; height: 14px; color: var(--text-3); }
+.etab-x { width: 18px; height: 18px; display: grid; place-items: center; border: 0; background: none; color: var(--text-3); cursor: pointer; visibility: hidden; }
+.etab:hover .etab-x, .etab.on .etab-x { visibility: visible; }
+.etab-x:hover { color: var(--text); background: var(--panel-2); }
+.etab-x svg { width: 10px; height: 10px; }
+
+/* file editor */
+.file-editor { position: absolute; inset: 0; overflow: auto; background: var(--bg); }
+.fe-code { margin: 0; padding: 6px 0 40vh; font: 12.5px/1.65 var(--mono); tab-size: 4; min-width: max-content; }
+.fe-code > div { display: grid; grid-template-columns: 56px 1fr; white-space: pre; }
+.fe-code > div.cur { background: var(--hover-bg); }
+.fe-code > div.cur .ln { color: var(--text); }
+.fe-code .ln { padding-right: 14px; text-align: right; color: var(--text-3); user-select: none; border-right: 1px solid var(--line); margin-right: 14px; }
+
+/* nothing open */
+.editor-empty { position: absolute; inset: 0; display: grid; place-items: center; }
+.editor-empty dl { display: grid; grid-template-columns: auto auto; gap: 10px 24px; margin: 0; color: var(--text-3); font-size: 12.5px; }
+.editor-empty dt { text-align: right; }
+.editor-empty dd { margin: 0; }
+
+/* status bar */
+.studio .statusbar { gap: 14px; font-size: 11.5px; }
+.sb-crumbs { display: flex; align-items: center; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--text-2); }
+.sb-crumbs i { font-style: normal; padding: 0 6px; color: var(--text-3); }
+
+@media (max-width: 760px) {
+  .studio > .tw, .studio > .stripe-right { display: none; }
+  .studio > .editor { grid-column: 1; grid-row: 2; }
+  .sb-crumbs, .sb-enc { display: none; }
+  .etabs { height: 36px; }
+}
+.sb-crumbs i { display: inline-grid; }
+.sb-crumbs i svg { width: 9px; height: 9px; }

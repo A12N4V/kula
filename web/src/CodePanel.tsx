@@ -16,7 +16,7 @@ export const useCode = () => useContext(Ctx);
 export const nodeTarget = (n: Node): CodeTarget | null =>
   n.kind === "package" ? null : { path: n.path, line: n.kind === "file" ? undefined : n.start_line, end: n.kind === "file" ? undefined : n.end_line, name: n.name, kind: n.kind, id: n.id };
 
-export function CodeProvider({ children, onLocate }: { children: ReactNode; onLocate?: (id: number) => void }) {
+export function CodeProvider({ children, onLocate, onEdit }: { children: ReactNode; onLocate?: (id: number) => void; onEdit?: (t: CodeTarget) => void }) {
   const [target, setTarget] = useState<CodeTarget | null>(null);
   const open = useCallback((t: CodeTarget) => { visit({ path: t.path, name: t.name, kind: t.kind, id: t.id }); setTarget(t); }, []);
   const close = useCallback(() => setTarget(null), []);
@@ -24,7 +24,7 @@ export function CodeProvider({ children, onLocate }: { children: ReactNode; onLo
   return (
     <Ctx.Provider value={value}>
       {children}
-      {target && <CodePanel t={target} onClose={close} onLocate={onLocate} />}
+      {target && <CodePanel t={target} onClose={close} onLocate={onLocate} onEdit={onEdit && ((t) => { close(); onEdit(t); })} />}
     </Ctx.Provider>
   );
 }
@@ -35,7 +35,7 @@ const KW = new Set(("fn pub let mut const static struct enum impl trait use mod 
   "function class extends new this import export from default var interface implements private public protected readonly yield of typeof instanceof try catch finally throw " +
   "def lambda pass with elif None True False and or not is func package go defer chan select range map struct").split(" "));
 const TOKEN = /(\/\/.*$|#(?![[!]).*$|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\b\d[\d_.]*\b|\b[A-Za-z_]\w*\b)/g;
-function paint(line: string, lang: string): ReactNode[] {
+export function paint(line: string, lang: string): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0, k = 0;
   for (const m of line.matchAll(TOKEN)) {
@@ -50,9 +50,9 @@ function paint(line: string, lang: string): ReactNode[] {
   return out;
 }
 
-const LANG: Record<string, string> = { rs: "rust", py: "python", ts: "ts", tsx: "ts", js: "js", jsx: "js", mjs: "js", go: "go" };
+export const LANG: Record<string, string> = { rs: "rust", py: "python", ts: "ts", tsx: "ts", js: "js", jsx: "js", mjs: "js", go: "go" };
 
-function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => void; onLocate?: (id: number) => void }) {
+function CodePanel({ t, onClose, onLocate, onEdit }: { t: CodeTarget; onClose: () => void; onLocate?: (id: number) => void; onEdit?: (t: CodeTarget) => void }) {
   const [src, setSrc] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -84,6 +84,7 @@ function CodePanel({ t, onClose, onLocate }: { t: CodeTarget; onClose: () => voi
         <div className="cp-path"><span className="muted">{dir}</span>{file}</div>
         <div className="cp-actions">
           {t.id != null && onLocate && <button className="btn sm" onClick={() => onLocate(t.id!)} title="Focus it in the graph"><Icon.target /> Locate</button>}
+          {onEdit && <button className="btn sm" onClick={() => onEdit(t)} title="Open as an editor tab"><Icon.file /> Open in editor</button>}
           <button className="btn sm" onClick={() => navigator.clipboard?.writeText(t.line ? `${t.path}:${t.line}` : t.path)} title={t.line ? `Copy ${t.path}:${t.line}` : `Copy ${t.path}`}>Copy path:line</button>
           {t.id != null && t.name && (
             <button className="btn sm ghost" title={`Copy ${t.kind === "file" ? `urn:kula:file:${t.path}` : `urn:kula:sym:${t.path}#${t.name}`}`}

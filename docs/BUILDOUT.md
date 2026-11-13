@@ -13,7 +13,7 @@ Run by the team engine in `.team/` (branch `team/kula`, merged to main by hand).
 | K4c | P1.3.5 tables layer | – | DONE: ORM models and SQL migrations become Table nodes; `query table:` and `impact table:` reach handlers; KG vocab 4 |
 | K4d | P1.3.8 tables audit | – | DONE: 14 critic findings fixed (import scoped uses, SQL in strings only, case folding, new Drizzle/Prisma/SQL forms, inferred uses in impact) |
 | K2b | P1.2.10 map audit | – | DONE: 5 repos audited, findings fixed or accepted, report `docs/audits/2026-11-map.md`, bench 0.97/1.00 |
-| K5 (queued, needs approval) | P3 Studio web UI, JetBrains Air style, code map plus orchestration canvas | $5 | web/ redesign |
+| K5 DONE | P3 Studio web UI, JetBrains Air style, code map plus orchestration canvas | $5 | web/ redesign |
 
 Out of scope for this run: SCIP ingest (P1.1.8), LLM summaries (P1.2.8), merge train (P1.4.7), benchmarks (P1.5), release steps and posting (YOU only).
 Each phase: tests first (cheap model), build steps (cheap model), gate (`cargo check`, `cargo test`), independent review (Opus 5.5), fix, tag `kula/<id>-done`.

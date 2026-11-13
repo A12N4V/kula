@@ -30,7 +30,10 @@ export interface Shortcut { keys: string; label: string }
 /** Active in every view; each one is proven working by an e2e test (N1.2). */
 export const GLOBAL_SHORTCUTS: Shortcut[] = [
   { keys: "⌘K /", label: "Command palette – symbols, #issues, @branches, >commands" },
+  { keys: "⇧⇧", label: "Search everywhere" },
   { keys: "1 – 9 0 a q", label: "Go to a view (the rail shows which key)" },
+  { keys: "⌥1", label: "Project tool window" },
+  { keys: "⌥7", label: "Structure tool window" },
   { keys: "?", label: "This sheet" },
   { keys: ",", label: "Settings" },
   { keys: "⌥← ⌥→", label: "Back / forward through views" },
