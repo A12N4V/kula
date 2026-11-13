@@ -496,7 +496,6 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
       if (ra >= 0 || rb >= 0) return (ra < 0 ? Infinity : ra) - (rb < 0 ? Infinity : rb);
       return b.sc - a.sc;
     }).map((x) => fresh(x.it));
-  const seenGroups = new Set<string>();
   // The highlight clamps to the list on every render, so Enter always has a
   // target even after typing has narrowed the results.
   const k = Math.min(i, scored.length - 1);
@@ -514,8 +513,7 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
         <div className="results" ref={list}>
           {scored.map((it, j) => (
             <div key={it.key}>
-              {!seenGroups.has(it.group) && <div className="grp">{it.group}</div>}
-              {seenGroups.add(it.group)}
+              {(j === 0 || scored[j - 1].group !== it.group) && <div className="grp">{it.group}</div>}
               <div className={`res ${k === j ? "on" : ""}`} onMouseEnter={() => setI(j)} onClick={it.run}>{it.el}</div>
             </div>
           ))}

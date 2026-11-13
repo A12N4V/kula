@@ -135,7 +135,7 @@ Gate G2: CLI audit has no blockers; release published.
 
 | ID | Task | Owner | needs | Acceptance |
 |---|---|---|---|---|
-| P3.1 | Design brief: what the UI must show for the new features (map, plan board, run board, structural diff review, confidence overlay); keep the project's rules: never change button sizes, toggles over tabs, signal over effects, no glow, harmonograph and shader logo language | PLAN | G2 | `docs/design/ui.md` approved by YOU |
+| P3.1 | Design brief: what the UI must show for the new features (map, plan board, run board, structural diff review, confidence overlay); keep the project's rules: never change button sizes, toggles over tabs, frosted glass panels with rounded 8/6/4 corners and smooth gradients, harmonograph and shader logo language | PLAN | G2 | `docs/design/ui.md` approved by YOU |
 | P3.2 | API: every UI view backed by the same JSON as the CLI (`/api/map`, `/api/plan`, `/api/run`, `/api/gate`) | WORKER | P3.1 | No UI-only data paths |
 | P3.3 | Architecture map view: zoomable hierarchy, cluster names, layer bands, cycle highlights, confidence toggle | MAIN | P3.2 | Loads kula and a 5k-file repo in under 2 s; readable at phone width |
 | P3.4 | Explain panel on click: purpose, public surface, dependents, memories, history | WORKER | P3.3 | Parity with `kula explain` |

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Graph from "graphology";
 import Sigma from "sigma";
 import { EdgeRectangleProgram } from "sigma/rendering";
@@ -687,14 +688,14 @@ function MapView(props: Props) {
         <IsolatePanel iso={iso} inGraph={(id) => graph.hasNode(String(id))} focus={(id) => setFocus(id)} onExit={() => setIso(null)}
           onEdit={() => setIsoAsk(iso.slice.selectors.join(" "))} />
       )}
-      {menu && graph?.hasNode(menu.id) && (
+      {menu && graph?.hasNode(menu.id) && createPortal(
         <NodeMenu x={menu.x} y={menu.y} n={graph.getNodeAttribute(menu.id, "node")} onClose={() => setMenu(null)}
           inspect={(tab) => { setFocus(Number(menu.id)); if (tab) setTabReq({ tab, n: Date.now() }); }}
           source={(n) => code.open({ path: n.path, line: n.kind === "file" ? undefined : n.start_line })}
           isolate={(n) => isolate([n.kind === "file" ? `path:${n.path}` : n.kind === "package" ? `symbol:${n.id}` : `symbol:${n.path}:${n.name}`], 1)}
           traceFrom={() => { if (focus != null && String(focus) !== menu.id) setTrace({ from: String(focus), to: menu.id, path: shortest(graph, String(focus), menu.id) }); else { setFocus(Number(menu.id)); toast("Shift-click another symbol to trace a path to it"); } }}
           copied={(what) => toast(`Copied ${what}`)}
-        />
+        />, document.body,
       )}
 
       {hovered && cardOn && hover !== String(focus) && <HoverCard n={hovered.node} dir={groups.label(groups.of(hovered.node.path))} deg={[hovered.din, hovered.dout]} churn={churn[hovered.node.path] ?? 0} hub={isHub(hovered)} fence={hover != null ? fences?.get(hover) ?? null : null} />}

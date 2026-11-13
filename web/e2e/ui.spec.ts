@@ -172,9 +172,14 @@ test.describe("design language", () => {
     expect(v).toEqual({ bg: "#050505", accent: "#f97f3a", line: "#24201d" });
   });
 
-  test("sharp: framed surfaces and controls have square corners", async ({ page }) => {
+  test("soft: framed surfaces are rounded 8, controls 6, and panels are frosted glass", async ({ page }) => {
     await open(page);
-    for (const sel of [".card", ".stat-table.ov-stats", ".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("0px");
+    for (const sel of [".card", ".stat-table.ov-stats"]) expect(await radius(page, sel), sel).toBe("8px");
+    for (const sel of [".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("6px");
+    for (const sel of [".topbar", ".card"]) {
+      const bf = await page.locator(sel).first().evaluate((el) => { const s = getComputedStyle(el); return s.backdropFilter || (s as any).webkitBackdropFilter; });
+      expect(bf, sel).toMatch(/blur/);
+    }
   });
 
   test("errors get a thin even border, not an accent bar", async ({ page }) => {
@@ -184,7 +189,7 @@ test.describe("design language", () => {
     const t = page.getByTestId("server-error");
     await expect(t).toBeVisible();
     const b = await t.evaluate((el) => { const s = getComputedStyle(el.querySelector("p.mono")!); return [s.borderLeftWidth, s.borderTopWidth, s.borderRightWidth, s.borderBottomWidth, s.borderTopLeftRadius]; });
-    expect(b).toEqual(["1px", "1px", "1px", "1px", "0px"]);
+    expect(b).toEqual(["1px", "1px", "1px", "1px", "6px"]);
   });
 });
 
@@ -505,7 +510,10 @@ async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: numbe
     // Symbols, a short hop apart but not overlapping: still near each other after the camera zooms in.
     const d = (e: string[]) => { const p = at(e[0]), q = at(e[1]); return Math.hypot(p.x - q.x, p.y - q.y); };
     const sym = (id: string) => graph.getNodeAttribute(id, "node").kind !== "file";
-    const pool = edges.filter((e: string[]) => sym(e[0]) && sym(e[1]) && d(e) > 25);
+    // Nothing else drawn within reach, so the click lands on this node and not a neighbour over it.
+    const pts = graph.nodes().map((id: string) => at(id));
+    const clear = (id: string) => { const p = at(id); return !pts.some((q: { id: string; x: number; y: number }) => q.id !== id && Math.hypot(p.x - q.x, p.y - q.y) < 14); };
+    const pool = edges.filter((e: string[]) => sym(e[0]) && sym(e[1]) && d(e) > 25 && clear(e[0]) && clear(e[1]));
     pool.sort((e1: string[], e2: string[]) => (pick === "hub" ? d(e2) - d(e1) : d(e1) - d(e2)));
     const [s, t] = pool[0] ?? edges[0];
     return { a: at(s), b: at(t) };
@@ -516,9 +524,11 @@ test.describe("graph interactions", () => {
   test("right-click a symbol for its actions; Escape closes them", async ({ page }) => {
     await open(page, "graph");
     const { a } = await nodeAt(page, "edge");
-    await page.mouse.click(a.x, a.y, { button: "right" });
     const menu = page.getByRole("menu");
-    await expect(menu).toBeVisible();
+    await expect(async () => {
+      await page.mouse.click(a.x, a.y, { button: "right" });
+      await expect(menu).toBeVisible({ timeout: 1000 });
+    }).toPass({ timeout: 15_000 });
     await expect(menu.locator(".nm-head")).toContainText(a.label);
     for (const item of ["Inspect", "Impact", "Path from selection", "Copy location", "Copy RDF IRI"]) await expect(menu.getByRole("menuitem", { name: item })).toBeVisible();
     // It opens where the pointer is.
