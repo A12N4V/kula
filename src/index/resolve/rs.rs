@@ -21,6 +21,26 @@ use std::collections::HashMap;
 use super::{ImportBinding, ImportKind, ResolveCtx, ResolveOut, Resolver};
 use crate::index::{normalize, ParsedFile};
 
+/// Whether `T::f()` yields a `T`: `new`, `default`, `new_*`, or a `fn f`
+/// in this file declared `-> Self` or `-> T`.
+fn constructor(src: &str, ty: &str, f: &str) -> bool {
+    if f == "new" || f == "default" || f.starts_with("new_") {
+        return true;
+    }
+    let last = ty.rsplit("::").next().unwrap_or(ty);
+    src.match_indices(&format!("fn {f}(")).any(|(i, _)| {
+        let sig = &src[i..];
+        let sig = &sig[..sig.find('{').or_else(|| sig.find(';')).unwrap_or(sig.len())];
+        let ret = sig.rsplit_once("->").map(|(_, r)| r.trim()).unwrap_or("");
+        let ret = ret.split(" where").next().unwrap_or(ret).trim();
+        ret == "Self" || ret == last
+    })
+}
+
+/// Marks a `let x = T::f()` type that holds only if `f` returns `T`
+/// (`"T\u{1d}f"`), checked once the type's file is known.
+const CTOR_SEP: char = '\u{1d}';
+
 /// Separator inside `ParsedFile::var_types` values: `"Type\u{1f}scope_start"`.
 /// Shared with the Python resolver: the scope is the byte offset of the
 /// enclosing function (0 at module level), so a typed local only binds member
@@ -125,6 +145,19 @@ impl<'a> Scope<'a> {
         None
     }
 
+    /// Whether the crate root file (not this one) declares `mod seg`.
+    fn root_declares(&self, seg: &str) -> bool {
+        ["lib.rs", "main.rs"].iter().map(|f| join(&self.root, f)).filter(|r| *r != self.pf().path).any(|r| {
+            (self.ctx.read)(&r).is_some_and(|t| {
+                t.lines().any(|l| {
+                    let l = l.trim_start();
+                    let l = l.strip_prefix("pub(crate) ").or_else(|| l.strip_prefix("pub ")).unwrap_or(l);
+                    l.strip_prefix("mod ").is_some_and(|r| r.trim_end() == format!("{seg};"))
+                })
+            })
+        })
+    }
+
     /// `dir/seg.rs` or `dir/seg/mod.rs`, when indexed.
     fn child_file(&self, dir: &str, seg: &str) -> Option<String> {
         let base = join(dir, seg);
@@ -157,7 +190,14 @@ impl<'a> Scope<'a> {
             let found = if first && !anchored {
                 match self.declared_mod(seg) {
                     Some(ModDecl::File(f)) => Some(f),
-                    _ => None,
+                    Some(ModDecl::Inline) => None,
+                    // 2015-style `use server::X` from a submodule: crate
+                    // relative when the crate root declares `mod server`.
+                    None if self.root_declares(seg) => {
+                        dir = self.root.clone();
+                        self.child_file(&dir, seg)
+                    }
+                    None => None,
                 }
             } else {
                 self.child_file(&dir, seg)
@@ -295,7 +335,16 @@ impl<'a> Scope<'a> {
         if scope != enclosing_scope(self.pf(), byte) {
             return None;
         }
+        let (ty, ctor) = match ty.split_once(CTOR_SEP) {
+            Some((t, f)) => (t, Some(f)),
+            None => (ty, None),
+        };
         let file = self.type_file(&split_path(ty))?;
+        if let Some(f) = ctor {
+            if !(self.ctx.read)(&file).is_some_and(|t| constructor(&t, ty, f)) {
+                return None;
+            }
+        }
         self.method(ty.rsplit("::").next().unwrap_or(ty), name, &file)
     }
 
@@ -467,8 +516,11 @@ pub fn scan(tree: &tree_sitter::Tree, src: &str, pf: &mut ParsedFile) {
                             }
                             let text = f.utf8_text(bytes).ok()?;
                             // `Circle::new(..)`: the type is the path, not the last segment.
-                            let prefix = text.rsplit_once("::").map(|(p, _)| p)?;
-                            plain_type(prefix)
+                            // Only constructors: `Config::load()` may return a Result.
+                            let (prefix, f) = text.rsplit_once("::")?;
+                            let ty = plain_type(prefix)?;
+                            // Proven here, or left for the resolver to check in the type's file.
+                            Some(if constructor(src, &ty, f) { ty } else { format!("{ty}{CTOR_SEP}{f}") })
                         }
                         "struct_expression" => {
                             let name = value.child_by_field_name("name")?;

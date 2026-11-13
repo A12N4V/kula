@@ -21,7 +21,9 @@ Order is `resolved > inferred > guessed`. A path's confidence is its weakest edg
 ## Surfaces
 
 - `impact` returns per-tier counts and a per-hit `confidence`; `--min-confidence` (CLI) and `min_confidence` (MCP) drop weaker edges.
-- Fences and `pre_edit` keep using all edges (safe side), but report the tier counts so a reviewer sees how solid a warning is.
+- Fences and `pre_edit` keep using all edges (safe side), but report the tier counts so a reviewer sees how solid a warning is. The `verify_edit` dangling-caller check skips `guessed` edges.
+- IMPORTS edges are tiered too: a resolver or exact path hit is `resolved`, a single suffix match on a multi-segment key is `inferred`, anything looser is `guessed`. Go imports resolve through the `go.mod` module path. File level DEPENDS rows and `context` neighbours carry the best tier seen.
+- A reference that matches several symbols is an error listing `path:name` (or `path:Owner.name`); `path:Owner.name` and `path:Owner::name` pick a member.
 
 ## Resolvers (P1.1.4–P1.1.7)
 
@@ -37,19 +39,17 @@ Order: TypeScript/JavaScript (imports, re-exports, barrels, `this`, class member
 
 `bench/edges/` holds hand-labelled ground-truth edge sets per fixture and a scorer reporting precision and recall per tier. A resolver is accepted when precision on its language's set improves with recall not dropping.
 
-Recorded 2026-11-12 (`python3 bench/edges/score.py --kula target/debug/kula`; the PATH `kula` may be stale and must not be used): overall precision 1.00 recall 1.00 (tp 58 fp 0 fn 0); `resolved` tier 46/46 = 1.00, `inferred` 10/10, `guessed` 2/2. `resolved` precision is above the 0.95 bar on every fixture set (ts, py, rs, go).
+Recorded 2026-11-12 after the P1.1.10 audit (`KULA_NO_AGENT=1 python3 bench/edges/score.py --kula target/debug/kula`; the PATH `kula` may be stale and must not be used). Truth is path qualified, so a wrong same-name target is a false positive. Overall precision 0.97 recall 1.00 (tp 73 fp 2 fn 0); `resolved` 59/59 = 1.00, `inferred` 11/12, `guessed` 3/4.
 
-Per language, same run (the scorer prints a per-language summary since 2026-11-12):
-
-| lang | precision | recall | edges | `resolved` before → after |
+| lang | precision | recall | tp | fp |
 |---|---|---|---|---|
-| ts | 1.00 | 1.00 | 14 | 13/16 → 13/14 resolved-tier precision |
-| py | 1.00 | 1.00 | 21 | 3/5 → 16/21 resolved-tier precision |
-| rs | 1.00 | 1.00 | 20 | 0/3 → 17/20 resolved-tier precision |
-| go | 1.00 | 1.00 | 3 | 0/3 → all 3 `resolved` (P1.1.7 closed) |
+| ts | 1.00 | 1.00 | 19 | 0 |
+| py | 1.00 | 1.00 | 23 | 0 |
+| rs | 0.96 | 1.00 | 23 | 1 (`guessed`, glob ambiguity) |
+| go | 0.89 | 1.00 | 8 | 1 (`inferred`, interface by name) |
 
-Before/after tier detail per language is in `docs/TODO.md` on the P1.1.4–P1.1.7 lines; the Go resolver's first recorded run is this one: 3/3 edges `resolved`, precision 1.00 recall 1.00, above the 0.95 bar.
+Both false positives are in tiers that say they may be wrong; `docs/audits/2026-11-edges.md` has the detail.
 
 ## Migration
 
-`SCHEMA_VERSION` is stored in meta key `schema`. A mismatch reads as `stale` and triggers a rebuild. Opening an old DB adds the `confidence` column (default `inferred`) so reads never fail before the rebuild runs.
+`SCHEMA_VERSION` (now 5) is stored in meta key `schema`, and the building kula version in `indexer`. A mismatch in either reads as `stale`, triggers a rebuild, and any command opening the old index prints one stderr hint to run `kula index` (`KULA_QUIET_STALE=1` silences it). Opening an old DB adds the `confidence` column (default `inferred`) so reads never fail before the rebuild runs.

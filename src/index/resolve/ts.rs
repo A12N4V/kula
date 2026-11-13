@@ -11,6 +11,11 @@ use std::collections::{HashMap, HashSet};
 use super::{ImportBinding, ImportKind, ResolveCtx, ResolveOut, Resolver};
 use crate::index::{normalize, strip_ext, ParsedFile};
 
+/// Separator inside `ParsedFile::var_types` values: `"Type\u{1f}start\u{1f}end"`, one per binding.
+const SCOPE_SEP: char = '\u{1f}';
+/// Separator between bindings of one name in `ParsedFile::var_types`.
+const BIND_SEP: char = '\u{1e}';
+
 /// How deep `export * from` / `export {x} from` chains are chased.
 const MAX_REEXPORT_DEPTH: usize = 5;
 
@@ -48,7 +53,7 @@ impl Resolver for Ts {
             }
             // 3. Member call on a var of a known class type: `const f = new Foo(); f.bar()`.
             if let Some(r) = recv {
-                if let Some(ty) = pf.var_types.get(r) {
+                if let Some(ty) = var_type(pf, r, byte) {
                     if let Some(t) = resolve_member(ctx, ty, name) {
                         out.claimed.insert(byte);
                         out.edges.push((byte, t));
@@ -98,14 +103,43 @@ fn resolve_default(ctx: &ResolveCtx, spec: &str, from: &str, ts: &TsPaths) -> Op
         return None;
     }
     let path = &targets[0];
-    let top = ctx.top_level(path);
-    let callable: Vec<usize> =
-        top.iter().copied().filter(|c| matches!(ctx.nodes[*c].kind.as_str(), "class" | "function" | "method")).collect();
-    if callable.len() == 1 {
-        Some(callable[0])
-    } else {
-        None
+    let name = default_name(&(ctx.read)(path)?)?;
+    ctx.top_level(path)
+        .into_iter()
+        .find(|c| ctx.nodes[*c].name == name && matches!(ctx.nodes[*c].kind.as_str(), "class" | "function" | "method"))
+}
+
+/// The name a module exports as default: `export default function f`,
+/// `export default class C`, `export default f;` or `export { f as default }`.
+/// `None` when the default export is anonymous.
+fn default_name(src: &str) -> Option<String> {
+    let ident = |s: &str| -> String { s.chars().take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$').collect() };
+    for line in src.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("export default ") {
+            let mut r = rest.trim_start();
+            for kw in ["async ", "function* ", "function ", "abstract ", "class "] {
+                r = r.strip_prefix(kw).map(str::trim_start).unwrap_or(r);
+            }
+            let n = ident(r);
+            let after = r[n.len()..].trim_start();
+            let decl = rest.trim_start().len() != r.len();
+            if !n.is_empty() && (decl || after.is_empty() || after.starts_with(';')) {
+                return Some(n);
+            }
+            return None;
+        }
+        if let Some(i) = t.find(" as default") {
+            if t.starts_with("export") && t.contains('{') {
+                let head = &t[..i];
+                let n: String = head.rsplit(|c: char| c == '{' || c == ',' || c.is_whitespace()).next().unwrap_or("").to_string();
+                if !n.is_empty() {
+                    return Some(n);
+                }
+            }
+        }
     }
+    None
 }
 
 /// Resolve an exported name through a module specifier, chasing barrels.
@@ -164,7 +198,7 @@ fn resolve_member(ctx: &ResolveCtx, ty: &str, name: &str) -> Option<usize> {
         .into_iter()
         .flatten()
         .copied()
-        .filter(|c| matches!(ctx.nodes[*c].kind.as_str(), "class" | "interface"))
+        .filter(|c| matches!(ctx.nodes[*c].kind.as_str(), "class" | "interface") && ctx.nodes[*c].path == pf.path)
         .collect();
     if let Some(b) = pf.import_bindings.iter().find(|b| b.local == ty) {
         let ts = TsPaths::load(ctx);
@@ -385,6 +419,7 @@ fn strip_jsonc(s: &str) -> String {
 pub fn scan(tree: &tree_sitter::Tree, src: &str, pf: &mut ParsedFile) {
     let bytes = src.as_bytes();
     let mut stack = vec![tree.root_node()];
+    let mut vars: Vec<(String, Option<String>, (usize, usize))> = Vec::new();
     while let Some(n) = stack.pop() {
         match n.kind() {
             "import_statement" | "export_statement" => {
@@ -394,7 +429,9 @@ pub fn scan(tree: &tree_sitter::Tree, src: &str, pf: &mut ParsedFile) {
             }
             "variable_declarator" | "required_parameter" | "optional_parameter" => {
                 if let Ok(text) = n.utf8_text(bytes) {
-                    parse_var(text, pf);
+                    if let Some((name, ty)) = parse_var(text) {
+                        vars.push((name, ty, scope_of(n, src.len())));
+                    }
                 }
             }
             _ => {}
@@ -404,6 +441,60 @@ pub fn scan(tree: &tree_sitter::Tree, src: &str, pf: &mut ParsedFile) {
             stack.push(ch);
         }
     }
+    // Every binding keeps its function's span (untyped ones too, so they can
+    // shadow); `var_type` picks the innermost binding around a call.
+    for (name, ty, (a, b)) in vars {
+        let e = pf.var_types.entry(name).or_default();
+        if !e.is_empty() {
+            e.push(BIND_SEP);
+        }
+        e.push_str(&format!("{}{SCOPE_SEP}{a}{SCOPE_SEP}{b}", ty.unwrap_or_default()));
+    }
+}
+
+/// The byte span of the innermost function around `n` (the whole file at top level).
+fn scope_of(mut n: tree_sitter::Node, len: usize) -> (usize, usize) {
+    while let Some(p) = n.parent() {
+        if matches!(
+            p.kind(),
+            "function_declaration"
+                | "function_expression"
+                | "function"
+                | "arrow_function"
+                | "method_definition"
+                | "generator_function_declaration"
+        ) {
+            return (p.start_byte(), p.end_byte());
+        }
+        n = p;
+    }
+    (0, len)
+}
+
+/// The class a local holds at `byte`: the innermost binding around it, and
+/// only when every binding in that scope agrees on one class.
+fn var_type<'a>(pf: &'a ParsedFile, var: &str, byte: usize) -> Option<&'a str> {
+    let mut best: Option<(usize, &str)> = None;
+    let mut clash = false;
+    for b in pf.var_types.get(var)?.split(BIND_SEP) {
+        let mut it = b.split(SCOPE_SEP);
+        let ty = it.next()?;
+        let a: usize = it.next()?.parse().ok()?;
+        let e: usize = it.next()?.parse().ok()?;
+        if !(a <= byte && byte < e) {
+            continue;
+        }
+        match best {
+            Some((w, t)) if w == e - a => clash |= t != ty,
+            Some((w, _)) if w < e - a => {}
+            _ => {
+                best = Some((e - a, ty));
+                clash = false;
+            }
+        }
+    }
+    let (_, ty) = best?;
+    (!clash && !ty.is_empty()).then_some(ty)
 }
 
 /// Re-export bindings in a file, from source text alone (no parser).
@@ -531,12 +622,12 @@ fn module_of(text: &str) -> Option<String> {
     last
 }
 
-/// Record `name → Type` for `const f = new Foo()` and `f: Foo` declarations.
-fn parse_var(text: &str, pf: &mut ParsedFile) {
+/// The bound name and, for `const f = new Foo()` and `f: Foo`, its class.
+fn parse_var(text: &str) -> Option<(String, Option<String>)> {
     let t = text.trim();
     let name: String = t.chars().take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$').collect();
     if name.is_empty() {
-        return;
+        return None;
     }
     let head = t.split('=').next().unwrap_or(t);
     let mut ty = head
@@ -554,9 +645,7 @@ fn parse_var(text: &str, pf: &mut ParsedFile) {
             }
         }
     }
-    if let Some(ty) = ty {
-        pf.var_types.insert(name, ty);
-    }
+    Some((name, ty))
 }
 
 #[cfg(test)]
@@ -606,13 +695,21 @@ mod tests {
     }
 
     #[test]
+    fn default_export_names() {
+        assert_eq!(default_name("export default function go() {}").as_deref(), Some("go"));
+        assert_eq!(default_name("export default class W {}").as_deref(), Some("W"));
+        assert_eq!(default_name("function f(){}\nexport default f;").as_deref(), Some("f"));
+        assert_eq!(default_name("export { f as default };").as_deref(), Some("f"));
+        assert_eq!(default_name("export default (x) => norm(x)").as_deref(), None);
+        assert_eq!(default_name("export default function () {}").as_deref(), None);
+    }
+
+    #[test]
     fn var_types_from_new_and_annotation() {
         // `parse_var` receives the declarator text, e.g. `w = new Widget()`.
-        let mut pf = ParsedFile::default();
-        parse_var("w = new Widget()", &mut pf);
-        assert_eq!(pf.var_types.get("w").map(String::as_str), Some("Widget"));
-        parse_var("x: Thing", &mut pf);
-        assert_eq!(pf.var_types.get("x").map(String::as_str), Some("Thing"));
+        assert_eq!(parse_var("w = new Widget()"), Some(("w".into(), Some("Widget".into()))));
+        assert_eq!(parse_var("x: Thing"), Some(("x".into(), Some("Thing".into()))));
+        assert_eq!(parse_var("y = make()"), Some(("y".into(), None)));
     }
 
     #[test]

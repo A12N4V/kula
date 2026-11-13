@@ -313,7 +313,7 @@ fn rs_trait_impl_method_resolves_once_to_the_impl() {
 
     // `let w = Wheel::new(); w.spin()` – an impl block and a trait signature
     // share the name; only the impl body may be the target, exactly once.
-    let callers = resolved_callers(d, "wheel.rs:spin");
+    let callers = resolved_callers(d, "wheel.rs:Wheel::spin");
     assert_eq!(callers, vec![("make_wheel".to_string(), "lib.rs".to_string())], "trait method fan-out");
 }
 

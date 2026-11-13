@@ -7,6 +7,7 @@ use crate::guard::Guards;
 use crate::store::{Node, Store};
 use anyhow::{bail, Result};
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::io::{BufRead, Write};
 
 fn tools() -> Value {
@@ -115,6 +116,8 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             for list in [&mut c.callers, &mut c.callees, &mut c.children, &mut c.imports, &mut c.imported_by] {
                 *list = visible(&g, std::mem::take(list));
             }
+            let shown: HashSet<i64> = c.callers.iter().chain(&c.callees).chain(&c.imports).chain(&c.imported_by).map(|n| n.id).collect();
+            c.confidence.retain(|id, _| shown.contains(id));
             let v = g.node(&c.node);
             let mut out = json!(c);
             out["guard"] = json!(v);
@@ -125,6 +128,9 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             let n = graph::resolve_one(&s, &str_arg("symbol"))?;
             refuse_hidden(&g, &n)?;
             let mc = str_arg("min_confidence");
+            if !matches!(mc.as_str(), "" | "resolved" | "inferred" | "guessed") {
+                bail!("min_confidence must be resolved, inferred or guessed, not {mc:?}");
+            }
             let mut i = graph::impact_min(
                 &s,
                 n.id,

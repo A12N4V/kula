@@ -377,20 +377,28 @@ fn resolve_module(ctx: &ResolveCtx, spec: &str, from: &str) -> Vec<String> {
     if lead > 0 {
         return lookup(key);
     }
-    // Absolute: exact stem first, then a suffix match (`from core import x`
-    // where the fixture puts `core.py` at the repo root is the exact case).
+    // Absolute: exact stem first, then one source root (`src/pkg/mod` for
+    // `pkg.mod`). Deeper suffixes are not tried: `import requests` must not
+    // land on some `vendor/x/requests.py`, and a stdlib name on a local file.
     let mut hits = lookup(key.clone());
     if hits.is_empty() {
-        let tail = format!("/{key}");
         let mut ids: Vec<usize> = ctx
             .by_stem
             .iter()
-            .filter(|(k, _)| k.ends_with(&tail) || k.ends_with(&format!("{tail}/__init__")))
+            .filter(|(k, _)| {
+                let rest = k.strip_suffix("/__init__").unwrap_or(k);
+                rest.strip_suffix(key.as_str())
+                    .and_then(|r| r.strip_suffix('/'))
+                    .is_some_and(|root| !root.is_empty() && !root.contains('/') && !ctx.by_stem.contains_key(&format!("{root}/__init__")))
+            })
             .flat_map(|(_, v)| v.iter().copied())
             .collect();
         ids.sort_unstable();
         ids.dedup();
         hits = ids.iter().filter_map(|i| ctx.nodes.get(*i).map(|n| n.path.clone())).collect();
+        if hits.len() > 1 {
+            hits.clear();
+        }
     }
     hits
 }

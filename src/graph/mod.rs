@@ -9,8 +9,10 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 /// Weighted label propagation over the undirected graph. Deterministic.
 mod diff;
 mod paths;
+mod resolve;
 pub use diff::*;
 pub use paths::*;
+pub use resolve::resolve_one;
 
 pub fn detect_communities(nodes: &mut [Node], edges: &[Edge]) -> Vec<Community> {
     let n = nodes.len();
@@ -94,23 +96,38 @@ pub struct Context {
     pub imported_by: Vec<Node>,
     pub container: Option<Node>,
     pub snippet: String,
+    /// Edge tier to each caller, callee and import, by neighbour id.
+    pub confidence: BTreeMap<i64, String>,
 }
 
 pub fn context(repo: &Repo, store: &Store, id: i64) -> Result<Context> {
     let Some(node) = store.node(id)? else { bail!("no node {id}") };
     let pick = |v: Vec<(Node, f64)>| v.into_iter().map(|x| x.0).collect::<Vec<_>>();
-    let callers = pick(store.neighbours(id, "CALLS", false)?);
-    let callees = pick(store.neighbours(id, "CALLS", true)?);
+    let mut confidence = BTreeMap::new();
+    let mut tiered = |v: Vec<(Node, String)>| -> Vec<Node> {
+        v.into_iter()
+            .map(|(n, c)| {
+                // Several edges to one neighbour: report the surest.
+                let e = confidence.entry(n.id).or_insert_with(|| c.clone());
+                if conf_rank(&c) > conf_rank(e) {
+                    *e = c;
+                }
+                n
+            })
+            .collect()
+    };
+    let callers = tiered(store.neighbours_conf(id, "CALLS", false)?);
+    let callees = tiered(store.neighbours_conf(id, "CALLS", true)?);
     let children = pick(store.neighbours(id, "CONTAINS", true)?);
     let container = store.neighbours(id, "CONTAINS", false)?.into_iter().next().map(|x| x.0);
     let (imports, imported_by) = if node.kind == "file" {
-        (pick(store.neighbours(id, "IMPORTS", true)?), pick(store.neighbours(id, "IMPORTS", false)?))
+        (tiered(store.neighbours_conf(id, "IMPORTS", true)?), tiered(store.neighbours_conf(id, "IMPORTS", false)?))
     } else {
         (vec![], vec![])
     };
     let community = store.conn.query_row("SELECT label FROM communities WHERE id = ?1", [node.community], |r| r.get(0)).ok();
     let snippet = read_lines(repo, &node.path, node.start_line, node.end_line.min(node.start_line + 80));
-    Ok(Context { node, community, callers, callees, children, imports, imported_by, container, snippet })
+    Ok(Context { node, community, callers, callees, children, imports, imported_by, container, snippet, confidence })
 }
 
 pub fn read_lines(repo: &Repo, path: &str, start: i64, end: i64) -> String {
@@ -241,13 +258,13 @@ pub fn export(store: &Store, level: &str, limit: usize) -> Result<GraphExport> {
         let ids: HashSet<i64> = nodes.iter().map(|n| n.id).collect();
         // Lift symbol calls to file→file dependencies.
         let mut st = store.conn.prepare(
-            "SELECT DISTINCT fa.id, fb.id, 'DEPENDS', count(*) FROM edges e
+            "SELECT DISTINCT fa.id, fb.id, 'DEPENDS', count(*), max(CASE e.confidence WHEN 'resolved' THEN 2 WHEN 'inferred' THEN 1 ELSE 0 END) FROM edges e
              JOIN nodes a ON a.id = e.src JOIN nodes b ON b.id = e.dst
              JOIN nodes fa ON fa.kind = 'file' AND fa.path = a.path
              JOIN nodes fb ON fb.kind = 'file' AND fb.path = b.path
              WHERE e.kind IN ('CALLS','IMPORTS') AND fa.id != fb.id GROUP BY fa.id, fb.id
              UNION ALL
-             SELECT e.src, e.dst, 'IMPORTS', 1 FROM edges e JOIN nodes p ON p.id = e.dst AND p.kind = 'package'
+             SELECT e.src, e.dst, 'IMPORTS', 1, CASE e.confidence WHEN 'resolved' THEN 2 WHEN 'inferred' THEN 1 ELSE 0 END FROM edges e JOIN nodes p ON p.id = e.dst AND p.kind = 'package'
              WHERE e.kind = 'IMPORTS'",
         )?;
         let edges = st
@@ -257,7 +274,8 @@ pub fn export(store: &Store, level: &str, limit: usize) -> Result<GraphExport> {
                     dst: r.get(1)?,
                     kind: r.get(2)?,
                     weight: r.get::<_, i64>(3)? as f64,
-                    confidence: "resolved".into(),
+                    // The surest edge behind this file dependency.
+                    confidence: ["guessed", "inferred", "resolved"][r.get::<_, i64>(4)?.clamp(0, 2) as usize].into(),
                 })
             })?
             .filter_map(|e| e.ok())
@@ -274,25 +292,6 @@ pub fn export(store: &Store, level: &str, limit: usize) -> Result<GraphExport> {
     let ids: HashSet<i64> = nodes.iter().map(|n| n.id).collect();
     let edges = store.all_edges()?.into_iter().filter(|e| ids.contains(&e.src) && ids.contains(&e.dst)).collect();
     Ok(GraphExport { truncated: (total as usize) > nodes.len(), nodes, edges, communities })
-}
-
-/// Pick the single best node for a reference, preferring definitions.
-pub fn resolve_one(store: &Store, r: &str) -> Result<Node> {
-    // `table:users` names a table node from an ORM model or migration.
-    if let Some(t) = r.strip_prefix("table:") {
-        let t = t.to_lowercase();
-        return store
-            .nodes_where("kind = 'table' AND name = ?1", [&t])?
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("no table {t:?}"));
-    }
-    let hits = store.resolve(r)?;
-    if let Some(h) = hits.first() {
-        return Ok(h.clone());
-    }
-    let s = store.search(r, 1)?;
-    s.into_iter().next().ok_or_else(|| anyhow::anyhow!("no symbol matches {r:?}"))
 }
 
 // ------------------------------------------------------------------ graph diff

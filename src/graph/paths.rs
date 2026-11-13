@@ -49,6 +49,8 @@ pub fn impact_min(store: &Store, id: i64, upstream: bool, max_depth: usize, min_
             }
         }
     }
+    // Hit index per node, so a later path at the same depth can raise its tier.
+    let mut at: HashMap<i64, usize> = hits.iter().enumerate().map(|(i, h)| (h.node.id, i)).collect();
     while let Some((cur, d)) = q.pop_front() {
         if d >= max_depth {
             continue;
@@ -62,11 +64,20 @@ pub fn impact_min(store: &Store, id: i64, upstream: bool, max_depth: usize, min_
             if conf_rank(&c) < floor {
                 continue;
             }
+            let conf = if conf_rank(&c) < conf_rank(&base) { c } else { base.clone() };
             if seen.insert(n.id) {
-                let conf = if conf_rank(&c) < conf_rank(&base) { c } else { base.clone() };
                 path_conf.insert(n.id, conf.clone());
+                at.insert(n.id, hits.len());
                 hits.push(ImpactHit { node: n.clone(), depth: d + 1, via: Some(cur), confidence: conf });
                 q.push_back((n.id, d + 1));
+            } else if let Some(&i) = at.get(&n.id) {
+                // Same level, surer path: keep the best tier. Its children are
+                // not popped yet (they sit one level down), so they inherit it.
+                if hits[i].depth == d + 1 && conf_rank(&conf) > conf_rank(&hits[i].confidence) {
+                    path_conf.insert(n.id, conf.clone());
+                    hits[i].confidence = conf;
+                    hits[i].via = Some(cur);
+                }
             }
         }
         if hits.len() > 500 {

@@ -103,7 +103,7 @@ fn index_and_graph_queries() {
     // Python cross-file + Rust mod resolution.
     let py = kula_json(d, &["impact", "push_redis"]);
     assert!(py["hits"].to_string().contains("schedule_nightly"), "{py}");
-    let rs = kula_json(d, &["trace", "run", "split_ws"]);
+    let rs = kula_json(d, &["trace", "core/src/lib.rs:run", "split_ws"]);
     let path: Vec<&str> = rs["path"].as_array().unwrap().iter().map(|n| n["name"].as_str().unwrap()).collect();
     assert_eq!(path, vec!["run", "tokenize", "split_ws"]);
     // The path reports its edge tiers, and they sum to the edges walked.
@@ -425,16 +425,21 @@ fn confidence_tiers_gate_trace_verify_and_pre_edit() {
     kula(d, &["index"]);
 
     // pre_edit reports per-tier counts, all tiers present by default.
-    let b = kula_json(d, &["before", "dup"]);
+    // A bare name with two definitions is refused, naming both, not guessed.
+    let out = Command::new(KULA).arg("-C").arg(d).args(["before", "dup"]).env("NO_COLOR", "1").output().unwrap();
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("ambiguous: 2 matches") && err.contains("src/api/other.ts:dup"), "{err}");
+    let b = kula_json(d, &["before", "src/util/dups.ts:dup"]);
     let tiers: usize = b["tiers"].as_array().unwrap().iter().map(|t| t.as_u64().unwrap() as usize).sum();
     assert_eq!(tiers, b["dependents"].as_u64().unwrap() as usize, "{b}");
     assert!(b["tiers"][2].as_u64().unwrap() >= 1, "a guessed caller is counted: {b}");
 
     // trace --min-confidence actually filters: the strict path is shorter or empty.
-    let loose = kula_json(d, &["trace", "pickDup", "dup"]);
+    let loose = kula_json(d, &["trace", "pickDup", "src/util/dups.ts:dup"]);
     let loose_names: Vec<&str> = loose["path"].as_array().unwrap().iter().map(|n| n["name"].as_str().unwrap()).collect();
     assert_eq!(loose_names, vec!["pickDup", "dup"]);
-    let strict = kula_json(d, &["trace", "pickDup", "dup", "--min-confidence", "resolved"]);
+    let strict = kula_json(d, &["trace", "pickDup", "src/util/dups.ts:dup", "--min-confidence", "resolved"]);
     assert!(strict["path"].as_array().unwrap().is_empty(), "{strict}");
     assert!(strict["tiers"].as_array().unwrap().iter().all(|t| t.as_u64().unwrap() == 0), "{strict}");
 

@@ -246,7 +246,7 @@ pub(crate) fn apply(
                 continue;
             }
             if linked.insert((by, t, "USES_TABLE")) {
-                edges.push(Edge::new(by as i64, t as i64, "USES_TABLE", (1 + nl.partition_point(|&i| i < b)) as f64));
+                edges.push(Edge::new(by as i64, t as i64, "USES_TABLE", (1 + nl.partition_point(|&i| i < b)) as f64).with("inferred"));
             }
         }
     }

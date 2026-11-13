@@ -58,7 +58,8 @@ pub struct Store {
 /// Bumped when the index layout changes; older indexes read as stale and rebuild.
 /// 3: runtime layers added `dependency` and `env` nodes (`used_by`, `reads_env` edges).
 /// 4: `route` nodes and `HANDLES` edges (HTTP endpoints).
-pub const SCHEMA_VERSION: &str = "4";
+/// 5: scope-aware resolvers, tiered IMPORTS edges, `indexer` version in meta.
+pub const SCHEMA_VERSION: &str = "5";
 
 const SCHEMA: &str = r#"
 PRAGMA journal_mode = DELETE;
@@ -145,8 +146,8 @@ impl Store {
     /// How the graph stands against HEAD: "missing", "current" or "stale". A repo
     /// with no commits yet is current once indexed (its HEAD is recorded as "").
     pub fn freshness(repo: &Repo) -> &'static str {
-        let st = Store::open(repo).ok();
-        if st.as_ref().is_some_and(|s| s.meta("schema").as_deref() != Some(SCHEMA_VERSION)) {
+        let st = Store::open_quiet(repo).ok();
+        if st.as_ref().is_some_and(|s| s.outdated().is_some()) {
             return "stale";
         }
         match st.and_then(|s| s.meta("indexed_head")) {
@@ -157,6 +158,13 @@ impl Store {
     }
 
     pub fn open(repo: &Repo) -> Result<Store> {
+        let st = Self::open_quiet(repo)?;
+        st.warn_if_old();
+        Ok(st)
+    }
+
+    /// `open` without the stale-index warning, for callers that check freshness themselves.
+    fn open_quiet(repo: &Repo) -> Result<Store> {
         let p = Self::path(repo);
         if !p.exists() {
             bail!("no index yet – run `kula index` first");
@@ -170,6 +178,30 @@ impl Store {
             let _ = conn.execute("ALTER TABLE edges ADD COLUMN confidence TEXT NOT NULL DEFAULT 'inferred'", []);
         }
         Ok(Store { conn, root: repo.root.clone(), staged: None })
+    }
+
+    /// Whether this index was built by an older layout or a different kula.
+    pub fn outdated(&self) -> Option<String> {
+        let schema = self.meta("schema");
+        if schema.as_deref() != Some(SCHEMA_VERSION) {
+            return Some(format!("schema {}", schema.unwrap_or_else(|| "?".into())));
+        }
+        match self.meta("indexer") {
+            Some(v) if v == env!("CARGO_PKG_VERSION") => None,
+            v => Some(format!("kula {}", v.unwrap_or_else(|| "?".into()))),
+        }
+    }
+
+    /// One stderr line per process when the graph was built by another kula:
+    /// edges may be missing or wrongly tiered until `kula index` reruns.
+    fn warn_if_old(&self) {
+        static WARNED: std::sync::Once = std::sync::Once::new();
+        if std::env::var_os("KULA_QUIET_STALE").is_some() {
+            return;
+        }
+        if let Some(by) = self.outdated() {
+            WARNED.call_once(|| eprintln!("kula: index built by {by}, run `kula index` to rebuild it"));
+        }
     }
 
     pub fn write_all(&self, nodes: &[Node], edges: &[Edge], communities: &[Community]) -> Result<()> {
@@ -286,6 +318,18 @@ impl Store {
             let hits = self.nodes_where("name = ?1 AND path LIKE ?2 AND kind != 'file'", params![name, format!("%{path}")])?;
             if !hits.is_empty() {
                 return Ok(hits);
+            }
+        }
+        // path:Owner.name (or Owner::name): a member when one file has two.
+        if let Some((path, rest)) = r.split_once(':').filter(|(_, rest)| !rest.starts_with(':')) {
+            if let Some((owner, name)) = rest.rsplit_once("::").or_else(|| rest.rsplit_once('.')) {
+                let hits = self.nodes_where(
+                    "name = ?1 AND path LIKE ?2 AND kind != 'file' AND parent IN (SELECT id FROM nodes WHERE name = ?3 AND kind != 'file') ORDER BY id",
+                    params![name, format!("%{path}"), owner],
+                )?;
+                if !hits.is_empty() {
+                    return Ok(hits);
+                }
             }
         }
         let exact = self.nodes_where("name = ?1 AND kind != 'file' ORDER BY id", [r])?;

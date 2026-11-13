@@ -232,7 +232,7 @@ fn go_same_package_method_call_resolves() {
     assert!(has(&c, "main", "main.go"), "method on a same-package receiver: {c:?}");
     // Circle.Area must NOT gain main as a resolved caller through the same
     // method name.
-    let wrong = resolved_callers(d, "mathutil/mathutil.go:Area");
+    let wrong = resolved_callers(d, "mathutil/mathutil.go:Circle.Area");
     assert!(!has(&wrong, "main", "main.go"), "Area resolved via the wrong method: {wrong:?}");
 }
 
@@ -244,10 +244,10 @@ fn go_interface_call_is_inferred_never_resolved() {
 
     // `var s Shaper = mathutil.Circle{}`; `s.Area()` is an interface call:
     // method-name match only, so the resolved tier must stay empty.
-    let r = resolved_callers(d, "mathutil/mathutil.go:Area");
+    let r = resolved_callers(d, "mathutil/mathutil.go:Circle.Area");
     assert!(!has(&r, "main", "main.go"), "interface call resolved: {r:?}");
     // The name linker still connects it at the inferred tier.
-    let i = callers(d, "mathutil/mathutil.go:Area", "inferred");
+    let i = callers(d, "mathutil/mathutil.go:Circle.Area", "inferred");
     assert!(has(&i, "main", "main.go"), "interface call missing at inferred tier: {i:?}");
 }
 

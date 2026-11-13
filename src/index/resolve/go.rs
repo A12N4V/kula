@@ -19,6 +19,8 @@ use crate::index::ParsedFile;
 /// Separator inside `ParsedFile::var_types` values, matching the other
 /// resolvers: `"Type\u{1f}scope_start"`.
 const SCOPE_SEP: char = '\u{1f}';
+/// Separator between bindings of one name in `ParsedFile::var_types`.
+const BIND_SEP: char = '\u{1e}';
 
 pub struct Go;
 
@@ -36,6 +38,13 @@ impl Resolver for Go {
                 Some(recv) => pkg.selector(recv, name, byte),
                 None => None,
             };
+            // `pkg.F()` on an import outside this module (stdlib or a
+            // dependency): claimed with no edge, so the name linker cannot
+            // pin it on a same-name local symbol.
+            if target.is_none() && ctx.file.receivers.get(&byte).is_some_and(|r| pkg.external(r)) {
+                out.claimed.insert(byte);
+                continue;
+            }
             if let Some((t, soft)) = target {
                 out.claimed.insert(byte);
                 if soft {
@@ -101,6 +110,11 @@ impl<'a> Pkg<'a> {
         self.typed_method(recv, name, byte)
     }
 
+    /// `recv` names an imported package that lives outside this module.
+    fn external(&self, recv: &str) -> bool {
+        self.pf().import_bindings.iter().any(|b| b.local == recv && !self.module.is_empty() && self.import_dir(&b.module).is_none())
+    }
+
     /// `pkg.Func`: the import path minus the module prefix is the package's
     /// directory; the symbol must exist exactly once in it and be exported.
     fn pkg_symbol(&self, import: &str, name: &str) -> Option<usize> {
@@ -128,6 +142,9 @@ impl<'a> Pkg<'a> {
     /// `internal/util`; the module root itself → `""`.
     fn import_dir(&self, import: &str) -> Option<String> {
         let rest = if self.module.is_empty() { import } else { import.strip_prefix(&self.module)? };
+        if !self.module.is_empty() && !(rest.is_empty() || rest.starts_with('/')) {
+            return None; // `example.com/mx` is not inside `example.com/m`
+        }
         let rest = rest.trim_start_matches('/');
         if rest.is_empty() {
             Some(String::new())
@@ -145,17 +162,28 @@ impl<'a> Pkg<'a> {
         if !recv.chars().all(|c| c.is_alphanumeric() || c == '_') {
             return None;
         }
-        let raw = self.pf().var_types.get(recv)?;
-        let (ty, scope) = raw.split_once(SCOPE_SEP)?;
-        let scope: usize = scope.parse().ok()?;
-        if scope != enclosing_scope(self.pf(), byte) {
+        let here = enclosing_scope(self.pf(), byte).to_string();
+        // One binding of `recv` in this function, with a known type; a second
+        // binding (shadowing, or `:=` from a call) makes it unknown.
+        let mut binds =
+            self.pf().var_types.get(recv)?.split(BIND_SEP).filter_map(|b| b.split_once(SCOPE_SEP)).filter(|(_, sc)| *sc == here);
+        let (ty, _) = binds.next()?;
+        if binds.next().is_some() || ty.is_empty() {
             return None;
         }
         let ty = ty.trim_start_matches('*').trim_start_matches("[]").trim_start_matches("map[string]");
+        // `pkg.Type`: the package the qualifier imports, else this one.
+        let (pkg_dir, ty) = match ty.split_once('.') {
+            Some((q, t)) => {
+                let b = self.pf().import_bindings.iter().find(|b| b.local == q)?;
+                (self.import_dir(&b.module)?, t)
+            }
+            None => (self.dir.clone(), ty),
+        };
         if self.is_interface(ty) {
-            return self.iface_satisfaction(ty.rsplit('.').next().unwrap_or(ty), name);
+            return self.iface_satisfaction(ty, name);
         }
-        // The type lives in this package: same directory, one declaration.
+        // The type lives in that package: its directory, one declaration.
         let ty_file = self
             .ctx
             .by_name
@@ -165,7 +193,7 @@ impl<'a> Pkg<'a> {
             .copied()
             .filter(|id| {
                 let n = &self.ctx.nodes[*id];
-                n.kind == "class" && n.path.ends_with(".go") && package_dir_of(&n.path) == self.dir
+                n.kind == "class" && n.path.ends_with(".go") && package_dir_of(&n.path) == pkg_dir
             })
             .collect::<Vec<_>>();
         if ty_file.len() != 1 {
@@ -248,7 +276,7 @@ fn package_dir_of(path: &str) -> String {
 }
 
 /// The module path from a `go.mod` body.
-fn module_path(go_mod: &str) -> Option<String> {
+pub(crate) fn module_path(go_mod: &str) -> Option<String> {
     go_mod
         .lines()
         .map(str::trim)
@@ -329,7 +357,7 @@ pub fn scan(tree: &tree_sitter::Tree, src: &str, pf: &mut ParsedFile) {
             }
             "short_var_declaration" => {
                 let Some(right) = n.child_by_field_name("right") else { continue };
-                let Some(ty) = literal_type(right, bytes) else { continue };
+                let ty = literal_type(right, bytes).unwrap_or_default();
                 let Some(left) = n.child_by_field_name("left") else { continue };
                 for var in named_idents(left, bytes) {
                     assigned.push((var, ty.clone(), scope_start_of(pf, n.start_byte())));
@@ -344,8 +372,14 @@ pub fn scan(tree: &tree_sitter::Tree, src: &str, pf: &mut ParsedFile) {
             _ => {}
         }
     }
+    // Every binding is kept (untyped ones as an empty type) so a shadowing
+    // `:=` in the same function makes the name unknown rather than wrong.
     for (var, ty, scope) in assigned {
-        pf.var_types.insert(var, format!("{ty}{SCOPE_SEP}{scope}"));
+        let e = pf.var_types.entry(var).or_default();
+        if !e.is_empty() {
+            e.push(BIND_SEP);
+        }
+        e.push_str(&format!("{ty}{SCOPE_SEP}{scope}"));
     }
 }
 
@@ -362,15 +396,15 @@ fn literal_type<'t>(expr: tree_sitter::Node<'t>, bytes: &[u8]) -> Option<String>
     plain_type(node.child_by_field_name("type")?, bytes)
 }
 
-/// A plain type text: identifier, qualified identifier or pointer to one.
+/// A plain type text: `T`, `pkg.T` or a pointer to one (qualifier kept).
 fn plain_type(node: tree_sitter::Node, bytes: &[u8]) -> Option<String> {
-    let text = node.utf8_text(bytes).ok()?;
-    let last = text.rsplit('.').next()?;
-    let last = last.trim_start_matches('*');
-    if last.is_empty() || !last.chars().all(|c| c.is_alphanumeric() || c == '_') {
-        return None;
+    let text = node.utf8_text(bytes).ok()?.trim_start_matches('*');
+    let ok = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_');
+    match text.split_once('.') {
+        Some((q, t)) if ok(q) && ok(t) => Some(text.to_string()),
+        None if ok(text) => Some(text.to_string()),
+        _ => None,
     }
-    Some(last.to_string())
 }
 
 /// Identifier names under a declaration (the declared variables).

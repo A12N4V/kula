@@ -575,13 +575,32 @@ pub(crate) fn package_name(raw: &str, lang: &str) -> Option<String> {
     ok.then_some(name)
 }
 
-/// Resolve an import string to indexed files.
+/// Resolve an import string to indexed files, with how sure the match is:
+/// `resolved` for an exact path, `inferred` for one file found by a
+/// multi-segment path suffix, `guessed` for a one-segment suffix or several
+/// hits (a stdlib or third-party name can collide with a local file).
 fn resolve_import(
     raw: &str,
     from: &str,
     lang: &str,
     by_stem: &HashMap<String, Vec<usize>>,
     by_dir: &HashMap<String, Vec<usize>>,
+    go_mod: &str,
+) -> (Vec<usize>, &'static str) {
+    let tier = std::cell::Cell::new("resolved");
+    let r = import_files(raw, from, lang, by_stem, by_dir, go_mod, &tier);
+    let t = if r.len() > 1 && tier.get() != "resolved" { "guessed" } else { tier.get() };
+    (r, t)
+}
+
+fn import_files(
+    raw: &str,
+    from: &str,
+    lang: &str,
+    by_stem: &HashMap<String, Vec<usize>>,
+    by_dir: &HashMap<String, Vec<usize>>,
+    go_mod: &str,
+    tier: &std::cell::Cell<&'static str>,
 ) -> Vec<usize> {
     let s = raw.trim().trim_matches(|c| c == '"' || c == '\'' || c == '`');
     let dir = from.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
@@ -596,6 +615,9 @@ fn resolve_import(
         let mut hits: Vec<usize> = by_stem.iter().filter(|(k, _)| k.ends_with(&tail)).flat_map(|(_, v)| v.clone()).collect();
         hits.sort();
         hits.truncate(4);
+        if !hits.is_empty() {
+            tier.set(if hits.len() == 1 && key.contains('/') { "inferred" } else { "guessed" });
+        }
         hits
     };
     match lang {
@@ -652,7 +674,14 @@ fn resolve_import(
             }
             vec![]
         }
+        "go" if !go_mod.is_empty() => {
+            // Only the module's own packages are files here; anything else is
+            // the standard library or a dependency.
+            let Some(rest) = s.strip_prefix(go_mod).filter(|r| r.is_empty() || r.starts_with('/')) else { return vec![] };
+            by_dir.get(rest.trim_start_matches('/')).map(|v| v.iter().copied().take(12).collect()).unwrap_or_default()
+        }
         "go" => {
+            tier.set("guessed");
             let tail = s.rsplit('/').take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("/");
             let last = s.rsplit('/').next().unwrap_or(s);
             by_dir
@@ -828,12 +857,13 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
     // Imports. What resolves to no indexed file and names a package becomes a
     // `package` node (path `pkg:<name>`), so dependencies sit in the graph too.
     let mut imports_of: HashMap<usize, HashSet<usize>> = HashMap::new();
+    let go_mod = read("go.mod").and_then(|m| resolve::go::module_path(&m)).unwrap_or_default();
     let mut pkg_id: HashMap<String, usize> = HashMap::new();
     let mut pkg_edges: HashSet<(usize, usize)> = HashSet::new();
     for pf in &parsed {
         let fid = file_id[&pf.path];
         for imp in &pf.imports {
-            let targets = resolve_import(imp, &pf.path, pf.lang, &by_stem, &by_dir);
+            let (targets, tier) = resolve_import(imp, &pf.path, pf.lang, &by_stem, &by_dir, &go_mod);
             if targets.is_empty() {
                 if let Some(name) = package_name(imp, pf.lang) {
                     let pid = *pkg_id.entry(name.clone()).or_insert_with(|| {
@@ -858,7 +888,7 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
             }
             for target in targets {
                 if target != fid && imports_of.entry(fid).or_default().insert(target) {
-                    edges.push(Edge::new(fid as i64, target as i64, "IMPORTS", 1.0));
+                    edges.push(Edge::new(fid as i64, target as i64, "IMPORTS", 1.0).with(tier));
                 }
             }
         }
@@ -1001,6 +1031,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     let store = Store::create(repo)?;
     store.write_all(&nodes, &edges, &communities)?;
     store.set_meta("schema", crate::store::SCHEMA_VERSION)?;
+    store.set_meta("indexer", env!("CARGO_PKG_VERSION"))?;
     store.set_meta("indexed_head", &repo.head().unwrap_or_default())?;
     store.set_meta(
         "indexed_at",
@@ -1325,8 +1356,8 @@ mod tests {
         by_stem.insert("src/Data/Util".into(), vec![1]);
         by_stem.insert("lib/helpers".into(), vec![2]);
         let by_dir = HashMap::new();
-        assert_eq!(resolve_import("Data.Util", "app/Main.hs", "haskell", &by_stem, &by_dir), vec![1]);
-        assert_eq!(resolve_import("./helpers.sh", "lib/x.sh", "bash", &by_stem, &by_dir), vec![2]);
-        assert!(resolve_import("kotlin.math.max", "a.kt", "kotlin", &by_stem, &by_dir).is_empty());
+        assert_eq!(resolve_import("Data.Util", "app/Main.hs", "haskell", &by_stem, &by_dir, "").0, vec![1]);
+        assert_eq!(resolve_import("./helpers.sh", "lib/x.sh", "bash", &by_stem, &by_dir, "").0, vec![2]);
+        assert!(resolve_import("kotlin.math.max", "a.kt", "kotlin", &by_stem, &by_dir, "").0.is_empty());
     }
 }
