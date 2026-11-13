@@ -252,7 +252,8 @@ fn match_paren(src: &str, open: usize) -> Option<(usize, usize)> {
     None
 }
 
-/// Go: `http.HandleFunc("/p", handler)` and gin `r.GET("/p", handler)`.
+/// Go: `http.HandleFunc("/p", handler)`, any router's `.HandleFunc` (gorilla
+/// `.Methods("GET")` sets the method) and gin `r.GET("/p", handler)`.
 fn scan_go(src: &str, out: &mut Vec<RouteHit>) {
     let one = |needle: &str, method: Option<&str>, src: &str, out: &mut Vec<RouteHit>| {
         let mut from = 0;
@@ -270,15 +271,17 @@ fn scan_go(src: &str, out: &mut Vec<RouteHit>) {
             if tok == "nil" || tok.is_empty() || src[end..].trim_start().starts_with('(') {
                 continue;
             }
-            let m = method.map(str::to_string).unwrap_or_else(|| "ANY".into());
+            let line = &src[end..src[end..].find('\n').map_or(src.len(), |n| end + n)];
+            let chained = line.find(".Methods(").and_then(|i| quoted(line, i + ".Methods(".len())).map(|(m, _)| m.to_uppercase());
+            let m = method.map(str::to_string).or(chained).unwrap_or_else(|| "ANY".into());
             let hit = RouteHit { method: m, path, handler: Some(tok), byte: open };
             if !out.contains(&hit) {
                 out.push(hit);
             }
         }
     };
-    one("http.HandleFunc(", None, src, out);
-    one("http.Handle(", None, src, out);
+    one(".HandleFunc(", None, src, out);
+    one(".Handle(", None, src, out);
     for m in GO_METHODS {
         one(&format!(".{m}("), Some(m), src, out);
     }

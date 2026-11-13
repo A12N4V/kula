@@ -26,6 +26,8 @@ pub struct BriefReport {
     pub packages: Vec<String>,
     /// How to get in: mains, handlers, public roots.
     pub entry_points: Vec<Entry>,
+    /// Tests and API items left out by the caps below.
+    pub entries_omitted: usize,
     /// Architecture warnings: cycles, god modules, coupling.
     pub cycles: Vec<String>,
     pub god_modules: Vec<String>,
@@ -37,7 +39,7 @@ pub struct BriefReport {
 /// Build the report from the already-built tree (call `tree::module_tree`
 /// once and share it). Deterministic: sorted everywhere, truncated by budget.
 pub fn report(tree: &ModuleTree, db: &crate::store::Store) -> BriefReport {
-    let entries = entries::entry_points(db);
+    let (entries, entries_omitted) = cap_entries(entries::entry_points(db));
     let ArchReport { cycles, god_modules, coupling, .. } = arch::check(tree, db);
     let hot = hot_spots(tree);
 
@@ -46,11 +48,36 @@ pub fn report(tree: &ModuleTree, db: &crate::store::Store) -> BriefReport {
         repo: tree.name.clone(),
         packages: packages(tree),
         entry_points: entries,
+        entries_omitted,
         cycles: cycles.iter().map(|c| c.join(" -> ")).collect(),
         god_modules,
         coupling,
         hot_spots: hot,
     }
+}
+
+/// At most 5 tests and 10 API items, so a test-heavy repo still leaves room
+/// for cycles and god modules within the budget. CLI, HTTP and build entries
+/// are kept whole.
+fn cap_entries(all: Vec<Entry>) -> (Vec<Entry>, usize) {
+    let (mut tests, mut api) = (0, 0);
+    let before = all.len();
+    let kept: Vec<Entry> = all
+        .into_iter()
+        .filter(|e| match e.kind.as_str() {
+            "test" => {
+                tests += 1;
+                tests <= 5
+            }
+            "api" => {
+                api += 1;
+                api <= 10
+            }
+            _ => true,
+        })
+        .collect();
+    let omitted = before - kept.len();
+    (kept, omitted)
 }
 
 /// Render the report as a one-page markdown brief, capped at
@@ -66,6 +93,9 @@ pub fn markdown(r: &BriefReport) -> String {
         s.push_str("\nEntry points:\n");
         for e in &r.entry_points {
             s.push_str(&format!("- {} ({}) {}\n", e.symbol, e.kind, e.file));
+        }
+        if r.entries_omitted > 0 {
+            s.push_str(&format!("- and {} more tests and API items\n", r.entries_omitted));
         }
     }
     if !r.cycles.is_empty() {

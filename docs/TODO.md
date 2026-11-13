@@ -67,7 +67,7 @@ Gate G0: PASSED 2026-11-11 (P0.1–P0.3, P0.6, P0.7 done; no blockers). Fix any 
 | P1.2.7 | DONE 2026-11-12 (K2, 178cab8; tests/map.rs, explain.rs, brief.rs; hand review of other repos still YOU): `kula explain <module\|symbol\|file>` – purpose, public surface, who depends on it, what it depends on, hot spots, related memories/notes | WORKER | P1.2.6 | Works offline with deterministic text; marked sections for optional LLM prose |
 | P1.2.8 | OUT OF SCOPE for this run (no LLM summaries): Optional LLM summaries per module, cached in git, invalidated when the module's content hash changes; provider from `[agents]` config | WORKER | P1.2.7 | Second run costs zero calls; stale summaries flagged |
 | P1.2.9 | DONE 2026-11-12 (K2, 178cab8; tests/map.rs, explain.rs, brief.rs; hand review of other repos still YOU): Architecture brief: `kula brief` writes a one-page repo overview into `AGENTS.md` sync and the `context_pack` preamble | WORKER | P1.2.6 | Brief under 1,500 tokens; included by `agents sync` |
-| P1.2.10 | Audit map quality: run `kula map` on 5 public repos of different shapes and judge | CRITIC | P1.2.9 | Report with at least one mis-clustering example per repo and fix list |
+| P1.2.10 | DONE 2026-11-12: audit map quality on taxonomy, httpx, ripgrep, wtf and pydantic-core (`docs/audits/2026-11-map.md`). Root manifests, one package per dir, unowned dirs, cluster labels, explain on files and dirs, entry points from routes, manifests, build.rs and `#[test]`, brief caps, crate-scoped Rust imports, no guesses into test files or foreign Go packages, gorilla routes. Bench 0.97/1.00 | CRITIC | P1.2.9 | Report with at least one mis-clustering example per repo and fix list |
 
 ### P1.3 Runtime and data layers
 

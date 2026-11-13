@@ -13,37 +13,49 @@ pub struct Entry {
     pub file: String,
 }
 
-const HTTP_PREFIX: &[&str] = &["get_", "post_", "put_", "delete_", "patch_", "route_"];
-
 pub fn entry_points(db: &Store) -> Vec<Entry> {
     let nodes = db.nodes_where("id >= 0", []).unwrap_or_default();
     let by_id: HashMap<i64, Node> = nodes.iter().map(|n| (n.id, n.clone())).collect();
+    let file_id: HashMap<&str, i64> = nodes.iter().filter(|n| n.kind == "file").map(|n| (n.path.as_str(), n.id)).collect();
     let mut file_syms: BTreeMap<i64, Vec<Node>> = BTreeMap::new();
     for n in &nodes {
-        if n.kind != "file" && n.kind != "package" {
-            if let Some(f) = file_of(n.id, &by_id) {
-                if let Some(id) = by_id.iter().find(|(_, x)| x.kind == "file" && x.path == f).map(|(i, _)| *i) {
-                    file_syms.entry(id).or_default().push(n.clone());
-                }
-            }
+        if matches!(n.kind.as_str(), "file" | "package" | "route" | "dependency" | "env" | "table") {
+            continue;
+        }
+        if let Some(id) = file_of(n.id, &by_id).and_then(|f| file_id.get(f.as_str()).copied()) {
+            file_syms.entry(id).or_default().push(n.clone());
         }
     }
 
     let mut out: Vec<Entry> = Vec::new();
+    // Indexed HTTP routes: a HANDLES edge runs route → handler.
+    for e in db.all_edges().unwrap_or_default().iter().filter(|e| e.kind == "HANDLES") {
+        if let Some(h) = by_id.get(&e.dst) {
+            let file = file_of(h.id, &by_id).unwrap_or_else(|| h.path.clone());
+            push(&mut out, &h.name, "http", &file);
+        }
+    }
     for f in nodes.iter().filter(|n| n.kind == "file") {
         let text = std::fs::read_to_string(db.root.join(&f.path)).unwrap_or_default();
         let lang = f.lang.as_str();
+        let file = f.path.rsplit('/').next().unwrap_or(&f.path);
         let syms = file_syms.get(&f.id).cloned().unwrap_or_default();
         for s in &syms {
             let n = s.name.as_str();
             if n == "main" && matches!(lang, "rust" | "go" | "c" | "cpp" | "java") {
-                push(&mut out, n, "cli", &f.path);
+                push(&mut out, n, if file == "build.rs" { "build" } else { "cli" }, &f.path);
             }
-            if matches!(lang, "python" | "javascript" | "typescript") && http_name(n) {
+            if matches!(lang, "python" | "javascript" | "typescript" | "go") && http_name(n) {
                 push(&mut out, n, "http", &f.path);
             }
             if test_file(&f.path) && n.to_lowercase().contains("test") {
                 push(&mut out, n, "test", &f.path);
+            }
+        }
+        // Rust tests marked `#[test]`, wherever they live.
+        if lang == "rust" {
+            for n in rust_tests(&text) {
+                push(&mut out, &n, "test", &f.path);
             }
         }
         // Python mains: `if __name__ == "__main__":` guards.
@@ -58,7 +70,6 @@ pub fn entry_points(db: &Store) -> Vec<Entry> {
             }
         }
         // Exported public API: crate roots and index/mod modules.
-        let file = f.path.rsplit('/').next().unwrap_or(&f.path);
         match (lang, file) {
             ("rust", "lib.rs" | "main.rs") => {
                 for n in pub_names(&text) {
@@ -73,6 +84,8 @@ pub fn entry_points(db: &Store) -> Vec<Entry> {
             _ => {}
         }
     }
+    let files: Vec<&str> = file_id.keys().copied().collect();
+    super::manifests::manifest_entries(&db.root, &files, &mut |s, k, f| push(&mut out, s, k, f));
     out.sort_by(|a, b| (a.file.as_str(), a.kind.as_str(), a.symbol.as_str()).cmp(&(b.file.as_str(), b.kind.as_str(), b.symbol.as_str())));
     out.dedup();
     out
@@ -82,8 +95,32 @@ fn push(out: &mut Vec<Entry>, symbol: &str, kind: &str, file: &str) {
     out.push(Entry { symbol: symbol.into(), kind: kind.into(), file: file.into() });
 }
 
+/// Handler by name alone. `get_*` style prefixes are not enough without a
+/// route or decorator: they match plain getters.
 fn http_name(n: &str) -> bool {
-    n.starts_with("handle") || n.ends_with("Handler") || n.ends_with("_handler") || HTTP_PREFIX.iter().any(|p| n.starts_with(p))
+    n.starts_with("handle") || n.ends_with("Handler") || n.ends_with("_handler")
+}
+
+/// Names of Rust fns under `#[test]` or `#[tokio::test]`.
+fn rust_tests(text: &str) -> Vec<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim();
+        if t != "#[test]" && !t.starts_with("#[tokio::test") {
+            continue;
+        }
+        for l in lines[i + 1..].iter().take(4) {
+            let l = l.trim_start();
+            let l = l.strip_prefix("pub ").unwrap_or(l);
+            let l = l.strip_prefix("async ").unwrap_or(l);
+            if let Some(rest) = l.strip_prefix("fn ") {
+                out.push(ident(rest));
+                break;
+            }
+        }
+    }
+    out
 }
 
 fn test_file(path: &str) -> bool {
@@ -208,7 +245,8 @@ mod tests {
     #[test]
     fn finds_names_and_api() {
         assert!(http_name("handleLogin"));
-        assert!(http_name("post_user"));
+        assert!(!http_name("post_user"));
+        assert_eq!(rust_tests("#[test]\nfn a() {}\n#[tokio::test]\nasync fn b() {}\nfn c() {}"), vec!["a", "b"]);
         assert!(!http_name("getUser"));
         assert_eq!(ident("run() -> u32 {"), "run");
         assert_eq!(pub_names("pub async fn go();\npub use x;\npub struct S;").len(), 2);

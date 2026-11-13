@@ -38,6 +38,11 @@ fn scans_go() {
     assert_eq!(hits.len(), 2);
     assert_eq!(hits[0].handler.as_deref(), Some("workHandler"));
     assert_eq!(hits[1].method, "GET");
+    let src = "router.HandleFunc(\"/users\", s.handleUsers).Methods(\"POST\")\n";
+    let hits = scan("go", "http/server.go", src);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].method, "POST");
+    assert_eq!(hits[0].handler.as_deref(), Some("s.handleUsers"));
 }
 
 #[test]

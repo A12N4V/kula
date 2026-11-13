@@ -593,6 +593,16 @@ fn resolve_import(
     (r, t)
 }
 
+/// The crate a Rust file belongs to, as a path prefix: everything before its
+/// last `src/`, `tests/`, `benches/` or `examples/` segment ("" at the root).
+fn crate_prefix(from: &str) -> String {
+    let segs: Vec<&str> = from.split('/').collect();
+    match segs.iter().rposition(|s| matches!(*s, "src" | "tests" | "benches" | "examples")) {
+        Some(0) | None => String::new(),
+        Some(i) => format!("{}/", segs[..i].join("/")),
+    }
+}
+
 fn import_files(
     raw: &str,
     from: &str,
@@ -662,14 +672,37 @@ fn import_files(
                 let key = normalize(&format!("{base}/{}", segs[0]));
                 return by_stem.get(&key).or_else(|| by_stem.get(&format!("{key}/mod"))).cloned().unwrap_or_default();
             }
+            // Suffix hits stay in the importing crate: `crate::`/`self`/`super`
+            // never leave it, and a bare path prefers it and never lands in
+            // another crate's `tests/`.
+            let anchored = s.starts_with("crate::") || s.starts_with("self::") || s.starts_with("super::");
+            let home = crate_prefix(from);
+            let lookup = |key: &str| -> Vec<(usize, String)> {
+                if let Some(v) = by_stem.get(key) {
+                    return v.iter().map(|i| (*i, key.to_string())).collect();
+                }
+                let tail = format!("/{key}");
+                by_stem.iter().filter(|(k, _)| k.ends_with(&tail)).flat_map(|(k, v)| v.iter().map(move |i| (*i, k.clone()))).collect()
+            };
             for n in (1..=segs.len()).rev() {
                 let key = segs[..n].join("/");
-                let mut r = suffix_lookup(&key);
+                let mut r = lookup(&key);
                 if r.is_empty() {
-                    r = suffix_lookup(&format!("{key}/mod"));
+                    r = lookup(&format!("{key}/mod"));
                 }
+                let exact = r.len() == 1 && (by_stem.contains_key(&key) || by_stem.contains_key(&format!("{key}/mod")));
+                if r.iter().any(|(_, p)| crate_prefix(p) == home) || anchored {
+                    r.retain(|(_, p)| crate_prefix(p) == home);
+                } else {
+                    r.retain(|(_, p)| !p.split('/').any(|seg| seg == "tests"));
+                }
+                r.sort();
+                r.truncate(4);
                 if !r.is_empty() {
-                    return r;
+                    if !exact {
+                        tier.set(if r.len() == 1 && key.contains('/') { "inferred" } else { "guessed" });
+                    }
+                    return r.into_iter().map(|(i, _)| i).collect();
                 }
             }
             vec![]
@@ -981,7 +1014,21 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                     via_import
                 } else if cands.len() <= 3 {
                     conf = "guessed";
-                    cands.clone()
+                    // A guess never lands in a test file from non-test code, and a
+                    // Go method on an unknown receiver stays in the caller's package.
+                    let here = pf.path.rsplit_once('/').map_or("", |(d, _)| d);
+                    let test_caller = crate::agent::is_test_path(&pf.path);
+                    let go_member = pf.lang == "go" && pf.receivers.contains_key(&byte);
+                    let g: Vec<usize> = cands
+                        .iter()
+                        .copied()
+                        .filter(|c| test_caller || !crate::agent::is_test_path(&nodes[*c].path))
+                        .filter(|c| !go_member || nodes[*c].path.rsplit_once('/').map_or("", |(d, _)| d) == here)
+                        .collect();
+                    if g.is_empty() {
+                        continue;
+                    }
+                    g
                 } else {
                     continue; // too ambiguous to guess
                 }

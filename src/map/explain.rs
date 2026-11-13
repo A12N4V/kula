@@ -2,7 +2,7 @@
 //! and anchored memories for a module, file or symbol. Pure and deterministic.
 
 use super::arch;
-use super::{clusters, file_of, names, Cluster};
+use super::{clusters, file_of, Cluster};
 use crate::git::Repo;
 use crate::store::{Node, Store};
 use anyhow::{anyhow, Result};
@@ -48,6 +48,19 @@ pub fn explain(repo: &Repo, db: &Store, target: &str, memories: Vec<String>) -> 
     if let Some(p) = tree.packages.iter().find(|p| p.children.iter().any(&want)) {
         let m = p.children.iter().find(|m| want(m)).unwrap();
         return module_report(repo, db, target, m, memories);
+    }
+    // A directory with no symbols of its own: merge the modules under it.
+    let dir = target.trim_end_matches('/');
+    let under: Vec<&super::tree::TreeNode> =
+        tree.packages.iter().flat_map(|p| p.children.iter()).filter(|m| m.kind == "module" && in_dir(&m.path, dir)).collect();
+    if !under.is_empty() {
+        let mut m = under[0].clone();
+        m.name = dir.rsplit('/').next().unwrap_or(dir).to_string();
+        m.path = dir.to_string();
+        m.children = under.iter().flat_map(|u| u.children.iter().cloned()).collect();
+        m.symbols = under.iter().flat_map(|u| u.symbols.iter().cloned()).collect();
+        m.loc = under.iter().map(|u| u.loc).sum();
+        return module_report(repo, db, target, &m, memories);
     }
     Err(anyhow!(
         "nothing known as '{target}'; try `kula query {}` for symbols, or a file path, or a directory like src/net",
@@ -131,7 +144,8 @@ fn module_report(repo: &Repo, db: &Store, _target: &str, m: &super::tree::TreeNo
 /// Cluster name for a symbol: the cluster holding it.
 fn cluster_of(db: &Store, node: &Node) -> Option<String> {
     let cs = clusters(db);
-    let c = cs.iter().find(|c| c.members.iter().any(|m| m.id == node.id))?;
+    // Files are not cluster members, but carry their community all the same.
+    let c = cs.iter().find(|c| c.id == node.community && node.community >= 0)?;
     Some(cluster_name(db, &cs, c))
 }
 
@@ -139,18 +153,25 @@ fn cluster_of(db: &Store, node: &Node) -> Option<String> {
 /// directory.
 fn module_cluster(db: &Store, dir: &str) -> Option<String> {
     let cs = clusters(db);
-    let best =
-        cs.iter().max_by_key(|c| c.members.iter().filter(|m| m.path.starts_with(&format!("{dir}/")) || m.path.starts_with(dir)).count())?;
-    let in_dir = best.members.iter().any(|m| m.path.starts_with(dir));
+    let best = cs.iter().max_by_key(|c| c.members.iter().filter(|m| in_dir(&m.path, dir)).count())?;
+    let in_dir = best.members.iter().any(|m| in_dir(&m.path, dir));
     if !in_dir {
         return None;
     }
     Some(cluster_name(db, &cs, best))
 }
 
-fn cluster_name(_db: &Store, cs: &[Cluster], c: &Cluster) -> String {
-    let idx = cs.iter().position(|x| x.id == c.id).unwrap_or(0);
-    names::name_clusters(cs).get(idx).cloned().unwrap_or_else(|| format!("cluster {}", c.id))
+/// The label stored at index time, so `explain` and `clusters` agree.
+fn cluster_name(_db: &Store, _cs: &[Cluster], c: &Cluster) -> String {
+    if c.label.is_empty() {
+        format!("cluster {}", c.id)
+    } else {
+        c.label.clone()
+    }
+}
+
+fn in_dir(path: &str, dir: &str) -> bool {
+    dir == "." || path.starts_with(&format!("{dir}/"))
 }
 
 fn call_neighbours(db: &Store, id: i64, out: bool) -> Vec<String> {

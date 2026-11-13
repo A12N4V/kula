@@ -35,18 +35,15 @@ struct Pkg {
 /// Build the tree: packages from manifests, modules from directories with
 /// symbols, symbols from the index. Deterministic: everything sorted.
 pub fn module_tree(root: &Path, db: &Store) -> ModuleTree {
-    let pkgs = find_packages(root);
+    let name = root.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "repo".into());
+    let mut pkgs = find_packages(root);
     let nodes = db.nodes_where("id >= 0", []).unwrap_or_default();
     let by_id: HashMap<i64, Node> = nodes.iter().map(|n| (n.id, n.clone())).collect();
 
-    // Symbol → its file; file → line count from disk.
+    // Symbol → its file.
     let mut sym_file: HashMap<i64, String> = HashMap::new();
-    let mut file_loc: HashMap<String, usize> = HashMap::new();
     for n in &nodes {
-        if n.kind == "file" {
-            let loc = std::fs::read_to_string(root.join(&n.path)).map(|t| t.lines().count()).unwrap_or(0);
-            file_loc.insert(n.path.clone(), loc);
-        } else if n.kind != "package" {
+        if n.kind != "file" && n.kind != "package" {
             if let Some(f) = file_of(n.id, &by_id) {
                 sym_file.insert(n.id, f);
             }
@@ -54,8 +51,13 @@ pub fn module_tree(root: &Path, db: &Store) -> ModuleTree {
     }
 
     // Fans: per symbol id, plus distinct module↔module and package↔package pairs.
-    let owns = |rel: &str, dir: &str| dir == rel || (!rel.is_empty() && dir.starts_with(&format!("{rel}/")));
-    let pkg_of = |dir: &str| pkgs.iter().find(|p| owns(&p.rel, dir)).map(|p| p.rel.clone());
+    // Code under no manifest still belongs somewhere: the repo root.
+    let owned = |pkgs: &[Pkg], f: &str| pkgs.iter().any(|p| owns(&p.rel, &dir_of(f)));
+    if !pkgs.iter().any(|p| p.rel == ".") && sym_file.values().any(|f| !owned(&pkgs, f)) {
+        pkgs.insert(0, Pkg { name: name.clone(), rel: ".".into() });
+    }
+    // The deepest package that owns a directory wins.
+    let pkg_of = |dir: &str| pkgs.iter().filter(|p| owns(&p.rel, dir)).max_by_key(|p| p.rel.len()).map(|p| p.rel.clone());
     let bucket = |id: i64| -> Option<String> {
         match by_id.get(&id).map(|n| n.kind.as_str()) {
             Some("file") => by_id.get(&id).map(|n| dir_of(&n.path)),
@@ -112,15 +114,14 @@ pub fn module_tree(root: &Path, db: &Store) -> ModuleTree {
         v.sort_by(|a, b| a.name.cmp(&b.name));
     }
 
-    let name = root.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "repo".into());
     let packages = pkgs
         .iter()
         .map(|p| {
             let mut children = Vec::new();
             let root_syms: Vec<Leaf> = dir_syms.remove(&p.rel).unwrap_or_default();
             for (dir, syms) in dir_syms.iter() {
-                if dir.as_str() != p.rel && owns(&p.rel, dir) {
-                    children.push(module_node(dir, syms, &mod_in, &mod_out, &churn));
+                if dir.as_str() != p.rel && pkg_of(dir).as_deref() == Some(p.rel.as_str()) {
+                    children.push(module_node(&p.rel, dir, syms, &mod_in, &mod_out, &churn));
                 }
             }
             children.sort_by(|a, b| a.path.cmp(&b.path));
@@ -128,7 +129,7 @@ pub fn module_tree(root: &Path, db: &Store) -> ModuleTree {
             children.extend(root_syms.iter().map(|s| s.leaf_node()));
             TreeNode {
                 name: p.name.clone(),
-                path: if p.rel.is_empty() { ".".into() } else { p.rel.clone() },
+                path: p.rel.clone(),
                 kind: "package".into(),
                 loc: children.iter().map(|c| c.loc).sum(),
                 symbols: sym_names,
@@ -167,13 +168,14 @@ impl Leaf {
 }
 
 fn module_node(
+    pkg: &str,
     dir: &str,
     syms: &[Leaf],
     mod_in: &BTreeMap<String, BTreeSet<String>>,
     mod_out: &BTreeMap<String, BTreeSet<String>>,
     churn: &BTreeSet<String>,
 ) -> TreeNode {
-    let name = dir.rsplit('/').next().unwrap_or(dir).to_string();
+    let name = module_name(pkg, dir);
     let children: Vec<TreeNode> = syms.iter().map(|s| s.leaf_node()).collect();
     TreeNode {
         name,
@@ -186,6 +188,23 @@ fn module_node(
         churn_30d: churn_under(churn, dir),
         children,
     }
+}
+
+/// A module's name: its dir relative to the package, minus `src` segments,
+/// so `crates/core/src` reads `crates/core` and `src/net` reads `net`.
+fn module_name(pkg: &str, dir: &str) -> String {
+    let rel = if pkg == "." { dir } else { dir.strip_prefix(&format!("{pkg}/")).unwrap_or(dir) };
+    let parts: Vec<&str> = rel.split('/').filter(|s| *s != "src").collect();
+    if parts.is_empty() {
+        rel.to_string()
+    } else {
+        parts.join("/")
+    }
+}
+
+/// `rel` is "." for the repo root, which owns every directory.
+fn owns(rel: &str, dir: &str) -> bool {
+    rel == "." || dir == rel || dir.starts_with(&format!("{rel}/"))
 }
 
 fn dir_of(path: &str) -> String {
@@ -218,16 +237,21 @@ fn changed_files(root: &Path) -> BTreeSet<String> {
 
 /// Directories holding a Cargo.toml / package.json / pyproject.toml / go.mod.
 fn find_packages(root: &Path) -> Vec<Pkg> {
-    let mut found: Vec<(PathBuf, String)> = Vec::new();
+    let mut found: Vec<(PathBuf, (u8, String))> = Vec::new();
     walk(root, 0, &mut found);
-    found.sort_by(|a, b| a.0.cmp(&b.0));
+    // One package per directory: the most specific manifest names it.
+    found.sort_by(|a, b| a.0.cmp(&b.0).then(a.1 .0.cmp(&b.1 .0)));
+    found.dedup_by(|b, a| a.0 == b.0);
     found
         .into_iter()
-        .map(|(dir, name)| Pkg { name, rel: dir.strip_prefix(root).unwrap_or(dir.as_path()).to_string_lossy().replace('\\', "/") })
+        .map(|(dir, (_, name))| {
+            let rel = dir.strip_prefix(root).unwrap_or(dir.as_path()).to_string_lossy().replace('\\', "/");
+            Pkg { name, rel: if rel.is_empty() { ".".into() } else { rel } }
+        })
         .collect()
 }
 
-fn walk(dir: &Path, depth: usize, out: &mut Vec<(PathBuf, String)>) {
+fn walk(dir: &Path, depth: usize, out: &mut Vec<(PathBuf, (u8, String))>) {
     if depth > 8 {
         return;
     }
@@ -240,7 +264,11 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<(PathBuf, String)>) {
                 walk(&p, depth + 1, out);
             }
         } else if let Some(name) = manifest_name(&p) {
-            out.push((dir.to_path_buf(), name));
+            let rank = ["Cargo.toml", "pyproject.toml", "go.mod", "package.json"]
+                .iter()
+                .position(|m| p.file_name().is_some_and(|f| f == *m))
+                .unwrap_or(9) as u8;
+            out.push((dir.to_path_buf(), (rank, name)));
         }
     }
 }

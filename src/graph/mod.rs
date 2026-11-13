@@ -6,84 +6,14 @@ use anyhow::{bail, Result};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
-/// Weighted label propagation over the undirected graph. Deterministic.
+mod communities;
 mod diff;
 mod paths;
 mod resolve;
+pub use communities::detect_communities;
 pub use diff::*;
 pub use paths::*;
 pub use resolve::resolve_one;
-
-pub fn detect_communities(nodes: &mut [Node], edges: &[Edge]) -> Vec<Community> {
-    let n = nodes.len();
-    let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
-    for e in edges {
-        let w = match e.kind.as_str() {
-            "CALLS" => 1.0 * e.weight.max(0.25),
-            "CONTAINS" => 1.2,
-            "IMPORTS" => 0.6,
-            _ => 0.3,
-        };
-        let (a, b) = (e.src as usize, e.dst as usize);
-        if a < n && b < n {
-            adj[a].push((b, w));
-            adj[b].push((a, w));
-        }
-    }
-    let mut label: Vec<usize> = (0..n).collect();
-    for _round in 0..24 {
-        let mut changed = 0;
-        for i in 0..n {
-            if adj[i].is_empty() {
-                continue;
-            }
-            let mut score: HashMap<usize, f64> = HashMap::new();
-            for &(j, w) in &adj[i] {
-                *score.entry(label[j]).or_default() += w;
-            }
-            // Mild self-affinity keeps labels stable.
-            *score.entry(label[i]).or_default() += 0.05;
-            let best = score.into_iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap().then(b.0.cmp(&a.0))).map(|x| x.0).unwrap();
-            if best != label[i] {
-                label[i] = best;
-                changed += 1;
-            }
-        }
-        if changed == 0 {
-            break;
-        }
-    }
-    // Compact ids ordered by size, and name each after its dominant directory.
-    let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
-    for (i, l) in label.iter().enumerate() {
-        groups.entry(*l).or_default().push(i);
-    }
-    let mut ordered: Vec<Vec<usize>> = groups.into_values().collect();
-    ordered.sort_by(|a, b| b.len().cmp(&a.len()).then(a[0].cmp(&b[0])));
-    let mut out = Vec::new();
-    for (cid, members) in ordered.iter().enumerate() {
-        let mut dirs: BTreeMap<String, usize> = BTreeMap::new();
-        let mut names: BTreeMap<String, usize> = BTreeMap::new();
-        for &m in members {
-            let p = &nodes[m].path;
-            let d = p.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_else(|| ".".into());
-            *dirs.entry(d).or_default() += 1;
-            if nodes[m].kind == "class" || nodes[m].kind == "file" {
-                *names.entry(nodes[m].name.clone()).or_default() += 1;
-            }
-            nodes[m].community = cid as i64;
-        }
-        let dir = dirs.into_iter().max_by_key(|x| x.1).map(|x| x.0).unwrap_or_default();
-        let short = dir.rsplit('/').take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("/");
-        let hub = names.into_iter().max_by_key(|x| x.1).map(|x| x.0);
-        let label = match hub {
-            Some(h) if members.len() > 3 => format!("{short} · {}", h.split('.').next().unwrap_or(&h)),
-            _ => short,
-        };
-        out.push(Community { id: cid as i64, label, size: members.len() as i64 });
-    }
-    out
-}
 
 #[derive(Serialize)]
 pub struct Context {

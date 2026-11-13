@@ -5,6 +5,7 @@ pub mod arch;
 pub mod brief;
 pub mod entries;
 pub mod explain;
+mod manifests;
 pub mod names;
 pub mod render;
 pub mod tree;
