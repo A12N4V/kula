@@ -93,7 +93,11 @@ export interface Suggestion { id: number; kind: "guard" | "workflow"; guard?: Ra
 export type AgentAction = "task_start" | "task_done" | "remember" | "confirm" | "forget" | "memory_edit" | "memory_stale" | "guards_save" | "workflows_save"
   | "settings_save" | "doc_read" | "doc_save" | "docs_sync" | "brief" | "connect" | "suggestion_accept" | "suggestion_dismiss" | "preview"
   | "teams_save" | "teams_preview" | "team_prompt" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install"
-  | "workflow_rename" | "skill_save" | "skill_delete" | "skills_sync" | "skill_adopt";
+  | "workflow_rename" | "skill_save" | "skill_delete" | "skills_sync" | "skill_adopt" | "territories" | "recall";
+/** A fence as it falls on a whole area: the most common level, and whether others share it. */
+export interface AreaFence { level: GuardLevel; mixed: boolean }
+/** A top level region of the repository on the canvas (P3.16). */
+export interface Territory { path: string; files: number; base: AreaFence; workflows: Record<string, AreaFence> }
 /** A shared skill (src/skills.rs): one source in .agents/skills, a copy per agent. */
 export type SkillState = "synced" | "differs" | "missing" | "native";
 export interface Skill { name: string; description: string; body: string; files: string[]; targets: Record<string, SkillState> }

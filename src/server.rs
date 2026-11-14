@@ -740,6 +740,106 @@ fn research_scope(r: &Repo, cfg: &crate::config::Config) -> Value {
     Value::Object(out)
 }
 
+/// The repo as territories for the canvas: directory clusters (the top
+/// directories, the biggest split into their children until there are about
+/// eighteen) with their file counts and the fence each puts on them, under the
+/// repository's rules and under each workflow (its scope included). Only
+/// directory names and counts leave: a hidden area stays blank.
+fn territories(r: &Repo, cfg: &crate::config::Config) -> anyhow::Result<Value> {
+    use crate::guard::{Guards, Level, Task};
+    use std::collections::BTreeSet;
+    let files: Vec<String> =
+        r.run(&["ls-files", "-z"]).unwrap_or_default().split('\0').filter(|p| !p.is_empty()).map(String::from).collect();
+    let dir = |p: &str| p.rsplit_once('/').map(|x| x.0.to_string()).unwrap_or_else(|| ".".into());
+    // a file belongs to the deepest area that holds it
+    let area_in = |areas: &BTreeSet<String>, p: &str| -> String {
+        let mut d = dir(p);
+        loop {
+            if areas.contains(&d) {
+                return d;
+            }
+            match d.rsplit_once('/') {
+                Some((up, _)) => d = up.to_string(),
+                None => return ".".into(),
+            }
+        }
+    };
+    let child = |area: &str, p: &str| -> Option<String> {
+        let rest = if area == "." { p } else { p.strip_prefix(area)?.strip_prefix('/')? };
+        rest.split_once('/').map(|(c, _)| if area == "." { c.to_string() } else { format!("{area}/{c}") })
+    };
+    let mut areas: BTreeSet<String> = BTreeSet::from([".".to_string()]);
+    let mut done: BTreeSet<String> = BTreeSet::new();
+    while areas.len() < 18 {
+        let mut size: std::collections::HashMap<String, usize> = Default::default();
+        for p in &files {
+            *size.entry(area_in(&areas, p)).or_default() += 1;
+        }
+        let Some((big, _)) = size.iter().filter(|(a, _)| !done.contains(*a)).max_by_key(|(a, n)| (**n, std::cmp::Reverse((*a).clone()))) else { break };
+        let big = big.clone();
+        let kids: BTreeSet<String> = files.iter().filter(|p| area_in(&areas, p) == big).filter_map(|p| child(&big, p)).collect();
+        done.insert(big.clone());
+        if kids.is_empty() || areas.len() + kids.len() > 28 {
+            continue;
+        }
+        areas.extend(kids);
+    }
+    // an area left with no files of its own (all went to its children) goes
+    let owner: Vec<String> = files.iter().map(|p| area_in(&areas, p)).collect();
+    areas.retain(|a| owner.contains(a));
+    let areas: Vec<String> = areas.into_iter().collect();
+    let depth = areas.iter().map(|a| a.matches('/').count() + 1).max().unwrap_or(1);
+    let in_area = |area: &str| -> Vec<&String> { files.iter().zip(&owner).filter(|(_, o)| o.as_str() == area).map(|(p, _)| p).collect() };
+    let rank = |l: Level| l as u8;
+    // the fence an area carries: the level most of its files share, ties to the stricter
+    let fence = |g: &Guards, area: &str| -> Value {
+        let mut counts = [0usize; 5];
+        for p in in_area(area) {
+            counts[rank(g.path(p).level) as usize] += 1;
+        }
+        let top = (0..5).max_by_key(|&i| (counts[i], i)).unwrap_or(0);
+        let lv = [Level::Open, Level::Review, Level::Scope, Level::Locked, Level::Hidden][top];
+        json!({ "level": lv, "mixed": counts.iter().filter(|&&c| c > 0).count() > 1 })
+    };
+    let base = Guards::new(cfg, None)?;
+    let flows: Vec<(String, Guards)> = crate::workflow::all(cfg)
+        .into_iter()
+        .filter_map(|w| {
+            let t = Task { title: "canvas".into(), workflow: w.name.clone(), scope: w.scope.clone(), ..Default::default() };
+            Guards::new(cfg, Some(t)).ok().map(|g| (w.name.clone(), g))
+        })
+        .collect();
+    let out: Vec<Value> = areas
+        .iter()
+        .map(|a| {
+            let b = fence(&base, a);
+            let hidden = b["level"] == json!(Level::Hidden);
+            let wf: serde_json::Map<String, Value> = flows.iter().map(|(n, g)| (n.clone(), fence(g, a))).collect();
+            json!({
+                "path": a,
+                "files": if hidden { 0 } else { in_area(a).len() },
+                "base": b,
+                "workflows": wf,
+            })
+        })
+        .collect();
+    Ok(json!({ "areas": out, "depth": depth }))
+}
+
+/// What a seat would recall about `target`, read through its own fences: its
+/// workflow and scope as drawn (saved or not), so the preview follows the brush.
+fn recall_for(r: &Repo, target: &str, workflow: &str, scope: &[String]) -> anyhow::Result<Value> {
+    let cfg = crate::config::Config::load(&r.root)?;
+    let st = Store::open(r)?;
+    let t = crate::guard::Task { title: "recall".into(), workflow: workflow.into(), scope: scope.to_vec(), ..Default::default() };
+    let g = crate::guard::Guards::new(&cfg, Some(t))?;
+    let got = crate::memory::recall(r, &st, Some(target), None, 24)?;
+    // a target is repo, file:<path> or symbol:<path>:<name>
+    let path_of = |t: &str| t.strip_prefix("file:").or_else(|| t.strip_prefix("symbol:").map(|s| s.rsplit_once(':').map(|x| x.0).unwrap_or(s))).map(String::from);
+    let keep: Vec<_> = got.into_iter().filter(|m| path_of(&m.target).is_none_or(|p| g.path(&p).level.readable())).collect();
+    Ok(json!({ "recalled": keep }))
+}
+
 #[derive(Deserialize, Default)]
 #[serde(default)]
 struct AgentReq {
@@ -831,6 +931,8 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
                 }
                 json!({ "levels": levels })
             }
+            "territories" => territories(r, &crate::config::Config::load(&r.root)?)?,
+            "recall" => recall_for(r, &a.target, &a.workflow, &a.scope)?,
             "teams_preview" => {
                 let (before, after) = crate::config::preview_teams(&r.root, &a.teams)?;
                 json!({ "before": before, "after": after })

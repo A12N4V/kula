@@ -150,7 +150,7 @@ Gate G2: CLI audit has no blockers; release published.
 | P3.13 | ✓ Overview recut to repository health only | WORKER | P3.11 | No commit, branch or review lists left on Overview |
 | P3.14 | ✓ Agent canvas, read only: teams, members, edges, workflow lenses, auto layout ([plan](design/workspace-and-canvas.md#b-agent-canvas)) | MAIN | P3.11 | Replaces Agents Overview and the Teams org chart |
 | P3.15 | ✓ Canvas Architect mode: edit, validate, TOML diff, save through `agentAction` | MAIN | P3.14 | Round trip leaves `kula.toml` identical to a CLI save |
-| P3.16 | Territories, scope brush, memory shelves, pockets, anchor pins, recall preview | MAIN | P3.15 | Brush refuses locked code; stale memories hatched |
+| P3.16 | ✓ Territories, scope brush, memory shelves, pockets, anchor pins, recall preview | MAIN | P3.15 | Brush refuses locked code; stale memories hatched |
 | P3.17 | `GET /api/agents/events` SSE, Live mode, run replay | WORKER, then MAIN | P3.14 | Hand-offs and gate verdicts paint within 1 s; 5 s poll fallback |
 
 ---

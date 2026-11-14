@@ -700,6 +700,54 @@ test.describe("agents", () => {
     await expect(canvas.locator(".cv-agent")).toHaveCount(11);
   });
 
+  test("P3.16 territories: brush refuses locked code; stale memories hatched", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents");
+    const canvas = page.locator('section[aria-label="Agent canvas"]');
+    await expect(canvas.locator(".cv-agent")).toHaveCount(11);
+    await expect(canvas.locator(".cv-area").first()).toBeVisible();
+    // the fixture's stale memory (on publish) pins its area hatched
+    await expect(canvas.locator(".cv-pin.stale").first()).toBeVisible();
+    await page.getByRole("button", { name: /^Architect/ }).click();
+    await canvas.locator('.react-flow__node[data-id="seat:ship/codex"]').click();
+    const mem = page.locator('section[aria-label="Seat memory"]');
+    await expect(mem).toBeVisible();
+    await expect(mem.locator('ul[aria-label="Pocket"] li.stale')).toHaveCount(1);
+    await page.getByRole("button", { name: "brush", exact: true }).click();
+    await expect(page.getByRole("button", { name: "brush", exact: true })).toHaveAttribute("aria-pressed", "true");
+    // locked code: the brush refuses and nothing is drafted
+    const locked = canvas.locator('.cv-area[data-level="locked"]:not([data-area="."])').first();
+    await expect(locked).toHaveClass(/refuse/);
+    await locked.click();
+    await expect(page.locator(".cv-note[role=status]")).toContainText("is locked");
+    await expect(page.locator('section[aria-label="Changes"]')).toHaveCount(0);
+    // recall returns the stale memory hatched (before the draft seat below takes the pick)
+    const staleAt = (await mem.locator('ul[aria-label="Pocket"] li.stale code').textContent())!.trim();
+    await mem.getByLabel("Recall target").fill(/:[A-Za-z_]\w*$/.test(staleAt) ? `symbol:${staleAt}` : `file:${staleAt}`);
+    await mem.getByRole("button", { name: "Recall" }).click();
+    const recalled = mem.locator('ol[aria-label="Recalled"] li');
+    await expect(recalled.first()).toBeVisible();
+    await expect(mem.locator('ol[aria-label="Recalled"] li.stale').first()).toBeVisible();
+    // a new seat reaches the whole repository; painting an open area narrows it to that area
+    await canvas.getByRole("button", { name: "Add a seat to ship" }).click();
+    const changes = page.locator('section[aria-label="Changes"]');
+    await expect(changes).toBeVisible();
+    const open_ = canvas.locator('.cv-area.paint.cover-all[data-level="open"]:not([data-area="."])').first();
+    const area = (await open_.getAttribute("data-area"))!;
+    const at = (a: string) => canvas.locator(`.cv-area[data-area="${a}"]`);
+    await open_.click();
+    await expect(page.locator(".cv-note[role=status]")).toContainText(`${area} painted`);
+    await expect(at(area)).toHaveClass(/cover-all/);
+    await expect(canvas.locator(".cv-area.cover-none").first()).toBeVisible();
+    await expect(canvas.locator(".react-flow__edge.cv-edge-scope").first()).toBeAttached();
+    // alt click erases it again, back to the whole repository
+    await at(area).click({ modifiers: ["Alt"] });
+    await expect(canvas.locator(".cv-area.cover-none")).toHaveCount(0);
+    await changes.getByRole("button", { name: "Revert" }).click();
+    await expect(changes).toHaveCount(0);
+    await page.getByRole("button", { name: "View", exact: true }).click();
+  });
+
   test("a workflow: create it with fences and steps, preview it on the graph, delete it", async ({ page }, info) => {
     desktopOnly(info);
     await open(page, "agents/workflows");

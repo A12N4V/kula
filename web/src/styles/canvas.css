@@ -145,3 +145,64 @@
 .cv-changes .row, .cv-inspect .row { display: flex; align-items: center; gap: 6px; }
 .cv-changes .spacer, .map-inspector .mi-kind .spacer { flex: 1; }
 .cv-inspect.map-inspector { display: flex; flex-direction: column; gap: 8px; }
+
+/* Territories, brush and memory (P3.16). Locked areas and stale memories are
+   hatched; hidden areas are blank. */
+.cv-area {
+  width: 150px; height: 54px; box-sizing: border-box; padding: 7px 10px; display: grid; gap: 5px; align-content: center;
+  border: 1px solid var(--glass-line); border-radius: var(--r-sm); background: #070707;
+  transition: border-color .18s ease, background .18s ease, opacity .18s ease;
+}
+.cv-area-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cv-area-top b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 11.5px var(--mono); color: var(--text); }
+.cv-area-sub { display: flex; align-items: center; gap: 6px; font: 10px var(--mono); color: var(--text-3); }
+.cv-area-sub .spacer { flex: 1; }
+.cv-area-lv { text-transform: uppercase; letter-spacing: .1em; font-size: 9px; }
+.cv-area.open .cv-area-lv { color: var(--green); }
+.cv-area.review .cv-area-lv { color: var(--yellow); }
+.cv-area.scope { opacity: .55; }
+.cv-area.locked { background: repeating-linear-gradient(135deg, #0b0807 0 5px, #160d0b 5px 7px); border-color: color-mix(in oklab, var(--red) 35%, transparent); }
+.cv-area.locked .cv-area-lv { color: var(--red); }
+.cv-area.hidden { background: #000; border-style: dashed; }
+.cv-area.hidden b, .cv-area.hidden .cv-area-lv { color: var(--violet); }
+.cv-area.cover-all { border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
+.cv-area.cover-part { border-color: color-mix(in oklab, var(--accent) 30%, transparent); border-style: dashed; }
+.cv-area.paint { cursor: crosshair; }
+.cv-area.paint:hover { border-color: var(--accent); background: #140c08; }
+.cv-area.refuse { cursor: not-allowed; }
+.cv-area.recalled { box-shadow: inset 0 0 0 1px var(--accent); }
+.cv-rank { flex: none; min-width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; background: var(--accent); color: #000; font: 600 9.5px var(--mono); }
+.cv-pin, .cv-pocket, .cv-lens-n { font: 600 9.5px var(--mono); color: var(--text); padding: 0 4px; border-radius: 4px; border: 1px solid var(--glass-line-2); }
+.cv-pin.stale, .cv-pocket.stale, .cv-lens-n.stale, .cv-shelf b.stale {
+  color: var(--text-2); border-color: color-mix(in oklab, var(--yellow) 45%, transparent);
+  background: repeating-linear-gradient(135deg, transparent 0 3px, rgba(232, 197, 92, 0.22) 3px 4px);
+}
+.cv-pocket { flex: none; }
+.cv-lens-n { margin-left: 2px; font-size: 9px; }
+.cv-edge-scope .react-flow__edge-path { stroke: rgba(249, 127, 58, 0.45); stroke-width: 1; stroke-dasharray: 2 4; }
+.cv-edge-scope.part .react-flow__edge-path { stroke: rgba(249, 127, 58, 0.25); }
+.cv-stage .react-flow__node-area { cursor: default; }
+.cv-brush.on { color: var(--accent); border-color: var(--accent); }
+
+.cv-shelf {
+  position: absolute; right: 10px; top: 10px; z-index: 5; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px;
+  border: 1px solid var(--glass-line); border-radius: var(--r-sm); background: #070707; color: var(--text-3);
+  font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; cursor: pointer;
+  transition: border-color .18s ease, color .18s ease;
+}
+.cv-shelf:hover { border-color: var(--accent); color: var(--accent); }
+.cv-shelf b { font-weight: 600; color: var(--text); padding: 0 4px; border-radius: 4px; border: 1px solid transparent; letter-spacing: 0; }
+.cv-note {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 6; padding: 5px 10px;
+  border: 1px solid var(--glass-line-2); border-radius: var(--r-sm); background: #0a0a0a; color: var(--text); font: 11px var(--mono); white-space: nowrap;
+}
+
+.cv-mem { display: flex; flex-direction: column; gap: 8px; }
+.cv-pocket-list, .cv-recalled { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.cv-pocket-list li, .cv-recalled li { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding: 4px 6px; border-radius: 4px; border: 1px solid transparent; font-size: 12px; }
+.cv-pocket-list li.stale, .cv-recalled li.stale { border-color: color-mix(in oklab, var(--yellow) 30%, transparent); background: repeating-linear-gradient(135deg, transparent 0 5px, rgba(232, 197, 92, 0.08) 5px 7px); }
+.cv-pocket-list code, .cv-recalled code { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 10.5px var(--mono); color: var(--text-2); }
+.cv-pocket-list span, .cv-recalled .cv-body { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.cv-via { flex: none; font: 600 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.cv-recall { display: flex; gap: 6px; }
+.cv-recall .input { flex: 1; min-width: 0; }

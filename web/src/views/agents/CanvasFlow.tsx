@@ -10,7 +10,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType, type Node, type Edge, type NodeProps, type Connection } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
-import type { AgentsInfo, Team } from "../../api";
+import type { AgentsInfo, GuardLevel, Team, Territory } from "../../api";
 import { AGENT_NAME, GLYPHS } from "./data";
 import { workflowColor } from "./TeamOrg";
 import { fenceSummary, seatName } from "./parts";
@@ -18,7 +18,22 @@ import { seatKey, titleFor } from "../../roster";
 
 type Member = Team["members"][number];
 export type Seat = { team: string; m: Member; key: string };
-type AgentData = { seat: Seat; color: string; role: string; fence?: { t: string; l: string }; dim: boolean; lit: boolean; live: boolean };
+type AgentData = { seat: Seat; color: string; role: string; fence?: { t: string; l: string }; dim: boolean; lit: boolean; live: boolean; pocket?: Pocket };
+export type Pocket = { fresh: number; stale: number };
+type AreaData = { t: Territory; level: GuardLevel; mixed: boolean; cover: "all" | "part" | "none" | null; pins?: Pocket; refuse: string | null; rank?: number; brush: boolean };
+/** The repository under the teams (P3.16): areas, their fences for the picked seat, pins and the brush. */
+export type Land = {
+  areas: Territory[];
+  pins: Map<string, Pocket>;
+  /** the fence and scope of the picked seat, if any */
+  level: (t: Territory) => { level: GuardLevel; mixed: boolean };
+  cover: ((area: string) => "all" | "part" | "none") | null;
+  refuse: ((t: Territory) => string | null) | null;
+  brush: boolean;
+  rank: Map<string, number>;
+  pockets: Map<string, Pocket>;
+  onPaint: (area: string, erase: boolean) => void;
+};
 type TeamData = { team: Team; live: boolean; depth: number };
 
 const W = 208, H = 70, PAD_TOP = 40, PAD = 18;
@@ -49,6 +64,7 @@ function AgentNode({ data, selected }: NodeProps<Node<AgentData>>) {
       </div>
       <div className="cv-agent-sub">
         <span className="cv-role">{role}</span>
+        {data.pocket && (data.pocket.fresh + data.pocket.stale > 0) && <span className={`cv-pocket ${data.pocket.stale ? "stale" : ""}`} title={`${data.pocket.fresh + data.pocket.stale} memories in reach${data.pocket.stale ? `, ${data.pocket.stale} stale` : ""}`}>◆{data.pocket.fresh + data.pocket.stale}</span>}
         {m.workflow ? <span className="cv-wf"><i />{m.workflow}</span> : <span className="cv-wf none">no workflow</span>}
       </div>
       <Handle type="source" position={Position.Bottom} className="cv-handle" isConnectable={!!edit} />
@@ -71,7 +87,27 @@ function TeamNode({ data }: NodeProps<Node<TeamData>>) {
   );
 }
 
-const nodeTypes = { agent: AgentNode, team: TeamNode };
+function AreaNode({ data }: NodeProps<Node<AreaData>>) {
+  const { t, level, mixed, cover, pins, refuse, rank, brush } = data;
+  const hidden = level === "hidden";
+  const tip = brush ? (refuse ?? (cover === "all" ? "Alt click to take it out of scope" : "Click to paint into scope")) : `${t.path === "." ? "root files" : t.path} · ${level}${mixed ? " in part" : ""}`;
+  return (
+    <div className={`cv-area ${level} ${mixed ? "mixed" : ""} ${cover ? `cover-${cover}` : ""} ${brush ? (refuse ? "refuse" : "paint") : ""} ${rank ? "recalled" : ""}`} data-area={t.path} data-level={level} title={tip}>
+      <Handle type="target" position={Position.Top} className="cv-handle" isConnectable={false} />
+      <div className="cv-area-top"><b>{t.path === "." ? "root" : t.path}</b>{rank ? <span className="cv-rank">{rank}</span> : null}</div>
+      <div className="cv-area-sub">
+        <span className="cv-area-lv">{level}{mixed ? "*" : ""}</span>
+        {!hidden && <span className="cv-area-n">{t.files}</span>}
+        <span className="spacer" />
+        {pins && pins.fresh > 0 && <span className="cv-pin" title={`${pins.fresh} memories`}>◆{pins.fresh}</span>}
+        {pins && pins.stale > 0 && <span className="cv-pin stale" title={`${pins.stale} stale memories`}>◆{pins.stale}</span>}
+      </div>
+    </div>
+  );
+}
+
+const nodeTypes = { agent: AgentNode, team: TeamNode, area: AreaNode };
+const AW = 150, AH = 54, AGAP = 10;
 
 /** The teams as an elk compound graph, then as xyflow nodes and edges with positions. */
 async function layout(info: AgentsInfo, lens: Set<string>): Promise<{ nodes: Node[]; edges: Edge[] }> {
@@ -156,7 +192,7 @@ const parseEdge = (id: string) => {
   return { kind, team, from, to };
 };
 
-export default function CanvasFlow({ info, lens, onSelect, selected, edit }: { info: AgentsInfo; lens: Set<string>; onSelect: (s: Seat | null) => void; selected: string | null; edit?: CanvasEdit }) {
+export default function CanvasFlow({ info, lens, onSelect, selected, edit, land }: { info: AgentsInfo; lens: Set<string>; onSelect: (s: Seat | null) => void; selected: string | null; edit?: CanvasEdit; land?: Land }) {
   const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const lensKey = [...lens].sort().join(",");
@@ -168,13 +204,42 @@ export default function CanvasFlow({ info, lens, onSelect, selected, edit }: { i
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shape, lensKey, info.workflows]);
 
-  const nodes = useMemo(() => graph?.nodes.map((n) => (n.type === "agent" ? { ...n, selected: n.id === selected } : n)) ?? [], [graph, selected]);
+  const nodes = useMemo(() => {
+    if (!graph) return [];
+    const out: Node[] = graph.nodes.map((n) => (n.type === "agent" ? { ...n, selected: n.id === selected, data: { ...n.data, pocket: land?.pockets.get(n.id) } } : n));
+    if (!land?.areas.length) return out;
+    // the areas sit in rows under the teams, as wide as the teams are
+    const roots = graph.nodes.filter((n) => !n.parentId);
+    const x0 = Math.min(...roots.map((n) => n.position.x), 0);
+    const x1 = Math.max(...roots.map((n) => n.position.x + Number(n.style?.width ?? 0)), x0 + 4 * (AW + AGAP));
+    const y0 = Math.max(...roots.map((n) => n.position.y + Number(n.style?.height ?? 0)), 0) + 70;
+    const cols = Math.max(4, Math.floor((x1 - x0 + AGAP) / (AW + AGAP)));
+    land.areas.forEach((t, i) => {
+      const lv = land.level(t);
+      out.push({
+        id: `area:${t.path}`, type: "area", draggable: false, selectable: false, zIndex: 2,
+        position: { x: x0 + (i % cols) * (AW + AGAP), y: y0 + Math.floor(i / cols) * (AH + AGAP) },
+        data: { t, level: lv.level, mixed: lv.mixed, cover: land.cover ? land.cover(t.path) : null, pins: land.pins.get(t.path), refuse: land.refuse ? land.refuse(t) : null, rank: land.rank.get(t.path), brush: land.brush } satisfies AreaData,
+      });
+    });
+    return out;
+  }, [graph, selected, land]);
   const edges = useMemo(() => {
     if (!graph) return [];
-    if (!lens.size) return graph.edges;
-    const dim = new Set(graph.nodes.filter((n) => n.type === "agent" && (n.data as AgentData).dim).map((n) => n.id));
-    return graph.edges.map((e) => (dim.has(e.source) || dim.has(e.target) ? { ...e, className: `${e.className} dim` } : e));
-  }, [graph, lens.size]);
+    let out = graph.edges;
+    if (lens.size) {
+      const dim = new Set(graph.nodes.filter((n) => n.type === "agent" && (n.data as AgentData).dim).map((n) => n.id));
+      out = out.map((e) => (dim.has(e.source) || dim.has(e.target) ? { ...e, className: `${e.className} dim` } : e));
+    }
+    // the picked seat's scope, drawn to the areas it reaches
+    if (selected && land?.cover && land.areas.length) {
+      const reach = land.areas.filter((t) => land.cover!(t.path) !== "none");
+      if (reach.length < land.areas.length) {
+        out = [...out, ...reach.map((t) => ({ id: `sc:${t.path}`, source: selected, target: `area:${t.path}`, type: "default", className: `cv-edge-scope ${land.cover!(t.path)}`, selectable: false, deletable: false, focusable: false, zIndex: 1 } as Edge))];
+      }
+    }
+    return out;
+  }, [graph, lens.size, selected, land]);
 
   const [selEdge, setSelEdge] = useState<string | null>(null);
   const seatOf = (id: string) => { const [team, key] = id.slice(5).split(/\/(.*)/s); return { team, key }; };
@@ -195,15 +260,18 @@ export default function CanvasFlow({ info, lens, onSelect, selected, edit }: { i
       isValidConnection={(c) => !!c.source && !!c.target && c.source !== c.target && seatOf(c.source).team === seatOf(c.target).team}
       onConnect={onConnect}
       onBeforeDelete={async ({ nodes: ns, edges: es }) => ns.length === 0 && es.length > 0}
-      onEdgesDelete={(es) => { for (const e of es) { const p = parseEdge(e.id); edit?.dropEdge(p.kind, p.team, p.from, p.to); } }}
+      onEdgesDelete={(es) => { for (const e of es) { if (e.id.startsWith("sc:")) continue; const p = parseEdge(e.id); edit?.dropEdge(p.kind, p.team, p.from, p.to); } }}
       deleteKeyCode={edit ? ["Backspace", "Delete"] : null}
       fitView fitViewOptions={{ padding: 0.18, maxZoom: 1.1 }} minZoom={0.2} maxZoom={2}
       proOptions={{ hideAttribution: true }}
-      onNodeClick={(_, n) => { if (n.type === "agent") onSelect((n.data as AgentData).seat); }}
+      onNodeClick={(e, n) => {
+        if (n.type === "agent") onSelect((n.data as AgentData).seat);
+        else if (n.type === "area" && land?.brush) land.onPaint((n.data as AreaData).t.path, e.altKey);
+      }}
       onPaneClick={() => onSelect(null)}
     >
       <Background gap={22} size={1} color="#1a1715" />
-      <MiniMap pannable zoomable position="bottom-right" style={{ width: 150, height: 96 }} className="cv-minimap" nodeColor={(n) => (n.type === "team" ? "#1a1715" : (n.data as AgentData).color)} nodeStrokeColor="transparent" maskColor="rgba(0,0,0,0.6)" />
+      <MiniMap pannable zoomable position="bottom-right" style={{ width: 150, height: 96 }} className="cv-minimap" nodeColor={(n) => (n.type === "team" ? "#1a1715" : n.type === "area" ? "#24201d" : (n.data as AgentData).color)} nodeStrokeColor="transparent" maskColor="rgba(0,0,0,0.6)" />
       <Controls showInteractive={false} position="top-left" className="cv-controls" />
     </ReactFlow>
     </EditCtx.Provider>
