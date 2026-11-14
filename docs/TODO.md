@@ -145,8 +145,8 @@ Gate G2: CLI audit has no blockers; release published.
 | P3.8 | e2e tests on a disposable fixture (existing harness), screenshots refreshed | WORKER | P3.3–P3.7 | One Playwright run at a time, `--workers=2` |
 | P3.9 | UI critique loop until score target met | UICRITIC, then MAIN | P3.8 | Target score agreed with YOU; no spills at desktop/tablet/phone |
 | P3.10 | Final audit, release | CRITIC, then MAIN/YOU | P3.9 | v-next released across all channels |
-| P3.11 | Workspace: `Board` and `Widget` system, six-view rail, old hashes redirected ([plan](design/workspace-and-canvas.md#a-workspace)) | MAIN | open questions answered by YOU | No page scroll at 1440×900 and 1280×800; only widget bodies scroll |
-| P3.12 | Unified Git board: working tree, history, branches, detail, sync, review queue, stash, conflicts | MAIN | P3.11 | Every Git action reachable without leaving the board; linked selection |
+| P3.11 | ✓ Workspace: `Board` and `Widget` system, six-view rail, old hashes redirected ([plan](design/workspace-and-canvas.md#a-workspace)) | MAIN | open questions answered by YOU | No page scroll at 1440×900 and 1280×800; only widget bodies scroll |
+| P3.12 | ✓ Unified Git board: working tree, history, branches, detail, sync, review queue, stash, conflicts | MAIN | P3.11 | Every Git action reachable without leaving the board; linked selection |
 | P3.13 | ✓ Overview recut to repository health only | WORKER | P3.11 | No commit, branch or review lists left on Overview |
 | P3.14 | ✓ Agent canvas, read only: teams, members, edges, workflow lenses, auto layout ([plan](design/workspace-and-canvas.md#b-agent-canvas)) | MAIN | P3.11 | Replaces Agents Overview and the Teams org chart |
 | P3.15 | ✓ Canvas Architect mode: edit, validate, TOML diff, save through `agentAction` | MAIN | P3.14 | Round trip leaves `kula.toml` identical to a CLI save |
