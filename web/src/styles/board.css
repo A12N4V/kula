@@ -1,0 +1,105 @@
+/* ================================================================ board
+   A board fills the editor with frosted widgets. The page never scrolls on a
+   desktop; only a widget body does. Under 1280px the board itself scrolls,
+   and at 760px or less it becomes one column that scrolls with the page. */
+
+.board {
+  position: absolute; inset: 0;
+  display: grid; gap: 8px; padding: 8px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  overflow: hidden;
+}
+
+.widget {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  border: 1px solid var(--glass-line); border-radius: var(--r-lg);
+  background: var(--sheen), var(--glass);
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+  overflow: hidden;
+}
+.widget-head {
+  flex: none; height: 32px; display: flex; align-items: center; gap: 6px;
+  padding: 0 6px 0 10px; border-bottom: 1px solid var(--glass-line);
+  background: linear-gradient(180deg, var(--glass-hi), transparent);
+}
+.widget-title { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
+.widget-count { font-family: var(--mono); font-size: 10.5px; color: var(--text-3); }
+.widget-head .spacer { flex: 1; }
+.widget-head .input { height: 22px; font-size: 11.5px; padding: 0 8px; min-width: 0; }
+.widget-body { flex: 1; min-height: 0; overflow: auto; }
+.widget-foot { flex: none; border-top: 1px solid var(--glass-line); padding: 8px; display: grid; gap: 6px; }
+
+/* designed empty state: an outlined glyph, one line, nothing else */
+.w-empty { height: 100%; min-height: 72px; display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--text-3); font-size: 12px; text-align: center; padding: 12px; }
+.w-empty svg { width: 18px; height: 18px; opacity: .55; }
+
+/* rows inside widgets */
+.w-sec { display: flex; align-items: center; gap: 6px; padding: 8px 10px 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
+.w-sec .spacer { flex: 1; }
+.w-row {
+  display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 3px 6px 3px 10px; margin: 0 4px;
+  border-radius: var(--r-sm); cursor: pointer; font-size: 12.5px; min-width: 0;
+}
+.w-row:hover { background: linear-gradient(90deg, rgba(255, 244, 230, 0.06), rgba(255, 244, 230, 0.015)); }
+.w-row.on { background: linear-gradient(90deg, rgba(249, 127, 58, 0.16), rgba(249, 127, 58, 0.05)); box-shadow: inset 2px 0 0 var(--accent); }
+.w-row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-row .dim { color: var(--text-3); font-size: 11.5px; white-space: nowrap; }
+.w-row .acts { display: flex; gap: 2px; opacity: 0; transition: opacity var(--dur); }
+.w-row:hover .acts, .w-row.on .acts, .w-row:focus-within .acts { opacity: 1; }
+.w-code { width: 18px; flex: none; text-align: center; font-family: var(--mono); font-size: 11px; font-weight: 600; }
+.w-code.A, .w-code.q { color: var(--green); } .w-code.D { color: var(--red); } .w-code.M { color: var(--yellow); } .w-code.R { color: var(--violet); } .w-code.U { color: var(--accent); }
+.w-pad { padding: 10px; }
+.w-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.w-line .spacer { flex: 1; }
+.w-note { font-size: 11.5px; color: var(--text-3); }
+.w-out { margin: 0; padding: 8px 10px; font-family: var(--mono); font-size: 11px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
+
+/* history rows: lane graph on the left */
+.w-commit { height: 34px; padding-left: 4px; }
+.w-commit svg { flex: none; }
+
+/* the detail widget: a toolbar strip over the content */
+.w-detail-bar { flex: none; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 10px; border-bottom: 1px solid var(--glass-line); }
+.w-detail-bar .spacer { flex: 1; }
+.w-detail-bar .mono { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.widget-body .diff, .widget-body pre.code { border: 0; border-radius: 0; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; margin: 0; }
+
+/* sync tiles */
+.w-sync { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 10px; }
+.w-stat { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--glass-line); border-radius: var(--r-md); background: rgba(0, 0, 0, 0.18); }
+.w-stat b { font-family: var(--mono); font-size: 16px; font-weight: 500; }
+.w-stat span { font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
+
+/* conflicts take the stash slot, tinted so they cannot be missed */
+.widget.alert { border-color: color-mix(in oklab, var(--accent) 45%, transparent); }
+.widget.alert .widget-title { color: var(--accent); }
+
+/* ----------------------------------------------------- the Git board */
+.git-board {
+  grid-template-rows: minmax(0, 1.15fr) minmax(0, 0.75fr) minmax(0, 1.1fr);
+  grid-template-areas:
+    "tree tree tree tree hist hist hist hist hist br br br"
+    "tree tree tree tree det det det det det sync sync sync"
+    "stash stash stash stash det det det det det rev rev rev";
+}
+.git-board > [data-area="tree"] { grid-area: tree; }
+.git-board > [data-area="hist"] { grid-area: hist; }
+.git-board > [data-area="br"] { grid-area: br; }
+.git-board > [data-area="det"] { grid-area: det; }
+.git-board > [data-area="sync"] { grid-area: sync; }
+.git-board > [data-area="stash"] { grid-area: stash; }
+.git-board > [data-area="rev"] { grid-area: rev; }
+
+@media (max-width: 1279px) {
+  .board { overflow: auto; }
+  .git-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none; grid-auto-rows: 340px;
+    grid-template-areas: "tree hist" "det det" "br sync" "stash rev";
+  }
+  .git-board > [data-area="det"] { min-height: 420px; }
+}
+@media (max-width: 760px) {
+  .board { position: static; overflow: visible; display: flex; flex-direction: column; }
+  .board > .widget { height: 360px; flex: none; }
+}

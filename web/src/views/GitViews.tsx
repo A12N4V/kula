@@ -124,9 +124,9 @@ export function Changes({ onChanged, version }: Nav) {
 }
 
 // ============================================================ History (with lane graph)
-const LANE_COLORS = ["var(--accent)", "var(--blue)", "var(--green)", "var(--violet)", "var(--yellow)", "#5fd4c8", "#f08a9b"];
+export const LANE_COLORS = ["var(--accent)", "var(--blue)", "var(--green)", "var(--violet)", "var(--yellow)", "#5fd4c8", "#f08a9b"];
 
-function computeLanes(commits: Commit[]) {
+export function computeLanes(commits: Commit[]) {
   // Classic lane assignment: each lane holds the sha it is waiting for.
   const lanes: (string | null)[] = [];
   return commits.map((c) => {

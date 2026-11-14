@@ -388,7 +388,7 @@ test.describe("animation", () => {
   });
 
   test("panels resize by their edge and remember it", async ({ page }) => {
-    await open(page, "history");
+    await open(page, "issues");
     const list = page.locator(".split > .list");
     const grip = page.locator(".split > .grip");
     const w0 = (await list.boundingBox())!.width;
@@ -416,8 +416,8 @@ test.describe("animation", () => {
 
 // Every view at every size: nothing scrolls sideways and the view's own content shows.
 const VIEWS: [string, string][] = [
-  ["overview", ".ov-title h1"], ["graph", ".graph-wrap"], ["changes", ".list-head"], ["history", ".list-head"],
-  ["branches", ".list-head"], ["issues", ".list-head"], ["notes", ".list-head"], ["console", ".console"],
+  ["overview", ".ov-title h1"], ["graph", ".graph-wrap"], ["git", "[data-testid=w-tree]"],
+  ["issues", ".list-head"], ["notes", ".list-head"], ["console", ".console"],
   ["agents", ".page-head h1"], ["query", ".kq-text"],
 ];
 for (const [view, sel] of VIEWS) {
@@ -462,9 +462,9 @@ test.describe("phone chrome", () => {
     await expect(rail).toBeHidden();
     await page.getByRole("button", { name: "Show sidebar" }).click();
     await expect(rail).toBeVisible();
-    await rail.getByRole("button", { name: "History" }).click();
+    await rail.getByRole("button", { name: "Git" }).click();
     await expect(rail).toBeHidden();
-    await expect(page.locator(".list-head").first()).toBeVisible();
+    await expect(page.getByTestId("w-tree")).toBeVisible();
   });
 });
 
@@ -896,18 +896,39 @@ test.describe("agents", () => {
   });
 });
 
+test.describe("git board", () => {
+  for (const [w, h] of [[1440, 900], [1280, 800]]) {
+    test(`fills ${w}x${h} with every widget and no page scroll`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: h });
+      await open(page, "git");
+      for (const a of ["tree", "hist", "br", "det", "sync", "stash", "rev"]) await expect(page.getByTestId(`w-${a}`)).toBeVisible();
+      await expect(page.getByTestId("w-det").locator(".w-detail-bar")).toBeVisible();
+      const over = await page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight);
+      expect(over).toBeLessThanOrEqual(0);
+    });
+  }
+  test("old git routes land on the board", async ({ page }) => {
+    for (const h of ["changes", "history", "branches"]) {
+      await page.goto(`/#${h}`);
+      await expect(page).toHaveURL(/#git\b/);
+    }
+  });
+});
+
 test.describe("changes", () => {
   // The real repo's tree must stay clean, so this runs in the worker's fixture,
   // which ships an uncommitted edit to src/kg.rs for exactly this.
   test.use({ baseURL: ({ fx }, use) => use(fx) });
   test("stage a file, commit it, and discard the rest", async ({ page }) => {
-    await open(page, "changes");
-    const kg = page.locator(".item").filter({ hasText: "src/kg.rs" }).first();
+    await open(page, "git");
+    const tree = page.getByTestId("w-tree");
+    const kg = tree.locator(".w-row").filter({ hasText: "src/kg.rs" }).first();
     await expect(kg).toBeVisible();
-    await kg.getByRole("button", { name: "Stage" }).click();
-    await expect(kg.getByRole("button", { name: "Unstage" })).toBeVisible();
-    await page.getByPlaceholder(/Commit message/).fill("e2e: commit from changes");
-    await page.keyboard.press("ControlOrMeta+Enter");
+    await kg.hover();
+    await kg.getByRole("button", { name: "Stage", exact: true }).click();
+    await expect(tree.locator(".w-sec").first()).toContainText("Staged 1");
+    await page.getByLabel("Commit message").fill("e2e: commit from changes");
+    await page.getByLabel("Commit message").press("ControlOrMeta+Enter");
     await expect(page.locator(".toast").first()).toContainText("Committed");
     const log = await (await page.request.get("/api/git/log?limit=1", { headers: { "x-kula-token": "test" } })).json();
     expect(log[0].subject).toBe("e2e: commit from changes");
@@ -1241,18 +1262,22 @@ test.describe("g1 – graph, inspector and git by keyboard", () => {
     const tmp = path.resolve(process.cwd(), "..", `g1-kb-${info.workerIndex}.txt`);
     await fs.writeFile(tmp, "scratch change for the keyboard test\n");
     try {
-      await page.goto("/#changes");
+      await page.goto("/#git");
       await page.reload();
-      const row = page.locator(".list .item", { hasText: tmp.replace(/^.*\//, "") });
+      const name = tmp.replace(/^.*\//, "");
+      const tree = page.getByTestId("w-tree");
+      const row = tree.locator(".w-row", { hasText: name });
       await expect(row).toBeVisible({ timeout: 10_000 });
-      await page.keyboard.press("j"); // select the first file
-      await expect(page.locator(".list .item.on")).toBeVisible();
+      await page.keyboard.press("j"); // j/k walk the files
+      await expect(tree.locator(".w-row.on")).toHaveCount(1);
+      await row.click(); // then pick ours
+      await expect(tree.locator(".w-row.on")).toContainText(name);
+      const stagedHead = tree.locator(".w-sec").first();
       await page.keyboard.press("s"); // stage it
-      const stagedHead = page.locator(".list-head", { hasText: "Staged" });
-      await expect(stagedHead.locator(".count")).toHaveText("1", { timeout: 10_000 });
-      await expect(page.locator(".list .item", { hasText: tmp.replace(/^.*\//, "") }).first()).toBeVisible();
+      await expect(stagedHead).toContainText("Staged 1", { timeout: 10_000 });
+      await expect(tree.locator(".w-row.on")).toContainText(name);
       await page.keyboard.press("u"); // unstage it again
-      await expect(stagedHead.locator(".count")).toHaveText("0", { timeout: 10_000 });
+      await expect(stagedHead).toContainText("Staged 0", { timeout: 10_000 });
       // ⌘↵ is the commit key: with no message it must do nothing at all.
       const before = await page.evaluate(() => fetch("/api/log?limit=1").then((r) => r.json()).catch(() => null));
       await page.keyboard.press("ControlOrMeta+Enter");
@@ -1267,8 +1292,7 @@ test.describe("g1 – graph, inspector and git by keyboard", () => {
 
 test.describe("N1 · shell: palette, shortcuts, states", () => {
   const VIEWS: [string, string][] = [
-    ["Overview", "overview"], ["Graph", "graph"], ["Flows", "flows"], ["Changes", "changes"],
-    ["History", "history"], ["Branches & compare", "branches"], ["Proposals", "proposals"],
+    ["Overview", "overview"], ["Graph", "graph"], ["Flows", "flows"], ["Git", "git"], ["Proposals", "proposals"],
     ["Issues", "issues"], ["Notes", "notes"], ["Agents", "agents"], ["Query (SPARQL)", "query"], ["Console", "console"],
   ];
 
@@ -1285,7 +1309,7 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
   });
 
   test("N1.2: ? lists every global shortcut and each listed one works", async ({ page }) => {
-    await open(page, "changes");
+    await open(page, "git");
     await page.keyboard.press("?");
     const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
     await expect(sheet).toBeVisible();
@@ -1314,7 +1338,7 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
     await page.keyboard.press("Escape");
     // …and ⌥← walks back through the views.
     await page.keyboard.press("Alt+ArrowLeft");
-    await expect(page).toHaveURL(/#changes\b/);
+    await expect(page).toHaveURL(/#git\b/);
   });
 
   test("N1.2: the sheet's remaining keys work – a, q, a context shortcut, and the sheet from the palette", async ({ page }) => {

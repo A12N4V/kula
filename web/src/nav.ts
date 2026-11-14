@@ -1,6 +1,6 @@
 // Cross-view navigation: any view can send the user somewhere specific.
 
-export type View = "overview" | "graph" | "changes" | "history" | "branches" | "proposals" | "issues" | "notes" | "flows" | "agents" | "query" | "console";
+export type View = "overview" | "graph" | "git" | "changes" | "history" | "branches" | "proposals" | "issues" | "notes" | "flows" | "agents" | "query" | "console";
 
 export interface Target {
   issue?: number;
@@ -18,6 +18,9 @@ export interface Target {
 }
 /** Contrast shows two revisions overlaid, side by side, or as a textual report. */
 export type ContrastMode = "overlay" | "split" | "report";
+
+/** Changes, History and Branches merged into the Git board; the old ids still route there. */
+export const canonView = (v: View): View => (v === "changes" || v === "history" || v === "branches" ? "git" : v);
 
 export type Go = (view: View, target?: Target) => void;
 
@@ -48,7 +51,8 @@ export const CONTEXT_SHORTCUTS: Shortcut[] = [
   { keys: "right-click", label: "Graph: actions for a symbol" },
   { keys: "[[", label: "Notes and memories: link a symbol (autofill)" },
   { keys: "tab", label: "Accept the autofill" },
-  { keys: "⌘↵", label: "Commit (Changes) · save (Notes) · run (Query)" },
+  { keys: "⌘↵", label: "Commit (Git) · save (Notes) · run (Query)" },
+  { keys: "j k s u", label: "Git: walk files, stage, unstage" },
   { keys: "↑ ↓", label: "Command history (Console)" },
 ];
 

@@ -418,7 +418,33 @@ async fn overview(State(s): State<AppState>) -> ApiResult {
 // ---------------------------------------------------------------- git
 
 async fn git_status(State(s): State<AppState>) -> ApiResult {
-    blocking(move || Ok(json!({ "branch": s.repo.branch(), "files": s.repo.status()? }))).await
+    blocking(move || Ok(json!({ "branch": s.repo.branch(), "files": s.repo.status()?, "state": op_state(&s.repo) }))).await
+}
+
+/// The operation in progress, if any: merge, rebase, cherry_pick or revert.
+fn op_state(r: &crate::git::Repo) -> Option<&'static str> {
+    let path = |p: &str| r.run(&["rev-parse", "--git-path", p]).ok().map(|o| r.root.join(o.trim()));
+    let has = |p: &str| path(p).is_some_and(|p| p.exists());
+    if has("rebase-merge") || has("rebase-apply") {
+        Some("rebase")
+    } else if has("MERGE_HEAD") {
+        Some("merge")
+    } else if has("CHERRY_PICK_HEAD") {
+        Some("cherry_pick")
+    } else if has("REVERT_HEAD") {
+        Some("revert")
+    } else {
+        None
+    }
+}
+
+/// A stash index from the UI: digits only, so it can never name another ref.
+fn stash_ref(n: Option<&String>) -> anyhow::Result<String> {
+    let n = n.ok_or_else(|| anyhow!("stash index required"))?;
+    if n.is_empty() || !n.chars().all(|c| c.is_ascii_digit()) {
+        return Err(anyhow!("bad stash index {n}"));
+    }
+    Ok(format!("stash@{{{n}}}"))
 }
 
 async fn git_log(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
@@ -539,12 +565,47 @@ async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(
             "rebase" => r.run(&["rebase", &name()?])?,
             "cherry_pick" => r.run(&["cherry-pick", &name()?])?,
             "revert" => r.run(&["revert", "--no-edit", &name()?])?,
-            "tag" => r.run(&["tag", &name()?])?,
+            "tag" => match &a.from { Some(f) => { validate_rev(f)?; r.run(&["tag", &name()?, f])? } None => r.run(&["tag", &name()?])? },
             "fetch" => r.run(&["fetch", "--all", "--prune"])?,
             "pull" => r.run(&["pull", "--ff-only"])?,
             "push" => r.run(&["push", "-u", "origin", "HEAD"])?,
             "stash" => r.run(&["stash", "push", "-u"])?,
-            "stash_pop" => r.run(&["stash", "pop"])?,
+            "stash_pop" => match &a.name {
+                Some(_) => r.run(&["stash", "pop", &stash_ref(a.name.as_ref())?])?,
+                None => r.run(&["stash", "pop"])?,
+            },
+            "stash_apply" => r.run(&["stash", "apply", &stash_ref(a.name.as_ref())?])?,
+            "stash_drop" => r.run(&["stash", "drop", &stash_ref(a.name.as_ref())?])?,
+            "stash_show" => r.run(&["stash", "show", "-p", "--include-untracked", &stash_ref(a.name.as_ref())?])
+                .or_else(|_| r.run(&["stash", "show", "-p", &stash_ref(a.name.as_ref())?]))?,
+            "stash_message" => match a.message.as_deref().map(str::trim).filter(|m| !m.is_empty()) {
+                Some(m) => r.run(&["stash", "push", "-u", "-m", m])?,
+                None => r.run(&["stash", "push", "-u"])?,
+            },
+            "abort" | "continue" => {
+                let op = op_state(r).ok_or_else(|| anyhow!("no merge, rebase, cherry-pick or revert in progress"))?;
+                let cmd = op.replace('_', "-");
+                let flag = format!("--{action}");
+                if action == "continue" && op != "rebase" {
+                    r.run(&["-c", "core.editor=true", cmd.as_str(), flag.as_str()])?
+                } else if action == "continue" {
+                    r.run(&["-c", "core.editor=true", "rebase", "--continue"])?
+                } else {
+                    r.run(&[cmd.as_str(), flag.as_str()])?
+                }
+            }
+            "resolve" => {
+                // Take one side for whole files: name is "ours" or "theirs".
+                let side = a.name.clone().unwrap_or_default();
+                if side != "ours" && side != "theirs" {
+                    return Err(anyhow!("side must be ours or theirs"));
+                }
+                if a.paths.is_empty() {
+                    return Err(anyhow!("paths required"));
+                }
+                r.run(&with_paths(&["checkout", &format!("--{side}")]))?;
+                r.run(&with_paths(&["add"]))?
+            }
             "exec" => {
                 let args = a.args.clone().unwrap_or_default();
                 if args.is_empty() {

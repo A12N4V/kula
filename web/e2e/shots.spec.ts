@@ -70,16 +70,9 @@ test("contrast: overlay, side by side, report", async ({ page }) => {
 });
 
 test("git views", async ({ page }) => {
-  await at(page, "changes");
-  await page.locator(".list .item, .list .file").first().click().catch(() => {});
-  await page.waitForTimeout(800);
-  await shot(page, "changes");
-  await at(page, "history");
-  await page.waitForTimeout(1000);
-  await shot(page, "history");
-  await at(page, "branches");
-  await page.waitForTimeout(2000);
-  await shot(page, "compare");
+  await at(page, "git");
+  await page.waitForTimeout(1500);
+  await shot(page, "git");
 });
 
 test("proposals, issues, notes", async ({ page }) => {

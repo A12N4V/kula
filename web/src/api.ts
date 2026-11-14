@@ -109,6 +109,10 @@ export interface ImpactHit { node: Node; depth: number; via: number | null }
 export interface Impact { root: Node; direction: string; hits: ImpactHit[]; files: number; communities: string[]; risk: string }
 export interface FileStatus { path: string; orig: string | null; index: string; worktree: string; staged: boolean; unstaged: boolean; untracked: boolean }
 export interface Commit { sha: string; short: string; parents: string[]; author: string; email: string; time: number; refs: string[]; subject: string }
+/** A git operation in progress (src/server.rs op_state). */
+export type GitOp = "merge" | "rebase" | "cherry_pick" | "revert";
+/** Porcelain codes that mean a path is unmerged. */
+export const isConflict = (f: FileStatus) => f.index === "U" || f.worktree === "U" || (f.index === "A" && f.worktree === "A") || (f.index === "D" && f.worktree === "D");
 export interface Branch { name: string; remote: boolean; sha: string; time: number; upstream: string; track: string; current: boolean; subject: string }
 export interface Comment { author: string; body: string; at: number }
 export interface Issue { id: number; title: string; body: string; status: string; labels: string[]; anchors: string[]; author: string; created: number; comments: Comment[] }
@@ -168,13 +172,13 @@ export const api = {
   scopeForget: (name: string) => post<{ removed: boolean }>("/api/scopes/forget", { name }),
   file: (path: string) => get<{ path: string; content: string }>(`/api/file?${q({ path })}`),
   compare: (base: string, head?: string) => get<Compare>(`/api/compare?${q({ base, head })}`),
-  status: () => get<{ branch: string; files: FileStatus[] }>("/api/git/status"),
+  status: () => get<{ branch: string; files: FileStatus[]; state?: GitOp | null }>("/api/git/status"),
   langs: () => get<{ detected: LangRow[]; installed: string[]; available: number }>("/api/langs"),
   langsAdd: (ids: string[]) => post<{ installed: string[] }>("/api/langs/add", { ids }),
   clean: () => get<{ policy: { after_min: number }; size_bytes: number }>("/api/clean"),
   setClean: (after_min: number) => post<{ after_min: number }>("/api/clean", { after_min }),
   cleanNow: () => post<{ runs_removed: number; temp_removed: number; freed_bytes: number; size_bytes: number }>("/api/clean/now"),
-  log: (limit = 300) => get<Commit[]>(`/api/git/log?${q({ limit })}`),
+  log: (limit = 300, rev?: string) => get<Commit[]>(`/api/git/log?${q(rev ? { limit, rev } : { limit })}`),
   branches: () => get<{ branches: Branch[]; tags: string[]; stashes: string[] }>("/api/git/branches"),
   diff: (path?: string, staged = false) => get<{ diff: string }>(`/api/git/diff?${q({ path, staged: staged ? "1" : undefined })}`),
   show: (sha: string) => get<{ show: string }>(`/api/git/show/${sha}`),

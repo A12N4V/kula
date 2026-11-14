@@ -3,15 +3,13 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
 import type { ContrastMode, Go, Target, View } from "./nav";
-import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, fuzzyScore } from "./nav";
+import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, canonView, fuzzyScore } from "./nav";
 // Heavy views load on demand: the first paint ships the shell + Overview only,
 // the rest arrive as their own chunks (prefetched on idle – see PREFETCH below).
 const GraphView = lazy(() => import("./views/GraphView"));
 const Agents = lazy(() => import("./views/Agents"));
 const Query = lazy(() => import("./views/Query"));
-const Changes = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Changes })));
-const History = lazy(() => import("./views/GitViews").then((m) => ({ default: m.History })));
-const Branches = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Branches })));
+const GitBoard = lazy(() => import("./views/GitBoard"));
 const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
 const Flows = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Flows })));
 const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
@@ -27,6 +25,7 @@ const PREFETCH: Array<() => Promise<unknown>> = [
   () => import("./views/Agents"),
   () => import("./views/Query"),
   () => import("./views/GitViews"),
+  () => import("./views/GitBoard"),
   () => import("./views/MetaViews"),
 ];
 let prefetched = false;
@@ -73,9 +72,7 @@ const GROUPS: Rail[][] = [
     { id: "flows", label: "Flows", icon: Icon.flows, key: "3" },
   ],
   [
-    { id: "changes", label: "Changes", icon: Icon.changes, key: "4" },
-    { id: "history", label: "History", icon: Icon.history, key: "5" },
-    { id: "branches", label: "Branches & compare", icon: Icon.branches, key: "6" },
+    { id: "git", label: "Git", icon: Icon.branches, key: "4" },
   ],
   [
     { id: "proposals", label: "Proposals", icon: Icon.pr, key: "7" },
@@ -96,13 +93,13 @@ type Contrast = { base: string; head: string; mode?: ContrastMode } | null;
 /** URL ⇄ state: #overview · #graph/<id>/<tab> · #graph/contrast/<base>/<head> · #issues/<id> … */
 function parseHash() {
   const [v, a, b, c, d] = location.hash.slice(1).split("/").map(decodeURIComponent);
-  const view = (VIEWS.some((x) => x.id === v) ? v : "overview") as View;
+  const view = (VIEWS.some((x) => x.id === v) ? v : canonView(v as View) === "git" ? "git" : "overview") as View;
   const contrast: Contrast = view === "graph" && a === "contrast" && b && c ? { base: b, head: c, mode: (["overlay", "split", "report"].includes(d) ? d : undefined) as ContrastMode | undefined } : null;
   const focus = view === "graph" && !contrast && Number(a) > 0 ? Number(a) : null;
   const target: Target = {};
   if (view === "issues" && Number(a)) target.issue = Number(a);
   if (view === "proposals" && Number(a)) target.proposal = Number(a);
-  if (view === "history" && a) target.sha = a;
+  if (view === "git" && a) target.sha = a;
   if (view === "agents" && a) target.tab = a;
   if (view === "graph" && a === "fences") target.fences = b ?? "";
   return { view, contrast, focus, target };
@@ -163,6 +160,7 @@ export default function App() {
     else if (view === "graph" && target.fences !== undefined) h += `/fences${target.fences ? `/${enc(target.fences)}` : ""}`;
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
+    else if (view === "git" && target.sha) h += `/${target.sha}`;
     else if (view === "agents" && target.tab && target.tab !== "overview") h += `/${target.tab}`;
     if (`#${h}` === location.hash) return;
     if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
@@ -207,7 +205,8 @@ export default function App() {
   }, []);
   const [noTabs, setNoTabs] = useState(false);
 
-  const go: Go = useCallback((v, t = {}) => {
+  const go: Go = useCallback((to, t = {}) => {
+    const v = canonView(to);
     showView(v); setNoTabs(false);
     setView(v);
     setTarget(t);
@@ -281,7 +280,7 @@ export default function App() {
 
   const openIssues = meta?.issues.filter((i) => i.status === "open").length ?? 0;
   const openPrs = meta?.proposals.filter((p) => p.status === "open").length ?? 0;
-  const badge: Partial<Record<View, number>> = { changes, issues: openIssues, proposals: openPrs };
+  const badge: Partial<Record<View, number>> = { git: changes, issues: openIssues, proposals: openPrs };
   const nav = { onChanged, openSymbol: (id: number) => go("graph", { symbol: id }), version, go, target };
   const current = VIEWS.find((v) => v.id === view)!;
 
@@ -292,7 +291,7 @@ export default function App() {
         <button className="brand" onClick={() => go("overview")} aria-label="Overview"><Logo /><span>kula</span></button>
         <button className="rail-toggle" onClick={() => setRail((r) => !r)} aria-label={rail ? "Hide sidebar" : "Show sidebar"} aria-expanded={rail} aria-controls="rail"><Icon.sidebar /></button>
         <button className="crumb-repo tb-widget" onClick={() => go("overview")} title="Project"><b>{repo?.name ?? "…"}</b><span className="tb-caret"><Icon.chevron /></span></button>
-        <button className="chip tb-widget" onClick={() => go("branches")} title="Current branch"><Icon.branches /><b className="mono">{repo?.branch ?? "…"}</b><span className="tb-caret"><Icon.chevron /></span></button>
+        <button className="chip tb-widget" onClick={() => go("git")} title="Current branch"><Icon.branches /><b className="mono">{repo?.branch ?? "…"}</b><span className="tb-caret"><Icon.chevron /></span></button>
         <span className="spacer" />
         <div className="top-actions">
           <button className="btn sm ghost icon-only" aria-label="Back" title="Back  ⌥←" onClick={() => history.back()}><Icon.back /></button>
@@ -370,9 +369,7 @@ export default function App() {
             <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
               {view === "overview" && <Overview repo={repo} version={version} go={go} />}
               {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
-              {view === "changes" && <Changes {...nav} />}
-              {view === "history" && <History {...nav} />}
-              {view === "branches" && <Branches {...nav} />}
+              {view === "git" && <GitBoard {...nav} />}
               {view === "proposals" && <Proposals {...nav} />}
               {view === "issues" && <Issues {...nav} />}
               {view === "notes" && <Notes {...nav} />}
