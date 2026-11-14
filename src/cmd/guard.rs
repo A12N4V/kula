@@ -175,6 +175,18 @@ pub(crate) fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                         serde_json::json!({ "permission": "deny", "continue": true, "user_message": msg, "agent_message": msg })
                     );
                 }
+                crate::events::append(
+                    &repo.kula_dir(),
+                    crate::events::Event {
+                        kind: "refused".into(),
+                        team: guard::team(repo).map(|t| t.name).unwrap_or_default(),
+                        agent: agent.clone(),
+                        path: crate::events::refused_path(&msg),
+                        verdict: "refused".into(),
+                        msg: msg.clone(),
+                        ..Default::default()
+                    },
+                );
                 eprintln!("{msg}");
                 std::process::exit(2);
             };

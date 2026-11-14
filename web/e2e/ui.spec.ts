@@ -748,6 +748,50 @@ test.describe("agents", () => {
     await page.getByRole("button", { name: "View", exact: true }).click();
   });
 
+  test("P3.17 live: hand-offs and refusals paint within a second; poll fallback; replay", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents");
+    const port = new URL(page.url()).port;
+    const log = path.join(fs.readFileSync(`/tmp/kula-fixture-${port}.path`, "utf8").trim(), ".kula", "events.jsonl");
+    const emit = (e: object) => fs.appendFileSync(log, JSON.stringify({ ts: Date.now(), team: "ship", ...e }) + "\n");
+    const canvas = page.locator('section[aria-label="Agent canvas"]');
+    await expect(canvas.locator(".cv-agent")).toHaveCount(11);
+    const locked = (await canvas.locator('.cv-area:not([data-area="."])').first().getAttribute("data-area"))!;
+    await page.getByRole("button", { name: "Live", exact: true }).click();
+    const feed = page.locator('section[aria-label="Live"]');
+    await expect(feed.locator("[data-via=stream]")).toBeVisible();
+    // the stream is open: appended events paint within a second
+    await page.waitForTimeout(400);
+    const t0 = Date.now();
+    emit({ kind: "refused", agent: "codex", path: `${locked}/x`, verdict: "refused", msg: "kula guard: refused" });
+    emit({ kind: "handoff", from: "claude", agent: "cursor", plan: "e2e", slice: "b" });
+    const codex = canvas.locator('.react-flow__node[data-id="seat:ship/codex"] .cv-agent');
+    await expect(codex).toHaveAttribute("data-paint", "refused", { timeout: 1500 });
+    await expect(canvas.locator(".react-flow__edge.cv-edge-live")).toHaveCount(1, { timeout: 1500 });
+    expect(Date.now() - t0).toBeLessThan(1500);
+    await expect(canvas.locator(`.cv-area[data-area="${locked}"]`)).toHaveAttribute("data-struck", "refused");
+    await expect(feed.locator('ol[aria-label="Events"] li').first()).toContainText("claude hands b to cursor");
+    // replay: back to the refusal alone, then forward to now
+    const n = await feed.locator('ol[aria-label="Events"] li').count();
+    expect(n).toBeGreaterThanOrEqual(2);
+    const scrub = feed.getByLabel("Replay");
+    const max = Number(await scrub.getAttribute("max"));
+    await scrub.fill(String(max - 1));
+    await expect(canvas.locator(".react-flow__edge.cv-edge-live")).toHaveCount(0);
+    await expect(codex).toHaveAttribute("data-paint", "refused");
+    await feed.getByRole("button", { name: "now" }).click();
+    await expect(canvas.locator(".react-flow__edge.cv-edge-live")).toHaveCount(1);
+    // the stream refused: polling every five seconds still paints
+    await page.route(/\/api\/agents\/events(?!\?poll=1)/, (r) => r.abort());
+    await page.reload();
+    await page.getByRole("button", { name: "Live", exact: true }).click();
+    await expect(feed.locator("[data-via=poll]")).toBeVisible();
+    emit({ kind: "verdict", agent: "gemini", plan: "e2e", slice: "c", verdict: "passed" });
+    await expect(canvas.locator('.react-flow__node[data-id="seat:ship/gemini"] .cv-agent')).toHaveAttribute("data-paint", "passed", { timeout: 7000 });
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    await expect(canvas.locator("[data-paint]")).toHaveCount(0);
+  });
+
   test("a workflow: create it with fences and steps, preview it on the graph, delete it", async ({ page }, info) => {
     desktopOnly(info);
     await open(page, "agents/workflows");

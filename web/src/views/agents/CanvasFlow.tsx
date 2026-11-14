@@ -13,14 +13,15 @@ import ELK from "elkjs/lib/elk.bundled.js";
 import type { AgentsInfo, GuardLevel, Team, Territory } from "../../api";
 import { AGENT_NAME, GLYPHS } from "./data";
 import { workflowColor } from "./TeamOrg";
+import type { Paint } from "./live";
 import { fenceSummary, seatName } from "./parts";
 import { seatKey, titleFor } from "../../roster";
 
 type Member = Team["members"][number];
 export type Seat = { team: string; m: Member; key: string };
-type AgentData = { seat: Seat; color: string; role: string; fence?: { t: string; l: string }; dim: boolean; lit: boolean; live: boolean; pocket?: Pocket };
+type AgentData = { seat: Seat; color: string; role: string; fence?: { t: string; l: string }; dim: boolean; lit: boolean; live: boolean; pocket?: Pocket; paint?: string };
 export type Pocket = { fresh: number; stale: number };
-type AreaData = { t: Territory; level: GuardLevel; mixed: boolean; cover: "all" | "part" | "none" | null; pins?: Pocket; refuse: string | null; rank?: number; brush: boolean };
+type AreaData = { t: Territory; level: GuardLevel; mixed: boolean; cover: "all" | "part" | "none" | null; pins?: Pocket; refuse: string | null; rank?: number; brush: boolean; struck?: string };
 /** The repository under the teams (P3.16): areas, their fences for the picked seat, pins and the brush. */
 export type Land = {
   areas: Territory[];
@@ -52,10 +53,10 @@ export type CanvasEdit = {
 const EditCtx = createContext<CanvasEdit | null>(null);
 
 function AgentNode({ data, selected }: NodeProps<Node<AgentData>>) {
-  const { seat: { m }, color, role, fence, dim, lit, live } = data;
+  const { seat: { m }, color, role, fence, dim, lit, live, paint } = data;
   const edit = useContext(EditCtx);
   return (
-    <div className={`cv-agent ${dim ? "dim" : ""} ${lit ? "lit" : ""} ${live ? "live" : ""} ${selected ? "sel" : ""}`} style={{ ["--wf" as string]: color }} data-seat={seatName(m)}>
+    <div className={`cv-agent ${dim ? "dim" : ""} ${lit ? "lit" : ""} ${live ? "live" : ""} ${selected ? "sel" : ""} ${paint ? `pt pt-${paint}` : ""}`} style={{ ["--wf" as string]: color }} data-seat={seatName(m)} data-paint={paint}>
       <Handle type="target" position={Position.Top} className="cv-handle" isConnectable={!!edit} />
       <div className="cv-agent-top">
         <span className="cv-glyph" title={AGENT_NAME[m.agent] ?? m.agent ?? "any agent"}>{GLYPHS[m.agent] ?? "·"}</span>
@@ -88,11 +89,11 @@ function TeamNode({ data }: NodeProps<Node<TeamData>>) {
 }
 
 function AreaNode({ data }: NodeProps<Node<AreaData>>) {
-  const { t, level, mixed, cover, pins, refuse, rank, brush } = data;
+  const { t, level, mixed, cover, pins, refuse, rank, brush, struck } = data;
   const hidden = level === "hidden";
   const tip = brush ? (refuse ?? (cover === "all" ? "Alt click to take it out of scope" : "Click to paint into scope")) : `${t.path === "." ? "root files" : t.path} · ${level}${mixed ? " in part" : ""}`;
   return (
-    <div className={`cv-area ${level} ${mixed ? "mixed" : ""} ${cover ? `cover-${cover}` : ""} ${brush ? (refuse ? "refuse" : "paint") : ""} ${rank ? "recalled" : ""}`} data-area={t.path} data-level={level} title={tip}>
+    <div className={`cv-area ${level} ${mixed ? "mixed" : ""} ${cover ? `cover-${cover}` : ""} ${brush ? (refuse ? "refuse" : "paint") : ""} ${rank ? "recalled" : ""} ${struck ? "struck" : ""}`} data-area={t.path} data-struck={struck} data-level={level} title={tip}>
       <Handle type="target" position={Position.Top} className="cv-handle" isConnectable={false} />
       <div className="cv-area-top"><b>{t.path === "." ? "root" : t.path}</b>{rank ? <span className="cv-rank">{rank}</span> : null}</div>
       <div className="cv-area-sub">
@@ -192,7 +193,7 @@ const parseEdge = (id: string) => {
   return { kind, team, from, to };
 };
 
-export default function CanvasFlow({ info, lens, onSelect, selected, edit, land }: { info: AgentsInfo; lens: Set<string>; onSelect: (s: Seat | null) => void; selected: string | null; edit?: CanvasEdit; land?: Land }) {
+export default function CanvasFlow({ info, lens, onSelect, selected, edit, land, paint }: { info: AgentsInfo; lens: Set<string>; onSelect: (s: Seat | null) => void; selected: string | null; edit?: CanvasEdit; land?: Land; paint?: Paint }) {
   const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const lensKey = [...lens].sort().join(",");
@@ -206,7 +207,7 @@ export default function CanvasFlow({ info, lens, onSelect, selected, edit, land 
 
   const nodes = useMemo(() => {
     if (!graph) return [];
-    const out: Node[] = graph.nodes.map((n) => (n.type === "agent" ? { ...n, selected: n.id === selected, data: { ...n.data, pocket: land?.pockets.get(n.id) } } : n));
+    const out: Node[] = graph.nodes.map((n) => (n.type === "agent" ? { ...n, selected: n.id === selected, data: { ...n.data, pocket: land?.pockets.get(n.id), paint: paint?.seats.get(n.id) } } : n));
     if (!land?.areas.length) return out;
     // the areas sit in rows under the teams, as wide as the teams are
     const roots = graph.nodes.filter((n) => !n.parentId);
@@ -219,11 +220,11 @@ export default function CanvasFlow({ info, lens, onSelect, selected, edit, land 
       out.push({
         id: `area:${t.path}`, type: "area", draggable: false, selectable: false, zIndex: 2,
         position: { x: x0 + (i % cols) * (AW + AGAP), y: y0 + Math.floor(i / cols) * (AH + AGAP) },
-        data: { t, level: lv.level, mixed: lv.mixed, cover: land.cover ? land.cover(t.path) : null, pins: land.pins.get(t.path), refuse: land.refuse ? land.refuse(t) : null, rank: land.rank.get(t.path), brush: land.brush } satisfies AreaData,
+        data: { t, level: lv.level, mixed: lv.mixed, cover: land.cover ? land.cover(t.path) : null, pins: land.pins.get(t.path), refuse: land.refuse ? land.refuse(t) : null, rank: land.rank.get(t.path), brush: land.brush, struck: paint?.areas.get(t.path) } satisfies AreaData,
       });
     });
     return out;
-  }, [graph, selected, land]);
+  }, [graph, selected, land, paint]);
   const edges = useMemo(() => {
     if (!graph) return [];
     let out = graph.edges;
@@ -238,8 +239,13 @@ export default function CanvasFlow({ info, lens, onSelect, selected, edit, land 
         out = [...out, ...reach.map((t) => ({ id: `sc:${t.path}`, source: selected, target: `area:${t.path}`, type: "default", className: `cv-edge-scope ${land.cover!(t.path)}`, selectable: false, deletable: false, focusable: false, zIndex: 1 } as Edge))];
       }
     }
+    // hand-offs the log saw, drawn over the planned ones
+    if (paint?.handoffs.length) {
+      const have = new Set(graph.nodes.map((n) => n.id));
+      out = [...out, ...paint.handoffs.filter((h) => have.has(h.source) && have.has(h.target)).map((h) => ({ ...h, type: "default", className: "cv-edge-live", animated: true, markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "#f97f3a" }, selectable: false, deletable: false, focusable: false, zIndex: 3 } as Edge))];
+    }
     return out;
-  }, [graph, lens.size, selected, land]);
+  }, [graph, lens.size, selected, land, paint]);
 
   const [selEdge, setSelEdge] = useState<string | null>(null);
   const seatOf = (id: string) => { const [team, key] = id.slice(5).split(/\/(.*)/s); return { team, key }; };
@@ -260,7 +266,7 @@ export default function CanvasFlow({ info, lens, onSelect, selected, edit, land 
       isValidConnection={(c) => !!c.source && !!c.target && c.source !== c.target && seatOf(c.source).team === seatOf(c.target).team}
       onConnect={onConnect}
       onBeforeDelete={async ({ nodes: ns, edges: es }) => ns.length === 0 && es.length > 0}
-      onEdgesDelete={(es) => { for (const e of es) { if (e.id.startsWith("sc:")) continue; const p = parseEdge(e.id); edit?.dropEdge(p.kind, p.team, p.from, p.to); } }}
+      onEdgesDelete={(es) => { for (const e of es) { if (e.id.startsWith("sc:") || e.id.startsWith("lv:")) continue; const p = parseEdge(e.id); edit?.dropEdge(p.kind, p.team, p.from, p.to); } }}
       deleteKeyCode={edit ? ["Backspace", "Delete"] : null}
       fitView fitViewOptions={{ padding: 0.18, maxZoom: 1.1 }} minZoom={0.2} maxZoom={2}
       proOptions={{ hideAttribution: true }}

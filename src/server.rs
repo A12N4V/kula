@@ -631,6 +631,57 @@ async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(
 
 /// Everything agents are told and allowed: guard rules and the files they fence,
 /// the task, memories (stale first), and whether MCP and the hook are wired up.
+#[derive(Deserialize)]
+struct EventsQ {
+    since: Option<u64>,
+    /// `1`: answer once as JSON (the five second poll fallback).
+    poll: Option<u8>,
+}
+
+/// The team's event log (P3.17): a server sent stream that first replays what
+/// came after `since` (or `Last-Event-ID`), then tails `.kula/events.jsonl`
+/// four times a second. `?poll=1` answers once as JSON instead.
+async fn agents_events(State(s): State<AppState>, Query(q): Query<EventsQ>, headers: axum::http::HeaderMap) -> Response {
+    use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
+    let dir = s.repo.kula_dir();
+    let last = headers.get("last-event-id").and_then(|h| h.to_str().ok()).and_then(|v| v.parse().ok());
+    let since = q.since.or(last).unwrap_or(0);
+    if q.poll == Some(1) {
+        let d = dir.clone();
+        let ev = tokio::task::spawn_blocking(move || crate::events::read(&d, since, 500)).await.unwrap_or_default();
+        return Json(json!({ "events": ev, "now": crate::events::now_ms() })).into_response();
+    }
+    type St = (std::path::PathBuf, u64, u64, std::collections::VecDeque<crate::events::Event>, bool);
+    let start: St = (dir, since, u64::MAX, Default::default(), true);
+    let stream = futures_util::stream::unfold(start, |(dir, mut since, mut len, mut q, mut first)| async move {
+        loop {
+            if let Some(e) = q.pop_front() {
+                let ev = SseEvent::default().id(e.seq.to_string()).event("kula").json_data(&e).unwrap_or_default();
+                return Some((Ok::<_, std::convert::Infallible>(ev), (dir, since, len, q, first)));
+            }
+            if !first {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+            first = false;
+            let now = std::fs::metadata(crate::events::log_path(&dir)).map(|m| m.len()).unwrap_or(0);
+            if now == len {
+                continue;
+            }
+            if now < len && len != u64::MAX {
+                since = 0; // the log was cut back: its lines renumbered
+            }
+            len = now;
+            let d = dir.clone();
+            let got = tokio::task::spawn_blocking(move || crate::events::read(&d, since, 500)).await.unwrap_or_default();
+            if let Some(e) = got.last() {
+                since = e.seq;
+            }
+            q.extend(got);
+        }
+    });
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(15))).into_response()
+}
+
 async fn agents_info(State(s): State<AppState>) -> ApiResult {
     // P1: mtime-keyed cache – skills, research json, kula.toml, connections and
     // memories are only rescanned when one of the files behind them moves.
@@ -1234,6 +1285,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/git/{action}", post(git_action))
         .route("/api/meta", get(meta_all))
         .route("/api/agents", get(agents_info))
+        .route("/api/agents/events", get(agents_events))
         .route("/api/agents/{action}", post(agents_action))
         // K2: unified agent config (see the K2 block at the end of this file).
         // under /api/agent/ (GET namespace): axum merges a static path into the

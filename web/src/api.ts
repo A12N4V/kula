@@ -17,6 +17,32 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 }
 
 export const get = <T>(path: string) => req<T>("GET", path);
+
+/** One line of the team's event log (P3.17). */
+export type KulaEvent = {
+  seq: number; ts: number;
+  kind: "team_start" | "team_stop" | "refused" | "handoff" | "slice" | "verdict" | string;
+  team?: string; agent?: string; from?: string; plan?: string; slice?: string; path?: string; verdict?: string; msg?: string;
+};
+
+/** Tail the event log as server sent events over fetch (EventSource cannot carry the token). Resolves when the stream ends. */
+export async function streamEvents(since: number, onEvent: (e: KulaEvent) => void, signal: AbortSignal): Promise<void> {
+  const res = await fetch(`/api/agents/events?since=${since}`, { headers: { "x-kula-token": token, accept: "text/event-stream" }, signal });
+  if (!res.ok || !res.body || !(res.headers.get("content-type") ?? "").includes("text/event-stream")) throw new Error(res.statusText || "no stream");
+  const rd = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await rd.read();
+    if (done) return;
+    buf += value;
+    let i: number;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const block = buf.slice(0, i); buf = buf.slice(i + 2);
+      const data = block.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trimStart()).join("\n");
+      if (data) try { onEvent(JSON.parse(data)); } catch { /* a torn line */ }
+    }
+  }
+}
 export const post = <T>(path: string, body: unknown = {}) => req<T>("POST", path, body);
 const q = (o: Record<string, string | number | undefined>) =>
   new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined) as [string, string][]).toString();
@@ -194,6 +220,7 @@ export const api = {
   history: (id: number) => get<SymbolHistory>(`/api/history/${id}`),
   overview: () => get<Overview>("/api/overview"),
   agents: () => get<AgentsInfo>("/api/agents"),
+  agentEvents: (since: number) => get<{ events: KulaEvent[]; now: number }>(`/api/agents/events?poll=1&since=${since}`),
   agentAction: <T = unknown>(action: AgentAction, body: Record<string, unknown> = {}) =>
     post<T>(`/api/agents/${action}`, body),
   sparql: (query: string, limit = 500) => post<SparqlResult>("/api/kg/sparql", { query, limit }),

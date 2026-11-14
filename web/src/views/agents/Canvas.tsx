@@ -17,17 +17,20 @@ import { coverage, levelFor, pins, pocket, refusal, seatScope } from "./territor
 import { SeatMemory } from "./SeatMemory";
 import { seatKey } from "../../roster";
 import { useDraft, ArchitectInspector, ChangesCard, type Pick, type LinkKind } from "./Architect";
+import { paintAt, useEvents } from "./live";
+import { LiveFeed } from "./LiveFeed";
 
 const CanvasFlow = lazy(() => import("./CanvasFlow"));
 
 export default function Canvas({ info, act, setTab, onGraph, open }: { info: AgentsInfo; act: Act; setTab: (t: Tab) => void; onGraph: (wf?: string) => void; open: (t: string) => void }) {
   const [lens, setLens] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState<Seat | null>(null);
-  const [mode, setMode] = useState<"view" | "architect">("view");
+  const [mode, setMode] = useState<"view" | "architect" | "live">("view");
   const [pick, setPick] = useState<Pick>(null);
   const [kind, setKind] = useState<LinkKind>("rt");
   const d = useDraft(info, pick, setPick, kind);
   const arch = mode === "architect";
+  const live = mode === "live";
   const shown = arch ? { ...info, teams: d.draft } : info;
   const used = info.workflows.filter((w) => info.teams.some((t) => t.members.some((m) => m.workflow === w.name)));
   const toggle = (n: string) => setLens((s) => { const x = new Set(s); x.has(n) ? x.delete(n) : x.add(n); return x; });
@@ -91,6 +94,21 @@ export default function Canvas({ info, act, setTab, onGraph, open }: { info: Age
     };
   }, [areas, info.memories, shown, picked, lens, arch, brush, rank, pick, d]);
 
+  // P3.17: the event log streamed onto the canvas, and replay of a run
+  const ev = useEvents(live);
+  const [run, setRun] = useState("");
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [live]);
+  const runs = useMemo(() => [...new Set(ev.events.map((e) => e.plan).filter((x): x is string => !!x))], [ev.events]);
+  const feed = useMemo(() => run ? ev.events.filter((e) => e.plan === run) : ev.events, [ev.events, run]);
+  const at = cursor !== null && feed[cursor] ? feed[cursor].ts : now;
+  const paint = useMemo(() => live ? paintAt(info, areas, feed.slice(0, cursor === null ? feed.length : cursor + 1), at) : undefined, [live, info, areas, feed, cursor, at]);
+
   return (
     <div className="cv-split">
       <section className="cv-frame" aria-label="Agent canvas">
@@ -99,7 +117,8 @@ export default function Canvas({ info, act, setTab, onGraph, open }: { info: Age
           <span className="widget-count">{info.teams.length} teams · {seats} seats</span>
           <span className="spacer" />
           <div className="seg" role="group" aria-label="Canvas mode">
-            <button className={!arch ? "on" : ""} aria-pressed={!arch} onClick={() => setMode("view")}>View</button>
+            <button className={mode === "view" ? "on" : ""} aria-pressed={mode === "view"} onClick={() => setMode("view")}>View</button>
+            <button className={live ? "on" : ""} aria-pressed={live} onClick={() => { setMode("live"); setCursor(null); }}>Live</button>
             <button className={arch ? "on" : ""} aria-pressed={arch} onClick={() => { setMode("architect"); setSel(null); }}>Architect{d.dirty && <i className="cv-dirty" aria-label="unsaved" />}</button>
           </div>
           {arch && (
@@ -131,7 +150,7 @@ export default function Canvas({ info, act, setTab, onGraph, open }: { info: Age
             <Suspense fallback={<div className="cv-msg">Loading the canvas</div>}>
               {arch
                 ? <CanvasFlow info={shown} lens={lens} onSelect={(s) => setPick(s ? { team: s.team, key: s.key } : null)} selected={pick?.key ? `seat:${pick.team}/${pick.key}` : null} edit={d.edit} land={land} />
-                : <CanvasFlow info={info} lens={lens} onSelect={setSel} selected={sel ? `seat:${sel.team}/${sel.key}` : null} land={land} />}
+                : <CanvasFlow info={info} lens={lens} onSelect={setSel} selected={sel ? `seat:${sel.team}/${sel.key}` : null} land={land} paint={paint} />}
             </Suspense>
           )}
           {(() => {
@@ -149,6 +168,7 @@ export default function Canvas({ info, act, setTab, onGraph, open }: { info: Age
 
       <aside className="cv-side">
         {arch && <><ChangesCard d={d} act={act} /><ArchitectInspector info={info} d={d} pick={pick} setPick={setPick} /></>}
+        {live && <LiveFeed events={feed} via={ev.via} runs={runs} run={run} setRun={setRun} cursor={cursor} setCursor={setCursor} />}
         {!arch && sel && team && (
           <section className="card cv-inspect" aria-label="Seat">
             <div className="card-head"><h2>{seatName(sel.m)}</h2><span className="muted">{team.name}</span><span className="spacer" /><button className="icon-btn" onClick={() => setSel(null)} title="Close" aria-label="Close"><Icon.close /></button></div>

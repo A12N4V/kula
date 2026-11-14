@@ -8,6 +8,7 @@ mod clean;
 mod cli;
 mod cmd;
 mod config;
+mod events;
 mod graph;
 mod guard;
 mod index;

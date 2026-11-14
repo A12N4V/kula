@@ -245,12 +245,16 @@ pub fn team_start(repo: &Repo, name: &str, by: &str) -> Result<ActiveTeam> {
     let a = ActiveTeam { name: name.into(), started: crate::meta::now(), by: by.into() };
     std::fs::create_dir_all(repo.kula_dir())?;
     std::fs::write(team_path(repo), serde_json::to_string_pretty(&a)?)?;
+    crate::events::append(&repo.kula_dir(), crate::events::Event { kind: "team_start".into(), team: name.into(), agent: by.into(), ..Default::default() });
     Ok(a)
 }
 
 pub fn team_stop(repo: &Repo) -> Result<Option<ActiveTeam>> {
     let t = team(repo);
     let _ = std::fs::remove_file(team_path(repo));
+    if let Some(a) = &t {
+        crate::events::append(&repo.kula_dir(), crate::events::Event { kind: "team_stop".into(), team: a.name.clone(), ..Default::default() });
+    }
     Ok(t)
 }
 

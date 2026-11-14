@@ -684,6 +684,7 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
+ "futures-util",
  "globset",
  "ignore",
  "libloading",

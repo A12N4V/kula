@@ -108,7 +108,15 @@ impl Plan {
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d)?;
         }
+        // `.kula/runs/<plan>/state.json`: tell the event log what moved since the last save.
+        let kula = path.parent().and_then(|d| d.parent()).and_then(|d| d.parent()).filter(|_| path.ends_with("state.json"));
+        let old = kula.and_then(|_| std::fs::read_to_string(path).ok()).and_then(|s| serde_json::from_str::<Plan>(&s).ok());
         std::fs::write(path, serde_json::to_string_pretty(self)? + "\n")?;
+        if let Some(k) = kula {
+            for e in crate::events::plan_diff(old.as_ref(), self) {
+                crate::events::append(k, e);
+            }
+        }
         Ok(())
     }
     /// `.kula/runs/<plan>/`.
