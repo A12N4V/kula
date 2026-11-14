@@ -47,6 +47,7 @@ import EditorTabs, { tabKey, type Tab } from "./studio/EditorTabs";
 const store = {
   get: (k: string, d: number) => { try { const v = Number(localStorage.getItem(k)); return v > 0 ? v : d; } catch { return d; } },
   flag: (k: string, d: boolean) => { try { const v = localStorage.getItem(k); return v == null ? d : v === "1"; } catch { return d; } },
+  str: (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* blocked */ } },
 };
 
@@ -63,30 +64,59 @@ function Resizer({ side, width, onWidth }: { side: "left" | "right"; width: numb
   return <div className={`tw-resize ${side}`} onPointerDown={down} role="separator" aria-orientation="vertical" aria-label="Resize" />;
 }
 
-type Rail = { id: View; label: string; icon: () => React.ReactElement; key: string };
-// Grouped by intent: understand · change · collaborate · agents and the graph as data · escape hatch.
-const GROUPS: Rail[][] = [
-  [
-    { id: "overview", label: "Overview", icon: Icon.home, key: "1" },
-    { id: "graph", label: "Graph", icon: Icon.graph, key: "2" },
-    { id: "flows", label: "Flows", icon: Icon.flows, key: "3" },
-  ],
-  [
-    { id: "git", label: "Git", icon: Icon.branches, key: "4" },
-  ],
-  [
-    { id: "proposals", label: "Proposals", icon: Icon.pr, key: "7" },
-    { id: "issues", label: "Issues", icon: Icon.issues, key: "8" },
-    { id: "notes", label: "Notes", icon: Icon.notes, key: "9" },
-  ],
-  [{ id: "agents", label: "Agents", icon: Icon.agents, key: "a" }],
-  // Pinned to the foot of the stripe, the way an IDE keeps Terminal there.
-  [
-    { id: "query", label: "Query (SPARQL)", icon: Icon.query, key: "q" },
-    { id: "console", label: "Console", icon: Icon.console, key: "0" },
-  ],
+type ViewDef = { id: View; label: string; short: string; icon: () => React.ReactElement; key: string };
+/** Every view: each keeps its own hash, so old links still land. */
+const VIEWS: ViewDef[] = [
+  { id: "overview", label: "Overview", short: "Overview", icon: Icon.home, key: "1" },
+  { id: "git", label: "Git", short: "Git", icon: Icon.branches, key: "2" },
+  { id: "graph", label: "Graph", short: "Graph", icon: Icon.graph, key: "" },
+  { id: "flows", label: "Flows", short: "Flows", icon: Icon.flows, key: "" },
+  { id: "query", label: "Query (SPARQL)", short: "Query", icon: Icon.query, key: "q" },
+  { id: "proposals", label: "Proposals", short: "Proposals", icon: Icon.pr, key: "" },
+  { id: "issues", label: "Issues", short: "Issues", icon: Icon.issues, key: "" },
+  { id: "notes", label: "Notes", short: "Notes", icon: Icon.notes, key: "" },
+  { id: "agents", label: "Agents", short: "Agents", icon: Icon.agents, key: "5" },
+  { id: "console", label: "Console", short: "Console", icon: Icon.console, key: "0" },
 ];
-const VIEWS = GROUPS.flat();
+const vdef = (id: View) => VIEWS.find((x) => x.id === id)!;
+
+/** The rail: six places. Map and Work hold sub views behind a toggle and remember the last one. */
+type RailEntry = { id: string; label: string; icon: () => React.ReactElement; key: string; views: View[] };
+const RAIL: RailEntry[][] = [
+  [
+    { id: "overview", label: "Overview", icon: Icon.home, key: "1", views: ["overview"] },
+    { id: "git", label: "Git", icon: Icon.branches, key: "2", views: ["git"] },
+    { id: "map", label: "Map", icon: Icon.graph, key: "3", views: ["graph", "flows", "query"] },
+    { id: "work", label: "Work", icon: Icon.issues, key: "4", views: ["proposals", "issues", "notes"] },
+    { id: "agents", label: "Agents", icon: Icon.agents, key: "5", views: ["agents"] },
+  ],
+  // Pinned to the foot of the stripe, the way an IDE keeps Terminal there.
+  [{ id: "console", label: "Console", icon: Icon.console, key: "0", views: ["console"] }],
+];
+const RAIL_FLAT = RAIL.flat();
+const railOf = (v: View) => RAIL_FLAT.find((r) => r.views.includes(v))!;
+const lastSub = (r: RailEntry): View => {
+  const s = store.str(`kula.rail.${r.id}`, r.views[0]) as View;
+  return r.views.includes(s) ? s : r.views[0];
+};
+
+/** The glass toggle over a grouped view: Graph · Flows · Query, or Proposals · Issues · Notes. */
+function SubToggle({ view, go, badge }: { view: View; go: (v: View) => void; badge: Partial<Record<View, number>> }) {
+  const r = railOf(view);
+  if (!r || r.views.length < 2) return null;
+  return (
+    <div className="subtoggle" role="radiogroup" aria-label={r.label}>
+      {r.views.map((v) => {
+        const d = vdef(v);
+        return (
+          <button key={v} role="radio" aria-checked={v === view} aria-label={d.label} className={v === view ? "on" : ""} onClick={() => go(v)} title={d.label}>
+            <d.icon /><span>{d.short}</span>{!!badge[v] && <span className="badge">{badge[v]}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 type Contrast = { base: string; head: string; mode?: ContrastMode } | null;
 
@@ -210,6 +240,8 @@ export default function App() {
     showView(v); setNoTabs(false);
     setView(v);
     setTarget(t);
+    const r = railOf(v);
+    if (r && r.views.length > 1) store.set(`kula.rail.${r.id}`, v);
     if (v === "graph") {
       setContrast(t.contrast ?? null);
       if (t.symbol) setFocus(t.symbol);
@@ -258,10 +290,14 @@ export default function App() {
         return;
       }
       if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") history.back(); else history.forward(); return; }
+      // ⌃` opens the Console, as an IDE opens its terminal.
+      if (e.ctrlKey && !e.metaKey && e.code === "Backquote") { e.preventDefault(); go("console"); return; }
       const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-      const v = VIEWS.find((x) => x.key === e.key);
-      if (v) go(v.id);
+      const r = RAIL_FLAT.find((x) => x.key === e.key);
+      if (r) go(lastSub(r));
+      else if (e.key === "a") go("agents");
+      else if (e.key === "q") go("query");
       if (e.key === "/") { e.preventDefault(); setPalette(true); }
       if (e.key === "?") setHelp((h) => !h);
       if (e.key === ",") setPrefs((p) => !p);
@@ -306,15 +342,19 @@ export default function App() {
             <Icon.project /><span className="rail-label">Project</span>
           </button>
         </div>
-        {GROUPS.map((g, gi) => (
+        {RAIL.map((g, gi) => (
           <div key={gi} className="rail-group">
-            {g.map((v) => (
-              <button key={v.id} className={!file && !noTabs && view === v.id ? "on" : ""} onClick={() => { go(v.id); setRail(false); }} data-tip={`${v.label}  ${v.key}`} aria-label={v.label} aria-current={view === v.id ? "page" : undefined}>
-                <v.icon />
-                <span className="rail-label">{v.label}</span>
-                {!!badge[v.id] && <span className="badge">{badge[v.id]}</span>}
-              </button>
-            ))}
+            {g.map((r) => {
+              const here = r.views.includes(view);
+              const n = r.views.reduce((s, v) => s + (badge[v] ?? 0), 0);
+              return (
+                <button key={r.id} className={!file && !noTabs && here ? "on" : ""} onClick={() => { go(here ? view : lastSub(r)); setRail(false); }} data-tip={`${r.label}  ${r.key}`} aria-label={r.label} aria-current={here ? "page" : undefined}>
+                  <r.icon />
+                  <span className="rail-label">{r.label}</span>
+                  {!!n && <span className="badge">{n}</span>}
+                </button>
+              );
+            })}
           </div>
         ))}
       </nav>
@@ -357,7 +397,7 @@ export default function App() {
                 <dt>Search everywhere</dt><dd><kbd>⇧⇧</kbd></dd>
                 <dt>Project</dt><dd><kbd>⌥1</kbd></dd>
                 <dt>Structure</dt><dd><kbd>⌥7</kbd></dd>
-                <dt>Graph</dt><dd><kbd>2</kbd></dd>
+                <dt>Map</dt><dd><kbd>3</kbd></dd>
                 <dt>Shortcuts</dt><dd><kbd>?</kbd></dd>
               </dl>
             </div>
@@ -365,7 +405,9 @@ export default function App() {
             <FileEditor path={file.path} line={file.line} onLine={setCurLine} />
           ) : (
           /* Keyed so each view change plays a short enter transition. */
-          <div className="view-enter" key={view + (contrast ? ":c" : "")}>
+          <div className={`view-enter ${railOf(view)?.views.length > 1 ? "has-sub" : ""}`} key={view + (contrast ? ":c" : "")}>
+            <SubToggle view={view} go={(v) => go(v)} badge={badge} />
+            <div className="view-body">
             <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
               {view === "overview" && <Overview repo={repo} version={version} go={go} />}
               {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
@@ -378,6 +420,7 @@ export default function App() {
               {view === "query" && <Query {...nav} />}
               {view === "console" && <Console {...nav} />}
             </Suspense>
+            </div>
           </div>
           )}
           </>
@@ -531,7 +574,7 @@ function Help({ onClose }: { onClose: () => void }) {
         <div className="help-grid" data-testid="help-grid">
           {GLOBAL_SHORTCUTS.map((k) => (<div key={k.keys} className="help-row" data-keys={k.keys}><kbd>{k.keys}</kbd><span>{k.label}</span></div>))}
           <div className="help-sep">Views</div>
-          {VIEWS.map((v) => (<div key={v.id} className="help-row" data-keys={v.key}><kbd>{v.key}</kbd><span>{v.label}</span></div>))}
+          {RAIL_FLAT.map((v) => (<div key={v.id} className="help-row" data-keys={v.key}><kbd>{v.key}</kbd><span>{v.label}</span></div>))}
           <div className="help-sep">In context</div>
           {CONTEXT_SHORTCUTS.map((k) => (<div key={k.keys} className="help-row" data-keys={k.keys}><kbd>{k.keys}</kbd><span>{k.label}</span></div>))}
         </div>

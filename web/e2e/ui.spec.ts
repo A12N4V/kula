@@ -593,7 +593,7 @@ test.describe("query", () => {
     // A name beside its path opens the symbol in the map.
     await rows.first().locator("td").first().locator("button").click();
     await expect(page).toHaveURL(/#graph\/\d+/);
-    await page.getByRole("button", { name: "Query (SPARQL)" }).click();
+    await page.getByRole("radio", { name: "Query (SPARQL)" }).click();
     const q = page.getByRole("textbox", { name: "SPARQL query" });
     await q.fill("SELECT ?x WHERE { ?x kula:nope }}");
     await q.press("ControlOrMeta+Enter");
@@ -942,7 +942,8 @@ test.describe("notes autofill", () => {
     await page.keyboard.type("context_pack");
     await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
     await expect(page.locator(".inspector h2")).toHaveText("context_pack");
-    await page.locator(".rail").getByRole("button", { name: "Notes" }).click();
+    await page.locator(".rail").getByRole("button", { name: "Work" }).click();
+    await page.getByRole("radio", { name: "Notes" }).click();
     const target = page.getByLabel("Note target");
     await target.fill("");
     await target.focus();
@@ -1348,9 +1349,12 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
     await expect(page).toHaveURL(/#agents\b/);
     await page.keyboard.press("q");
     await expect(page).toHaveURL(/#query\b/);
-    // A context shortcut: f shows the fences in force on the graph.
-    await page.keyboard.press("2");
+    // 3 opens Map on the sub view used last; the toggle switches it.
+    await page.keyboard.press("3");
+    await expect(page).toHaveURL(/#query\b/);
+    await page.getByRole("radio", { name: "Graph" }).click();
     await expect(page).toHaveURL(/#graph\b/);
+    // A context shortcut: f shows the fences in force on the graph.
     // The fence overlay draws once the graph is up; under load the layout takes a while.
     await expect(page.locator(".graph-wrap canvas").first()).toBeVisible({ timeout: 30_000 });
     await page.keyboard.press("f");
@@ -1763,5 +1767,27 @@ test.describe("isolate from the map", () => {
     await expect(panel.locator(".iso-sel")).toContainText(a.label);
     await page.keyboard.press("i");
     await expect(page.getByRole("dialog", { name: "Isolate part of the graph" }).getByLabel("Selectors")).toHaveValue(/symbol:|path:/);
+  });
+});
+
+test.describe("P3.11 · six view rail", () => {
+  test("six places; Map and Work toggle their sub views and remember the last one", async ({ page }) => {
+    await open(page, "overview");
+    const names = await page.locator("nav.rail .rail-group:not(.rail-tools) button").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
+    expect(names).toEqual(["Overview", "Git", "Map", "Work", "Agents", "Console"]);
+    await page.keyboard.press("4");
+    await expect(page).toHaveURL(/#proposals\b/);
+    await page.getByRole("radio", { name: "Issues" }).click();
+    await expect(page).toHaveURL(/#issues\b/);
+    await page.keyboard.press("1");
+    await page.keyboard.press("4");
+    await expect(page).toHaveURL(/#issues\b/);
+    await expect(page.locator("nav.rail").getByRole("button", { name: "Work" })).toHaveAttribute("aria-current", "page");
+    // Old hashes still land on their sub view, under the right rail entry.
+    await page.goto("/#flows");
+    await expect(page.getByRole("radio", { name: "Flows" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.locator("nav.rail").getByRole("button", { name: "Map" })).toHaveAttribute("aria-current", "page");
+    await page.keyboard.press("Control+Backquote");
+    await expect(page).toHaveURL(/#console\b/);
   });
 });

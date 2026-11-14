@@ -103,3 +103,24 @@
   .board { position: static; overflow: visible; display: flex; flex-direction: column; }
   .board > .widget { height: 360px; flex: none; }
 }
+
+/* ------------------------------------------- grouped views: the sub toggle */
+.view-body { position: absolute; inset: 0; }
+.has-sub > .view-body { top: 42px; }
+.subtoggle {
+  position: absolute; top: 8px; left: 8px; height: 28px; z-index: 5;
+  display: inline-flex; gap: 2px; padding: 2px;
+  border: 1px solid var(--glass-line); border-radius: var(--r-md);
+  background: var(--sheen), var(--glass);
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+}
+.subtoggle button {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0 10px;
+  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer;
+  transition: background var(--dur), color var(--dur);
+}
+.subtoggle button svg { width: 13px; height: 13px; }
+.subtoggle button:hover { color: var(--text); background: rgba(255, 244, 230, 0.05); }
+.subtoggle button.on { color: var(--text); background: linear-gradient(180deg, rgba(249, 127, 58, 0.22), rgba(249, 127, 58, 0.08)); box-shadow: inset 0 0 0 1px rgba(249, 127, 58, 0.3); }
+.subtoggle .badge { font-size: 9.5px; letter-spacing: 0; color: var(--accent); }

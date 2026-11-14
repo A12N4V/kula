@@ -103,7 +103,8 @@ test("notes autofill", async ({ page }) => {
   await at(page, "graph");
   await settled(page);
   await inspect(page, "resolve_target");
-  await page.locator(".rail").getByRole("button", { name: "Notes" }).click();
+  await page.locator(".rail").getByRole("button", { name: "Work" }).click();
+    await page.getByRole("radio", { name: "Notes" }).click();
   const target = page.getByLabel("Note target");
   await target.fill("");
   await target.focus();

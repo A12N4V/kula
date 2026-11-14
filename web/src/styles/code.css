@@ -171,6 +171,8 @@
 .kq-err { margin: 16px 18px; padding: 10px 12px; border: 1px solid color-mix(in oklab, var(--red) 45%, var(--line)); color: var(--red); white-space: pre-wrap; font-size: 12px; }
 .kq-bool { padding: 24px 18px; font: 600 22px var(--mono); }
 .kq-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+/* the split grab strip is 28px wide; keep the first column clear of it */
+.split.kq .kq-table th:first-child, .split.kq .kq-table td:first-child { padding-left: 34px; }
 .kq-table th { position: sticky; top: 0; z-index: 1; padding: 8px 12px; border-bottom: 1px solid var(--line-2); background: var(--bg); color: var(--text-3); font: 600 10.5px var(--mono); letter-spacing: .06em; text-align: left; white-space: nowrap; }
 .kq-table td { padding: 6px 12px; border-bottom: 1px solid var(--line); vertical-align: top; max-width: 480px; overflow: hidden; text-overflow: ellipsis; }
 .kq-table tr:hover td { background: var(--panel); }
