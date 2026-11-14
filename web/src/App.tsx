@@ -191,7 +191,7 @@ export default function App() {
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
     else if (view === "git" && target.sha) h += `/${target.sha}`;
-    else if (view === "agents" && target.tab && target.tab !== "overview") h += `/${target.tab}`;
+    else if (view === "agents" && target.tab && target.tab !== "canvas") h += `/${target.tab}`;
     if (`#${h}` === location.hash) return;
     if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
     else history.pushState(null, "", `#${h}`);

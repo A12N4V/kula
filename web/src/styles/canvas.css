@@ -1,0 +1,128 @@
+/* ================================================================ canvas
+   The agent canvas (P3.14): a black stage beside a column of cards, drawn
+   like the research workbench graph. Team frames are hairline compound
+   nodes, seats are near black entities that warm to orange on hover. Above
+   1100px the split fills what is left of the page; below it stacks and the
+   page scrolls. */
+
+.page.agents:has(.cv-split) { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 14px; }
+.page.agents:has(.cv-split) > * { flex: none; width: 100%; }
+.page.agents > .ag-panel:has(> .cv-split) { flex: 1; min-height: 0; display: flex; flex-direction: column; max-width: none; }
+.cv-split {
+  flex: 1; min-height: 420px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 8px;
+}
+.cv-frame {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  border: 1px solid var(--glass-line); border-radius: var(--r-lg);
+  background: var(--bg);
+  overflow: hidden;
+}
+.cv-bar {
+  flex: none; height: 36px; display: flex; align-items: center; gap: 8px;
+  padding: 0 6px 0 10px; border-bottom: 1px solid var(--glass-line);
+  background: var(--panel);
+}
+.cv-bar .spacer { flex: 1; }
+.cv-lenses { display: flex; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.cv-lens {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; flex: none;
+  border: 1px solid var(--glass-line-2); border-radius: var(--r-sm); background: transparent; color: var(--text-2);
+  font: 500 10.5px var(--mono); letter-spacing: .06em; cursor: pointer;
+  transition: background var(--dur), color var(--dur), border-color var(--dur);
+}
+.cv-lens i { width: 7px; height: 7px; border-radius: 50%; background: var(--wf); }
+.cv-lens:hover { color: var(--accent); border-color: var(--accent); }
+.cv-lens.on { color: var(--text); border-color: color-mix(in oklab, var(--wf) 55%, transparent); background: color-mix(in oklab, var(--wf) 12%, transparent); }
+.cv-lens.clear { padding: 0 5px; }
+.cv-lens.clear svg { width: 12px; height: 12px; }
+
+.cv-stage { position: relative; flex: 1; min-height: 0; }
+.cv-msg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); font: 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.cv-legend {
+  position: absolute; left: 10px; bottom: 10px; z-index: 5; display: flex; gap: 12px; pointer-events: none;
+  padding: 5px 9px; border: 1px solid var(--glass-line); border-radius: var(--r-sm);
+  background: var(--glass-2);
+  font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3);
+}
+.cv-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cv-legend i { width: 16px; height: 0; border-top: 1.5px solid #78604f; }
+.cv-legend i.ho { border-top: 1.5px dashed var(--accent); }
+
+/* xyflow, quietened to the house look */
+.cv-stage .react-flow {
+  --xy-background-color: transparent;
+  --xy-node-background-color: transparent;
+  --xy-node-border: none;
+  --xy-node-boxshadow-hover: none;
+  --xy-node-boxshadow-selected: none;
+  --xy-controls-button-background-color: #090807;
+  --xy-controls-button-background-color-hover: #140c08;
+  --xy-controls-button-color: var(--text-2);
+  --xy-controls-button-border-color: var(--glass-line);
+  --xy-minimap-background-color: #050505;
+  background: transparent;
+}
+.cv-stage .react-flow__node { font-family: inherit; }
+.cv-stage .react-flow__node-team { pointer-events: none; }
+.cv-controls { border-radius: var(--r-md); overflow: hidden; border: 1px solid var(--glass-line); box-shadow: none; }
+.cv-controls button { border-bottom-color: var(--glass-line); transition: color var(--flow), background var(--flow); }
+.cv-controls button:hover { color: var(--accent); }
+.cv-minimap { border: 1px solid var(--glass-line); border-radius: var(--r-md); overflow: hidden; }
+.cv-handle { opacity: 0; width: 1px; height: 1px; min-width: 0; min-height: 0; border: 0; pointer-events: none; }
+
+.cv-edge-rt .react-flow__edge-path { stroke: #78604f; stroke-width: 1.2; }
+.cv-edge-ho .react-flow__edge-path { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.react-flow__edge.dim { opacity: .18; }
+
+/* team frames */
+.cv-team {
+  width: 100%; height: 100%; border-radius: var(--r-lg);
+  border: 1px solid var(--glass-line);
+  background: rgba(5, 5, 5, 0.9);
+}
+.cv-team[data-depth="1"] { background: #080706; border-color: var(--glass-line-2); }
+.cv-team[data-depth="2"], .cv-team[data-depth="3"] { background: #0c0a09; border-color: var(--glass-line-2); }
+.cv-team.live { border-color: color-mix(in oklab, var(--accent) 40%, transparent); }
+.cv-team-head { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; }
+.cv-team-head b { font-family: "Cormorant Garamond", var(--display, serif); font-size: 17px; font-weight: 500; color: var(--text); }
+.cv-team-n { font: 10.5px var(--mono); color: var(--text-3); }
+.cv-team-live { font: 600 9.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+
+/* seats */
+.cv-agent {
+  width: 208px; height: 70px; box-sizing: border-box; padding: 9px 11px; display: grid; gap: 6px; align-content: center;
+  border: 1px solid var(--glass-line-2); border-radius: var(--r-sm);
+  background: #0a0a0a;
+  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--wf) 75%, transparent);
+  cursor: pointer; transition: opacity .18s ease, border-color .18s ease, background .18s ease, filter .18s ease;
+}
+.cv-agent:hover { border-color: var(--accent); background: #140c08; }
+.cv-agent.sel { border-color: var(--accent); background: #140c08; box-shadow: inset 2px 0 0 var(--accent), 0 0 0 1px rgba(249, 127, 58, 0.25); }
+.cv-agent.lit { border-color: color-mix(in oklab, var(--wf) 60%, transparent); }
+.cv-agent.dim { opacity: .28; filter: saturate(.3); }
+.cv-agent-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.cv-glyph { width: 16px; flex: none; text-align: center; font: 13px var(--mono); color: var(--accent); }
+.cv-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--text); }
+.cv-fence { flex: none; font: 600 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 1px 5px; border: 1px solid currentColor; border-radius: 4px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-fence.locked { color: var(--red); } .cv-fence.hidden { color: var(--violet); } .cv-fence.review { color: var(--yellow); } .cv-fence.open { color: var(--green); }
+.cv-agent-sub { display: flex; align-items: center; gap: 8px; min-width: 0; font: 10.5px var(--mono); color: var(--text-3); }
+.cv-role { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; letter-spacing: .1em; font-size: 9.5px; }
+.cv-wf { display: inline-flex; align-items: center; gap: 5px; color: var(--text-2); white-space: nowrap; }
+.cv-wf i { width: 6px; height: 6px; border-radius: 50%; background: var(--wf); }
+.cv-wf.none { color: var(--text-3); }
+
+/* side column */
+.cv-side { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
+.cv-side > .card { margin: 0; }
+.cv-inspect .card-head .spacer { flex: 1; }
+
+@media (max-width: 1100px) {
+  .page.agents:has(.cv-split) { display: block; overflow: auto; }
+  .cv-split { grid-template-columns: minmax(0, 1fr); }
+  .cv-frame { height: 560px; }
+  .cv-side { overflow: visible; }
+}
+@media (max-width: 760px) {
+  .cv-frame { height: 440px; }
+}

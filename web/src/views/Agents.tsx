@@ -14,7 +14,7 @@ import { Empty, Icon, useToast } from "../ui";
 import { useCode } from "../CodePanel";
 import type { Nav } from "./agents/data";
 import { LEVEL_TEXT, LEVEL_MEANS, GuardTag, Snippet } from "./agents/parts";
-import Overview from "./agents/Overview";
+import Canvas from "./agents/Canvas";
 import Workflows from "./agents/Workflows";
 import ResearchTab from "./agents/Research";
 import Teams from "./agents/Teams";
@@ -25,7 +25,7 @@ import Connect from "./agents/Connect";
 import Skills from "./agents/Skills";
 
 const TABS = [
-  { id: "overview", label: "Overview", icon: Icon.agents },
+  { id: "canvas", label: "Canvas", icon: Icon.agents },
   { id: "workflows", label: "Workflows", icon: Icon.workflow },
   { id: "research", label: "Research", icon: Icon.flask },
   { id: "teams", label: "Teams", icon: Icon.team },
@@ -42,13 +42,13 @@ export { LEVEL_TEXT, LEVEL_MEANS, GuardTag, Snippet };
 export default function Agents({ version, onChanged, openSymbol, go, target }: Nav) {
   const [info, setInfo] = useState<AgentsInfo | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [tab, setTabState] = useState<Tab>(() => (TABS.some((t) => t.id === target?.tab) ? target!.tab : "overview") as Tab);
+  const [tab, setTabState] = useState<Tab>(() => (TABS.some((t) => t.id === target?.tab) ? target!.tab : "canvas") as Tab);
   const toast = useToast();
   const code = useCode();
   const load = () => api.agents().then((i) => { setInfo(i); setErr(null); }).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, [version]);
   // The URL is the tab: back and forward move between them.
-  useEffect(() => { setTabState((TABS.some((t) => t.id === target?.tab) ? target!.tab : "overview") as Tab); }, [target?.tab]);
+  useEffect(() => { setTabState((TABS.some((t) => t.id === target?.tab) ? target!.tab : "canvas") as Tab); }, [target?.tab]);
   const setTab = (t: Tab) => { setTabState(t); go?.("agents", { tab: t }); };
 
   const act = async (action: Parameters<typeof api.agentAction>[0], body: Record<string, unknown>, done: string) => {
@@ -89,7 +89,7 @@ export default function Agents({ version, onChanged, openSymbol, go, target }: N
       </nav>
 
       <div className="ag-panel" key={tab}>
-        {tab === "overview" && <Overview info={info} act={act} setTab={setTab} onGraph={onGraph} open={open} />}
+        {tab === "canvas" && <Canvas info={info} act={act} setTab={setTab} onGraph={onGraph} open={open} />}
         {tab === "workflows" && <Workflows info={info} act={act} onGraph={onGraph} setTab={setTab} />}
         {tab === "research" && <ResearchTab info={info} act={act} open={open} go={go} />}
         {tab === "teams" && <Teams info={info} act={act} setTab={setTab} />}

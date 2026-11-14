@@ -107,7 +107,7 @@ test.describe("shell", () => {
     await expect(page).toHaveURL(/#agents\/memory$/);
     await page.goBack();
     await expect(page).toHaveURL(/#agents$/);
-    await expect(page.locator(".main").getByRole("tab", { name: /Overview/ })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".main").getByRole("tab", { name: /Canvas/ })).toHaveAttribute("aria-selected", "true");
     await page.goBack();
     await expect(page.locator(".ov-title h1")).toBeVisible();
     await page.keyboard.press("Alt+ArrowRight");
@@ -627,8 +627,9 @@ test.describe("agents", () => {
     if (info.project.name === "desktop") await expect(page.locator(".need.sugg")).toContainText("web/dist/**");
     // Desktop's workflow test may have created e2e-migrate in this shared
     // fixture while this runs; count the stock tiles only.
-    await expect(page.locator(".wf-tile").filter({ hasNotText: "e2e-migrate" })).toHaveCount(6);
-    await expect(page.locator(".wf-tile.active")).toContainText("fix");
+    await page.getByRole("tab", { name: /Workflows/ }).click();
+    await expect(page.locator(".wf-tabs [role=tab]").filter({ hasNotText: "e2e-migrate" })).toHaveCount(6);
+    await expect(page.locator(".wf-tabs [role=tab]").filter({ has: page.locator(".dot.ok") })).toContainText("fix");
     await page.getByRole("tab", { name: /Fences/ }).click();
     // Desktop's fences test appends and removes rows in the same fixture while
     // the other projects run; only the desktop project pins the exact count.
@@ -1417,59 +1418,42 @@ test.describe("agents A2", () => {
   test.use({ baseURL: ({ fx }, use) => use(fx) });
   // Read-only tests: no fixture writes, so no serial coupling and all projects may run them.
 
-  test("A2.1: the roster renders every fixture agent with its wiring, counts and seats", async ({ page }) => {
+  test("A2.1: the canvas draws every fixture team as a frame with its seats and wiring", async ({ page }) => {
     await open(page, "agents");
-    const rows = page.locator(".roster-row");
-    await expect(rows).toHaveCount(4);
-    // Claude Code is connected in the fixture (MCP and hook); the others are not wired.
-    const claude = rows.filter({ hasText: "Claude Code" });
-    await expect(claude).toContainText("connected");
-    await expect(claude).toContainText("hook");
-    for (const name of ["Cursor", "Codex", "Gemini CLI"]) {
-      const row = rows.filter({ hasText: name });
-      await expect(row).toContainText("not wired");
-      await expect(row).toContainText("no hook");
-    }
-    // Exact fixture counts: MCP config files, team seats, skills carried.
-    // .roster-num order: skills, MCP files, last seen, fence hits, attempts, seats.
-    await expect(claude.locator(".roster-num").nth(1)).toHaveText(/^1/);
-    await expect(rows.filter({ hasText: "Cursor" }).locator(".roster-num").nth(5)).toHaveText("2");
-    await expect(rows.filter({ hasText: "Codex" }).locator(".roster-num").nth(5)).toHaveText("3");
-    await expect(rows.filter({ hasText: "Gemini CLI" }).locator(".roster-num").nth(5)).toHaveText("3");
-    for (const row of await rows.all()) await expect(row).toContainText("0"); // no skills in the fixture
-    // Loops and teams as compact rows with status, linked to their tabs.
-    await expect(page.locator(".loop-row")).toHaveCount(4); // the four kula.toml teams
-    await expect(page.locator(".loop-row").filter({ hasText: "ship" })).toContainText("saved");
-    await expect(page.locator(".ag-control")).toContainText("loop is measuring anything");
-    // A roster cell leads to the tab that owns it.
-    await rows.filter({ hasText: "Claude Code" }).locator(".roster-num").nth(5).click(); // seats → Teams
-    await expect(page).toHaveURL(/#agents\/teams/);
+    const canvas = page.locator('section[aria-label="Agent canvas"]');
+    await expect(canvas).toBeVisible();
+    // four kula.toml teams, nested by `under`; 4 + 2 + 3 + 2 seats
+    await expect(canvas.locator(".cv-team")).toHaveCount(4);
+    await expect(canvas.locator('.cv-team[data-team="ship"]')).toBeVisible();
+    await expect(canvas.locator(".cv-agent")).toHaveCount(11);
+    await expect(canvas.locator(".widget-count")).toHaveText("4 teams · 11 seats");
+    // reports_to lines and hands_off arrows
+    await expect(canvas.locator(".react-flow__edge.cv-edge-rt")).toHaveCount(7);
+    await expect(canvas.locator(".react-flow__edge.cv-edge-ho")).toHaveCount(2);
+    // no page scroll on desktop
+    const over = await page.locator(".page.agents").evaluate((e) => e.scrollHeight - e.clientHeight);
+    expect(over).toBeLessThanOrEqual(1);
   });
 
-  test("A2.2: j/k/enter/esc walk the roster and / filters it", async ({ page }) => {
+  test("A2.2: a seat opens its facts, lenses tint by workflow", async ({ page }) => {
     await open(page, "agents");
-    const roster = page.locator(".roster");
-    await roster.focus();
-    await page.keyboard.press("j");
-    await expect(roster).toHaveAttribute("aria-activedescendant", "list-item-0");
-    await expect(page.locator(".roster-row").nth(0)).toHaveClass(/kb-sel/);
-    await page.keyboard.press("j");
-    await page.keyboard.press("j");
-    await expect(roster).toHaveAttribute("aria-activedescendant", "list-item-2");
-    await page.keyboard.press("k");
-    await expect(roster).toHaveAttribute("aria-activedescendant", "list-item-1");
-    await page.keyboard.press("Enter"); // the roster row opens Connect
-    await expect(page).toHaveURL(/#agents\/connect/);
-    // Back to the roster: / opens the filter, typing narrows, esc clears it.
-    await open(page, "agents");
-    await roster.focus();
-    await page.keyboard.press("/");
-    await expect(page.getByLabel("Filter roster")).toBeFocused();
-    await page.keyboard.insertText("clau");
-    await expect(page.locator(".roster-row")).toHaveCount(1);
-    await expect(page.locator(".roster-row").first()).toContainText("Claude Code");
-    await page.keyboard.press("Escape");
-    await expect(page.locator(".roster-row")).toHaveCount(4);
+    const canvas = page.locator('section[aria-label="Agent canvas"]');
+    await expect(canvas.locator(".cv-agent")).toHaveCount(11);
+    await canvas.locator('.cv-team[data-team="ship"]').waitFor();
+    const builder = canvas.locator(".cv-agent").filter({ hasText: "builder" }).first();
+    await builder.click();
+    const card = page.locator('section[aria-label="Seat"]');
+    await expect(card).toBeVisible();
+    await expect(card).toContainText(/builder/i);
+    await expect(card).toContainText("tests");
+    await page.locator(".cv-lens", { hasText: "explore" }).click();
+    await expect(page.locator(".cv-lens", { hasText: "explore" })).toHaveAttribute("aria-pressed", "true");
+    await expect(canvas.locator(".cv-agent.dim").first()).toBeVisible();
+    await expect(canvas.locator(".cv-agent.lit").first()).toBeVisible();
+    await page.getByRole("button", { name: "Clear lenses" }).click();
+    await expect(canvas.locator(".cv-agent.dim")).toHaveCount(0);
+    await card.getByRole("button", { name: /Edit in Teams/ }).click();
+    await expect(page).toHaveURL(/#agents\/teams/);
   });
 
   test("A2.2: j/k/enter/esc walk the research attempts, / filters them, and the legend reads as a table", async ({ page }) => {
