@@ -186,7 +186,7 @@ function TeamEditor({ team: t, all, info, on, saved, dirty, set, remove, act }: 
 }
 
 /** An agent's place and prompt, with the instructions kula will hand it. */
-function MemberDetail({ team, k, info, setM, drop, move, close }: { team: Team; k: number; info: AgentsInfo; setM: (m: Partial<Team["members"][number]>) => void; drop: () => void; move: (dir: 1 | -1) => void; close: () => void }) {
+export function MemberDetail({ team, k, info, setM, drop, move, close }: { team: Team; k: number; info: AgentsInfo; setM: (m: Partial<Team["members"][number]>) => void; drop: () => void; move: (dir: 1 | -1) => void; close: () => void }) {
   const m = team.members[k];
   const others = team.members.filter((_, j) => j !== k).map(seatKey).filter(Boolean);
   const known = !m.agent || m.agent === "any" || AGENT_IDS.includes(m.agent);
@@ -246,7 +246,7 @@ function MemberDetail({ team, k, info, setM, drop, move, close }: { team: Team; 
 }
 
 /** Whether team `name` sits somewhere under team `top` (so `top` cannot answer to it). */
-function within(all: Team[], name: string, top: string) {
+export function within(all: Team[], name: string, top: string) {
   let cur = all.find((x) => x.name === name)?.under, hops = 0;
   while (cur && hops++ < all.length) {
     if (cur === top) return true;

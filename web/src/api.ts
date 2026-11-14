@@ -92,7 +92,7 @@ export interface AgentDoc { path: string; readers: string; exists: boolean; byte
 export interface Suggestion { id: number; kind: "guard" | "workflow"; guard?: RawRule; workflow?: Workflow; why: string; by: string; created: number }
 export type AgentAction = "task_start" | "task_done" | "remember" | "confirm" | "forget" | "memory_edit" | "memory_stale" | "guards_save" | "workflows_save"
   | "settings_save" | "doc_read" | "doc_save" | "docs_sync" | "brief" | "connect" | "suggestion_accept" | "suggestion_dismiss" | "preview"
-  | "teams_save" | "team_prompt" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install"
+  | "teams_save" | "teams_preview" | "team_prompt" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install"
   | "workflow_rename" | "skill_save" | "skill_delete" | "skills_sync" | "skill_adopt";
 /** A shared skill (src/skills.rs): one source in .agents/skills, a copy per agent. */
 export type SkillState = "synced" | "differs" | "missing" | "native";

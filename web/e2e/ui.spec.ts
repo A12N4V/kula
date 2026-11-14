@@ -647,6 +647,59 @@ test.describe("agents", () => {
     await page.screenshot({ path: `test-results/${info.project.name}-agents-full.png`, fullPage: true });
   });
 
+  test("P3.15 Architect: wire a hand-off on the canvas, review the kula.toml diff, save, undo it", async ({ page }, info) => {
+    desktopOnly(info);
+    await open(page, "agents");
+    const port = new URL(page.url()).port;
+    const toml = () => fs.readFileSync(path.join(fs.readFileSync(`/tmp/kula-fixture-${port}.path`, "utf8").trim(), "kula.toml"), "utf8");
+    const canvas = page.locator('section[aria-label="Agent canvas"]');
+    await expect(canvas.locator(".cv-agent")).toHaveCount(11);
+    await page.getByRole("button", { name: /^Architect/ }).click();
+    await expect(page.getByRole("button", { name: /^Architect/ })).toHaveAttribute("aria-pressed", "true");
+    // a seat added from the team head is only a draft until saved; Revert drops it
+    await canvas.getByRole("button", { name: "Add a seat to ship" }).click();
+    await expect(canvas.locator(".cv-agent")).toHaveCount(12);
+    await expect(page.getByLabel("Seat name")).not.toHaveValue("");
+    await page.locator('section[aria-label="Changes"]').getByRole("button", { name: "Revert" }).click();
+    await expect(canvas.locator(".cv-agent")).toHaveCount(11);
+    // drag codex to gemini as a hand-off
+    await page.getByRole("button", { name: "hands off" }).click();
+    const from = canvas.locator('.react-flow__node[data-id="seat:ship/codex"] .react-flow__handle.source');
+    const to = canvas.locator('.react-flow__node[data-id="seat:ship/gemini"] .react-flow__handle.target');
+    const a = (await from.boundingBox())!, b = (await to.boundingBox())!;
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move((a.x + b.x) / 2, (a.y + b.y) / 2 + 20, { steps: 6 });
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await expect(canvas.locator(".react-flow__edge.cv-edge-ho")).toHaveCount(3);
+    const changes = page.locator('section[aria-label="Changes"]');
+    await changes.getByRole("button", { name: "Review" }).click();
+    // the first save of a hand-written file reflows it to kula's own layout,
+    // the same bytes a CLI save writes; the new hand-off is among the adds
+    await expect(changes.locator(".cv-diff .add").filter({ hasText: 'hands_off = ["gemini"]' }).first()).toBeVisible();
+    const handOffs = () => toml().split('hands_off = ["gemini"]').length - 1;
+    const n0 = handOffs();
+    await changes.getByRole("button", { name: "Save" }).click();
+    await expect(changes).toHaveCount(0);
+    await expect.poll(handOffs).toBe(n0 + 1);
+    // focus the new edge, delete it, save: the hand-off is gone again
+    const edge = canvas.locator('[data-id="ho:ship/codex>gemini"]');
+    await edge.focus();
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Delete");
+    await expect(canvas.locator(".react-flow__edge.cv-edge-ho")).toHaveCount(2);
+    await changes.getByRole("button", { name: "Review" }).click();
+    // now the file is in kula's layout, the diff is just the one line
+    await expect(changes.locator(".cv-diff .del")).toHaveText(['- hands_off = ["gemini"]']);
+    await expect(changes.locator(".cv-diff .add")).toHaveCount(0);
+    await changes.getByRole("button", { name: "Save" }).click();
+    await expect(changes).toHaveCount(0);
+    await expect.poll(handOffs).toBe(n0);
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    await expect(canvas.locator(".cv-agent")).toHaveCount(11);
+  });
+
   test("a workflow: create it with fences and steps, preview it on the graph, delete it", async ({ page }, info) => {
     desktopOnly(info);
     await open(page, "agents/workflows");
@@ -1073,6 +1126,12 @@ test.describe("teams and research (T1)", () => {
   test.describe.configure({ mode: "serial" });
   test.use({ baseURL: ({ fx }, use) => use(fx) });
   const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
+  // The worker's fixture is shared with later describes (A2 counts its teams):
+  // put kula.toml back as it was once these writes are done.
+  const tomlOf = (fx: string) => path.join(fs.readFileSync(`/tmp/kula-fixture-${new URL(fx).port}.path`, "utf8").trim(), "kula.toml");
+  let tomlBefore = "";
+  test.beforeAll(async ({ fx }) => { tomlBefore = fs.readFileSync(tomlOf(fx), "utf8"); });
+  test.afterAll(async ({ fx }) => { if (tomlBefore) fs.writeFileSync(tomlOf(fx), tomlBefore); });
 
   test("T1.2/T1.3: the fixture team reads as an org chart, and a team is created, edited, saved, started and stopped", async ({ page, request }, info) => {
     desktopOnly(info);
@@ -1452,8 +1511,10 @@ test.describe("agents A2", () => {
     await expect(canvas.locator(".cv-agent.lit").first()).toBeVisible();
     await page.getByRole("button", { name: "Clear lenses" }).click();
     await expect(canvas.locator(".cv-agent.dim")).toHaveCount(0);
-    await card.getByRole("button", { name: /Edit in Teams/ }).click();
-    await expect(page).toHaveURL(/#agents\/teams/);
+    // Edit opens the same seat in Architect mode
+    await card.getByRole("button", { name: "Edit" }).click();
+    await expect(page.getByRole("button", { name: /^Architect/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('section[aria-label="Seat"]')).toBeVisible();
   });
 
   test("A2.2: j/k/enter/esc walk the research attempts, / filters them, and the legend reads as a table", async ({ page }) => {

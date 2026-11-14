@@ -126,3 +126,22 @@
 @media (max-width: 760px) {
   .cv-frame { height: 440px; }
 }
+
+/* Architect mode (P3.15) */
+.cv-bar .seg button { font-size: 12px; }
+.cv-dirty { display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
+.cv-team.sel { border-color: var(--accent); }
+.cv-team-head .cv-add { margin-left: auto; width: 20px; height: 20px; padding: 0; border: 1px solid var(--line-2); border-radius: 4px; background: transparent; color: var(--text-2); font: 13px var(--mono); line-height: 1; cursor: pointer; }
+.cv-team-head .cv-add:hover { border-color: var(--accent); color: var(--accent); }
+.cv-split .react-flow__handle.connectable { width: 9px; height: 9px; background: var(--panel-2); border: 1px solid var(--accent); opacity: .85; }
+.cv-split .react-flow__edge.selected .react-flow__edge-path { stroke: var(--accent) !important; }
+.cv-hint p { margin: 0; font-size: 12.5px; }
+.cv-problems { margin: 0 0 8px; padding: 0 0 0 16px; color: var(--red); font-size: 12px; }
+.cv-diff { margin: 0 0 8px; max-height: 300px; overflow: auto; padding: 6px 0; border: 1px solid var(--line); border-radius: 6px; background: #050505; font: 11.5px/1.5 var(--mono); color: var(--text-3); }
+.cv-diff div { padding: 0 10px; white-space: pre; }
+.cv-diff .add { color: var(--green); background: color-mix(in oklab, var(--green) 9%, transparent); }
+.cv-diff .del { color: var(--red); background: color-mix(in oklab, var(--red) 9%, transparent); }
+.cv-diff .gap { color: var(--text-3); text-align: center; }
+.cv-changes .row, .cv-inspect .row { display: flex; align-items: center; gap: 6px; }
+.cv-changes .spacer, .map-inspector .mi-kind .spacer { flex: 1; }
+.cv-inspect.map-inspector { display: flex; flex-direction: column; gap: 8px; }

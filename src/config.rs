@@ -316,6 +316,13 @@ impl Config {
 /// Rewrite part of kula.toml in place, keeping every comment and table the
 /// edit doesn't touch. Starts from the commented default when there is none.
 fn edit(root: &Path, f: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<()>) -> Result<Config> {
+    let (_, out, cfg) = render_edit(root, f)?;
+    std::fs::write(root.join(FILE), out)?;
+    Ok(cfg)
+}
+
+/// Apply an edit in memory: the file as it is, the file as it would be, and the parsed result.
+fn render_edit(root: &Path, f: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<()>) -> Result<(String, String, Config)> {
     let p = root.join(FILE);
     let text = std::fs::read_to_string(&p).unwrap_or_else(|_| Config::default().render());
     let mut doc: toml_edit::DocumentMut = text.parse().with_context(|| format!("reading {}", p.display()))?;
@@ -323,8 +330,7 @@ fn edit(root: &Path, f: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<()>) 
     let out = doc.to_string();
     // Never write a file kula itself can't read back.
     let cfg: Config = toml::from_str(&out).context("the edit would make kula.toml invalid")?;
-    std::fs::write(&p, out)?;
-    Ok(cfg)
+    Ok((text, out, cfg))
 }
 
 /// Replace an array of tables (`[[guard]]`, `[[workflow]]`) with `items`.
@@ -416,6 +422,18 @@ pub fn set_scopes(root: &Path, scopes: &[Scope]) -> Result<Config> {
 }
 
 pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
+    check_teams(teams)?;
+    edit(root, |d| set_tables(d, "team", teams))
+}
+
+/// What `set_teams` would write, without writing it: (before, after). Same checks, same bytes.
+pub fn preview_teams(root: &Path, teams: &[Team]) -> Result<(String, String)> {
+    check_teams(teams)?;
+    let (before, after, _) = render_edit(root, |d| set_tables(d, "team", teams))?;
+    Ok((before, after))
+}
+
+fn check_teams(teams: &[Team]) -> Result<()> {
     let mut seen = std::collections::HashSet::new();
     for t in teams {
         if !crate::workflow::valid_name(&t.name) {
@@ -464,7 +482,7 @@ pub fn set_teams(root: &Path, teams: &[Team]) -> Result<Config> {
             cur = up.under.clone();
         }
     }
-    edit(root, |d| set_tables(d, "team", teams))
+    Ok(())
 }
 
 pub fn set_agents(root: &Path, a: &Agents) -> Result<Config> {
@@ -525,6 +543,28 @@ mod tests {
         let pinned = Member { agent: "gemini".into(), ..Default::default() };
         assert_eq!(any.provider("codex"), "codex");
         assert_eq!(pinned.provider("codex"), "gemini");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_team_preview_is_byte_for_byte_what_a_save_writes() {
+        let dir = std::env::temp_dir().join(format!("kula-preview-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let start = "# kept\n[agents]\nmemory = true\n";
+        std::fs::write(dir.join("kula.toml"), start).unwrap();
+        let lead = Member { name: "Atlas".into(), workflow: "fix".into(), ..Default::default() };
+        let hand = Member { name: "Quill".into(), reports_to: "Atlas".into(), ..Default::default() };
+        let teams = vec![Team { name: "ship".into(), members: vec![lead, hand], ..Default::default() }];
+        let (before, after) = preview_teams(&dir, &teams).unwrap();
+        assert_eq!(before, start);
+        assert_eq!(std::fs::read_to_string(dir.join("kula.toml")).unwrap(), start, "a preview writes nothing");
+        set_teams(&dir, &teams).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("kula.toml")).unwrap(), after);
+        // a loop is refused before anything renders
+        let mut bad = teams.clone();
+        bad[0].members[0].reports_to = "Quill".into();
+        assert!(preview_teams(&dir, &bad).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -831,6 +831,10 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
                 }
                 json!({ "levels": levels })
             }
+            "teams_preview" => {
+                let (before, after) = crate::config::preview_teams(&r.root, &a.teams)?;
+                json!({ "before": before, "after": after })
+            }
             "teams_save" => {
                 crate::config::set_teams(&r.root, &a.teams)?;
                 json!({ "ok": true })

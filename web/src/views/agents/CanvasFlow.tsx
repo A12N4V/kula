@@ -6,8 +6,8 @@
 // P3.15 turns the same canvas into the editor. Loaded on demand so neither
 // xyflow nor elk weighs on the first paint.
 
-import { useEffect, useMemo, useState } from "react";
-import { ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType, type Node, type Edge, type NodeProps } from "@xyflow/react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType, type Node, type Edge, type NodeProps, type Connection } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
 import type { AgentsInfo, Team } from "../../api";
@@ -24,11 +24,24 @@ type TeamData = { team: Team; live: boolean; depth: number };
 const W = 208, H = 70, PAD_TOP = 40, PAD = 18;
 const elk = new ELK();
 
+/** Architect mode's hooks into the drawing; absent when the canvas only shows. */
+export type CanvasEdit = {
+  /** a drag from one seat to another in the same team */
+  connect: (team: string, from: string, to: string) => void;
+  /** an edge removed with Delete or Backspace */
+  dropEdge: (kind: "rt" | "ho", team: string, from: string, to: string) => void;
+  addSeat: (team: string) => void;
+  pickTeam: (team: string) => void;
+  team: string | null;
+};
+const EditCtx = createContext<CanvasEdit | null>(null);
+
 function AgentNode({ data, selected }: NodeProps<Node<AgentData>>) {
   const { seat: { m }, color, role, fence, dim, lit, live } = data;
+  const edit = useContext(EditCtx);
   return (
     <div className={`cv-agent ${dim ? "dim" : ""} ${lit ? "lit" : ""} ${live ? "live" : ""} ${selected ? "sel" : ""}`} style={{ ["--wf" as string]: color }} data-seat={seatName(m)}>
-      <Handle type="target" position={Position.Top} className="cv-handle" isConnectable={false} />
+      <Handle type="target" position={Position.Top} className="cv-handle" isConnectable={!!edit} />
       <div className="cv-agent-top">
         <span className="cv-glyph" title={AGENT_NAME[m.agent] ?? m.agent ?? "any agent"}>{GLYPHS[m.agent] ?? "·"}</span>
         <b className="cv-name">{seatName(m)}</b>
@@ -38,18 +51,21 @@ function AgentNode({ data, selected }: NodeProps<Node<AgentData>>) {
         <span className="cv-role">{role}</span>
         {m.workflow ? <span className="cv-wf"><i />{m.workflow}</span> : <span className="cv-wf none">no workflow</span>}
       </div>
-      <Handle type="source" position={Position.Bottom} className="cv-handle" isConnectable={false} />
+      <Handle type="source" position={Position.Bottom} className="cv-handle" isConnectable={!!edit} />
     </div>
   );
 }
 
 function TeamNode({ data }: NodeProps<Node<TeamData>>) {
+  const edit = useContext(EditCtx);
+  const name = data.team.name;
   return (
-    <div className={`cv-team ${data.live ? "live" : ""}`} data-depth={data.depth} data-team={data.team.name}>
-      <div className="cv-team-head">
-        <b>{data.team.name}</b>
+    <div className={`cv-team ${data.live ? "live" : ""} ${edit?.team === name ? "sel" : ""}`} data-depth={data.depth} data-team={name}>
+      <div className="cv-team-head" onClick={edit ? (e) => { e.stopPropagation(); edit.pickTeam(name); } : undefined}>
+        <b>{name}</b>
         <span className="cv-team-n">{data.team.members.length}</span>
         {data.live && <span className="cv-team-live">at work</span>}
+        {edit && <button className="cv-add nodrag" title={`Add a seat to ${name}`} aria-label={`Add a seat to ${name}`} onClick={(e) => { e.stopPropagation(); edit.addSeat(name); }}>+</button>}
       </div>
     </div>
   );
@@ -132,7 +148,15 @@ async function layout(info: AgentsInfo, lens: Set<string>): Promise<{ nodes: Nod
   return { nodes, edges: edges.map((e) => ({ ...e, zIndex: 1 })) };
 }
 
-export default function CanvasFlow({ info, lens, onSelect, selected }: { info: AgentsInfo; lens: Set<string>; onSelect: (s: Seat | null) => void; selected: string | null }) {
+const parseEdge = (id: string) => {
+  const kind = id.slice(0, 2) as "rt" | "ho";
+  const [team, rest] = id.slice(3).split(/\/(.*)/s);
+  if (kind === "rt") return { kind, team, from: "", to: rest };
+  const [from, to] = rest.split(">");
+  return { kind, team, from, to };
+};
+
+export default function CanvasFlow({ info, lens, onSelect, selected, edit }: { info: AgentsInfo; lens: Set<string>; onSelect: (s: Seat | null) => void; selected: string | null; edit?: CanvasEdit }) {
   const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const lensKey = [...lens].sort().join(",");
@@ -152,12 +176,27 @@ export default function CanvasFlow({ info, lens, onSelect, selected }: { info: A
     return graph.edges.map((e) => (dim.has(e.source) || dim.has(e.target) ? { ...e, className: `${e.className} dim` } : e));
   }, [graph, lens.size]);
 
+  const [selEdge, setSelEdge] = useState<string | null>(null);
+  const seatOf = (id: string) => { const [team, key] = id.slice(5).split(/\/(.*)/s); return { team, key }; };
+  const onConnect = (c: Connection) => {
+    if (!edit || !c.source || !c.target || c.source === c.target) return;
+    const a = seatOf(c.source), b = seatOf(c.target);
+    if (a.team === b.team) edit.connect(a.team, a.key, b.key);
+  };
+
   if (err) return <div className="cv-msg">Layout failed: {err}</div>;
   if (!graph) return <div className="cv-msg">Laying out the teams</div>;
   return (
+    <EditCtx.Provider value={edit ?? null}>
     <ReactFlow
-      nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode="dark"
-      nodesDraggable={false} nodesConnectable={false} edgesFocusable={false} elementsSelectable
+      nodes={nodes} edges={edit ? edges.map((e) => ({ ...e, deletable: true, focusable: true, selected: e.id === selEdge })) : edges}
+      onEdgesChange={edit ? (cs) => { for (const c of cs) if (c.type === "select") setSelEdge((cur) => (c.selected ? c.id : cur === c.id ? null : cur)); } : undefined} nodeTypes={nodeTypes} colorMode="dark"
+      nodesDraggable={false} nodesConnectable={!!edit} edgesFocusable={!!edit} elementsSelectable
+      isValidConnection={(c) => !!c.source && !!c.target && c.source !== c.target && seatOf(c.source).team === seatOf(c.target).team}
+      onConnect={onConnect}
+      onBeforeDelete={async ({ nodes: ns, edges: es }) => ns.length === 0 && es.length > 0}
+      onEdgesDelete={(es) => { for (const e of es) { const p = parseEdge(e.id); edit?.dropEdge(p.kind, p.team, p.from, p.to); } }}
+      deleteKeyCode={edit ? ["Backspace", "Delete"] : null}
       fitView fitViewOptions={{ padding: 0.18, maxZoom: 1.1 }} minZoom={0.2} maxZoom={2}
       proOptions={{ hideAttribution: true }}
       onNodeClick={(_, n) => { if (n.type === "agent") onSelect((n.data as AgentData).seat); }}
@@ -167,5 +206,6 @@ export default function CanvasFlow({ info, lens, onSelect, selected }: { info: A
       <MiniMap pannable zoomable position="bottom-right" style={{ width: 150, height: 96 }} className="cv-minimap" nodeColor={(n) => (n.type === "team" ? "#1a1715" : (n.data as AgentData).color)} nodeStrokeColor="transparent" maskColor="rgba(0,0,0,0.6)" />
       <Controls showInteractive={false} position="top-left" className="cv-controls" />
     </ReactFlow>
+    </EditCtx.Provider>
   );
 }
