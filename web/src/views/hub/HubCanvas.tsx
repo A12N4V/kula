@@ -198,7 +198,9 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
         const teamsY = Math.min(...top.filter((n) => n.type === "team").map((n) => n.position.y));
         const laneTops = top.filter((n) => n.type === "lane").map((n) => n.position.y);
         // snapped to a lane top so no lane starts cut at the canvas edge
-        const snap = (y: number) => Math.max(y0, ...laneTops.filter((t) => t <= y));
+        const spans = top.filter((n) => n.type === "lane").map((n) => [n.position.y, n.position.y + (Number(n.style?.height) || 0)] as const);
+        const clear = (t: number) => spans.every(([a, b]) => a >= t || b <= t);
+        const snap = (y: number) => Math.max(y0, ...laneTops.filter((t) => t <= y && clear(t)));
         const yAt = (z: number) => (map && Number.isFinite(teamsY) ? snap(teamsY - (width / aspect / z) * 0.5) : y0);
         if (window.matchMedia("(max-width: 600px)").matches) {
           const z = map ? 0.68 : 0.8;

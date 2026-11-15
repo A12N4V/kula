@@ -112,7 +112,7 @@
 .hub-lane { box-sizing: border-box; width: 100%; height: 100%; border: 1px dashed var(--line); border-radius: var(--r-lg); background: #030303; transition: border-color var(--flow, .16s ease); }
 .hub-lane.hit { border-color: var(--accent); border-style: solid; }
 .hub-lane-head { padding: 8px 10px; font-size: 10px; line-height: 24px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.page.hub .hub-canvas.far .hub-lane-head { font-size: 20px; line-height: 24px; padding: 8px 10px; letter-spacing: .08em; }
+.page.hub .hub-canvas.far .hub-lane-head { font-size: 20px; line-height: 24px; padding: 8px 10px; letter-spacing: .02em; }
 .hub-flow {
   box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; height: 100%; padding: 0 8px;
   border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); font-size: 11px; color: var(--text-2); cursor: pointer;
@@ -441,7 +441,7 @@
 .runs-weight-bar span:last-child { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
 .hub-sw { position: relative; }
 .hub-sw::after { content: ""; position: absolute; inset: -5px; }
-@media (max-width: 1100px) { .hub-bar-hint { display: none; } }
+@media (max-width: 759px) { .hub-bar-hint { display: none; } }
 @media (max-width: 759px) {
   .hub-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .hub-bar > * { flex: none; }
@@ -556,7 +556,7 @@
   .hub-body.mode-build .hub-pal-scroll { align-items: flex-start; scrollbar-width: none; }
   .hub-body.mode-build .hub-pal-scroll::-webkit-scrollbar { display: none; }
   .hub-body.mode-build .hub-insp-scroll { grid-auto-flow: row dense; align-items: start; }
-  .hub-body.mode-build .hub-insp-scroll > .hub-sec:is([aria-label="Identity"], [aria-label="Hub"], [aria-label="Team"], [aria-label="Now"], [aria-label="Task"]) { grid-row: span 3; }
+  .hub-body.mode-build .hub-insp-scroll > .hub-sec:is([aria-label="Identity"], [aria-label="Team"], [aria-label="Now"], [aria-label="Task"]) { grid-row: span 3; }
   .page.hub:has(.hub-body:is(.mode-live, .mode-runs)) { overflow: hidden; }
   .hub-body:is(.mode-live, .mode-runs) { flex: 1; min-height: 0; }
   .hub-pal-group h3 .mono { margin-left: 0; }
@@ -575,7 +575,7 @@
 .cv-idle li { color: var(--text-3); }
 .runs-board > .runs-empty { flex: 1; min-height: 160px; }
 @media (max-width: 759px) { .runs-board > .runs-empty { flex: none; } }
-.hub-body.mode-runs .hub-inspector { min-height: 0; align-self: start; }
+.hub-body.mode-runs .hub-inspector { min-height: 0; }
 .page.hub .hub-deploy-btn:disabled, .page.hub .hub-deploy .btn.primary:disabled { background: transparent; border-color: var(--line); font-weight: 500; color: var(--text-3); }
 .hub-sec h3 { font-size: 11px; }
 .page.hub .hub-bar .seg button.on { color: var(--text); border-color: var(--line-2); box-shadow: inset 0 -1px 0 var(--accent); }
@@ -595,4 +595,4 @@
 .runs-weight-legend > span i::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 1px; background: var(--accent); vertical-align: 1px; }
 .cv-idle li { display: flex; gap: 8px; }
 .cv-idle li .mono { color: var(--text-2); flex: none; }
-.cv-idle li span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-idle li span:last-child { min-width: 0; white-space: normal; }
