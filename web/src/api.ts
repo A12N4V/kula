@@ -120,6 +120,9 @@ export interface Synopsis { headline: string; lines: string[] }
 export interface ChangeTouch { path: string; run: string; slice: string; seat: string; commit: string; ended: number }
 export interface ChangeSection { domain: number | null; label: string; flows: { id: string; label: string }[]; changes: ChangeTouch[] }
 export interface RunsInfo { runs: RunSummary[]; current: CurrentRun[]; trends: Trend[]; weights: Weights }
+export interface DeployOpts { team: string; goal: string; flows: string[]; budget?: number | null }
+export interface Deployed { plan: string; slices: number; path: string }
+export interface ScheduleInfo { key: string; name?: string; team: string; goal: string; cron?: string; on?: string; budget?: number; flows?: string[]; paused: boolean; last: number | null; next: number | null; run: string; error: string }
 export interface RunDetail { synopsis: Synopsis; changelog: ChangeSection[]; run: Run }
 /** An autoresearch loop's settings ([workflow.research]). */
 export interface Research { metric: string; goal: "min" | "max" | ""; budget?: number; timeout?: number; icon?: string }
@@ -131,7 +134,7 @@ export interface ResearchRun {
 }
 /** A team (kula.toml [[team]]): each agent in its own workflow. */
 export interface Team {
-  name: string; about?: string; prompt?: string; under?: string; color?: string; category?: string;
+  name: string; about?: string; prompt?: string; under?: string; color?: string; category?: string; test?: string;
   members: Member[];
 }
 /** A seat in a team: one agent with its own workflow, scope, setup and fences. */
@@ -256,6 +259,9 @@ export const api = {
   flowmap: (limit = 60) => get<FlowMap>(`/api/flowmap?${q({ limit })}`),
   runs: () => get<RunsInfo>("/api/runs"),
   run: (id: string) => get<RunDetail>(`/api/runs/${encodeURIComponent(id)}`),
+  deploy: (o: DeployOpts) => post<Deployed>("/api/deploy", o),
+  schedules: () => get<{ schedules: ScheduleInfo[] }>("/api/schedules"),
+  schedulePause: (key: string, paused: boolean) => post<{ ok: boolean }>(`/api/schedules/${encodeURIComponent(key)}/pause`, { paused }),
   changelog: (since = 0) => get<{ since: number; sections: ChangeSection[] }>(`/api/changelog?${q({ since })}`),
   agentEvents: (since: number) => get<{ events: KulaEvent[]; now: number }>(`/api/agents/events?poll=1&since=${since}`),
   agentAction: <T = unknown>(action: AgentAction, body: Record<string, unknown> = {}) =>

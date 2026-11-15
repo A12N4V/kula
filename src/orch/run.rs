@@ -218,6 +218,23 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                 drop(sh.cv.wait(p).unwrap());
                 continue;
             }
+            if let Some(cap) = p.budget_usd.filter(|c| *c > 0.0) {
+                let spent: f64 = measured.lock().unwrap().values().map(|m| m.usage.cost_usd).sum();
+                if spent >= cap {
+                    // The cap is spent: nothing new starts, running seats finish.
+                    let msg = format!("budget of ${cap:.2} spent (${spent:.2})");
+                    for s in p.slices.iter_mut().filter(|s| s.state == SliceState::Queued) {
+                        s.state = SliceState::Failed;
+                        s.reasons = vec![msg.clone()];
+                    }
+                    let _ = p.save(&sh.state_path);
+                    if active == 0 {
+                        return Ok(());
+                    }
+                    drop(sh.cv.wait(p).unwrap());
+                    continue;
+                }
+            }
             if let Some(cmd) = mem_check_cmd(&p) {
                 if let Err(why) = mem_ok(&cmd, &repo.root) {
                     let msg = format!("not enough memory to start: {why}");

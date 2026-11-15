@@ -443,3 +443,81 @@ fn a_rejected_seat_scores_low_and_keeps_its_diff_stats() {
     assert!(a["score"].as_f64().unwrap() < 50.0, "{a}");
     assert_eq!(a["usage"]["tokens_in"], 0);
 }
+
+#[test]
+fn budget_cap_stops_new_seats() {
+    let t = repo();
+    let d = t.path();
+    let p = write_plan(d, &["a", "b"], "fake-agent", "true", 1);
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+    v["budget_usd"] = json!(0.005);
+    std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    let (o, plan) = run(d, &[]);
+    let states: Vec<&str> = plan["slices"].as_array().unwrap().iter().map(|s| s["state"].as_str().unwrap()).collect();
+    assert_eq!(states, ["passed", "failed"], "{}", text(&o));
+    assert!(plan["slices"][1]["reasons"][0].as_str().unwrap().starts_with("budget of"), "{plan}");
+}
+
+/// A team of one fake seat on a/ and a schedule due every minute.
+fn scheduled_repo() -> TempDir {
+    let t = repo();
+    let d = t.path();
+    let toml = format!(
+        "[agents.commands]\nfake-agent = [{:?}, \"{{prompt}}\"]\n\n[[team]]\nname = \"core\"\nmembers = [{{ name = \"tidy\", agent = \"fake-agent\", scope = [\"a\"] }}]\n\n[[schedule]]\nname = \"often\"\nteam = \"core\"\ngoal = \"tidy up\"\ncron = \"* * * * *\"\n",
+        fake()
+    );
+    std::fs::write(d.join("kula.toml"), toml).unwrap();
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-qm", "kula.toml"]);
+    t
+}
+
+fn kula_cmd(d: &Path, args: &[&str]) -> Output {
+    Command::new(KULA).arg("-C").arg(d).args(args).env("KULA_NO_AGENT", "1").output().unwrap()
+}
+
+#[test]
+fn a_due_schedule_deploys_its_team_once() {
+    let t = scheduled_repo();
+    let d = t.path();
+    let o = kula_cmd(d, &["schedule", "tick"]);
+    assert!(o.status.success(), "{}", text(&o));
+    assert!(text(&o).contains("started often"), "{}", text(&o));
+    // The run is in the ledger, triggered by the schedule.
+    let runs: Vec<_> = std::fs::read_dir(d.join(".kula/runs")).unwrap().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect();
+    assert_eq!(runs.len(), 1, "{runs:?}");
+    let run: Value = serde_json::from_str(&std::fs::read_to_string(&runs[0]).unwrap()).unwrap();
+    assert_eq!(run["trigger"], "schedule", "{run}");
+    assert_eq!(run["team"], "core", "{run}");
+    // Fired this minute: the next tick has nothing due.
+    let o = kula_cmd(d, &["schedule", "tick"]);
+    assert!(text(&o).contains("nothing due"), "{}", text(&o));
+    // Paused shows in the list, and an unknown name is refused.
+    assert!(kula_cmd(d, &["schedule", "pause", "often"]).status.success());
+    let o = kula_cmd(d, &["--json", "schedule"]);
+    let list: Value = serde_json::from_slice(&o.stdout).unwrap_or_else(|_| panic!("{}", text(&o)));
+    assert_eq!(list[0]["paused"], true, "{list}");
+    assert!(!kula_cmd(d, &["schedule", "pause", "nope"]).status.success());
+}
+
+#[test]
+fn deploy_refuses_an_unknown_team() {
+    let t = scheduled_repo();
+    let o = kula_cmd(t.path(), &["deploy", "ghost", "do things"]);
+    assert!(!o.status.success());
+    assert!(text(&o).contains("ghost"), "{}", text(&o));
+}
+
+#[test]
+fn a_teams_own_gate_command_is_the_plans() {
+    let t = scheduled_repo();
+    let d = t.path();
+    let toml = std::fs::read_to_string(d.join("kula.toml")).unwrap().replace("name = \"core\"\n", "name = \"core\"\ntest = \"exit 0\"\n");
+    std::fs::write(d.join("kula.toml"), toml).unwrap();
+    let o = kula_cmd(d, &["deploy", "core", "tidy up", "--wait"]);
+    assert!(o.status.success(), "{}", text(&o));
+    let plans: Vec<_> = std::fs::read_dir(d.join(".kula/plans")).unwrap().flatten().map(|e| e.path()).collect();
+    assert_eq!(plans.len(), 1, "{plans:?}");
+    let plan: Value = serde_json::from_str(&std::fs::read_to_string(&plans[0]).unwrap()).unwrap();
+    assert_eq!(plan["test_cmd"], "exit 0", "{plan}");
+}

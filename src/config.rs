@@ -31,6 +31,49 @@ pub struct Config {
     /// a workflow or task reuses one as `scope = ["@name"]`.
     #[serde(rename = "scope")]
     pub scopes: Vec<Scope>,
+    /// `[[schedule]]` team runs on a clock or on a push.
+    #[serde(rename = "schedule", skip_serializing_if = "Vec::is_empty")]
+    pub schedules: Vec<Schedule>,
+}
+
+/// A team run kula starts on its own while `kula serve` is up.
+///
+/// ```toml
+/// [[schedule]]
+/// team = "core"
+/// goal = "tidy the parser"
+/// cron = "0 3 * * *"      # or: on = "push" | "pr"
+/// budget = 2.0            # dollars
+/// ```
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Schedule {
+    /// A name to pause it by; defaults to the team and goal.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    pub team: String,
+    pub goal: String,
+    /// Five fields: minute hour day month weekday, in local time.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub cron: String,
+    /// `push` (the default branch moved) or `pr` (another branch moved).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub on: String,
+    /// Dollar cap for each run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget: Option<f64>,
+    /// Flow ids the run is held to.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub flows: Vec<String>,
+}
+
+impl Schedule {
+    pub fn key(&self) -> String {
+        if !self.name.is_empty() {
+            return self.name.clone();
+        }
+        crate::orch::task::slug(&format!("{} {}", self.team, self.goal))
+    }
 }
 
 /// A named part of the codebase.
@@ -105,6 +148,9 @@ pub struct Team {
     /// What kind of team this is ("build", "research", "review"); groups teams on the hub.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub category: String,
+    /// Gate command for this team's deploys; blank detects one from the manifests.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub test: String,
     pub members: Vec<Member>,
 }
 
@@ -220,11 +266,14 @@ pub struct Agents {
     /// until someone picks another.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub default: String,
+    /// `[agents.commands]` the command per agent id; `{prompt}` becomes the prompt.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub commands: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 impl Default for Agents {
     fn default() -> Self {
-        Agents { hide_secrets: true, memory: true, docs: vec![], default: String::new() }
+        Agents { hide_secrets: true, memory: true, docs: vec![], default: String::new(), commands: Default::default() }
     }
 }
 

@@ -53,6 +53,58 @@ pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
             }
             std::process::exit(v.verdict.code());
         }
+        Cmd::Deploy { team, goal, flows, budget, wait } => {
+            let o = crate::orch::deploy::DeployOpts { team, goal, flows, budget };
+            let (plan, path) = crate::orch::deploy::make(repo, &o)?;
+            let mut child = crate::orch::deploy::start(repo, &plan, &path, "manual")?;
+            println!("{} {} · {} seats · {}", accent("deployed"), plan.id, plan.slices.len(), dim(&plan.run_dir(repo).join("deploy.log").display().to_string()));
+            if wait {
+                let st = child.wait()?;
+                std::process::exit(st.code().unwrap_or(1));
+            }
+        }
+        Cmd::Schedule { action, key } => {
+            use crate::orch::schedule;
+            match action.as_deref() {
+                None | Some("list") => {
+                    let cfg = crate::config::Config::load(&repo.root)?;
+                    let list = schedule::list(repo, &cfg);
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&list)?);
+                    } else if list.is_empty() {
+                        println!("{}", dim("no [[schedule]] in kula.toml"));
+                    }
+                    for i in list.iter().filter(|_| !json) {
+                        let when = if !i.schedule.cron.is_empty() { i.schedule.cron.clone() } else { format!("on {}", i.schedule.on) };
+                        let state = if i.paused { "paused".to_string() } else { i.next.map(|n| format!("next {}", crate::orch::schedule::local(n))).unwrap_or_default() };
+                        println!("{}  {} · {}  {}  {}", accent(&i.key), i.schedule.team, i.schedule.goal, dim(&when), dim(&state));
+                        if !i.error.is_empty() {
+                            println!("  {}", dim(&i.error));
+                        }
+                    }
+                }
+                Some("tick") => {
+                    // One pass; waits for what it starts so scripts see the run's end.
+                    let mut running: schedule::Running = None;
+                    let fired = schedule::tick(repo, &mut running)?;
+                    if fired.is_empty() {
+                        println!("{}", dim("nothing due"));
+                    }
+                    for k in &fired {
+                        println!("{} {k}", accent("started"));
+                    }
+                    if let Some((_, mut c)) = running {
+                        c.wait()?;
+                    }
+                }
+                Some(a @ ("pause" | "resume")) => {
+                    let k = key.ok_or_else(|| anyhow::anyhow!("which schedule? kula schedule {a} <name>"))?;
+                    schedule::set_paused(repo, &k, a == "pause")?;
+                    println!("{} {k}", accent(if a == "pause" { "paused" } else { "resumed" }));
+                }
+                Some(a) => anyhow::bail!("kula schedule takes list, tick, pause or resume, not {a}"),
+            }
+        }
         Cmd::RunPlan { plan, status } => {
             let path = task::resolve(repo, plan)?;
             let p = if status {

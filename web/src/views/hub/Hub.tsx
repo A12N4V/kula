@@ -9,6 +9,7 @@ import { useToast } from "../../ui";
 import type { Act } from "./data";
 import { useDraft, type LinkKind, type Pick } from "./draft";
 import { HubCanvas, type Item } from "./HubCanvas";
+import { DeployDialog, SchedulesCard } from "./Deploy";
 import { ChangesCard, Inspector } from "./Inspector";
 import { paintAt, useEvents } from "./live";
 import { LiveFeed } from "./LiveFeed";
@@ -28,13 +29,14 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
   const [link, setLink] = useState<LinkKind>("rt");
   const [map, setMap] = useState<FlowMap | null>(null);
   const [servers, setServers] = useState<string[]>([]);
+  const [deploying, setDeploying] = useState<string | null>(null);
   const d = useDraft(info, setPick);
 
   useEffect(() => { api.configMatrix().then((c) => setServers(c.source.servers)).catch(() => setServers([])); }, []);
   useEffect(() => {
-    if (!showMap || map) return;
+    if ((!showMap && !deploying) || map) return;
     api.flowmap(60).then(setMap).catch((e: Error) => toast(e.message, "err"));
-  }, [showMap, map]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showMap, deploying, map]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!showMap) setFlow(null); }, [showMap]);
 
   // Live: the event log painted onto the seats, with a scrubber over a run.
@@ -54,6 +56,9 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
   }, [ev.events, run]);
   const feed = useMemo(() => (run ? ev.events.filter((e) => e.run === run || e.plan === run) : ev.events), [ev.events, run]);
   const ledger = useRuns(mode === "runs");
+  // Deploy runs the saved team, so a picked team counts only once it is saved.
+  const saved = pick?.team ? info.teams.find((t) => t.name === pick.team) : undefined;
+  const deployTeam = deploying ? info.teams.find((t) => t.name === deploying) : undefined;
   const replay = (id: string) => { setRun(id); setCursor(null); setMode("live"); };
   const at = cursor !== null && feed[cursor] ? feed[cursor].ts : now;
   const paint = useMemo(() => (live ? paintAt(info, [], feed.slice(0, cursor === null ? feed.length : cursor + 1), at) : undefined), [live, info, feed, cursor, at]);
@@ -105,6 +110,8 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
             <span>Flow map</span>
           </label>}
           {d.dirty && <span className="hub-dirty mono">unsaved</span>}
+          {mode !== "runs" && <button className="btn sm primary hub-deploy-btn" disabled={!saved || d.dirty} onClick={() => saved && setDeploying(saved.name)}
+            title={d.dirty ? "Save first" : saved ? `Deploy ${saved.name}` : "Pick a team"}>Deploy</button>}
         </div>
         {mode === "runs"
           ? <RunsBoard info={ledger.info} err={ledger.err} onReplay={replay} />
@@ -117,11 +124,12 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
       <aside className="hub-inspector" aria-label="Inspector">
         <div className="hub-insp-scroll">
           {mode === "live" && <LiveFeed events={feed} via={ev.via} runs={runs} run={run} setRun={setRun} cursor={cursor} setCursor={setCursor} />}
-          {mode === "runs" && <RunsTrends info={ledger.info} />}
+          {mode === "runs" && <><SchedulesCard /><RunsTrends info={ledger.info} /></>}
           {mode !== "runs" && <Inspector info={info} d={d} pick={pick} flow={flow} setFlow={setFlow} map={map} act={act} />}
         </div>
         <ChangesCard d={d} act={act} />
       </aside>
+      {deployTeam && <DeployDialog team={deployTeam} map={map} onClose={() => setDeploying(null)} onDeployed={(plan) => { setDeploying(null); replay(plan); }} />}
     </div>
   );
 }

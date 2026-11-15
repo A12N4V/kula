@@ -106,18 +106,7 @@ pub fn plan(repo: &Repo, st: &Store, o: Opts) -> Result<Plan> {
     // 4. Tests by path convention: inside the scope, or named after the module.
     let all_files: Vec<String> = st.nodes_where("kind = 'file'", []).unwrap_or_default().into_iter().map(|n| n.path).collect();
     for s in by_dir.values_mut() {
-        let name = s.module.rsplit('/').next().unwrap_or(&s.module).to_lowercase();
-        let mut tests: Vec<String> = all_files
-            .iter()
-            .filter(|f| is_test_path(f))
-            .filter(|f| {
-                let stem = f.rsplit('/').next().unwrap_or(f).to_lowercase();
-                in_scope(f, &s.scope) || (name.len() >= 3 && stem.contains(&name))
-            })
-            .cloned()
-            .collect();
-        tests.sort();
-        s.tests = tests;
+        s.tests = tests_for(&all_files, &s.scope, &s.module);
     }
 
     // 5. Expected blast radius per slice.
@@ -164,8 +153,25 @@ pub fn plan(repo: &Repo, st: &Store, o: Opts) -> Result<Plan> {
         mem_check: o.mem_check,
         team: String::new(),
         run: String::new(),
+        budget_usd: None,
         slices,
     })
+}
+
+/// Test files for a scope by path convention: inside it, or named after the module.
+pub fn tests_for(all_files: &[String], scope: &[String], module: &str) -> Vec<String> {
+    let name = module.rsplit('/').next().unwrap_or(module).to_lowercase();
+    let mut tests: Vec<String> = all_files
+        .iter()
+        .filter(|f| is_test_path(f))
+        .filter(|f| {
+            let stem = f.rsplit('/').next().unwrap_or(f).to_lowercase();
+            in_scope(f, scope) || (name.len() >= 3 && stem.contains(&name))
+        })
+        .cloned()
+        .collect();
+    tests.sort();
+    tests
 }
 
 /// Dependencies first, ties broken by id.

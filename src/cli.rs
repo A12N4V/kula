@@ -356,6 +356,24 @@ pub(crate) enum Cmd {
         #[arg(long)]
         status: bool,
     },
+    /// Deploy a team: one slice per seat, held to its scope and the target flows.
+    #[command(after_help = "Examples:\n  kula deploy core \"speed up login\" --flow route:post-login --budget 2 --wait")]
+    Deploy {
+        team: String,
+        goal: String,
+        /// A flow id from the flow map to hold the run to (repeatable).
+        #[arg(long = "flow")]
+        flows: Vec<String>,
+        /// Dollar cap for the run.
+        #[arg(long)]
+        budget: Option<f64>,
+        /// Wait for the run to finish.
+        #[arg(long)]
+        wait: bool,
+    },
+    /// The `[[schedule]]` runs: list them, `tick` once, `pause` or `resume` one.
+    #[command(after_help = "Examples:\n  kula schedule  ·  kula schedule tick  ·  kula schedule pause nightly")]
+    Schedule { action: Option<String>, key: Option<String> },
     /// Merge passing slices into kula/<plan>/integration and gate the result; main is never touched.
     #[command(name = "merge-train", after_help = "Examples:\n  kula merge-train  ·  kula merge-train .kula/plan.json --json")]
     MergeTrain { plan: Option<std::path::PathBuf> },

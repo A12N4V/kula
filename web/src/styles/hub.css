@@ -302,3 +302,32 @@
 @container (max-width: 760px) {
   .runs-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(120px, 34%) minmax(0, 1fr); }
 }
+
+/* Deploy dialog and schedules (H.8) */
+.hub-deploy-btn { margin-left: 4px; }
+.palette.hub-deploy { width: min(520px, calc(100vw - 32px)); padding: 14px 16px 16px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 14px; }
+.hub-deploy-head { display: flex; align-items: center; gap: 8px; }
+.hub-deploy-head h2 { margin: 0; font: 500 20px var(--display, serif); color: var(--text); }
+.hub-deploy-head .hub-team-dot { width: 10px; height: 10px; }
+.hub-deploy-field { display: flex; flex-direction: column; gap: 6px; }
+.hub-deploy-field > span.mono { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); }
+.hub-deploy-field > span.mono .muted { text-transform: none; letter-spacing: 0; margin-left: 6px; }
+.hub-deploy-field p { margin: 0; font-size: 12px; }
+.palette.hub-deploy .input { width: 100%; height: 34px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg); font-size: 13px; box-sizing: border-box; }
+.palette.hub-deploy .input:focus { border-color: var(--accent); }
+.palette.hub-deploy .input[aria-invalid="true"] { border-color: var(--red); }
+.hub-deploy-flows { display: flex; flex-wrap: wrap; gap: 6px; max-height: 168px; overflow: auto; }
+.hub-deploy-flow { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 8px 3px 4px; border: 1px solid var(--line-2); border-radius: var(--r-xs); background: transparent; color: var(--text-2); font-size: 11px; cursor: pointer; transition: border-color .15s, color .15s; }
+.hub-deploy-flow .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-deploy-flow:hover { border-color: color-mix(in oklab, var(--accent) 50%, var(--line-2)); color: var(--text); }
+.hub-deploy-flow.on { border-color: var(--accent); color: var(--text); }
+.hub-deploy-flow .hub-flow-kind { padding: 0 4px; font-size: 9px; }
+.hub-schedules ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.hub-schedules li { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); font-size: 11px; }
+.hub-schedules li.paused { opacity: .6; }
+.hub-schedules li > .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-sched-top, .hub-sched-when { display: flex; align-items: center; gap: 6px; }
+.hub-sched-name { font-size: 13px; color: var(--text); }
+.hub-sched-when { color: var(--text-3); }
+.hub-sched-next { color: var(--accent); }
+.hub-schedules li.paused .hub-sched-next { color: var(--text-3); }

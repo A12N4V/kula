@@ -214,4 +214,4 @@ JSON
 # An uncommitted edit, so Changes has something to show.
 printf '\n// TODO: cache the RDF store per indexed head\n' >> src/kg.rs
 fi
-exec env KULA_TOKEN=test "$K" view --no-open --port "$1"
+exec env KULA_TOKEN=test KULA_NO_AGENT=1 "$K" view --no-open --port "$1"

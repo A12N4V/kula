@@ -99,6 +99,9 @@ pub struct Plan {
     /// The current or last run (`<plan>-<start secs>`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub run: String,
+    /// Stop starting seats once the run has spent this many dollars.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_usd: Option<f64>,
     pub slices: Vec<Slice>,
 }
 

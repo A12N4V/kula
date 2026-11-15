@@ -3,11 +3,13 @@
 //! See docs/design/orchestration.md.
 
 pub mod blast;
+pub mod deploy;
 pub mod gate;
 pub mod learn;
 pub mod plan;
 pub mod retry;
 pub mod run;
+pub mod schedule;
 pub mod task;
 pub mod train;
 pub mod wire;

@@ -59,7 +59,7 @@ Still to come back to: the old per-task loop overview has no place in the hub ye
 
 ## Runs (H.5–H.8)
 
-kula launches agents itself and reads their JSON output for tokens, cost and duration. Each run is written to `.kula/runs/<id>.json`. Scores are a weighted mix of gate verdict, tests, refusals, retries, cost and duration, and the weights are shown in the UI. The Runs view adds a synopsis, a replay and a changelog grouped by flow. Schedules run inside `kula serve`, one scheduled run at a time.
+kula launches agents itself and reads their JSON output for tokens, cost and duration. Each run is written to `.kula/runs/<id>.json`. Scores are a weighted mix of gate verdict, tests, refusals, retries, cost and duration, and the weights are shown in the UI. The Runs view adds a synopsis, a replay and a changelog grouped by flow. Schedules run inside `kula serve`, one scheduled run at a time; deploys and schedules are under H.8 below.
 
 ### Run ledger (H.5)
 
@@ -86,3 +86,12 @@ kula launches agents itself and reads their JSON output for tokens, cost and dur
 - **Ledger.** Every `research::save` mirrors the loop into `.kula/runs/research-<started>.json` with trigger `research`. Each experiment is a seat (`#n`, hypothesis as its note, kept as passed, fence refusals as rejected, otherwise reverted) and the run carries a `research` line: metric, goal, budget, branch, baseline, best, gain and one point per experiment. History, trends, scores and the changelog then come for free.
 - **Synopsis.** Research runs get their own headline: experiments kept of the total, the metric moved from baseline to best with the gain, and the span. A loop still marked active shows as a current run.
 - **Chart.** One component serves the inspector (built from the live `research::State`) and the Runs detail (built from the ledger points): a dot per experiment, kept filled, reverted hollow, rejected red, a tick when there was no value, the best so far as a step line and the baseline dashed.
+
+### Deploy and schedules (H.8)
+
+- **Deploy.** The Deploy button in the hub bar opens on the picked team once it is saved. The dialog takes a goal, the target flows (preselected: every flow with a file under a seat's own scope) and a dollar cap. kula plans one slice per seat, held to the chosen flows' files inside that seat's scope, records the plan, starts it in the background and switches the hub to Live on the new run.
+- **CLI.** `kula deploy <team> "<goal>" [--flow <id>]... [--budget <usd>] [--wait]` does the same. `kula schedule` lists schedules with their next fire; `kula schedule tick` fires what is due once; `kula schedule pause|resume <name>`.
+- **Gate.** A team may set `test = "<command>"`, the gate its deploys run; blank detects one from the manifests (`cargo test -q`, `npm test`, `pytest`, `go test`).
+- **Budget.** Once the run's cost reaches the cap, no new seat starts; seats already running finish.
+- **Schedules.** `[[schedule]]` takes `name`, `team`, `goal`, `budget` and either `cron` (five fields, local time) or `on = "push" | "pr"`. `kula serve` ticks them every 30 seconds (`KULA_SCHEDULE=0` turns this off). Push and pr are polled refs, not a hook: push fires when the default branch moves, pr when a remote branch other than the default or `kula/*` moves. One scheduled run goes at a time, a run missed while nothing was serving is caught up once, and a schedule seen for the first time waits for its next fire. State lives in `.kula/schedules.json`.
+- **Hub.** Runs mode shows a Schedules card: each schedule's team, goal, cron or trigger, next fire, last error and a pause toggle.

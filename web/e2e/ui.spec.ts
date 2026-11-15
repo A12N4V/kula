@@ -943,6 +943,97 @@ members = [
   });
 });
 
+// H.8 – deploy and schedules: Deploy runs a saved team on a goal with its
+// flows preselected and a budget, the run paints in Live and lands in Runs;
+// a [[schedule]] shows its next fire and pauses from the card.
+test.describe("agent hub deploy (H.8)", () => {
+  test.describe.configure({ mode: "serial" });
+  test.use({ baseURL: ({ fx }, use) => use(fx) });
+  const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
+  const rootOf = (fx: string) => fs.readFileSync(`/tmp/kula-fixture-${new URL(fx).port}.path`, "utf8").trim();
+  const fake = [process.cwd(), path.join(process.cwd(), "..")].map((d) => path.join(d, "tests", "fixtures", "fake-agent.sh")).find((p) => fs.existsSync(p))!;
+  const toml = `
+[agents.commands]
+fake-agent = ["${fake}", "{prompt}"]
+
+[[team]]
+name = "e2e-ship"
+category = "deploy"
+test = "true"
+members = [
+  { name = "shipper", agent = "fake-agent", scope = ["src/**"] },
+]
+
+[[schedule]]
+name = "nightly"
+team = "e2e-ship"
+goal = "tidy the docs"
+cron = "0 3 * * *"
+budget = 1
+`;
+  let tomlBefore = "";
+  let runsBefore = new Set<string>();
+  const runsDir = (fx: string) => path.join(rootOf(fx), ".kula", "runs");
+  test.beforeAll(async ({ fx }) => {
+    const root = rootOf(fx);
+    tomlBefore = fs.readFileSync(path.join(root, "kula.toml"), "utf8");
+    fs.writeFileSync(path.join(root, "kula.toml"), tomlBefore + toml);
+    runsBefore = new Set(fs.existsSync(runsDir(fx)) ? fs.readdirSync(runsDir(fx)) : []);
+  });
+  test.afterAll(async ({ fx }) => {
+    if (tomlBefore) fs.writeFileSync(path.join(rootOf(fx), "kula.toml"), tomlBefore);
+    fs.rmSync(path.join(rootOf(fx), ".kula", "schedules.json"), { force: true });
+    if (fs.existsSync(runsDir(fx))) for (const f of fs.readdirSync(runsDir(fx))) if (!runsBefore.has(f)) fs.rmSync(path.join(runsDir(fx), f), { force: true, recursive: true });
+  });
+
+  test("H.8: deploy a team on its flows, watch it in Live, find it in Runs, pause its schedule", async ({ page, fx }, info) => {
+    desktopOnly(info);
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page, "agents");
+    const deploy = page.locator(".hub-bar").getByRole("button", { name: "Deploy" });
+    await expect(deploy).toBeDisabled();
+    await page.locator('.hub-team[data-team="e2e-ship"] .hub-team-head').click();
+    await expect(deploy).toBeEnabled();
+    await deploy.click();
+    const dlg = page.getByRole("dialog", { name: "Deploy e2e-ship" });
+    await expect(dlg).toBeVisible();
+    // flows under the seat's scope come preselected
+    const flows = dlg.getByRole("group", { name: "Target flows" });
+    await expect(flows).toBeVisible({ timeout: 20_000 });
+    expect(await flows.locator('button[aria-pressed="true"]').count()).toBeGreaterThan(0);
+    await dlg.getByLabel("Budget").fill("abc");
+    await dlg.getByLabel("Goal").fill("tighten the error copy");
+    await expect(dlg.getByRole("button", { name: "Deploy" })).toBeDisabled();
+    await dlg.getByLabel("Budget").fill("0.50");
+    await expect(dlg.getByRole("button", { name: "Deploy" })).toBeEnabled();
+    await page.screenshot({ path: "test-results/hub-deploy.png", scale: "css" });
+    await dlg.getByRole("button", { name: "Deploy" }).click();
+    await expect(dlg).toBeHidden({ timeout: 10_000 });
+    await expect(page.getByRole("group", { name: "Mode" }).getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+    // the ledger gets the run, tagged manual, and Runs lists it
+    const ledgers = () => (fs.existsSync(runsDir(fx)) ? fs.readdirSync(runsDir(fx)).filter((f) => f.endsWith(".json") && !runsBefore.has(f)) : []);
+    await expect.poll(() => ledgers().length, { timeout: 30_000 }).toBeGreaterThan(0);
+    const fresh = ledgers()[0];
+    const rec = JSON.parse(fs.readFileSync(path.join(runsDir(fx), fresh), "utf8"));
+    expect(rec.team).toBe("e2e-ship");
+    expect(rec.trigger).toBe("manual");
+    expect(rec.goal).toBe("tighten the error copy");
+    await page.getByRole("group", { name: "Mode" }).getByRole("button", { name: "Runs" }).click();
+    await expect(page.locator(`.runs-row[data-run="${rec.id}"]`)).toContainText("tighten the error copy", { timeout: 10_000 });
+    // the schedule: next fire, then pause from the card
+    const card = page.getByRole("region", { name: "Schedules" });
+    const row = card.locator('li[data-schedule="nightly"]');
+    await expect(row).toContainText("0 3 * * *");
+    await expect(row.locator(".hub-sched-next")).toContainText("next");
+    await row.getByLabel("Run nightly").uncheck();
+    await expect(row).toHaveClass(/paused/);
+    await expect.poll(() => JSON.parse(fs.readFileSync(path.join(rootOf(fx), ".kula", "schedules.json"), "utf8")).schedules?.nightly?.paused ?? null).toBeTruthy();
+    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= window.innerHeight)).toBe(true);
+    await page.screenshot({ path: "test-results/hub-schedules.png", scale: "css" });
+  });
+});
+
 test.describe("git board", () => {
   for (const [w, h] of [[1440, 900], [1280, 800]]) {
     test(`fills ${w}x${h} with every widget and no page scroll`, async ({ page }) => {

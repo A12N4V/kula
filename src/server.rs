@@ -364,6 +364,40 @@ async fn runs_changelog(State(s): State<AppState>, Query(q): Query<HashMap<Strin
     .await
 }
 
+/// POST /api/deploy – plan a team's run and start it; the run shows in Live and Runs.
+async fn deploy(State(s): State<AppState>, Json(o): Json<crate::orch::deploy::DeployOpts>) -> ApiResult {
+    blocking(move || {
+        let (plan, path) = crate::orch::deploy::make(&s.repo, &o)?;
+        let mut child = crate::orch::deploy::start(&s.repo, &plan, &path, "manual")?;
+        std::thread::spawn(move || child.wait());
+        Ok(json!({ "plan": plan.id, "slices": plan.slices.len(), "path": path.strip_prefix(&s.repo.root).unwrap_or(&path) }))
+    })
+    .await
+}
+
+/// GET /api/schedules – each `[[schedule]]` with when it is next due and whether it is paused.
+async fn schedules(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let cfg = crate::config::Config::load(&s.repo.root)?;
+        Ok(json!({ "schedules": crate::orch::schedule::list(&s.repo, &cfg) }))
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct PauseBody {
+    paused: bool,
+}
+
+/// POST /api/schedules/{key}/pause – `{paused}` pauses or resumes it.
+async fn schedule_pause(State(s): State<AppState>, Path(key): Path<String>, Json(b): Json<PauseBody>) -> ApiResult {
+    blocking(move || {
+        crate::orch::schedule::set_paused(&s.repo, &key, b.paused)?;
+        Ok(json!({ "ok": true }))
+    })
+    .await
+}
+
 async fn file(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let p = q.get("path").cloned().unwrap_or_default();
@@ -1356,6 +1390,9 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/runs/{id}", get(run_detail))
         .route("/api/runs/{id}/synopsis", get(run_synopsis))
         .route("/api/changelog", get(runs_changelog))
+        .route("/api/deploy", post(deploy))
+        .route("/api/schedules", get(schedules))
+        .route("/api/schedules/{key}/pause", post(schedule_pause))
         .route("/api/isolate", post(isolate))
         .route("/api/scopes", get(scopes))
         .route("/api/scopes/{action}", post(scopes_action))
@@ -1415,6 +1452,7 @@ pub fn serve(repo: Repo, port: u16, open_browser: bool) -> anyhow::Result<()> {
     rt.block_on(async move {
         let name = repo.name();
         spawn_auto_reindex(repo.clone());
+        crate::orch::schedule::spawn(repo.root.clone());
         let app = router(repo, token);
         // Try the requested port, then the next few.
         let mut listener = None;
