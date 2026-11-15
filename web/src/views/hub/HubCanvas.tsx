@@ -83,7 +83,7 @@ const TeamNode = memo(({ data }: NodeProps<Node<TeamData>>) => (
 
 const LaneNode = memo(({ data }: NodeProps<Node<LaneData>>) => (
   <div className={`hub-lane${data.hit ? " hit" : ""}`}>
-    <div className="hub-lane-head mono" title={data.label}>{short(data.label, 30)}</div>
+    <div className="hub-lane-head mono" title={data.label}>{short(data.label, 30)}<span className="hub-lane-n"> {data.count}</span></div>
     <div className="hub-lane-count mono">{data.count} {data.count === 1 ? "flow" : "flows"}</div>
     {data.more > 0 && <div className="hub-lane-more mono">+{data.more} more</div>}
   </div>
@@ -254,7 +254,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
   };
 
   return (
-    <div ref={box} className={`hub-canvas${far ? " far" : ""}`} onDragOver={(e) => { if (e.dataTransfer.types.includes(DND)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }} onDrop={onDrop}>
+    <div ref={box} className={`hub-canvas${far ? " far" : ""}${map ? " mapped" : ""}`} onDragOver={(e) => { if (e.dataTransfer.types.includes(DND)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }} onDrop={onDrop}>
       <ReactFlow
         nodes={nodes} edges={edges} nodeTypes={nodeTypes}
         onNodesChange={onNodesChange} onConnect={onConnect} onEdgesDelete={onEdgesDelete}
