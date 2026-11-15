@@ -270,7 +270,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
         connectionLineStyle={{ stroke: "#f97f3a", strokeWidth: 1.5 }}
       >
         <Background color="#1a1715" gap={22} size={1} />
-        <Controls className="cv-controls" showInteractive={false} position="top-right" orientation="horizontal" />
+        <Controls className="cv-controls" showInteractive={false} position="bottom-right" orientation="horizontal" />
       </ReactFlow>
       {d.draft.length === 0 && <div className="cv-msg">Drag an agent or a template here</div>}
     </div>

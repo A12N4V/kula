@@ -129,7 +129,7 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
         {mode === "runs"
           ? <RunsBoard info={ledger.info} err={ledger.err} onReplay={replay} onBuild={() => setMode("build")} />
           : (
-            <ReactFlowProvider>
+            <ReactFlowProvider key={mode}>
               <HubCanvas info={info} d={d} pick={pick} setPick={setPick} flow={flow} setFlow={setFlow} map={showMap ? map : null} link={link} paint={paint} onItem={onItem} />
             </ReactFlowProvider>
           )}

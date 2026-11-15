@@ -250,3 +250,5 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
   .brand, .rail-toggle, .topbar .btn.sm, .sb-help { min-width: 40px; min-height: 40px; }
   /* stat rows are navigable targets – keep them at the floor on phones */
 }
+
+@media (max-width: 600px) { .statusbar > .sb-crumbs { flex-shrink: 1; min-width: 0; overflow: hidden; } }

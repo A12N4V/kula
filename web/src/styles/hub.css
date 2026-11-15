@@ -495,6 +495,27 @@
   .hub-pal-scroll { display: flex; gap: 12px; overflow-x: auto; overflow-y: hidden; }
   .hub-pal-group { flex: none; min-width: 148px; }
   .hub-palette .hub-pal-q { display: none; }
-  .hub-canvas .react-flow__controls { top: auto; bottom: 12px; }
 }
 @media (max-width: 759px) { .page.hub .hub-inspector .input.mono, .page.hub .hub-sec .textarea { font-size: 16px; } }
+
+/* eleventh pass: map reads when far, quieter orange, larger micro labels */
+.page.hub .hub-canvas.far .hub-lane-head, .page.hub .hub-canvas.far .hub-lane-count { font-size: 20px; }
+.hub-canvas.far .hub-flow { visibility: visible; height: 6px !important; padding: 0; border-color: transparent; background: var(--line-2); }
+.hub-canvas.far .hub-flow > * { display: none; }
+.hub-canvas.far .hub-flow.hit { background: var(--accent); }
+.page.hub .hub-canvas.far .hub-warn { font-size: 17px; line-height: 22px; padding: 0 6px; }
+.hub-warn { color: var(--yellow); border-color: color-mix(in oklab, var(--yellow) 45%, var(--line)); }
+.hub-pal-dot.template { background: var(--text-3); border-color: var(--text-3); }
+.hub-deploy-flow .hub-flow-kind.route { color: var(--text-3); border-color: var(--line-2); }
+.hub-field > span, .hub-bar-label, .hub-pal-group h3 { font-size: 11px; letter-spacing: .1em; }
+.hub-flow-kind, .hub-deploy-flow .hub-flow-kind { font-size: 10px; }
+.hub-sw::before { content: ""; position: absolute; inset: -3px; }
+.hub-pal-group h3 .hub-pal-dot { display: inline-block; margin-right: 6px; vertical-align: 1px; }
+.hub-pal-none { margin: 2px 0 0; padding: 0 4px; font: 12px var(--ui); color: var(--text-3); }
+.page.hub .runs-trend-seg button:disabled.on { box-shadow: none; color: var(--text-3); }
+.hub-deploy-flows { mask-image: linear-gradient(180deg, #000 calc(100% - 24px), transparent); padding-bottom: 18px; }
+@media (max-width: 1100px) {
+  .hub-bar .hub-bar-label { display: none; }
+  .hub-bar { flex-wrap: nowrap; }
+  .hub-bar .spacer { flex: 1 1 0; min-width: 0; }
+}

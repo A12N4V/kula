@@ -9,6 +9,7 @@ import { Empty, useToast } from "../ui";
 import type { Nav } from "./hub/data";
 import { LEVEL_TEXT, LEVEL_MEANS, GuardTag } from "./hub/levels";
 import Hub from "./hub/Hub";
+import AsciiMark from "../AsciiMark";
 
 export { LEVEL_TEXT, LEVEL_MEANS, GuardTag };
 
@@ -25,7 +26,7 @@ export default function Agents({ version, onChanged }: Nav) {
   };
 
   if (err) return <div className="page"><Empty title="Agent state unavailable">{err}</Empty></div>;
-  if (!info) return <div className="page"><div className="muted">Reading teams and fences</div></div>;
+  if (!info) return <div className="loading"><div className="mini-loader"><div className="ml-field"><AsciiMark period={3.2} /></div><span>Reading teams and fences</span></div></div>;
   return (
     <div className="page agents hub">
       <header className="page-head"><div><h1>Agents</h1></div></header>

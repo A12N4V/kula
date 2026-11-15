@@ -27,7 +27,8 @@ export function Palette({ info, servers, onUse }: { info: AgentsInfo; servers: s
           const items = g.items.filter((i) => has(i.label));
           return (
             <section key={g.kind} className={`hub-pal-group${items.length ? "" : " is-empty"}`} data-kind={g.kind}>
-              <h3>{g.title}<span className="mono muted">{items.length}</span></h3>
+              <h3>{g.kind !== "template" && g.kind !== "agent" && <i className={`hub-pal-dot ${g.kind}`} />}{g.title}<span className="mono muted">{items.length}</span></h3>
+              {!items.length && <p className="hub-pal-none muted">none yet</p>}
               {items.map((i) => (
                 <button
                   key={i.value} className={`hub-pal-item ${g.kind}`} draggable title={i.value}
