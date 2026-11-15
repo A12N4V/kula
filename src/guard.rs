@@ -285,7 +285,9 @@ impl Guards {
     pub fn for_agent(repo: &Repo, agent: Option<&str>) -> Result<Guards> {
         let cfg = Config::load(&repo.root)?;
         let mut t = task(repo);
+        let mut seat: Option<(String, crate::config::Member)> = None;
         if let Some((team, m)) = agent.and_then(|a| member(repo, &cfg, a)) {
+            seat = Some((team.clone(), m.clone()));
             let wf = (!m.workflow.is_empty()).then(|| workflow::find(&cfg, &m.workflow)).flatten();
             let scope = if !m.scope.is_empty() { m.scope.clone() } else { wf.as_ref().map(|w| w.scope.clone()).unwrap_or_default() };
             let who = crate::agents::agent_id(agent.unwrap_or_default());
@@ -301,7 +303,31 @@ impl Guards {
             };
             t = Some(Task { workflow: m.workflow.clone(), scope: if scope.is_empty() { base.scope.clone() } else { scope }, ..base });
         }
-        Guards::new(&cfg, t)
+        let mut g = Guards::new(&cfg, t)?;
+        if let Some((team, m)) = seat {
+            g.add_seat_fence(&team, &m)?;
+        }
+        Ok(g)
+    }
+
+    /// A seat's own `fence` from `kula.toml`, on top of everything else. Rules
+    /// only ever add restrictions, so this can never open what another rule shut.
+    pub fn add_seat_fence(&mut self, team: &str, m: &crate::config::Member) -> Result<()> {
+        for (pats, level, what) in
+            [(&m.fence.lock, Level::Locked, "locks"), (&m.fence.hide, Level::Hidden, "hides"), (&m.fence.review, Level::Review, "flags for review")]
+        {
+            if pats.is_empty() {
+                continue;
+            }
+            let (paths, symbols): (Vec<String>, Vec<String>) = pats.iter().cloned().partition(|s| looks_like_path(s) || s == "**");
+            self.rules.push(Compiled {
+                globs: globset(&paths)?,
+                level,
+                rule: GuardRule { paths, symbols, level: level.as_str().into(), reason: format!("seat {} in team {team} {what} this", m.key()) },
+                source: format!("seat {}/{}", team, m.key()),
+            });
+        }
+        Ok(())
     }
 
     pub fn new(cfg: &Config, task: Option<Task>) -> Result<Guards> {
@@ -1041,6 +1067,38 @@ mod tests {
 
     fn guards(toml: &str, task: Option<Task>) -> Guards {
         Guards::new(&toml::from_str::<Config>(toml).unwrap(), task).unwrap()
+    }
+
+    #[test]
+    fn a_seat_fence_adds_to_the_repo_rules_and_only_for_that_seat() {
+        let cfg: Config = toml::from_str(
+            r#"
+            [[guard]]
+            paths = ["vendor/**"]
+            level = "review"
+            [[team]]
+            name = "ship"
+            members = [
+              { name = "Atlas", fence = { lock = ["src/pay/**"], hide = ["secrets_vault"] } },
+              { name = "Quill" },
+            ]
+            "#,
+        )
+        .unwrap();
+        let mut g = Guards::new(&cfg, None).unwrap();
+        g.add_seat_fence("ship", &cfg.teams[0].members[0]).unwrap();
+        assert_eq!(g.path("src/pay/card.rs").level, Level::Locked);
+        assert!(g.path("src/pay/card.rs").reason.contains("Atlas"));
+        assert_eq!(g.path("vendor/x.rs").level, Level::Review, "repo rules still apply");
+        assert_eq!(g.path("src/other.rs").level, Level::Open);
+        // a seat fence can only add: a lock over a hidden rule stays hidden
+        let mut g2 = guards("[[guard]]\npaths = [\"src/pay/**\"]\nlevel = \"hidden\"\n", None);
+        g2.add_seat_fence("ship", &cfg.teams[0].members[0]).unwrap();
+        assert_eq!(g2.path("src/pay/card.rs").level, Level::Hidden);
+        // the other seat gets none of it
+        let mut q = Guards::new(&cfg, None).unwrap();
+        q.add_seat_fence("ship", &cfg.teams[0].members[1]).unwrap();
+        assert_eq!(q.path("src/pay/card.rs").level, Level::Open);
     }
 
     #[test]

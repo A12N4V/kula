@@ -99,7 +99,32 @@ pub struct Team {
     /// teams nest into a society of teams.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub under: String,
+    /// Hub colour for the team's group, `#rrggbb`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub color: String,
+    /// What kind of team this is ("build", "research", "review"); groups teams on the hub.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub category: String,
     pub members: Vec<Member>,
+}
+
+/// A seat's own fences, on top of the repository's and its workflow's. Each
+/// entry is a path glob or a symbol (`name` or `path:name`).
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct SeatFence {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lock: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hide: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub review: Vec<String>,
+}
+
+impl SeatFence {
+    pub fn is_empty(&self) -> bool {
+        self.lock.is_empty() && self.hide.is_empty() && self.review.is_empty()
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -135,6 +160,24 @@ pub struct Member {
     /// Who it hands its work to when it is done (agent names).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hands_off: Vec<String>,
+    /// Hub colour for this seat's node, `#rrggbb`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub color: String,
+    /// Free labels the hub groups and filters seats by.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// Skills linked for this seat only at launch; empty means every repo skill.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<String>,
+    /// MCP servers this seat gets at launch; empty means the agent's own set.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub mcp: Vec<String>,
+    /// A memory file (repo relative) given to this seat at launch.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub memory: String,
+    /// Fences for this seat only.
+    #[serde(skip_serializing_if = "SeatFence::is_empty")]
+    pub fence: SeatFence,
 }
 
 impl Member {
@@ -335,6 +378,14 @@ fn render_edit(root: &Path, f: impl FnOnce(&mut toml_edit::DocumentMut) -> Resul
 
 /// Replace an array of tables (`[[guard]]`, `[[workflow]]`) with `items`.
 fn set_tables<T: Serialize>(doc: &mut toml_edit::DocumentMut, key: &str, items: &[T]) -> Result<()> {
+    // The comment written above the first table belongs to the section, not to
+    // that one entry: keep it across a rewrite.
+    let lead = doc
+        .get(key)
+        .and_then(|i| i.as_array_of_tables())
+        .and_then(|a| a.get(0))
+        .and_then(|t| t.decor().prefix().and_then(|p| p.as_str()).map(str::to_string))
+        .filter(|p| p.contains('#'));
     doc.remove(key);
     if items.is_empty() {
         return Ok(());
@@ -349,6 +400,9 @@ fn set_tables<T: Serialize>(doc: &mut toml_edit::DocumentMut, key: &str, items: 
     if let Some(a) = item.as_array_of_tables_mut() {
         for t in a.iter_mut() {
             t.decor_mut().set_prefix("\n");
+        }
+        if let (Some(p), Some(first)) = (lead, a.get_mut(0)) {
+            first.decor_mut().set_prefix(p);
         }
     }
     doc.insert(key, item);
@@ -445,6 +499,23 @@ fn check_teams(teams: &[Team]) -> Result<()> {
         if t.members.iter().any(|m| m.key().trim().is_empty()) {
             anyhow::bail!("team {}: every member has a name or an agent", t.name);
         }
+        if !t.color.is_empty() && !is_hex_colour(&t.color) {
+            anyhow::bail!("team {}: colour is #rrggbb, got {:?}", t.name, t.color);
+        }
+        for m in &t.members {
+            if !m.color.is_empty() && !is_hex_colour(&m.color) {
+                anyhow::bail!("team {}: {} colour is #rrggbb, got {:?}", t.name, m.key(), m.color);
+            }
+            if let Some(bad) = m.tags.iter().chain(&m.skills).chain(&m.mcp).find(|x| x.trim().is_empty() || x.contains(['\n', '"'])) {
+                anyhow::bail!("team {}: {} has a blank or odd tag, skill or MCP name: {bad:?}", t.name, m.key());
+            }
+            if m.memory.contains("..") || m.memory.starts_with('/') {
+                anyhow::bail!("team {}: {} memory must be a path inside the repository", t.name, m.key());
+            }
+            if m.fence.lock.iter().chain(&m.fence.hide).chain(&m.fence.review).any(|x| x.trim().is_empty()) {
+                anyhow::bail!("team {}: {} has a blank fence entry", t.name, m.key());
+            }
+        }
         let names: Vec<&str> = t.members.iter().map(|m| m.key()).collect();
         if let Some(d) = names.iter().enumerate().find(|(i, n)| names[..*i].contains(n)).map(|x| x.1) {
             anyhow::bail!("team {}: two members are called {d}", t.name);
@@ -483,6 +554,10 @@ fn check_teams(teams: &[Team]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn is_hex_colour(c: &str) -> bool {
+    c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|x| x.is_ascii_hexdigit())
 }
 
 pub fn set_agents(root: &Path, a: &Agents) -> Result<Config> {
@@ -564,6 +639,46 @@ mod tests {
         // a loop is refused before anything renders
         let mut bad = teams.clone();
         bad[0].members[0].reports_to = "Quill".into();
+        assert!(preview_teams(&dir, &bad).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn hub_fields_round_trip_and_old_files_still_parse() {
+        let dir = std::env::temp_dir().join(format!("kula-hub-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // an old file: no hub keys anywhere, and a comment that must survive
+        let old = "# hand written\n[[team]]\nname = \"ship\"\nmembers = [{ name = \"Atlas\" }]\n";
+        std::fs::write(dir.join("kula.toml"), old).unwrap();
+        let cfg = Config::load(&dir).unwrap();
+        assert_eq!(cfg.teams[0].members[0].fence, SeatFence::default());
+        let mut teams = cfg.teams.clone();
+        teams[0].color = "#f97f3a".into();
+        teams[0].category = "build".into();
+        let m = &mut teams[0].members[0];
+        m.color = "#5aa0e0".into();
+        m.tags = vec!["backend".into()];
+        m.skills = vec!["review".into()];
+        m.mcp = vec!["kula".into()];
+        m.memory = "docs/atlas.md".into();
+        m.fence.lock = vec!["migrations/**".into(), "charge_card".into()];
+        set_teams(&dir, &teams).unwrap();
+        let text = std::fs::read_to_string(dir.join("kula.toml")).unwrap();
+        assert!(text.contains("# hand written"), "{text}");
+        assert_eq!(Config::load(&dir).unwrap().teams, teams);
+        // a seat with none of them writes none of them
+        let plain = vec![Team { name: "bare".into(), members: vec![Member { name: "Q".into(), ..Default::default() }], ..Default::default() }];
+        let (_, after) = preview_teams(&dir, &plain).unwrap();
+        for k in ["color", "tags", "skills", "mcp", "memory", "fence", "category"] {
+            assert!(!after.contains(k), "{k} written for an empty seat:\n{after}");
+        }
+        // bad values are refused
+        let mut bad = teams.clone();
+        bad[0].members[0].color = "orange".into();
+        assert!(preview_teams(&dir, &bad).is_err());
+        let mut bad = teams.clone();
+        bad[0].members[0].memory = "../x.md".into();
         assert!(preview_teams(&dir, &bad).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }

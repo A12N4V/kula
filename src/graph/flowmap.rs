@@ -261,9 +261,7 @@ pub fn flowmap(store: &Store, limit: usize) -> Result<FlowMap> {
         "entry" => 2,
         _ => 3,
     };
-    flows.sort_by(|a, b| {
-        rank(a.kind).cmp(&rank(b.kind)).then(b.steps.len().cmp(&a.steps.len())).then(a.entry.name.cmp(&b.entry.name))
-    });
+    flows.sort_by(|a, b| rank(a.kind).cmp(&rank(b.kind)).then(b.steps.len().cmp(&a.steps.len())).then(a.entry.name.cmp(&b.entry.name)));
     // Single-step flows say nothing unless they are routes.
     flows.retain(|f| f.steps.len() > 1 || f.kind == "route");
     flows.truncate(limit);
@@ -340,7 +338,16 @@ mod tests {
 
     #[test]
     fn match_arms_and_macros() {
-        let body = ["fn f(k: K) {", "    match k {", "        K::A => one(),", "        K::B => {", "            two!(k);", "        }", "    }", "}"];
+        let body = [
+            "fn f(k: K) {",
+            "    match k {",
+            "        K::A => one(),",
+            "        K::B => {",
+            "            two!(k);",
+            "        }",
+            "    }",
+            "}",
+        ];
         assert_eq!(site(&body, 1, "one"), Some((3, Some("match"))));
         assert_eq!(site(&body, 1, "two"), Some((5, Some("match"))));
     }
