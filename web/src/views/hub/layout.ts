@@ -71,7 +71,9 @@ export function place(teams: Team[], saved: Saved, research: (m: Member) => bool
       x += b.w + TEAM_GAP; tall = Math.max(tall, b.h); wide = Math.max(wide, x - TEAM_GAP);
       return p;
     });
-    return { at, fit: Math.min(ar / Math.max(1, wide), 1 / Math.max(1, y + tall)) };
+    // a lone short last row reads as an orphan, so it costs a little scale
+    const orphan = y > 0 && x - TEAM_GAP < wide / 2 ? 0.9 : 1;
+    return { at, fit: orphan * Math.min(ar / Math.max(1, wide), 1 / Math.max(1, y + tall)) };
   };
   const rows = new Set<number>();
   for (let a = 0; a < boxes.length; a++) {

@@ -106,10 +106,12 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
           <div className="seg" role="group" aria-label="Mode">
             {MODES.map((m) => <button key={m.id} className={mode === m.id ? "on" : ""} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>{m.label}</button>)}
           </div>
-          {mode === "build" && <span className="hub-bar-label">Link</span>}
-          {mode === "build" && <div className="seg" role="group" aria-label="Link">
-            <button className={link === "rt" ? "on" : ""} aria-pressed={link === "rt"} onClick={() => setLink("rt")} title="Drag between seats to set who reports to whom">Reports</button>
-            <button className={link === "ho" ? "on" : ""} aria-pressed={link === "ho"} onClick={() => setLink("ho")} title="Drag between seats to hand work off">Hand off</button>
+          {mode === "build" && <div className="hub-bar-group">
+            <span className="hub-bar-label">Link</span>
+            <div className="seg" role="group" aria-label="Link">
+              <button className={link === "rt" ? "on" : ""} aria-pressed={link === "rt"} onClick={() => setLink("rt")} title="Drag between seats to set who reports to whom">Reports</button>
+              <button className={link === "ho" ? "on" : ""} aria-pressed={link === "ho"} onClick={() => setLink("ho")} title="Drag between seats to hand work off">Hand off</button>
+            </div>
           </div>}
           <span className="spacer" />
           {mode === "build" && <div className="seg" role="group" aria-label="Layers">

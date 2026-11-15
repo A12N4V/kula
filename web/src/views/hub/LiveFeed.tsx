@@ -16,7 +16,7 @@ export function LiveFeed({ events, via, runs, run, setRun, cursor, setCursor }: 
   return (
     <section className="hub-sec cv-live" aria-label="Live">
       <div className="card-head">
-        <h2 className="hub-insp-title">Live</h2>
+        <h2 className="hub-insp-title"><span>Live</span></h2>
         <span className={`cv-live-via ${via}${via === "stream" && !n ? " idle" : ""}`} data-via={via}>{via === "stream" ? (n ? "streaming" : "idle") : via === "poll" ? "polling every 5 s" : "off"}</span>
         <span className="spacer" />
         {runs.length > 0 && (

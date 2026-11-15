@@ -206,7 +206,8 @@ export function RunsTrends({ info }: { info: RunsInfo | null }) {
       {info && (
         <div className="runs-weights" aria-label="Score weights">
           <h3>Score weights</h3>
-          <div className="runs-weight-bar">{WEIGHT_NAMES.map((k) => <span key={k} style={{ flexGrow: info.weights[k] }} title={`${k} ${info.weights[k]}`}><i>{k}</i><b className="mono">{info.weights[k]}</b></span>)}</div>
+          <div className="runs-weight-bar" aria-hidden>{WEIGHT_NAMES.map((k) => <span key={k} style={{ flexGrow: info.weights[k] }} title={`${k} ${info.weights[k]}`} />)}</div>
+          <div className="runs-weight-legend">{WEIGHT_NAMES.map((k) => <span key={k}><i>{k}</i><b className="mono">{info.weights[k]}</b></span>)}</div>
         </div>
       )}
     </section>

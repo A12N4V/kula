@@ -16,16 +16,16 @@ import { TaskCard } from "./TaskCard";
 export const SWATCHES = ["#f97f3a", "#e8e2d9", "#c2b9ac", "#b5835a", "#d9a066", "#8d8378", "#6f665d"];
 const CATEGORIES = ["build", "research", "review"];
 
-function Sec({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
+function Sec({ title, children, aside, dot }: { title: string; children: ReactNode; aside?: ReactNode; dot?: string }) {
   return (
     <section className="hub-sec" aria-label={title}>
-      <h3>{title}{aside && <span className="hub-sec-aside">{aside}</span>}</h3>
+      <h3>{dot && <i className={`hub-pal-dot ${dot}`} aria-hidden />}{title}{aside && <span className="hub-sec-aside">{aside}</span>}</h3>
       {children}
     </section>
   );
 }
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="hub-field"><span>{label}</span>{children}</label>;
+function Field({ label, children, tone }: { label: string; children: ReactNode; tone?: string }) {
+  return <label className={`hub-field${tone ? ` ${tone}` : ""}`}><span>{label}</span>{children}</label>;
 }
 function Swatches({ value, onChange }: { value?: string; onChange: (v: string | undefined) => void }) {
   return (
@@ -79,7 +79,7 @@ function SeatPanel({ info, d, team, m, act }: { info: AgentsInfo; d: Draft; team
       <div className="hub-insp-title"><span>{key}</span><span className="mono muted">{team.name}</span></div>
       <Sec title="Identity">
         <Swatches value={m.color} onChange={(c) => set({ color: c })} />
-        <Field label="Name"><input className="input" value={m.name ?? ""} onChange={(e) => set({ name: e.target.value })} aria-label="Seat name" /></Field>
+        <Field label="Name"><input className="input" value={m.name ?? ""} placeholder={key} onChange={(e) => set({ name: e.target.value })} aria-label="Seat name" /></Field>
         <Field label="Agent">
           <select className="input" value={m.agent} onChange={(e) => set({ agent: e.target.value })} aria-label="Agent">
             <option value="">Any connected</option>
@@ -87,7 +87,7 @@ function SeatPanel({ info, d, team, m, act }: { info: AgentsInfo; d: Draft; team
           </select>
         </Field>
         <Field label="Model">
-          <input className="input mono" list="hub-models" value={m.model ?? ""} onChange={(e) => set({ model: e.target.value || undefined })} aria-label="Model" />
+          <input className="input mono" list="hub-models" value={m.model ?? ""} placeholder="default" onChange={(e) => set({ model: e.target.value || undefined })} aria-label="Model" />
           <datalist id="hub-models">{(MODELS[m.agent] ?? Object.values(MODELS).flat()).map((x) => <option key={x} value={x} />)}</datalist>
         </Field>
         <Field label="Role"><input className="input" value={m.role ?? ""} onChange={(e) => set({ role: e.target.value || undefined })} aria-label="Role" /></Field>
@@ -108,17 +108,17 @@ function SeatPanel({ info, d, team, m, act }: { info: AgentsInfo; d: Draft; team
       <Sec title="Prompt">
         <textarea className="textarea" rows={3} value={m.prompt ?? ""} onChange={(e) => set({ prompt: e.target.value })} aria-label="Seat prompt" />
       </Sec>
-      <Sec title="Skills"><Chips values={m.skills ?? []} onChange={(v) => set({ skills: v })} as="name" placeholder="skill" label="Skills" /></Sec>
-      <Sec title="MCP"><Chips values={m.mcp ?? []} onChange={(v) => set({ mcp: v })} as="name" placeholder="server" label="MCP servers" /></Sec>
-      <Sec title="Memory">
+      <Sec title="Skills" dot="skill"><Chips values={m.skills ?? []} onChange={(v) => set({ skills: v })} as="name" placeholder="skill" label="Skills" /></Sec>
+      <Sec title="MCP" dot="mcp"><Chips values={m.mcp ?? []} onChange={(v) => set({ mcp: v })} as="name" placeholder="server" label="MCP servers" /></Sec>
+      <Sec title="Memory" dot="memory">
         <input className="input mono" list="hub-docs" placeholder="AGENTS.md" value={m.memory ?? ""} onChange={(e) => set({ memory: e.target.value || undefined })} aria-label="Memory file" />
         <datalist id="hub-docs">{info.docs_list.map((p) => <option key={p} value={p} />)}</datalist>
       </Sec>
       <Sec title="Fences">
         <Field label="Scope"><Chips values={m.scope ?? []} onChange={(v) => set({ scope: v })} placeholder="src/**" label="Scope" /></Field>
-        <Field label="Lock"><Chips values={fence.lock ?? []} onChange={(v) => set({ fence: { ...fence, lock: v } })} placeholder="path or path:symbol" label="Lock" /></Field>
+        <Field label="Lock" tone="lock"><Chips values={fence.lock ?? []} onChange={(v) => set({ fence: { ...fence, lock: v } })} placeholder="path or path:symbol" label="Lock" /></Field>
         <Field label="Hide"><Chips values={fence.hide ?? []} onChange={(v) => set({ fence: { ...fence, hide: v } })} placeholder="path" label="Hide" /></Field>
-        <Field label="Review"><Chips values={fence.review ?? []} onChange={(v) => set({ fence: { ...fence, review: v } })} placeholder="path" label="Review" /></Field>
+        <Field label="Review" tone="review"><Chips values={fence.review ?? []} onChange={(v) => set({ fence: { ...fence, review: v } })} placeholder="path" label="Review" /></Field>
       </Sec>
       <Sec title="Can it touch"><ExplainBox team={team.name} seat={key} d={d} /></Sec>
       {run && (

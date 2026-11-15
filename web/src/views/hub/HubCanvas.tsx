@@ -177,7 +177,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const far = useStore((s) => s.transform[2] < 0.65);
+  const far = useStore((s) => s.transform[2] < 0.85);
   const narrow = width > 0 && width < 700;
   const fitted = useRef("");
   useEffect(() => {
@@ -185,7 +185,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
     const key = `${!!map}:${d.draft.length}:${width}:${aspect}`;
     if (fitted.current === key) return;
     fitted.current = key;
-    const t = window.setTimeout(() => rf.fitView({ padding: 0.08, duration: 0, maxZoom: 1, minZoom: 0.25 }), 30);
+    const t = window.setTimeout(() => rf.fitView({ padding: 0.14, duration: 0, maxZoom: 1, minZoom: 0.25 }), 30);
     return () => window.clearTimeout(t);
   }, [map, d.draft.length, rf, width, aspect]);
 
@@ -243,11 +243,11 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
           else if (n.type === "flow") setFlow(n.id.slice(5));
         }}
         onPaneClick={() => { setPick(null); setFlow(null); }}
-        minZoom={0.25} maxZoom={1.6} fitView fitViewOptions={{ padding: 0.08, maxZoom: 1, minZoom: 0.25 }} proOptions={{ hideAttribution: true }} deleteKeyCode={["Backspace", "Delete"]}
+        minZoom={0.25} maxZoom={1.6} fitView fitViewOptions={{ padding: 0.14, maxZoom: 1, minZoom: 0.25 }} proOptions={{ hideAttribution: true }} deleteKeyCode={["Backspace", "Delete"]}
         connectionLineStyle={{ stroke: "#f97f3a", strokeWidth: 1.5 }}
       >
         <Background color="#1a1715" gap={22} size={1} />
-        <Controls className="cv-controls" showInteractive={false} position={narrow ? "top-right" : "bottom-left"} orientation={narrow ? "horizontal" : "vertical"} />
+        <Controls className="cv-controls" showInteractive={false} position="top-right" orientation="horizontal" />
       </ReactFlow>
       {d.draft.length === 0 && <div className="cv-msg">Drag an agent or a template here</div>}
     </div>
