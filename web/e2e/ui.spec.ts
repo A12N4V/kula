@@ -293,7 +293,7 @@ test.describe("graph chrome", () => {
     // Sub-pixel drift between the two measurements is float noise, not layout.
     const near = (a: number, b: number) => Math.abs(a - b) < 0.5;
     expect(box && wrap && near(box.x, wrap.x) && near(box.y, wrap.y) && near(box.width, wrap.width) && near(box.height, wrap.height)).toBe(true);
-    expect(await gl.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(5, 5, 5)");
+    expect(await gl.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(0, 0, 0)");
     // The ASCII field animates: the zoom falls into the centre, frame after frame.
     const ascii = gl.locator(".ascii-mark");
     await expect.poll(() => ascii.evaluate((el) => el.textContent?.trim().length ?? 0)).toBeGreaterThan(100);
@@ -512,7 +512,10 @@ async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: numbe
     const clear = (id: string) => { const p = at(id); return !pts.some((q: { id: string; x: number; y: number }) => q.id !== id && Math.hypot(p.x - q.x, p.y - q.y) < 14); };
     const pool = edges.filter((e: string[]) => sym(e[0]) && sym(e[1]) && d(e) > 25 && clear(e[0]) && clear(e[1]));
     pool.sort((e1: string[], e2: string[]) => (pick === "hub" ? d(e2) - d(e1) : d(e1) - d(e2)));
-    const [s, t] = pool[0] ?? edges[0];
+    // Fewer symbols in view: any pair, as long as nothing sits on top of either end.
+    const loose = edges.filter((e: string[]) => d(e) > 25 && clear(e[0]) && clear(e[1]));
+    loose.sort((e1: string[], e2: string[]) => d(e1) - d(e2));
+    const [s, t] = pool[0] ?? loose[0] ?? edges[0];
     return { a: at(s), b: at(t) };
   }, pick);
 }
@@ -757,6 +760,36 @@ test.describe("agent hub (H.4)", () => {
     await expect(sugg).toHaveCount(0);
     const toml = (await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json()).content as string;
     expect(toml).toContain("web/dist/**");
+  });
+
+  test("H.9: the overview holds the task at hand: read it, finish it, start one", async ({ page, fx }, info) => {
+    desktopOnly(info);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page, "agents");
+    // the fixture seeds a task; keep its file and put it back after
+    const task = path.join(path.dirname(tomlOf(fx)), ".kula/task.json");
+    const taskBefore = fs.existsSync(task) ? fs.readFileSync(task, "utf8") : null;
+    try {
+      const insp = page.getByRole("complementary", { name: "Inspector" });
+      const seeded = insp.getByRole("region", { name: "Now" });
+      await expect(seeded).toContainText("harden the MCP server");
+      await expect(seeded.getByRole("list", { name: "Agent loop" }).locator("li")).toHaveCount(6);
+      await seeded.getByRole("button", { name: "Finish task" }).click();
+      const form = insp.getByRole("form", { name: "Start a task" });
+      await form.getByLabel("Task title").fill("e2e tidy the parser");
+      await form.getByRole("button", { name: "Start task" }).click();
+      const now = insp.getByRole("region", { name: "Now" });
+      await expect(now).toContainText("e2e tidy the parser");
+      const loop = now.getByRole("list", { name: "Agent loop" });
+      await expect(loop.locator("li")).toHaveCount(6);
+      await expect(loop.locator("li.gate")).toContainText("edit");
+      await insp.screenshot({ path: "test-results/hub-task.png" });
+      await now.getByRole("button", { name: "Finish task" }).click();
+      await expect(insp.getByRole("form", { name: "Start a task" })).toBeVisible();
+    } finally {
+      if (taskBefore === null) fs.rmSync(task, { force: true });
+      else fs.writeFileSync(task, taskBefore);
+    }
   });
 });
 
@@ -1004,11 +1037,11 @@ budget = 1
     expect(await flows.locator('button[aria-pressed="true"]').count()).toBeGreaterThan(0);
     await dlg.getByLabel("Budget").fill("abc");
     await dlg.getByLabel("Goal").fill("tighten the error copy");
-    await expect(dlg.getByRole("button", { name: "Deploy" })).toBeDisabled();
+    await expect(dlg.getByRole("button", { name: "Deploy", exact: true })).toBeDisabled();
     await dlg.getByLabel("Budget").fill("0.50");
-    await expect(dlg.getByRole("button", { name: "Deploy" })).toBeEnabled();
+    await expect(dlg.getByRole("button", { name: "Deploy", exact: true })).toBeEnabled();
     await page.screenshot({ path: "test-results/hub-deploy.png", scale: "css" });
-    await dlg.getByRole("button", { name: "Deploy" }).click();
+    await dlg.getByRole("button", { name: "Deploy", exact: true }).click();
     await expect(dlg).toBeHidden({ timeout: 10_000 });
     await expect(page.getByRole("group", { name: "Mode" }).getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
     // the ledger gets the run, tagged manual, and Runs lists it

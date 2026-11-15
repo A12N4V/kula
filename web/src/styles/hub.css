@@ -331,3 +331,17 @@
 .hub-sched-when { color: var(--text-3); }
 .hub-sched-next { color: var(--accent); }
 .hub-schedules li.paused .hub-sched-next { color: var(--text-3); }
+
+/* the task at hand: title, scope, the agent loop with its fenced edit stage */
+.hub-task { display: grid; gap: 8px; min-width: 0; }
+.hub-task-title { font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+.hub-loop { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--r-md); }
+.hub-loop li { display: grid; grid-template-columns: 20px auto minmax(0, 1fr); align-items: baseline; gap: 8px; padding: 4px 8px; border-top: 1px solid var(--line); font-size: 11.5px; }
+.hub-loop li:first-child { border-top: 0; }
+.hub-loop li .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.hub-loop li.gate { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in oklab, var(--red) 9%, transparent) 6px 7px); }
+.hub-loop li.gate b { color: var(--red); }
+.hub-loop-n { font-size: 9.5px; font-weight: 600; letter-spacing: .1em; color: var(--accent); }
+.hub-task-steps { margin: 0; padding-left: 18px; font-size: 11.5px; color: var(--text-2); }
+.hub-task-steps li { margin-bottom: 2px; }
+.hub-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }

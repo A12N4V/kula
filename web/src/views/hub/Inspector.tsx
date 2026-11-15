@@ -10,6 +10,7 @@ import { draftProblems, type Draft, type Pick } from "./draft";
 import { GuardTag } from "./levels";
 import { lineDiff } from "./linediff";
 import { MetricChart, pointsOf } from "./MetricChart";
+import { TaskCard } from "./TaskCard";
 
 export const SWATCHES = ["#f97f3a", "#8fd694", "#f0827a", "#f2cc60", "#7cb7ff", "#d49cf0", "#c2b9ac"];
 const CATEGORIES = ["build", "research", "review"];
@@ -216,6 +217,7 @@ function Overview({ info, d, act }: { info: AgentsInfo; d: Draft; act: Act }) {
         <div className="hub-stats mono"><span>{d.draft.length} teams</span><span>{seats} seats</span><span>{(info.skills ?? []).length} skills</span><span>{info.research.length} research</span></div>
         <p className="muted">Pick a seat or team to edit it</p>
       </Sec>
+      <Sec title={info.task ? "Now" : "Task"}><TaskCard info={info} act={act} /></Sec>
       {info.suggestions.length > 0 && (
         <Sec title="Suggested" aside={<span className="mono muted">{info.suggestions.length}</span>}><ul className="hub-list">{info.suggestions.map((x) => <SuggestionRow key={x.id} s={x} act={act} />)}</ul></Sec>
       )}

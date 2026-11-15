@@ -55,7 +55,7 @@ The nine Agents tabs are gone. Agents is one view in three columns:
 
 Edits stay in a draft until Save, which shows the `kula.toml` diff first and keeps the file's comments. Positions go through `layout_save` onto `refs/kula/meta` and never touch the tree.
 
-Still to come back to: the old per-task loop overview has no place in the hub yet, and the CSS of the removed tabs (`agents.css`, `agents-teams.css`) is pruned in H.9.
+With nothing picked, the inspector's overview holds the task at hand (H.9): its title, workflow and scope, the six-stage agent loop with the fenced edit stage counting the files held, and Finish. With no task it is a short form that starts one. The CSS of the removed tabs is pruned from `agents.css` and `agents-teams.css`.
 
 ## Runs (H.5–H.8)
 
