@@ -528,6 +528,17 @@ pub(crate) enum GuardCmd {
         #[arg(long)]
         staged: bool,
     },
+    /// Why a file or symbol is fenced: every rule that applies and the one that decides.
+    #[command(after_help = "Examples:\n  kula guard explain src/billing.rs  ·  kula guard explain src/billing.rs --symbol charge --agent claude")]
+    Explain {
+        path: String,
+        /// A symbol in the file.
+        #[arg(long)]
+        symbol: Option<String>,
+        /// See it as this agent's seat.
+        #[arg(long)]
+        agent: Option<String>,
+    },
     /// Git pre-commit hook: refuse an agent's commit that holds fenced changes.
     #[command(after_help = "Examples:\n  kula guard commit")]
     Commit,

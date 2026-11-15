@@ -31,7 +31,17 @@ Seats and teams stay in `kula.toml`. A seat gains `color`, `tags`, `skills`, `mc
 
 ## Fences (H.3)
 
-Fence levels only ever rise: open, then review, then scope, then locked, then hidden. The order rules are listed in never changes the result. An unknown level is an error, not a quiet lock. Hook-time verdicts are made against the exact lines an edit changes. `explain` gives the chain of rules that decided a verdict.
+- **Levels only rise**: open, then review, then scope, then locked, then hidden. A verdict is the highest level any rule gives, so the order rules are listed in never changes it, and adding a rule never lowers one. Property tests over generated rule sets check both.
+- **Unknown levels** (`level = "lockd"`) fail closed: the rule acts as locked, and `kula check` reports it and exits 2 until it is fixed.
+- **Exact hook verdicts.** For a single-file Edit, MultiEdit or Write, the hook rebuilds the file as it would be after the edit and parses both versions. Path rules still fence the whole file. A symbol rule only refuses the edit when that symbol's source changes. Each definition under the fenced name is compared byte for byte, so these are caught:
+  - wrapping the symbol in a comment;
+  - deleting it;
+  - adding a second definition with the same name.
+
+  Shell calls, patches, multi-file calls and languages kula cannot parse keep the coarse whole-file verdict.
+- **Bare-name warnings.** A symbol rule without a path that matches more than one definition is reported, with the `path:name` forms to pick from.
+- **Explain.** `kula guard explain <path> [--symbol s] [--agent a]` and the hub's `explain` action list every rule that applies and mark the one that decides.
+- **Seat overlaps.** Two scoped seats in one team that may both write the same files are reported in `kula check` (`seat_overlaps`) and in the hub. Unscoped seats are left out.
 
 ## Runs (H.5–H.8)
 

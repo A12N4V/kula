@@ -743,6 +743,8 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "connections": crate::agents::connections(&r.root),
             "docs": crate::agents::docs(r)?,
             "suggestions": crate::agents::suggestions(r),
+            "guard_warnings": g.warnings(st.as_ref()),
+            "seat_overlaps": st.as_ref().map(|s| crate::guard::team_overlaps(&cfg, s)).unwrap_or_default(),
             "teams": cfg.teams,
             "team": crate::guard::team(r),
             "research": crate::research::list(r),
@@ -966,6 +968,22 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
             "suggestion_dismiss" => {
                 crate::agents::dismiss(r, a.id)?;
                 json!({ "ok": true })
+            }
+            "explain" => {
+                // Why a seat may or may not touch a file or symbol. The seat is
+                // found by team `name` and seat `agent` (its name or agent id),
+                // in the posted `teams` when the hub has unsaved edits.
+                let cfg = crate::config::Config::load(&r.root)?;
+                let teams = if a.teams.is_empty() { cfg.teams.clone() } else { a.teams.clone() };
+                let seat = teams.iter().filter(|t| a.name.is_empty() || t.name == a.name).find_map(|t| {
+                    t.members.iter().find(|m| !a.agent.is_empty() && (m.name == a.agent || m.agent == a.agent)).map(|m| (t.name.clone(), m.clone()))
+                });
+                let g = match seat {
+                    Some((team, m)) => crate::guard::Guards::for_seat(&cfg, &team, &m, None, None)?,
+                    None => crate::guard::Guards::load(r)?,
+                };
+                let path = a.path.trim_start_matches("./").to_string();
+                json!(g.explain(&path, (!a.target.is_empty()).then_some(a.target.as_str())))
             }
             "preview" => {
                 // The fence map a workflow would draw, without starting it.

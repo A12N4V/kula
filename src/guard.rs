@@ -90,12 +90,14 @@ pub enum Level {
 }
 
 impl Level {
-    fn parse(s: &str) -> Level {
-        match s {
-            "hidden" => Level::Hidden,
-            "locked" => Level::Locked,
-            "review" => Level::Review,
-            _ => Level::Locked,
+    /// A `[[guard]]` level. Anything else is an error; the caller still treats
+    /// it as locked so a typo can never open code, and reports it.
+    pub fn parse(s: &str) -> Result<Level, String> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "hidden" => Ok(Level::Hidden),
+            "locked" => Ok(Level::Locked),
+            "review" => Ok(Level::Review),
+            _ => Err(format!("level {s:?} is not locked, hidden or review; it is treated as locked until fixed")),
         }
     }
     pub fn as_str(self) -> &'static str {
@@ -154,6 +156,70 @@ pub struct Guards {
     secrets: Option<GlobSet>,
     task: Option<(Task, GlobSet, Vec<String>)>,
     workflow: Option<Workflow>,
+    /// `kula.toml guard #2: level "lockd" …`, from [`Level::parse`].
+    bad_levels: Vec<String>,
+}
+
+/// `kula guard explain`: the verdict and every rule behind it.
+#[derive(Serialize, Clone, Debug)]
+pub struct Explain {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    pub verdict: Verdict,
+    pub hits: Vec<Verdict>,
+}
+
+/// Two scoped seats in one team that may both write the same files.
+#[derive(Serialize, Clone, Debug)]
+pub struct Overlap {
+    pub team: String,
+    pub a: String,
+    pub b: String,
+    pub count: usize,
+    /// Up to eight of the shared files.
+    pub paths: Vec<String>,
+}
+
+fn seat_label(m: &crate::config::Member) -> String {
+    if !m.name.is_empty() { m.name.clone() } else if !m.agent.is_empty() { m.agent.clone() } else { "seat".into() }
+}
+
+/// Seats in the same team whose writable sets overlap. Only seats with a
+/// scope count: an unscoped seat may write anything, which is not a conflict
+/// the config can be blamed for. Files come from the index.
+pub fn team_overlaps(cfg: &Config, store: &Store) -> Vec<Overlap> {
+    let files: Vec<String> = store.nodes_where("kind = 'file' ORDER BY path", []).unwrap_or_default().into_iter().map(|n| n.path).collect();
+    let mut out = vec![];
+    for t in &cfg.teams {
+        let seats: Vec<(String, std::collections::BTreeSet<String>)> = t
+            .members
+            .iter()
+            .filter_map(|m| {
+                let g = Guards::for_seat(cfg, &t.name, m, Some(0), None).ok()?;
+                if g.task.as_ref().map_or(true, |(t, _, _)| t.scope.is_empty()) {
+                    return None;
+                }
+                let w = files.iter().filter(|p| g.path(p).level.editable()).cloned().collect();
+                Some((seat_label(m), w))
+            })
+            .collect();
+        for i in 0..seats.len() {
+            for j in i + 1..seats.len() {
+                let shared: Vec<String> = seats[i].1.intersection(&seats[j].1).cloned().collect();
+                if !shared.is_empty() {
+                    out.push(Overlap {
+                        team: t.name.clone(),
+                        a: seats[i].0.clone(),
+                        b: seats[j].0.clone(),
+                        count: shared.len(),
+                        paths: shared.into_iter().take(8).collect(),
+                    });
+                }
+            }
+        }
+    }
+    out
 }
 
 pub(crate) fn globset(pats: &[String]) -> Result<GlobSet> {
@@ -284,29 +350,33 @@ impl Guards {
     /// (and scope) replace the task's – separate workflows for separate agents.
     pub fn for_agent(repo: &Repo, agent: Option<&str>) -> Result<Guards> {
         let cfg = Config::load(&repo.root)?;
-        let mut t = task(repo);
-        let mut seat: Option<(String, crate::config::Member)> = None;
-        if let Some((team, m)) = agent.and_then(|a| member(repo, &cfg, a)) {
-            seat = Some((team.clone(), m.clone()));
-            let wf = (!m.workflow.is_empty()).then(|| workflow::find(&cfg, &m.workflow)).flatten();
-            let scope = if !m.scope.is_empty() { m.scope.clone() } else { wf.as_ref().map(|w| w.scope.clone()).unwrap_or_default() };
-            let who = crate::agents::agent_id(agent.unwrap_or_default());
-            let base = Task {
-                title: format!(
-                    "team {team}: {who} in {}{}",
-                    if m.workflow.is_empty() { "no workflow" } else { &m.workflow },
-                    if m.role.is_empty() { String::new() } else { format!(" – {}", m.role) }
-                ),
-                started: t.as_ref().map(|t| t.started).unwrap_or_else(crate::meta::now),
-                by: format!("team:{team}"),
-                ..Default::default()
-            };
-            t = Some(Task { workflow: m.workflow.clone(), scope: if scope.is_empty() { base.scope.clone() } else { scope }, ..base });
+        let t = task(repo);
+        match agent.and_then(|a| member(repo, &cfg, a)) {
+            Some((team, m)) => Guards::for_seat(&cfg, &team, &m, t.as_ref().map(|t| t.started), Some(agent.unwrap_or_default())),
+            None => Guards::new(&cfg, t),
         }
-        let mut g = Guards::new(&cfg, t)?;
-        if let Some((team, m)) = seat {
-            g.add_seat_fence(&team, &m)?;
-        }
+    }
+
+    /// The fences one seat works under, from the config alone: its workflow,
+    /// its scope (or the workflow's), the repository's rules and its own fence.
+    /// No active team is needed, so the hub can preview a seat before it runs.
+    pub fn for_seat(cfg: &Config, team: &str, m: &crate::config::Member, started: Option<i64>, agent: Option<&str>) -> Result<Guards> {
+        let wf = (!m.workflow.is_empty()).then(|| workflow::find(cfg, &m.workflow)).flatten();
+        let scope = if !m.scope.is_empty() { m.scope.clone() } else { wf.as_ref().map(|w| w.scope.clone()).unwrap_or_default() };
+        let who = crate::agents::agent_id(agent.unwrap_or(if m.agent.is_empty() { "any" } else { &m.agent }));
+        let t = Task {
+            title: format!(
+                "team {team}: {who} in {}{}",
+                if m.workflow.is_empty() { "no workflow" } else { &m.workflow },
+                if m.role.is_empty() { String::new() } else { format!(" – {}", m.role) }
+            ),
+            started: started.unwrap_or_else(crate::meta::now),
+            by: format!("team:{team}"),
+            workflow: m.workflow.clone(),
+            scope,
+        };
+        let mut g = Guards::new(cfg, Some(t))?;
+        g.add_seat_fence(team, m)?;
         Ok(g)
     }
 
@@ -332,10 +402,15 @@ impl Guards {
 
     pub fn new(cfg: &Config, task: Option<Task>) -> Result<Guards> {
         let mut rules = Vec::new();
+        let mut bad_levels = Vec::new();
         for (i, r) in cfg.guards.iter().enumerate() {
+            let level = Level::parse(&r.level).unwrap_or_else(|e| {
+                bad_levels.push(format!("kula.toml guard #{}: {e}", i + 1));
+                Level::Locked
+            });
             rules.push(Compiled {
                 globs: globset(&r.paths)?,
-                level: Level::parse(&r.level),
+                level,
                 rule: r.clone(),
                 source: format!("kula.toml guard #{}", i + 1),
             });
@@ -371,7 +446,7 @@ impl Guards {
             None => None,
         };
         let own = globset(&OWN.iter().map(|s| s.to_string()).collect::<Vec<_>>())?;
-        Ok(Guards { rules, own, secrets, task, workflow: wf })
+        Ok(Guards { rules, own, secrets, task, workflow: wf, bad_levels })
     }
 
     /// Symbol patterns in `[[guard]]` rules that match no definition in the graph.
@@ -422,16 +497,24 @@ impl Guards {
     }
 
     /// `in_scope` overrides the task scope (a file holding an in-scope symbol).
+    /// The highest level among the hits wins; levels only rise, so neither the
+    /// order of the rules nor adding one can ever open what another shut.
     fn decide(&self, path: &str, symbol: Option<&str>, in_scope: bool) -> Verdict {
-        let path = path.trim_start_matches("./");
         let mut best = Verdict::default();
-        let mut raise = |v: Verdict| {
+        for v in self.hits(path, symbol, in_scope) {
             if v.level > best.level {
                 best = v;
             }
-        };
+        }
+        best
+    }
+
+    /// Every rule that applies to a file or symbol, in the order they are checked.
+    fn hits(&self, path: &str, symbol: Option<&str>, in_scope: bool) -> Vec<Verdict> {
+        let path = path.trim_start_matches("./");
+        let mut out = Vec::new();
         if self.own.is_match(path) {
-            raise(Verdict {
+            out.push(Verdict {
                 level: Level::Locked,
                 reason: "kula's own config and agent wiring – only a person changes it (agents can `suggest`)".into(),
                 rule: "kula".into(),
@@ -439,7 +522,7 @@ impl Guards {
         }
         if let Some(s) = &self.secrets {
             if s.is_match(path) {
-                raise(Verdict { level: Level::Hidden, reason: "likely a secret (agents.hide_secrets)".into(), rule: "secrets".into() });
+                out.push(Verdict { level: Level::Hidden, reason: "likely a secret (agents.hide_secrets)".into(), rule: "secrets".into() });
             }
         }
         for c in &self.rules {
@@ -451,20 +534,60 @@ impl Guards {
             });
             if by_symbol || c.globs.is_match(path) {
                 let reason = if c.rule.reason.is_empty() { format!("{} by kula.toml", c.level.as_str()) } else { c.rule.reason.clone() };
-                raise(Verdict { level: c.level, reason, rule: c.source.clone() });
+                out.push(Verdict { level: c.level, reason, rule: c.source.clone() });
             }
         }
         if let Some((t, globs, syms)) = &self.task {
             let inside = in_scope || t.scope.is_empty() || globs.is_match(path) || symbol.is_some_and(|n| syms.iter().any(|s| s == n));
             if !inside {
-                raise(Verdict {
+                out.push(Verdict {
                     level: Level::Scope,
                     reason: format!("task \"{}\" covers only {}", t.title, t.scope.join(", ")),
                     rule: "task".into(),
                 });
             }
         }
-        best
+        out
+    }
+
+    /// Why a file or symbol has the verdict it has: every rule that applies,
+    /// and the one that decided. Powers `kula guard explain` and the hub's
+    /// "what can this seat touch" preview.
+    pub fn explain(&self, path: &str, symbol: Option<&str>) -> Explain {
+        let hits = self.hits(path, symbol, false);
+        let verdict = self.decide(path, symbol, false);
+        Explain { path: path.trim_start_matches("./").to_string(), symbol: symbol.map(String::from), verdict, hits }
+    }
+
+    /// Problems with the fences themselves: a level kula does not know (it is
+    /// treated as locked until fixed, never as open), and a bare symbol name
+    /// that fences more than one definition (qualify it as `path:name`).
+    pub fn has_bad_levels(&self) -> bool {
+        !self.bad_levels.is_empty()
+    }
+
+    pub fn warnings(&self, store: Option<&Store>) -> Vec<String> {
+        let mut out = self.bad_levels.clone();
+        let Some(st) = store else { return out };
+        for c in &self.rules {
+            for s in c.rule.symbols.iter().filter(|s| !s.contains(':')) {
+                let defs = st.nodes_where("name = ?1 AND kind != 'file' AND kind != 'package'", rusqlite::params![s]).unwrap_or_default();
+                if defs.len() > 1 {
+                    let mut paths: Vec<String> = defs.iter().map(|n| format!("{}:{s}", n.path)).collect();
+                    paths.sort();
+                    paths.dedup();
+                    let more = if paths.len() > 3 { format!(" and {} more", paths.len() - 3) } else { String::new() };
+                    paths.truncate(3);
+                    out.push(format!(
+                        "{}: the bare name {s:?} fences {} definitions; to fence one, write {}{more}",
+                        c.source,
+                        defs.len(),
+                        paths.join(" or ")
+                    ));
+                }
+            }
+        }
+        out
     }
 
     /// For edit checks on a file: a symbol-scoped task opens the files that
@@ -493,6 +616,47 @@ impl Guards {
             }
         }
         best
+    }
+
+    /// Exact hook-time verdict for an edit whose before and after text are
+    /// known. The file's own rules apply as always; on top, every fenced symbol
+    /// (locked or hidden, by name or `path:name`) must come out byte for byte
+    /// the same: no change inside it, no new definition under its name, and no
+    /// edit nearby that swallows it (an opened comment or string makes it
+    /// vanish from the parse, which counts as a change). Edits between fenced
+    /// symbols pass. `None` when either text does not parse; the caller then
+    /// uses the whole-file [`Guards::edit`].
+    pub fn edit_exact(&self, store: Option<&Store>, path: &str, before: &str, after: &str) -> Option<Verdict> {
+        let old = crate::index::defs_now(path, before)?;
+        let new = crate::index::defs_now(path, after)?;
+        let mut best = self.edit_touched(store, path, &[]);
+        if !best.level.editable() {
+            return Some(best);
+        }
+        let holds = match (&self.task, store) {
+            (Some((_, _, syms)), Some(st)) if !syms.is_empty() => syms
+                .iter()
+                .any(|s| st.nodes_where("name = ?1 AND path = ?2", rusqlite::params![s, path]).map(|h| !h.is_empty()).unwrap_or(false)),
+            _ => false,
+        };
+        let mut names: Vec<&str> = old.iter().chain(new.iter()).map(|d| d.0.as_str()).collect();
+        names.sort_unstable();
+        names.dedup();
+        for name in names {
+            let v = self.decide(path, Some(name), holds);
+            if v.level.editable() || v.level == Level::Scope {
+                continue;
+            }
+            fn bodies<'a>(defs: &'a [(String, u32, u32, String)], name: &str) -> Vec<&'a str> {
+                let mut b: Vec<&str> = defs.iter().filter(|d| d.0 == name).map(|d| d.3.as_str()).collect();
+                b.sort_unstable();
+                b
+            }
+            if bodies(&old, name) != bodies(&new, name) && v.level > best.level {
+                best = Verdict { reason: format!("{} – the edit changes {name}", v.reason), ..v };
+            }
+        }
+        Some(best)
     }
 
     /// Exact edit verdict for a file whose changed hunks are known to touch
@@ -526,6 +690,33 @@ impl Guards {
         }
         best
     }
+}
+
+/// The text a file would hold after a file tool's edit, from the hook payload's
+/// `tool_input`: Claude Code and Gemini `Edit` / `replace` (`old_string`,
+/// `new_string`, `replace_all`), `MultiEdit` (`edits`), and `Write` /
+/// `write_file` (`content`). `None` when the payload is none of these or an
+/// `old_string` is not in the file, so the caller falls back to the whole-file verdict.
+pub fn edited_text(ti: &serde_json::Value, old: &str) -> Option<String> {
+    if let Some(c) = ti["content"].as_str() {
+        return Some(c.to_string());
+    }
+    let one = |text: &str, e: &serde_json::Value| -> Option<String> {
+        let from = e["old_string"].as_str()?;
+        let to = e["new_string"].as_str()?;
+        if from.is_empty() || !text.contains(from) {
+            return None;
+        }
+        Some(if e["replace_all"].as_bool().unwrap_or(false) { text.replace(from, to) } else { text.replacen(from, to, 1) })
+    };
+    if let Some(edits) = ti["edits"].as_array() {
+        let mut text = old.to_string();
+        for e in edits {
+            text = one(&text, e)?;
+        }
+        return Some(text);
+    }
+    one(old, ti)
 }
 
 /// Symbols whose spans the hunks of a `git diff -U0 …` touch: the names the
@@ -1190,6 +1381,113 @@ mod tests {
             assert_eq!(g.path(p).rule, "kula");
         }
         assert_eq!(g.path("src/kula.rs").level, Level::Open);
+    }
+
+    const PAY: &str = "fn charge(x: u32) -> u32 {\n    x * 2\n}\n\nfn helper() -> u32 {\n    1\n}\n";
+
+    fn exact(g: &Guards, before: &str, after: &str) -> Level {
+        g.edit_exact(None, "src/pay.rs", before, after).expect("parses").level
+    }
+
+    #[test]
+    fn exact_edits_refuse_only_the_fenced_symbol() {
+        let g = guards("[[guard]]\nsymbols = [\"src/pay.rs:charge\"]\nlevel = \"locked\"\n", None);
+        // between and beside symbols: allowed
+        assert!(exact(&g, PAY, &PAY.replace("    1\n", "    2\n")).editable(), "editing helper is fine");
+        assert!(exact(&g, PAY, &format!("// top note\n{PAY}")).editable(), "a new comment line is fine");
+        // inside the locked symbol: refused, and the reason names it
+        let v = g.edit_exact(None, "src/pay.rs", PAY, &PAY.replace("x * 2", "x * 3")).unwrap();
+        assert_eq!(v.level, Level::Locked);
+        assert!(v.reason.contains("charge"), "{}", v.reason);
+        // comment-swallow: wrapping charge in a block comment removes it
+        assert_eq!(exact(&g, PAY, &format!("/*\n{PAY}*/\n")), Level::Locked);
+        // a second definition under the locked name
+        assert_eq!(exact(&g, PAY, &format!("{PAY}\nmod m {{ pub fn charge() {{}} }}\n")), Level::Locked);
+        // deleting it
+        assert_eq!(exact(&g, PAY, "fn helper() -> u32 {\n    1\n}\n"), Level::Locked);
+        // a file path rule still fences the whole file
+        let f = guards("[[guard]]\npaths = [\"src/pay.rs\"]\nlevel = \"locked\"\n", None);
+        assert_eq!(exact(&f, PAY, &PAY.replace("    1\n", "    2\n")), Level::Locked);
+        // an unparseable language falls back to the coarse verdict
+        assert!(g.edit_exact(None, "notes.unknownext", "a", "b").is_none());
+    }
+
+    #[test]
+    fn edited_text_applies_edit_multiedit_and_write() {
+        let ti = serde_json::json!({ "old_string": "x * 2", "new_string": "x * 4" });
+        assert_eq!(edited_text(&ti, PAY).unwrap(), PAY.replace("x * 2", "x * 4"));
+        let ti = serde_json::json!({ "content": "fn a() {}\n" });
+        assert_eq!(edited_text(&ti, PAY).unwrap(), "fn a() {}\n");
+        let ti = serde_json::json!({ "edits": [ { "old_string": "x * 2", "new_string": "x" }, { "old_string": "    1\n", "new_string": "    9\n" } ] });
+        assert_eq!(edited_text(&ti, PAY).unwrap(), PAY.replace("x * 2", "x").replace("    1\n", "    9\n"));
+        assert!(edited_text(&serde_json::json!({ "old_string": "", "new_string": "y" }), PAY).is_none());
+    }
+
+    #[test]
+    fn unknown_levels_warn_and_stay_locked() {
+        let g = guards("[[guard]]\npaths = [\"vendor/**\"]\nlevel = \"lockd\"\n", None);
+        assert_eq!(g.path("vendor/x.rs").level, Level::Locked, "fails closed");
+        assert!(g.has_bad_levels());
+        let w = g.warnings(None);
+        assert!(w.iter().any(|w| w.contains("lockd") && w.contains("guard #1")), "{w:?}");
+        assert!(Level::parse("Hidden").is_ok());
+        assert!(Level::parse("open").is_err());
+    }
+
+    #[test]
+    fn explain_lists_every_rule_and_the_decider() {
+        let g = guards(
+            "[[guard]]\npaths = [\"src/**\"]\nlevel = \"review\"\n[[guard]]\nsymbols = [\"src/pay.rs:charge\"]\nlevel = \"locked\"\n",
+            None,
+        );
+        let e = g.explain("./src/pay.rs", Some("charge"));
+        assert_eq!(e.path, "src/pay.rs");
+        assert_eq!(e.verdict.level, Level::Locked);
+        assert_eq!(e.hits.len(), 2, "{:?}", e.hits);
+        assert!(e.hits.iter().any(|h| h.level == Level::Review));
+        let e = g.explain("src/pay.rs", Some("helper"));
+        assert_eq!(e.verdict.level, Level::Review);
+        assert!(g.explain("docs/a.md", None).hits.is_empty());
+    }
+
+    /// Property checks over generated rule sets (a small LCG, no extra crates):
+    /// the result never depends on rule order, and adding a rule never lowers
+    /// a level.
+    #[test]
+    fn levels_are_order_free_and_only_rise() {
+        let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = |n: u64| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (seed >> 33) % n
+        };
+        let globs = ["src/**", "src/pay/**", "src/pay/card.rs", "docs/**", "*.md", "vendor/**", "src/*.rs"];
+        let syms = ["charge", "src/pay/card.rs:charge", "helper", "src/a.rs:main"];
+        let levels = ["locked", "hidden", "review"];
+        let probes = [("src/pay/card.rs", Some("charge")), ("src/pay/card.rs", None), ("src/a.rs", Some("main")), ("docs/x.md", None), ("README.md", None), ("vendor/z.rs", Some("helper"))];
+        let rule = |r: &(bool, usize, usize)| {
+            if r.0 {
+                format!("[[guard]]\nsymbols = [\"{}\"]\nlevel = \"{}\"\n", syms[r.1 % syms.len()], levels[r.2])
+            } else {
+                format!("[[guard]]\npaths = [\"{}\"]\nlevel = \"{}\"\n", globs[r.1 % globs.len()], levels[r.2])
+            }
+        };
+        let verdicts = |rs: &[(bool, usize, usize)]| {
+            let g = guards(&rs.iter().map(rule).collect::<String>(), None);
+            probes.iter().map(|(p, s)| g.decide(p, *s, false).level).collect::<Vec<_>>()
+        };
+        for _ in 0..200 {
+            let n = 1 + next(5) as usize;
+            let rs: Vec<(bool, usize, usize)> = (0..n).map(|_| (next(2) == 1, next(7) as usize, next(3) as usize)).collect();
+            let base = verdicts(&rs);
+            let mut rev = rs.clone();
+            rev.reverse();
+            assert_eq!(base, verdicts(&rev), "order changed the result for {rs:?}");
+            let mut more = rs.clone();
+            more.push((next(2) == 1, next(7) as usize, next(3) as usize));
+            for (a, b) in base.iter().zip(verdicts(&more)) {
+                assert!(b >= *a, "adding a rule lowered {a:?} to {b:?} for {more:?}");
+            }
+        }
     }
 
     #[test]

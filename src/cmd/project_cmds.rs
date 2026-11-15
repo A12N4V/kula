@@ -39,16 +39,25 @@ pub(crate) fn check_architecture(repo: &Repo, md: bool, json: bool) -> Result<()
 pub(crate) fn check(repo: &Repo, base: Option<String>, max_risk: Option<String>, md: bool, json: bool) -> Result<()> {
     let cfg = config::Config::load(&repo.root)?;
     let base = base.unwrap_or_else(|| project::default_branch(repo, &cfg));
-    let max = max_risk.unwrap_or(cfg.check.max_risk);
+    let max = max_risk.unwrap_or_else(|| cfg.check.max_risk.clone());
     let st = Store::open(repo).ok();
     let r = project::check(repo, st.as_ref(), &base, &max)?;
-    let dangling = match (&st, crate::guard::Guards::load(repo)) {
-        (Some(s), Ok(g)) => g.dangling_symbols(s),
+    let g = crate::guard::Guards::load(repo).ok();
+    let dangling = match (&st, &g) {
+        (Some(s), Some(g)) => g.dangling_symbols(s),
         _ => vec![],
     };
+    let warnings = g.as_ref().map(|g| g.warnings(st.as_ref())).unwrap_or_default();
+    let bad_levels = g.as_ref().is_some_and(|g| g.has_bad_levels());
+    let overlaps = st.as_ref().map(|s| crate::guard::team_overlaps(&cfg, s)).unwrap_or_default();
     if json {
         let mut v = serde_json::to_value(&r)?;
         v["dangling_guards"] = serde_json::json!(dangling);
+        v["guard_warnings"] = serde_json::json!(warnings);
+        v["seat_overlaps"] = serde_json::json!(overlaps);
+        if bad_levels {
+            v["pass"] = serde_json::json!(false);
+        }
         println!("{}", v.to_json());
     } else if md {
         print!("{}", project::check_markdown(&r));
@@ -67,6 +76,12 @@ pub(crate) fn check(repo: &Repo, base: Option<String>, max_risk: Option<String>,
         }
         if !dangling.is_empty() {
             println!("  {} guard names a symbol that no longer exists (fence is inactive): {}", yellow("!"), dangling.join(", "));
+        }
+        for w in &warnings {
+            println!("  {} {}", yellow("!"), w);
+        }
+        for o in &overlaps {
+            println!("  {} team {}: {} and {} may both write {} file(s), e.g. {}", yellow("!"), o.team, o.a, o.b, o.count, o.paths.join(", "));
         }
         if !r.undeclared.is_empty() {
             println!("  {} undeclared: {}", yellow("!"), r.undeclared.join(", "));
@@ -87,7 +102,10 @@ pub(crate) fn check(repo: &Repo, base: Option<String>, max_risk: Option<String>,
             }
         );
     }
-    if !r.pass {
+    if bad_levels && !json && !md {
+        println!("  {}", red("✗ a guard has an unknown level"));
+    }
+    if !r.pass || bad_levels {
         std::process::exit(2);
     }
     Ok(())

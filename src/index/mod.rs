@@ -1154,6 +1154,28 @@ pub fn probe(lang: &langs::Lang, src: &str) -> (usize, usize, usize) {
     }
 }
 
+/// The definitions in one file's current text: name, first and last line, and
+/// the definition's own source. For hook-time fence checks, which must judge
+/// the text an agent is about to write, never a stale index. `None` when the
+/// language is unknown or does not parse.
+pub fn defs_now(rel: &str, src: &str) -> Option<Vec<(String, u32, u32, String)>> {
+    let lid = langs::for_path(rel)?;
+    let lang = langs::get(langs::refine(lid, src))?;
+    let mut parser = Parser::new();
+    parser.set_language(&lang.language).ok()?;
+    let text = langs::prepare(lang.id, src);
+    let pf = parse_source(rel, &text, lang, &mut parser)?;
+    Some(
+        pf.defs
+            .into_iter()
+            .map(|d| {
+                let body = text.get(d.start_byte..d.end_byte).unwrap_or("").to_string();
+                (d.name, d.start_line, d.end_line, body)
+            })
+            .collect(),
+    )
+}
+
 /// Every capture a language's queries make in one source, for `kula lang check`.
 pub fn probe_detail(lang: &langs::Lang, src: &str) -> Vec<String> {
     let mut parser = Parser::new();

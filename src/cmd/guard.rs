@@ -128,6 +128,23 @@ pub(crate) fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                 std::process::exit(1);
             }
         }
+        GuardCmd::Explain { path, symbol, agent } => {
+            let g = guard::Guards::for_agent(repo, agent.as_deref())?;
+            let e = g.explain(&repo_rel(repo, &path), symbol.as_deref());
+            if json {
+                println!("{}", serde_json::to_string(&e)?);
+            } else {
+                let what = match &e.symbol { Some(s) => format!("{}:{s}", e.path), None => e.path.clone() };
+                println!("  {}  {}  {}", level_tag(e.verdict.level), bold(&what), dim(&e.verdict.reason));
+                for h in &e.hits {
+                    let mark = if h.rule == e.verdict.rule && h.level == e.verdict.level { "→" } else { " " };
+                    println!("    {mark} {}  {}  {}", level_tag(h.level), h.rule, dim(&h.reason));
+                }
+                if e.hits.is_empty() {
+                    println!("    {}", dim("no rule applies"));
+                }
+            }
+        }
         GuardCmd::Commit => {
             // Only agents are held here; a person's commit is theirs. Identity
             // is a fresh session marker first (an agent was here recently, even
@@ -248,10 +265,20 @@ pub(crate) fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                 }
                 paths.push((rel, t.write));
             }
+            let single = paths.len() == 1 && cmd.is_empty();
             for (rel, write) in paths {
                 let t = agents::Target { path: rel.clone(), write };
                 let reads = read || !t.write;
-                let verdict = if reads { g.path(&rel) } else { g.edit(st.as_ref(), &rel) };
+                // A file tool's edit names its exact before and after text, so
+                // judge the symbols it really changes rather than the whole file.
+                let exact = (!reads && single)
+                    .then(|| {
+                        let before = std::fs::read_to_string(repo.root.join(&rel)).unwrap_or_default();
+                        let after = guard::edited_text(&v["tool_input"], &before)?;
+                        g.edit_exact(st.as_ref(), &rel, &before, &after)
+                    })
+                    .flatten();
+                let verdict = if reads { g.path(&rel) } else { exact.unwrap_or_else(|| g.edit(st.as_ref(), &rel)) };
                 let blocked = if reads { !verdict.level.readable() } else { !verdict.level.editable() };
                 if !blocked {
                     continue;
