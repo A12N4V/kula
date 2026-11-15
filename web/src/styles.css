@@ -1,4 +1,7 @@
 @import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource/cormorant-garamond/500.css";
+@import "@fontsource/cormorant-garamond/600.css";
+@import "@fontsource-variable/jost";
 @import "./styles/tokens.css";
 @import "./styles/base.css";
 @import "./styles/system.css";

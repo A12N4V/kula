@@ -54,7 +54,7 @@ export function TaskCard({ info, act }: { info: AgentsInfo; act: Act }) {
           </li>
         ))}
       </ol>
-      {steps.length > 0 && <ol className="hub-task-steps">{steps.map((s, i) => <li key={i}>{s}</li>)}</ol>}
+      {steps.length > 0 && <p className="hub-task-how muted" title={steps.join("\n")}>{steps.join(" · ")}</p>}
       <div className="hub-row">
         <span className="mono muted">{t.by} · {relTime(t.started)}</span>
         <span className="spacer" />

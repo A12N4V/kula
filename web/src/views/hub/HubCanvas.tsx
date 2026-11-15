@@ -59,6 +59,10 @@ const SeatNode = memo(({ data }: NodeProps<Node<SeatData>>) => {
         {fences.map(([k, n]) => !!n && <span key={k} className={`hub-fence ${k}`} title={`${n} ${k}`}>{k} {n}</span>)}
       </div>
       <Handle type="source" position={Position.Bottom} />
+      <Handle type="source" id="sr" position={Position.Right} className="hub-side" isConnectable={false} />
+      <Handle type="source" id="sl" position={Position.Left} className="hub-side" isConnectable={false} />
+      <Handle type="target" id="tl" position={Position.Left} className="hub-side" isConnectable={false} />
+      <Handle type="target" id="tr" position={Position.Right} className="hub-side" isConnectable={false} />
     </div>
   );
 });
@@ -139,27 +143,45 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
 
   const edges = useMemo(() => {
     const out: Edge[] = [];
+    // a hand off between seats on one row runs side to side, not over the top of them
+    const at = new Map(built.map((n) => [n.id, n.position]));
+    const side = (a: string, b: string): Partial<Edge> => {
+      const p = at.get(a), q = at.get(b);
+      if (!p || !q || Math.abs(p.y - q.y) > 8) return {};
+      return p.x < q.x ? { sourceHandle: "sr", targetHandle: "tl", type: "smoothstep" } : { sourceHandle: "sl", targetHandle: "tr", type: "smoothstep" };
+    };
     for (const t of d.draft) {
       const keys = new Set(t.members.map(seatKey));
       for (const m of t.members) {
         const k = seatKey(m);
         if (m.reports_to && keys.has(m.reports_to)) out.push({ id: `rt:${t.name}/${m.reports_to}>${k}`, source: seatId(t.name, m.reports_to), target: seatId(t.name, k), type: "smoothstep", className: "cv-edge-rt", data: { kind: "rt", team: t.name, from: m.reports_to, to: k } });
-        for (const h of m.hands_off ?? []) if (keys.has(h)) out.push({ id: `ho:${t.name}/${k}>${h}`, source: seatId(t.name, k), target: seatId(t.name, h), className: "cv-edge-ho", markerEnd: { type: MarkerType.ArrowClosed, color: "#f97f3a", width: 14, height: 14 }, data: { kind: "ho", team: t.name, from: k, to: h } });
+        for (const h of m.hands_off ?? []) if (keys.has(h)) out.push({ id: `ho:${t.name}/${k}>${h}`, source: seatId(t.name, k), target: seatId(t.name, h), ...side(seatId(t.name, k), seatId(t.name, h)), className: "cv-edge-ho", markerEnd: { type: MarkerType.ArrowClosed, color: "#f97f3a", width: 14, height: 14 }, data: { kind: "ho", team: t.name, from: k, to: h } });
       }
     }
     for (const h of paint?.handoffs ?? []) out.push({ ...h, className: "cv-edge-live", animated: true, deletable: false });
     return out;
-  }, [d.draft, paint]);
+  }, [d.draft, paint, built]);
 
   // fit once there is something to fit, and again when the map comes or goes
+  // (only once the canvas has a size, and again when its width settles elsewhere)
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => { const w = e.contentRect.width, h = e.contentRect.height; if (w > 0 && h > 0) setWidth(Math.round(w / 80) * 80); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const fitted = useRef("");
   useEffect(() => {
-    const key = `${!!map}:${d.draft.length}`;
+    if (!width) return;
+    const key = `${!!map}:${d.draft.length}:${width}`;
     if (fitted.current === key) return;
     fitted.current = key;
     const t = window.setTimeout(() => rf.fitView({ padding: 0.12, duration: 0 }), 30);
     return () => window.clearTimeout(t);
-  }, [map, d.draft.length, rf]);
+  }, [map, d.draft.length, rf, width]);
 
   const parse = (id: string | null | undefined): { team: string; key: string } | null => {
     const m = id?.match(/^seat:([^/]*)\/(.+)$/);
@@ -203,7 +225,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
   };
 
   return (
-    <div className="hub-canvas" onDragOver={(e) => { if (e.dataTransfer.types.includes(DND)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }} onDrop={onDrop}>
+    <div ref={box} className="hub-canvas" onDragOver={(e) => { if (e.dataTransfer.types.includes(DND)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }} onDrop={onDrop}>
       <ReactFlow
         nodes={nodes} edges={edges} nodeTypes={nodeTypes}
         onNodesChange={onNodesChange} onConnect={onConnect} onEdgesDelete={onEdgesDelete}
@@ -215,7 +237,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
           else if (n.type === "flow") setFlow(n.id.slice(5));
         }}
         onPaneClick={() => { setPick(null); setFlow(null); }}
-        minZoom={0.2} maxZoom={1.6} proOptions={{ hideAttribution: true }} deleteKeyCode={["Backspace", "Delete"]}
+        minZoom={0.45} maxZoom={1.6} proOptions={{ hideAttribution: true }} deleteKeyCode={["Backspace", "Delete"]}
         connectionLineStyle={{ stroke: "#f97f3a", strokeWidth: 1.5 }}
       >
         <Background color="#1a1715" gap={22} size={1} />

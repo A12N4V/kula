@@ -1,5 +1,5 @@
 // Where things sit on the hub canvas. A plain tree per team (seats in rows by
-// how far they are from the lead), teams side by side, flow map lanes above.
+// how far they are from the lead), teams wrapped into rows, flow map lanes in a grid above.
 // Positions a person moved are kept on refs/kula/meta and win over the layout.
 
 import type { FlowMap, Team } from "../../api";
@@ -26,7 +26,6 @@ function depth(t: Team, key: string): number {
 
 export function place(teams: Team[], saved: Saved): Placed {
   const out: Placed = { teams: new Map(), seats: new Map() };
-  let x = 0;
   for (const t of teams) {
     const rows: string[][] = [];
     for (const m of t.members) { const d = depth(t, seatKey(m)); (rows[d] ??= []).push(seatKey(m)); }
@@ -44,9 +43,18 @@ export function place(teams: Team[], saved: Saved): Placed {
         h = Math.max(h, p.y + SEAT_H + PAD);
       });
     });
-    const s = saved[teamId(t.name)];
-    out.teams.set(t.name, { x: s ? s[0] : x, y: s ? s[1] : 0, w, h });
-    x += w + TEAM_GAP;
+    out.teams.set(t.name, { x: 0, y: 0, w, h });
+  }
+  // wrap the teams into rows near a 1.6:1 frame, so many teams stay readable when fitted
+  const boxes = [...out.teams.values()];
+  const area = boxes.reduce((a, b) => a + (b.w + TEAM_GAP) * (b.h + TEAM_GAP), 0);
+  const row = Math.max(...boxes.map((b) => b.w), Math.sqrt(area * 1.6));
+  let x = 0, y = 0, tall = 0;
+  for (const [name, b] of out.teams) {
+    if (x > 0 && x + b.w > row) { x = 0; y += tall + TEAM_GAP; tall = 0; }
+    const s = saved[teamId(name)];
+    b.x = s ? s[0] : x; b.y = s ? s[1] : y;
+    x += b.w + TEAM_GAP; tall = Math.max(tall, b.h);
   }
   return out;
 }
@@ -62,9 +70,13 @@ export function lanes(map: FlowMap): Lane[] {
   });
   const tall = Math.max(1, ...rows.map((r) => r.fs.length + (r.more ? 1 : 0)));
   const h = LANE_HEAD + tall * (FLOW_H + 4) + 8;
+  // a grid rather than one long strip: about twice as wide as tall
+  const cols = Math.min(rows.length, Math.max(3, Math.ceil(Math.sqrt(rows.length * 2))));
+  const lines = Math.ceil(rows.length / Math.max(1, cols));
+  const top = -(lines * (h + LANE_GAP) - LANE_GAP + 72);
   return rows.map((r, i) => ({
     id: r.d.id, label: r.d.label, more: r.more,
-    box: { x: i * (LANE_W + LANE_GAP), y: -(h + 72), w: LANE_W, h },
+    box: { x: (i % cols) * (LANE_W + LANE_GAP), y: top + Math.floor(i / cols) * (h + LANE_GAP), w: LANE_W, h },
     flows: r.fs.map((f, j) => ({ id: f.id, y: LANE_HEAD + j * (FLOW_H + 4) })),
   }));
 }

@@ -152,7 +152,7 @@ function Detail({ id, onReplay }: { id: string; onReplay: (id: string) => void }
 }
 
 /** The centre of Runs mode: current runs, the list and the opened run. */
-export function RunsBoard({ info, err, onReplay }: { info: RunsInfo | null; err: string | null; onReplay: (id: string) => void }) {
+export function RunsBoard({ info, err, onReplay, onBuild }: { info: RunsInfo | null; err: string | null; onReplay: (id: string) => void; onBuild?: () => void }) {
   const [pick, setPick] = useState<string | null>(null);
   const runs = info?.runs ?? [];
   useEffect(() => { if (!pick && runs.length) setPick(runs[0].id); }, [runs, pick]);
@@ -163,7 +163,7 @@ export function RunsBoard({ info, err, onReplay }: { info: RunsInfo | null; err:
     <div className="runs-board" aria-label="Runs">
       {info.current.length > 0 && <div className="runs-currents" aria-label="Running now">{info.current.map((c) => <CurrentCard key={c.id} c={c} onReplay={onReplay} />)}</div>}
       {runs.length === 0
-        ? <div className="runs-empty"><p className="muted">No runs recorded yet</p></div>
+        ? <div className="runs-empty"><div className="runs-empty-in"><p className="muted">No runs recorded yet</p>{onBuild && <button className="btn sm" onClick={onBuild}>Deploy a team</button>}</div></div>
         : (
           <div className="runs-split">
             <div className="runs-list">

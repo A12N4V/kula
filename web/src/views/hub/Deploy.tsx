@@ -70,7 +70,7 @@ export function DeployDialog({ team, map, onClose, onDeployed }: { team: Team; m
               ? <p className="muted">No flows mapped</p>
               : <div className="hub-deploy-flows" role="group" aria-label="Target flows">{listed.map((f) => (
                   <button type="button" key={f.id} className={`hub-deploy-flow${flows.has(f.id) ? " on" : ""}`} aria-pressed={flows.has(f.id)} data-flow={f.id} onClick={() => flip(f.id)} title={f.id}>
-                    <span className={`hub-flow-kind ${f.kind}`}>{f.kind[0]}</span>
+                    <span className={`hub-flow-kind ${f.kind}`} title={f.kind}>{f.kind[0]}</span>
                     <span className="mono">{f.route || f.entry.name}</span>
                   </button>
                 ))}</div>}
@@ -80,6 +80,7 @@ export function DeployDialog({ team, map, onClose, onDeployed }: { team: Team; m
           <input className="input mono" inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="2.00" aria-label="Budget" aria-invalid={bad} />
         </label>
         <div className="hub-row end">
+          {!goal.trim() && <span className="muted hub-deploy-hint">Goal needed</span>}
           <button type="button" className="btn sm ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn sm primary" disabled={busy || !goal.trim() || bad}>{busy ? "Starting" : "Deploy"}</button>
         </div>

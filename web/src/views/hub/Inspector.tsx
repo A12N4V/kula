@@ -163,7 +163,7 @@ function TeamPanel({ info, d, team, act }: { info: AgentsInfo; d: Draft; team: T
       <div className="hub-row">
         {running
           ? <button className="btn sm" onClick={() => act("team_stop", {}, "Team stopped")}>Stop</button>
-          : <button className="btn sm primary" disabled={d.dirty || !saved} title={d.dirty ? "Save first" : undefined} onClick={() => act("team_start", { name: team.name }, "Team started")}>Launch</button>}
+          : <button className="btn sm" disabled={d.dirty || !saved} title={d.dirty ? "Save first" : undefined} onClick={() => act("team_start", { name: team.name }, "Team started")}>Launch</button>}
         <span className="spacer" />
         <button className="btn sm ghost" onClick={() => d.dropTeam(team.name)}>Delete team</button>
       </div>
