@@ -34,7 +34,7 @@ export function LiveFeed({ events, via, runs, run, setRun, cursor, setCursor }: 
         </div>
       )}
       {n === 0
-        ? <p className="muted">Nothing has happened yet</p>
+        ? <p className="muted">Seat activity streams here once a team runs</p>
         : <ol className="cv-events" aria-label="Events">{shown.map((e) => (
             <li key={e.seq} className={`ev-${e.kind} ${e.verdict ? `v-${e.verdict}` : ""}`} title={e.msg || undefined}>
               <span className="mono">{clock(e.ts)}</span><span>{line(e)}</span>

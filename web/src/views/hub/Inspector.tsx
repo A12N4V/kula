@@ -141,6 +141,7 @@ function TeamPanel({ info, d, team, act }: { info: AgentsInfo; d: Draft; team: T
   const saved = info.teams.some((t) => t.name === team.name);
   return (
     <>
+      <div className="hub-insp-title"><span>{team.name}</span><span className="mono muted">{team.members.length} {team.members.length === 1 ? "seat" : "seats"}</span></div>
       <Sec title="Team" aside={running ? <span className="mono accent">running</span> : undefined}>
         <Swatches value={team.color} onChange={(c) => set({ color: c })} />
         <Field label="Name"><input className="input" value={team.name} onChange={(e) => d.renameTeam(team.name, e.target.value)} aria-label="Team name" /></Field>

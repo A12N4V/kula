@@ -20,7 +20,7 @@ export const DND = "application/kula-hub";
 
 type SeatData = { m: Member; team: Team; picked: boolean; live?: string; overlap: boolean; research?: Research | null; loop?: ResearchRun };
 type TeamData = { team: Team; picked: boolean };
-type LaneData = { label: string; more: number; hit: boolean };
+type LaneData = { label: string; more: number; count: number; hit: boolean };
 type FlowData = { name: string; kind: string; steps: number; hit: boolean; picked: boolean };
 
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -70,7 +70,7 @@ const SeatNode = memo(({ data }: NodeProps<Node<SeatData>>) => {
 });
 
 const TeamNode = memo(({ data }: NodeProps<Node<TeamData>>) => (
-  <div className={`hub-team${data.picked ? " picked" : ""}`} style={{ "--team": data.team.color || "var(--line-2)" } as React.CSSProperties} data-team={data.team.name}>
+  <div className={`hub-team${data.picked ? " picked" : ""}`} style={{ "--team": data.team.color || "var(--line)" } as React.CSSProperties} data-team={data.team.name}>
     <div className="hub-team-head">
       <span className="hub-team-dot" />
       <span className="hub-team-name">{data.team.name || "unnamed"}</span>
@@ -83,7 +83,8 @@ const TeamNode = memo(({ data }: NodeProps<Node<TeamData>>) => (
 
 const LaneNode = memo(({ data }: NodeProps<Node<LaneData>>) => (
   <div className={`hub-lane${data.hit ? " hit" : ""}`}>
-    <div className="hub-lane-head mono">{short(data.label, 30)}</div>
+    <div className="hub-lane-head mono" title={data.label}>{short(data.label, 30)}</div>
+    <div className="hub-lane-count mono">{data.count} {data.count === 1 ? "flow" : "flows"}</div>
     {data.more > 0 && <div className="hub-lane-more mono">+{data.more} more</div>}
   </div>
 ));
@@ -122,7 +123,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
         const dom = map.domains.find((x) => x.id === l.id);
         const fs = l.flows.map((f) => ({ f, path: map.flows.find((x) => x.id === f.id)! })).filter((x) => x.path);
         const hits = fs.map(({ path }) => !!covers && path.files.some(covers));
-        out.push({ id: `lane:${l.id}`, type: "lane", position: { x: l.box.x, y: l.box.y }, style: { width: l.box.w, height: l.box.h }, data: { label: l.label, more: l.more, hit: hits.some(Boolean) || (!!covers && !!dom?.files.some(covers)) }, draggable: false, selectable: false });
+        out.push({ id: `lane:${l.id}`, type: "lane", position: { x: l.box.x, y: l.box.y }, style: { width: l.box.w, height: l.box.h }, data: { label: l.label, more: l.more, count: l.flows.length + l.more, hit: hits.some(Boolean) || (!!covers && !!dom?.files.some(covers)) }, draggable: false, selectable: false });
         fs.forEach(({ f, path }, i) => out.push({
           id: `flow:${f.id}`, type: "flow", parentId: `lane:${l.id}`, position: { x: 8, y: f.y }, style: { width: LANE_W - 16, height: FLOW_H },
           data: { name: path.entry.name, kind: path.kind, steps: path.steps.length, hit: hits[i], picked: flow === f.id }, draggable: false, selectable: false,
@@ -178,16 +179,17 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
     return () => ro.disconnect();
   }, []);
   const far = useStore((s) => s.transform[2] < 0.85);
-  const narrow = width > 0 && width < 700;
+  // on a phone, fit no smaller than seat names can be read; the rest pans
+  const floor = width > 0 && width < 600 ? 0.8 : 0.25;
   const fitted = useRef("");
   useEffect(() => {
     if (!width) return;
     const key = `${!!map}:${d.draft.length}:${width}:${aspect}`;
     if (fitted.current === key) return;
     fitted.current = key;
-    const t = window.setTimeout(() => rf.fitView({ padding: 0.14, duration: 0, maxZoom: 1, minZoom: 0.25 }), 30);
+    const t = window.setTimeout(() => rf.fitView({ padding: 0.14, duration: 0, maxZoom: 1, minZoom: floor }), 30);
     return () => window.clearTimeout(t);
-  }, [map, d.draft.length, rf, width, aspect]);
+  }, [map, d.draft.length, rf, width, aspect, floor]);
 
   const parse = (id: string | null | undefined): { team: string; key: string } | null => {
     const m = id?.match(/^seat:([^/]*)\/(.+)$/);
@@ -243,7 +245,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
           else if (n.type === "flow") setFlow(n.id.slice(5));
         }}
         onPaneClick={() => { setPick(null); setFlow(null); }}
-        minZoom={0.25} maxZoom={1.6} fitView fitViewOptions={{ padding: 0.14, maxZoom: 1, minZoom: 0.25 }} proOptions={{ hideAttribution: true }} deleteKeyCode={["Backspace", "Delete"]}
+        minZoom={0.25} maxZoom={1.6} fitView fitViewOptions={{ padding: 0.14, maxZoom: 1, minZoom: floor }} proOptions={{ hideAttribution: true }} deleteKeyCode={["Backspace", "Delete"]}
         connectionLineStyle={{ stroke: "#f97f3a", strokeWidth: 1.5 }}
       >
         <Background color="#1a1715" gap={22} size={1} />
