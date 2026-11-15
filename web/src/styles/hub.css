@@ -550,9 +550,11 @@
 .hub-insp-scroll .chips-in .input, .hub-inspector .chips-in .input { height: 100%; min-height: 24px; margin: 0; }
 .hub-inspector .chips { align-items: stretch; }
 @media (min-width: 760px) and (max-width: 1100px) {
-  .hub-body.mode-build { grid-template-columns: minmax(0, 1fr); grid-template-rows: 128px minmax(300px, 1fr) minmax(0, 42%); }
-  .hub-body.mode-build .hub-insp-scroll { columns: 2 320px; column-gap: 16px; }
-  .hub-insp-scroll > .hub-sec { break-inside: avoid; }
+  .hub-body.mode-build { grid-template-columns: minmax(0, 1fr); grid-template-rows: 128px minmax(300px, 1fr) minmax(0, 36%); }
+  .hub-body.mode-build .hub-insp-scroll { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; align-content: start; }
+  .hub-body.mode-build .hub-insp-scroll > :not(.hub-sec) { grid-column: 1 / -1; }
+  .runs-board > .runs-empty { flex: 1; }
+  .hub-body.mode-build .hub-pal-scroll { align-items: flex-start; }
   .page.hub:has(.hub-body:is(.mode-live, .mode-runs)) { overflow: hidden; }
   .hub-body:is(.mode-live, .mode-runs) { flex: 1; min-height: 0; }
   .hub-pal-group h3 .mono { margin-left: 0; }
@@ -571,6 +573,12 @@
 .cv-idle li { color: var(--text-3); }
 .runs-board > .runs-empty { flex: none; min-height: 160px; }
 .hub-body.mode-runs .hub-inspector { min-height: 0; align-self: start; }
-.page.hub .hub-deploy-btn:disabled { background: transparent; border-color: var(--line); font-weight: 500; color: var(--text-3); }
+.page.hub .hub-deploy-btn:disabled, .page.hub .hub-deploy .btn.primary:disabled { background: transparent; border-color: var(--line); font-weight: 500; color: var(--text-3); }
 .hub-sec h3 { font-size: 11px; }
 .page.hub .hub-bar .seg button.on { color: var(--text); border-color: var(--line-2); box-shadow: inset 0 -1px 0 var(--accent); }
+/* fourteenth pass: lane counts never cut, far lanes keep their more row, one selected style in Trends */
+.hub-lane-head { display: flex; gap: .4em; }
+.hub-lane-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-lane-n { flex: none; }
+.hub-canvas.far .hub-lane-more { display: block; font-size: 18px; line-height: 28px; }
+.page.hub .runs-trend-seg button.on:not(:disabled) { background: transparent; border-color: transparent; color: var(--text); box-shadow: inset 0 -1px 0 var(--accent); }

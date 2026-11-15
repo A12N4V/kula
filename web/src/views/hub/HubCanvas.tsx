@@ -83,7 +83,7 @@ const TeamNode = memo(({ data }: NodeProps<Node<TeamData>>) => (
 
 const LaneNode = memo(({ data }: NodeProps<Node<LaneData>>) => (
   <div className={`hub-lane${data.hit ? " hit" : ""}`}>
-    <div className="hub-lane-head mono" title={data.label}>{short(data.label, 30)}<span className="hub-lane-n"> {data.count}</span></div>
+    <div className="hub-lane-head mono" title={data.label}><span className="hub-lane-label">{short(data.label, 30)}</span><span className="hub-lane-n"> {data.count}</span></div>
     <div className="hub-lane-count mono">{data.count} {data.count === 1 ? "flow" : "flows"}</div>
     {data.more > 0 && <div className="hub-lane-more mono">+{data.more} more</div>}
   </div>
@@ -194,9 +194,12 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
       const top = builtRef.current.filter((n) => !n.parentId);
       if (top.length) {
         const x0 = Math.min(...top.map((n) => n.position.x)), y0 = Math.min(...top.map((n) => n.position.y));
+        // with the map on, start halfway between the lanes and the teams so both show
+        const teamsY = Math.min(...top.filter((n) => n.type === "team").map((n) => n.position.y));
+        const yAt = (z: number) => (map && Number.isFinite(teamsY) ? Math.max(y0, teamsY - (width / aspect / z) * 0.5) : y0);
         if (window.matchMedia("(max-width: 600px)").matches) {
           const z = map ? 0.68 : 0.8;
-          rf.setViewport({ x: 16 - x0 * z, y: 16 - y0 * z, zoom: z });
+          rf.setViewport({ x: 16 - x0 * z, y: 16 - yAt(z) * z, zoom: z });
           return;
         }
         // when the whole graph would fit only below the floor, start at its top left at the floor and pan from there
@@ -204,7 +207,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
         const y1 = Math.max(...top.map((n) => n.position.y + (Number(n.style?.height) || 0)));
         const fit = Math.min(width / ((x1 - x0) * 1.28), width / aspect / ((y1 - y0) * 1.28));
         if (fit < floor) {
-          rf.setViewport({ x: 16 - x0 * floor, y: 16 - y0 * floor, zoom: floor });
+          rf.setViewport({ x: 16 - x0 * floor, y: 16 - yAt(floor) * floor, zoom: floor });
           return;
         }
       }

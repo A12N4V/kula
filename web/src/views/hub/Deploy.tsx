@@ -37,6 +37,7 @@ export function DeployDialog({ team, map, onClose, onDeployed }: { team: Team; m
     const on = new Set(pre);
     return [...all.filter((f) => on.has(f.id)), ...all.filter((f) => !on.has(f.id))].slice(0, 24);
   }, [map, pre]);
+  const mixed = new Set(listed.map((f) => f.kind)).size > 1;
   const cap = budget.trim() === "" ? null : Number(budget);
   const bad = cap !== null && (!Number.isFinite(cap) || cap <= 0);
   const go = () => {
@@ -70,7 +71,7 @@ export function DeployDialog({ team, map, onClose, onDeployed }: { team: Team; m
               ? <p className="muted">No flows mapped</p>
               : <div className="hub-deploy-flows" role="group" aria-label="Target flows">{listed.map((f) => (
                   <button type="button" key={f.id} className={`hub-deploy-flow${flows.has(f.id) ? " on" : ""}`} aria-pressed={flows.has(f.id)} data-flow={f.id} onClick={() => flip(f.id)} title={f.id}>
-                    <span className={`hub-flow-kind ${f.kind}`} title={f.kind}>{f.kind[0]}</span>
+                    {mixed && <span className={`hub-flow-kind ${f.kind}`} title={f.kind}>{f.kind[0]}</span>}
                     <span className="mono">{f.route || f.entry.name}</span>
                   </button>
                 ))}</div>}
