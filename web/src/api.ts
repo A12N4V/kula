@@ -107,9 +107,12 @@ export interface FlowDomain { id: number; label: string; flows: number; files: s
 export interface FlowMap { domains: FlowDomain[]; flows: FlowPath[] }
 /** A run's ledger (src/launch.rs): one file per run under .kula/runs. */
 export interface Usage { tokens_in: number; tokens_out: number; cost_usd: number; turns: number; duration_ms: number; model?: string }
-export interface SeatRun { slice: string; seat?: string; agent: string; model?: string; usage: Usage; duration_ms: number; files: number; added: number; removed: number; refusals: number; attempts: number; verdict: string; tests: boolean | null; score: number; paths?: string[]; commit?: string }
+export interface SeatRun { slice: string; seat?: string; agent: string; model?: string; usage: Usage; duration_ms: number; files: number; added: number; removed: number; refusals: number; attempts: number; verdict: string; tests: boolean | null; score: number; paths?: string[]; commit?: string; note?: string }
 export interface Weights { gate: number; tests: number; refusals: number; retries: number; cost: number; duration: number }
-export interface Run { id: string; plan: string; team?: string; goal: string; trigger: string; started: number; ended: number; base: string; head: string; state: "passed" | "partial" | "failed" | string; seats: SeatRun[]; handoffs: { from: string; to: string }[]; usage: Usage; score: number; weights: Weights | null }
+/** One experiment of a research run, as the ledger keeps it. */
+export interface Point { n: number; value: number | null; best: number; verdict: "kept" | "reverted" | "rejected" | string }
+export interface ResearchLine { workflow: string; metric: string; goal: "min" | "max" | string; budget: number; branch: string; baseline: number; best: number; gain: number; points: Point[] }
+export interface Run { id: string; plan: string; team?: string; goal: string; trigger: string; started: number; ended: number; base: string; head: string; state: "passed" | "partial" | "failed" | string; seats: SeatRun[]; handoffs: { from: string; to: string }[]; usage: Usage; score: number; weights: Weights | null; research?: ResearchLine | null }
 export interface RunSummary { id: string; plan: string; team: string; goal: string; trigger: string; started: number; ended: number; state: string; score: number; usage: Usage; seats: number; passed: number; refusals: number; files: number }
 export interface CurrentRun { id: string; plan: string; team: string; started: number; last: number; slices: number; passed: number; attempts: number; usage: Usage }
 export interface Trend { kind: "seat" | "agent" | "team"; key: string; runs: number; score: number; scores: number[]; tokens: number; cost_usd: number; refusal_rate: number; pass_rate: number }

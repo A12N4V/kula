@@ -844,6 +844,105 @@ test.describe("agent hub runs (H.6)", () => {
   });
 });
 
+// H.7 – autoresearch in the hub: a research seat on the canvas shows its
+// metric and budget, the inspector charts the experiments, and the run sits in
+// the ledger with the same synopsis and history as any team run.
+test.describe("agent hub research (H.7)", () => {
+  test.describe.configure({ mode: "serial" });
+  test.use({ baseURL: ({ fx }, use) => use(fx) });
+  const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
+  const rootOf = (fx: string) => fs.readFileSync(`/tmp/kula-fixture-${new URL(fx).port}.path`, "utf8").trim();
+  const started = Math.floor(Date.now() / 1000) - 1800;
+  const exps = [
+    { n: 1, hypothesis: "cache the parsed config", value: 9, best_before: 10, kept: true, commit: "e".repeat(40), files: ["src/lib.rs"], by: "agent:claude", at: started + 300 },
+    { n: 2, hypothesis: "inline the hot loop", value: null, best_before: 9, kept: false, files: ["src/guard.rs"], by: "agent:claude", at: started + 600, note: "rejected and reverted: touched fenced src/guard.rs" },
+    { n: 3, hypothesis: "skip the second scan", value: 8, best_before: 9, kept: true, commit: "f".repeat(40), files: ["src/lib.rs"], by: "agent:claude", at: started + 900 },
+  ];
+  const state = { workflow: "e2e-speed", metric: "speed", goal: "min", budget: 12, branch: "research/e2e-speed", base: "a".repeat(40), baseline: 10, best: 8, best_commit: "f".repeat(40), started, by: "user:e2e", active: false, experiments: exps };
+  const usage = { tokens_in: 0, tokens_out: 0, cost_usd: 0, turns: 0, duration_ms: 0 };
+  const seat = (e: typeof exps[number], verdict: string, best: number) => ({ slice: `#${e.n}`, agent: "claude", usage, duration_ms: 300_000, files: 1, added: e.kept ? 4 : 0, removed: e.kept ? 1 : 0, refusals: verdict === "rejected" ? 1 : 0, attempts: 1, verdict, tests: null, score: verdict === "passed" ? 88 : 40, paths: e.kept ? e.files : [], commit: e.commit, note: e.hypothesis, _best: best });
+  const seats = [seat(exps[0], "passed", 9), seat(exps[1], "rejected", 9), seat(exps[2], "passed", 8)].map(({ _best, ...s }) => s);
+  const ledger = {
+    schema: 1, id: `research-${started}`, plan: "e2e-speed", team: "e2e-lab", goal: "e2e-speed research, lower speed", trigger: "research",
+    started: started * 1000, ended: (started + 900) * 1000, base: "a".repeat(40), head: "f".repeat(40), state: "passed", seats, handoffs: [], usage, score: 72,
+    weights: { gate: 40, tests: 20, refusals: 15, retries: 10, cost: 10, duration: 5 },
+    research: { workflow: "e2e-speed", metric: "speed", goal: "min", budget: 12, branch: "research/e2e-speed", baseline: 10, best: 8, gain: 0.2,
+      points: [{ n: 1, value: 9, best: 9, verdict: "kept" }, { n: 2, value: null, best: 9, verdict: "rejected" }, { n: 3, value: 8, best: 8, verdict: "kept" }] },
+  };
+  const toml = `
+[[workflow]]
+name = "e2e-speed"
+scope = ["src/**"]
+[workflow.research]
+metric = "speed"
+goal = "min"
+budget = 12
+timeout = 30
+
+[[team]]
+name = "e2e-lab"
+category = "research"
+members = [
+  { name = "lab-lead", agent = "claude", workflow = "e2e-speed", role = "lead" },
+]
+`;
+  let tomlBefore = "";
+  const files: string[] = [];
+  test.beforeAll(async ({ fx }) => {
+    const root = rootOf(fx);
+    tomlBefore = fs.readFileSync(path.join(root, "kula.toml"), "utf8");
+    fs.writeFileSync(path.join(root, "kula.toml"), tomlBefore + toml);
+    for (const [dir, name, body] of [["research", "e2e-speed.json", state], ["runs", `${ledger.id}.json`, ledger]] as const) {
+      const d = path.join(root, ".kula", dir);
+      fs.mkdirSync(d, { recursive: true });
+      fs.writeFileSync(path.join(d, name), JSON.stringify(body));
+      files.push(path.join(d, name));
+    }
+  });
+  test.afterAll(async ({ fx }) => {
+    for (const f of files) fs.rmSync(f, { force: true });
+    if (tomlBefore) fs.writeFileSync(path.join(rootOf(fx), "kula.toml"), tomlBefore);
+  });
+
+  test("H.7: a research seat shows its loop, the inspector charts experiments, Runs reads it from the ledger", async ({ page }, info) => {
+    desktopOnly(info);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page, "agents");
+    // the research node: metric, budget used, timeout and best
+    const node = page.locator('.hub-seat.research[data-seat="lab-lead"]');
+    await expect(node).toBeVisible({ timeout: 10_000 });
+    await expect(node.getByLabel("Research on speed")).toContainText("speed");
+    await expect(node).toContainText("3/12");
+    await expect(node).toContainText("30s");
+    await expect(node).toContainText("best 8");
+    // the inspector charts each experiment, kept, rejected and kept
+    await node.click();
+    const chart = page.getByRole("complementary", { name: "Inspector" }).getByLabel("speed over 3 experiments");
+    await expect(chart).toBeVisible();
+    await expect(chart.locator("circle.kept")).toHaveCount(2);
+    await expect(chart.locator("line.none")).toHaveCount(1);
+    await expect(chart).toContainText("base 10");
+    await expect(chart).toContainText("best 8");
+    // Runs: the research run, its synopsis, chart and hypotheses
+    await page.getByRole("group", { name: "Mode" }).getByRole("button", { name: "Runs" }).click();
+    const row = page.locator(`.runs-row[data-run="${ledger.id}"]`);
+    await expect(row).toContainText("e2e-speed research, lower speed", { timeout: 10_000 });
+    await row.click();
+    const detail = page.getByLabel("Run detail");
+    await expect(page.getByLabel("Synopsis")).toContainText("2 of 3 experiments kept");
+    await expect(detail.getByRole("heading", { name: "Experiments" })).toBeVisible();
+    await expect(detail.getByLabel("speed over 3 experiments").locator("circle")).toHaveCount(2);
+    await expect(detail.locator('tr[data-slice="#2"]')).toContainText("rejected");
+    await expect(detail.locator('tr[data-slice="#3"]')).toContainText("skip the second scan");
+    await expect(detail.locator(".runs-cl")).toContainText("src/lib.rs");
+    await page.getByRole("region", { name: "Trends" }).getByRole("button", { name: "Teams" }).click();
+    await expect(page.locator('.runs-trend-list li[data-key="e2e-lab"]')).toBeVisible();
+    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= window.innerHeight)).toBe(true);
+    await page.screenshot({ path: "test-results/hub-research.png", scale: "css" });
+    await detail.locator(".runs-research").screenshot({ path: "test-results/hub-research-chart.png" });
+  });
+});
+
 test.describe("git board", () => {
   for (const [w, h] of [[1440, 900], [1280, 800]]) {
     test(`fills ${w}x${h} with every widget and no page scroll`, async ({ page }) => {

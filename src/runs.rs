@@ -70,6 +70,9 @@ fn plural(n: impl Into<u64>, one: &str, many: &str) -> String {
 
 /// A synopsis written from the ledger alone: same run, same text.
 pub fn synopsis(r: &Run) -> Synopsis {
+    if let Some(x) = &r.research {
+        return research_synopsis(r, x);
+    }
     let s = summary(r);
     let mut head = format!("{} of {} seats passed, score {}", s.passed, s.seats, r.score);
     let tokens = r.usage.tokens_in + r.usage.tokens_out;
@@ -104,6 +107,37 @@ pub fn synopsis(r: &Run) -> Synopsis {
     let hot: Vec<&str> = r.seats.iter().filter(|x| x.refusals > 0).map(|x| x.slice.as_str()).collect();
     if !hot.is_empty() {
         lines.push(format!("Fences held on {}", hot.join(", ")));
+    }
+    Synopsis { headline: head, lines }
+}
+
+/// An autoresearch run told by its metric: what each experiment did to it.
+fn research_synopsis(r: &Run, x: &crate::launch::ResearchLine) -> Synopsis {
+    use crate::research::fmt;
+    let kept = x.points.iter().filter(|p| p.verdict == "kept").count();
+    let mut head = format!("{} of {} kept, {} from {} to {}", kept, plural(x.points.len() as u64, "experiment", "experiments"), x.workflow, fmt(x.baseline), fmt(x.best));
+    if x.gain != 0.0 {
+        head.push_str(&format!(" ({:.1}% {})", x.gain.abs() * 100.0, if x.gain > 0.0 { "better" } else { "worse" }));
+    }
+    head.push_str(&format!(", {}", span(r.ended.saturating_sub(r.started))));
+    let mut lines = vec![format!("Metric: {} ({} is better)", x.metric, if x.goal == "max" { "higher" } else { "lower" })];
+    if x.budget > 0 {
+        lines.push(format!("Budget: {} of {} used", x.points.len(), plural(x.budget, "experiment", "experiments")));
+    }
+    for (p, s) in x.points.iter().zip(&r.seats) {
+        let v = p.value.map(fmt).unwrap_or_else(|| "no value".into());
+        let mut l = format!("{} {} ({}): {}, {}", s.slice, p.verdict, s.agent, v, s.note);
+        if s.verdict == "passed" {
+            l.push_str(&format!(", {} added, {} removed", s.added, s.removed));
+        }
+        lines.push(l);
+    }
+    let hot: Vec<&str> = r.seats.iter().filter(|s| s.refusals > 0).map(|s| s.slice.as_str()).collect();
+    if !hot.is_empty() {
+        lines.push(format!("Fences held on {}", hot.join(", ")));
+    }
+    if r.state == "running" {
+        lines.push(format!("Still running on {}", x.branch));
     }
     Synopsis { headline: head, lines }
 }
@@ -314,6 +348,24 @@ pub fn current(events: &[crate::events::Event], done: &[String], now: u64) -> Ve
         .collect();
     out.sort_by_key(|r| std::cmp::Reverse(r.started));
     out
+}
+
+/// Ledger runs still going (research until it stops), as current cards.
+pub fn running(runs: &[Run]) -> Vec<Current> {
+    runs.iter()
+        .filter(|r| r.state == "running")
+        .map(|r| Current {
+            id: r.id.clone(),
+            plan: r.plan.clone(),
+            team: r.team.clone(),
+            started: r.started,
+            last: r.ended.max(r.started),
+            slices: r.seats.len(),
+            passed: r.seats.iter().filter(|s| s.verdict == "passed").count(),
+            attempts: r.seats.iter().map(|s| s.attempts).sum(),
+            usage: r.usage.clone(),
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@
 // The side card holds trends per seat, agent and team, and the score weights.
 
 import { useEffect, useMemo, useState } from "react";
+import { MetricChart } from "./MetricChart";
 import { api, type CurrentRun, type RunDetail, type RunsInfo, type RunSummary, type Trend, type Usage, type Weights } from "../../api";
 
 /** "840ms", "5s", "3m 12s", "1h 4m": the same spans the server writes. */
@@ -112,13 +113,19 @@ function Detail({ id, onReplay }: { id: string; onReplay: (id: string) => void }
       </div>
       <p className="runs-headline" aria-label="Synopsis">{synopsis.headline}</p>
       <ul className="runs-lines">{synopsis.lines.map((l, i) => <li key={i}>{l}</li>)}</ul>
+      {run.research && (
+        <section className="runs-research" aria-label="Metric">
+          <h4>{run.research.metric}</h4>
+          <MetricChart points={run.research.points} baseline={run.research.baseline} metric={run.research.metric} goal={run.research.goal} h={100} />
+        </section>
+      )}
 
-      <h4>Seats</h4>
+      <h4>{run.research ? "Experiments" : "Seats"}</h4>
       <table className="runs-seats">
         <thead><tr><th>seat</th><th>verdict</th><th>score</th><th>tokens</th><th>cost</th><th>diff</th><th>tries</th></tr></thead>
         <tbody>{run.seats.map((s) => (
           <tr key={s.slice} data-slice={s.slice}>
-            <td className="runs-seat-name"><span className="mono">{s.seat || s.slice}</span><small className="muted">{s.agent}</small></td>
+            <td className="runs-seat-name"><span className="mono">{s.seat || s.slice}</span><small className="muted">{s.agent}</small>{s.note && <small className="runs-note" title={s.note}>{s.note}</small>}</td>
             <td className={`runs-seat-name v-${s.verdict}`}>{s.verdict}{s.refusals > 0 && <small className="muted">{s.refusals} refused</small>}</td>
             <td className={`mono ${tone(s.score)}`}>{Math.round(s.score)}</td>
             <td className="mono">{kilo(tokens(s.usage))}</td>

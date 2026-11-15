@@ -8,7 +8,7 @@ import {
   Background, Controls, Handle, MarkerType, Position, ReactFlow, applyNodeChanges, useReactFlow,
   type Connection, type Edge, type Node, type NodeChange, type NodeProps,
 } from "@xyflow/react";
-import { api, type AgentsInfo, type FlowMap, type Member, type Team } from "../../api";
+import { api, type AgentsInfo, type FlowMap, type Member, type Research, type ResearchRun, type Team } from "../../api";
 import { seatKey } from "../../roster";
 import { Mark } from "../../brands";
 import type { Draft, LinkKind, Pick } from "./draft";
@@ -18,7 +18,7 @@ import { FLOW_H, LANE_W, SEAT_H, SEAT_W, lanes, matcher, place, seatId, teamId, 
 export type Item = { kind: "agent" | "skill" | "mcp" | "memory" | "template"; value: string };
 export const DND = "application/kula-hub";
 
-type SeatData = { m: Member; team: Team; picked: boolean; live?: string; overlap: boolean };
+type SeatData = { m: Member; team: Team; picked: boolean; live?: string; overlap: boolean; research?: Research | null; loop?: ResearchRun };
 type TeamData = { team: Team; picked: boolean };
 type LaneData = { label: string; more: number; hit: boolean };
 type FlowData = { name: string; kind: string; steps: number; hit: boolean; picked: boolean };
@@ -26,12 +26,12 @@ type FlowData = { name: string; kind: string; steps: number; hit: boolean; picke
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 const SeatNode = memo(({ data }: NodeProps<Node<SeatData>>) => {
-  const { m, team, picked, live, overlap } = data;
+  const { m, team, picked, live, overlap, research, loop } = data;
   const f = m.fence ?? {};
   const fences = [["lock", f.lock?.length], ["hide", f.hide?.length], ["review", f.review?.length], ["scope", m.scope?.length]] as const;
   const chips = [...(m.skills ?? []).map((s) => ["skill", s]), ...(m.mcp ?? []).map((s) => ["mcp", s])];
   return (
-    <div className={`hub-seat${picked ? " picked" : ""}${live ? ` live-${live}` : ""}`} style={{ "--seat": m.color || team.color || "var(--line-2)" } as React.CSSProperties} data-seat={seatKey(m)}>
+    <div className={`hub-seat${picked ? " picked" : ""}${live ? ` live-${live}` : ""}${research ? " research" : ""}`} style={{ "--seat": m.color || team.color || "var(--line-2)" } as React.CSSProperties} data-seat={seatKey(m)}>
       <Handle type="target" position={Position.Top} />
       <div className="hub-seat-head">
         {m.agent ? <Mark id={m.agent} size={14} /> : <span className="hub-seat-dot" />}
@@ -39,11 +39,20 @@ const SeatNode = memo(({ data }: NodeProps<Node<SeatData>>) => {
         {overlap && <span className="hub-warn" title="Shares files with another seat">!</span>}
       </div>
       <div className="hub-seat-sub mono">{[m.agent || "any agent", m.model, m.role].filter(Boolean).join(" · ")}</div>
+      {research ? (
+        <div className="hub-seat-research mono" aria-label={`Research on ${research.metric}`}>
+          <span className="hub-chip research" title={research.goal === "max" ? "higher is better" : "lower is better"}>{research.goal === "max" ? "\u2191" : "\u2193"} {short(research.metric, 12)}</span>
+          {!!research.budget && <span title="Budget">{loop ? `${loop.experiments.length}/` : ""}{research.budget}</span>}
+          {!!research.timeout && <span title="Timeout per experiment">{research.timeout}s</span>}
+          {loop && <span className={loop.active ? "accent" : "muted"} title={`base ${loop.baseline}`}>best {loop.best}</span>}
+        </div>
+      ) : (
       <div className="hub-seat-chips">
         {chips.slice(0, 3).map(([k, v]) => <span key={`${k}${v}`} className={`hub-chip ${k}`}>{short(v, 14)}</span>)}
         {chips.length > 3 && <span className="hub-chip more">+{chips.length - 3}</span>}
         {m.memory && <span className="hub-chip memory">{short(m.memory.split("/").pop() || m.memory, 12)}</span>}
       </div>
+      )}
       <div className="hub-seat-fence mono">
         {(m.tags ?? []).slice(0, 2).map((t) => <span key={t} className="hub-tag">{t}</span>)}
         <span className="spacer" />
@@ -97,6 +106,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
   const picked = pick?.key ? d.member(pick.team, pick.key) : undefined;
   const covers = useMemo(() => (picked?.scope?.length ? matcher(picked.scope) : null), [picked?.scope]);
 
+  const flows = useMemo(() => new Map(info.workflows.filter((w) => w.research?.metric).map((w) => [w.name, w.research!])), [info.workflows]);
   const built = useMemo(() => {
     const out: Node[] = [];
     if (map) {
@@ -117,11 +127,11 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
       out.push({ id: teamId(t.name), type: "team", position: { x: b.x, y: b.y }, style: { width: b.w, height: b.h }, data: { team: t, picked: pick?.team === t.name && !pick.key }, selectable: false });
       for (const m of t.members) {
         const id = seatId(t.name, seatKey(m));
-        out.push({ id, type: "seat", parentId: teamId(t.name), position: at.seats.get(id)!, style: { width: SEAT_W, height: SEAT_H }, data: { m, team: t, picked: pick?.team === t.name && pick.key === seatKey(m), live: paint?.seats.get(id), overlap: overlaps.has(id) }, selectable: false });
+        out.push({ id, type: "seat", parentId: teamId(t.name), position: at.seats.get(id)!, style: { width: SEAT_W, height: SEAT_H }, data: { m, team: t, picked: pick?.team === t.name && pick.key === seatKey(m), live: paint?.seats.get(id), overlap: overlaps.has(id), research: m.workflow ? flows.get(m.workflow) : null, loop: m.workflow ? info.research.find((r) => r.workflow === m.workflow) : undefined }, selectable: false });
       }
     }
     return out;
-  }, [map, covers, flow, d.draft, saved, pick, paint, overlaps]);
+  }, [map, covers, flow, d.draft, saved, pick, paint, overlaps, flows, info.research]);
 
   const [nodes, setNodes] = useState<Node[]>(built);
   useEffect(() => { setNodes(built); }, [built]);

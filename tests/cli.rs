@@ -1212,6 +1212,18 @@ fn research_revert_never_deletes_a_persons_files() {
     assert_eq!(e["kept"], true, "{e}");
     assert_eq!(std::fs::read_to_string(d.join("NOTES.txt")).unwrap(), "my scratch notes\n");
     kula(d, &["research", "stop"]);
+    // H.7: the run is in the ledger, each experiment a seat, with the metric line.
+    let runs: Vec<_> = std::fs::read_dir(d.join(".kula/runs")).unwrap().flatten().map(|e| e.path()).collect();
+    assert_eq!(runs.len(), 1, "{runs:?}");
+    let r: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&runs[0]).unwrap()).unwrap();
+    assert_eq!((r["trigger"].as_str(), r["state"].as_str()), (Some("research"), Some("passed")), "{r}");
+    let v: Vec<&str> = r["seats"].as_array().unwrap().iter().map(|x| x["verdict"].as_str().unwrap()).collect();
+    assert_eq!(v, ["reverted", "reverted", "passed"]);
+    assert_eq!(r["seats"][2]["added"], 1, "{r}");
+    assert_eq!(r["research"]["baseline"], 42.0);
+    assert_eq!(r["research"]["best"], 40.0);
+    let st = Command::new("git").arg("-C").arg(d).args(["status", "--porcelain"]).output().unwrap();
+    assert!(!String::from_utf8_lossy(&st.stdout).contains(".kula/runs"), "the ledger never dirties the tree");
 }
 
 #[test]

@@ -237,6 +237,37 @@ pub struct SeatRun {
     /// The commit kept on the slice branch, when it passed.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub commit: String,
+    /// What the seat set out to do: an experiment's hypothesis.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
+}
+
+/// One experiment of an autoresearch run, as the metric chart draws it.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct Point {
+    pub n: u32,
+    /// The metric after the change; none when it was rejected or failed.
+    pub value: Option<f64>,
+    /// The best so far, after this experiment.
+    pub best: f64,
+    /// kept | reverted | rejected
+    pub verdict: String,
+}
+
+/// What an autoresearch run measures (H.7): the metric over its experiments.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct ResearchLine {
+    pub workflow: String,
+    pub metric: String,
+    /// min | max
+    pub goal: String,
+    pub budget: u32,
+    pub branch: String,
+    pub baseline: f64,
+    pub best: f64,
+    /// How much better the best is than the baseline, as a fraction.
+    pub gain: f64,
+    pub points: Vec<Point>,
 }
 
 pub const MAX_PATHS: usize = 300;
@@ -261,13 +292,16 @@ pub struct Run {
     pub ended: u64,
     pub base: String,
     pub head: String,
-    /// passed | partial | failed
+    /// passed | partial | failed, or running while research goes on
     pub state: String,
     pub seats: Vec<SeatRun>,
     pub handoffs: Vec<Handoff>,
     pub usage: Usage,
     pub score: f64,
     pub weights: Option<Weights>,
+    /// Set on autoresearch runs: the metric and every experiment's value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub research: Option<ResearchLine>,
 }
 
 /// A seat's score out of 100.
@@ -381,6 +415,7 @@ pub fn build(plan: &Plan, run: &str, trigger: &str, started: u64, ended: u64, he
         usage: total,
         score,
         weights: Some(WEIGHTS),
+        research: None,
     }
 }
 

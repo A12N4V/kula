@@ -9,6 +9,7 @@ import { AGENT_IDS, AGENT_NAME, MODELS, type Act } from "./data";
 import { draftProblems, type Draft, type Pick } from "./draft";
 import { GuardTag } from "./levels";
 import { lineDiff } from "./linediff";
+import { MetricChart, pointsOf } from "./MetricChart";
 
 export const SWATCHES = ["#f97f3a", "#8fd694", "#f0827a", "#f2cc60", "#7cb7ff", "#d49cf0", "#c2b9ac"];
 const CATEGORIES = ["build", "research", "review"];
@@ -34,23 +35,6 @@ function Swatches({ value, onChange }: { value?: string; onChange: (v: string | 
 }
 
 /** Values over experiments as a small line: kept points filled, the baseline dashed. */
-function Spark({ run }: { run: ResearchRun }) {
-  const vals = run.experiments.map((e) => e.value).filter((v): v is number => v !== null);
-  if (vals.length < 1) return <p className="muted">No experiments yet</p>;
-  const all = [...vals, run.baseline];
-  const lo = Math.min(...all), hi = Math.max(...all), w = 280, h = 56;
-  const y = (v: number) => (hi === lo ? h / 2 : h - 4 - ((v - lo) / (hi - lo)) * (h - 8));
-  const x = (i: number) => (run.experiments.length < 2 ? w / 2 : 4 + (i * (w - 8)) / (run.experiments.length - 1));
-  const pts = run.experiments.map((e, i) => (e.value === null ? null : [x(i), y(e.value), e.kept] as const)).filter(Boolean) as [number, number, boolean][];
-  return (
-    <svg className="hub-spark" viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Metric over experiments">
-      <line x1={0} x2={w} y1={y(run.baseline)} y2={y(run.baseline)} className="base" />
-      <polyline points={pts.map(([a, b]) => `${a},${b}`).join(" ")} />
-      {pts.map(([a, b, k], i) => <circle key={i} cx={a} cy={b} r={2.5} className={k ? "kept" : "dropped"} />)}
-    </svg>
-  );
-}
-
 function ExplainBox({ team, seat, d }: { team: string; seat: string; d: Draft }) {
   const [path, setPath] = useState("");
   const [sym, setSym] = useState("");
@@ -137,11 +121,10 @@ function SeatPanel({ info, d, team, m, act }: { info: AgentsInfo; d: Draft; team
       {run && (
         <Sec title="Research" aside={<span className="mono muted">{run.active ? "running" : "stopped"}</span>}>
           <div className="hub-stats mono">
-            <span>{run.metric}</span><span>{run.goal}</span>
-            <span>base {run.baseline}</span><span>best {run.best}</span>
-            <span>{run.experiments.filter((e) => e.kept).length}/{run.experiments.length} kept</span>
+            <span>{run.metric}</span><span>{run.goal === "max" ? "higher" : "lower"} is better</span>
+            <span>{run.experiments.length}/{run.budget || "any"} used</span>
           </div>
-          <Spark run={run} />
+          <MetricChart points={pointsOf(run)} baseline={run.baseline} metric={run.metric} goal={run.goal} />
         </Sec>
       )}
       <div className="hub-row end"><button className="btn sm ghost" onClick={() => d.dropMember(team.name, key)}>Remove seat</button></div>

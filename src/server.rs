@@ -334,7 +334,8 @@ async fn runs_list(State(s): State<AppState>) -> ApiResult {
         let list: Vec<_> = runs.iter().map(crate::runs::summary).collect();
         let done: Vec<String> = runs.iter().map(|r| r.id.clone()).collect();
         let ev = crate::events::read(&s.repo.kula_dir(), 0, 2000);
-        let current = crate::runs::current(&ev, &done, crate::events::now_ms());
+        let mut current = crate::runs::current(&ev, &done, crate::events::now_ms());
+        current.extend(crate::runs::running(&runs));
         Ok(json!({ "runs": list, "current": current, "trends": crate::runs::trends(&runs), "weights": crate::launch::WEIGHTS }))
     })
     .await

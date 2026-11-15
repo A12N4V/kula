@@ -79,3 +79,10 @@ kula launches agents itself and reads their JSON output for tokens, cost and dur
 - **Current run.** A run with events but no `run_end`, and an event in the last hour, is pinned as a card with slices passed, attempts, tokens and cost. Watch switches to Live with that run picked.
 - **Trends.** Per named seat, per agent and per team: mean score, scores over time, pass rate, refusals per run, tokens and cost.
 - **UI.** Runs mode swaps the canvas for the board (list with a score line over time, detail with synopsis, seats and changelog) and the inspector for trends and the weight bar. Replay opens the run in Live with the scrubber. The split stacks when the centre is under 760px wide.
+
+### Autoresearch nodes (H.7)
+
+- **Node.** A seat whose workflow has `[workflow.research]` is a research node. It replaces the chip row with the metric and its direction, the budget (experiments used of budget once a loop exists), the timeout per experiment and the best so far.
+- **Ledger.** Every `research::save` mirrors the loop into `.kula/runs/research-<started>.json` with trigger `research`. Each experiment is a seat (`#n`, hypothesis as its note, kept as passed, fence refusals as rejected, otherwise reverted) and the run carries a `research` line: metric, goal, budget, branch, baseline, best, gain and one point per experiment. History, trends, scores and the changelog then come for free.
+- **Synopsis.** Research runs get their own headline: experiments kept of the total, the metric moved from baseline to best with the gain, and the span. A loop still marked active shows as a current run.
+- **Chart.** One component serves the inspector (built from the live `research::State`) and the Runs detail (built from the ledger points): a dot per experiment, kept filled, reverted hollow, rejected red, a tick when there was no value, the best so far as a step line and the baseline dashed.

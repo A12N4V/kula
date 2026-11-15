@@ -92,7 +92,99 @@ fn dir(repo: &Repo) -> std::path::PathBuf {
 fn save(repo: &Repo, s: &State) -> Result<()> {
     std::fs::create_dir_all(dir(repo))?;
     std::fs::write(dir(repo).join(format!("{}.json", s.workflow)), serde_json::to_string_pretty(s)?)?;
+    // The run ledger gets a copy, so research has the same history, stats and
+    // synopsis as a team run. The state file stays the source of truth.
+    let team = Config::load(&repo.root).ok().and_then(|c| c.teams.into_iter().find(|t| t.members.iter().any(|m| m.workflow == s.workflow)).map(|t| t.name));
+    let _ = crate::launch::save(repo, &ledger(s, team.unwrap_or_default(), |c| repo.run(&["diff", "--numstat", &format!("{c}^"), c]).ok()));
     Ok(())
+}
+
+/// The ledger id of a research run: one per start, kept across renames.
+pub fn run_id(s: &State) -> String {
+    format!("research-{}", s.started)
+}
+
+/// A research run as a ledger run: each experiment is a seat. A kept one
+/// passed, a reverted one did not, a fenced one was rejected with a refusal.
+/// `diff` gives `git diff --numstat` for a kept commit.
+pub fn ledger(s: &State, team: String, diff: impl Fn(&str) -> Option<String>) -> crate::launch::Run {
+    use crate::launch::{seat_score, Point, ResearchLine, Run, SeatRun, WEIGHTS};
+    let started = s.started.max(0) as u64 * 1000;
+    let mut prev = started;
+    let mut best = s.baseline;
+    let mut seats = vec![];
+    let mut points = vec![];
+    for e in &s.experiments {
+        let at = e.at.max(0) as u64 * 1000;
+        let rejected = e.note.starts_with("rejected");
+        let verdict = if e.kept { "passed" } else if rejected { "rejected" } else { "reverted" };
+        let mut x = SeatRun {
+            slice: format!("#{}", e.n),
+            agent: e.by.strip_prefix("agent:").unwrap_or(&e.by).to_string(),
+            duration_ms: at.saturating_sub(prev),
+            files: e.files.len(),
+            refusals: u32::from(rejected),
+            attempts: 1,
+            verdict: verdict.into(),
+            commit: e.commit.clone(),
+            note: e.hypothesis.clone(),
+            ..Default::default()
+        };
+        if e.kept {
+            if let Some((paths, a, r)) = diff(&e.commit).map(|t| crate::launch::numstat(&t)) {
+                x.paths = paths;
+                x.added = a;
+                x.removed = r;
+            }
+            if x.paths.is_empty() {
+                x.paths = e.files.clone();
+            }
+            x.paths.truncate(crate::launch::MAX_PATHS);
+            best = e.value.unwrap_or(best);
+        }
+        x.score = seat_score(&x);
+        prev = prev.max(at);
+        points.push(Point { n: e.n, value: e.value, best, verdict: if e.kept { "kept" } else { verdict }.into() });
+        seats.push(x);
+    }
+    let state = if s.active {
+        "running"
+    } else if seats.iter().any(|x| x.verdict == "passed") {
+        "passed"
+    } else {
+        "failed"
+    };
+    let score = if seats.is_empty() { 0.0 } else { (seats.iter().map(|x| x.score).sum::<f64>() / seats.len() as f64 * 10.0).round() / 10.0 };
+    let min = s.goal != "max";
+    Run {
+        schema: 1,
+        id: run_id(s),
+        plan: s.workflow.clone(),
+        team,
+        goal: format!("{} research, {} {}", s.workflow, if min { "lower" } else { "higher" }, s.metric),
+        trigger: "research".into(),
+        started,
+        ended: prev,
+        base: s.base.clone(),
+        head: if s.best_commit.is_empty() { s.base.clone() } else { s.best_commit.clone() },
+        state: state.into(),
+        seats,
+        handoffs: vec![],
+        usage: Default::default(),
+        score,
+        weights: Some(WEIGHTS),
+        research: Some(ResearchLine {
+            workflow: s.workflow.clone(),
+            metric: s.metric.clone(),
+            goal: if min { "min".into() } else { "max".into() },
+            budget: s.budget,
+            branch: s.branch.clone(),
+            baseline: s.baseline,
+            best: s.best,
+            gain: s.gain(),
+            points,
+        }),
+    }
 }
 
 /// Every run in this checkout, newest first.
@@ -476,5 +568,61 @@ mod tests {
         assert_eq!(last_number("ok."), None);
         assert_eq!(fmt(12.0), "12");
         assert_eq!(fmt(0.18300), "0.183");
+    }
+
+    #[test]
+    fn a_research_run_reads_as_a_ledger_run() {
+        let e = |n: u32, value: Option<f64>, kept: bool, note: &str, at: i64| Experiment {
+            n,
+            hypothesis: format!("try {n}"),
+            value,
+            kept,
+            commit: if kept { format!("c{n}") } else { String::new() },
+            files: vec!["src/a.rs".into()],
+            by: "agent:claude".into(),
+            at,
+            note: note.into(),
+            ..Default::default()
+        };
+        let mut s = State {
+            workflow: "speed".into(),
+            metric: "bench".into(),
+            goal: "min".into(),
+            budget: 5,
+            baseline: 10.0,
+            best: 8.0,
+            best_commit: "c1".into(),
+            started: 100,
+            active: true,
+            experiments: vec![
+                e(1, Some(8.0), true, "", 160),
+                e(2, Some(9.0), false, "reverted: 9 is not better than 8", 220),
+                e(3, None, false, "rejected and reverted: touched fenced src/lock.rs", 250),
+            ],
+            ..Default::default()
+        };
+        let r = ledger(&s, "lab".into(), |c| (c == "c1").then(|| "4\t1\tsrc/a.rs\n".to_string()));
+        assert_eq!(r.id, "research-100");
+        assert_eq!((r.state.as_str(), r.trigger.as_str(), r.team.as_str()), ("running", "research", "lab"));
+        assert_eq!((r.started, r.ended), (100_000, 250_000));
+        let v: Vec<&str> = r.seats.iter().map(|x| x.verdict.as_str()).collect();
+        assert_eq!(v, ["passed", "reverted", "rejected"]);
+        assert_eq!((r.seats[0].added, r.seats[0].removed, r.seats[0].agent.as_str()), (4, 1, "claude"));
+        assert_eq!(r.seats[0].duration_ms, 60_000);
+        assert_eq!(r.seats[2].refusals, 1);
+        assert!(r.seats[1].paths.is_empty(), "only kept work reaches the changelog");
+        let line = r.research.as_ref().unwrap();
+        assert_eq!(line.points.iter().map(|p| p.best).collect::<Vec<_>>(), [8.0, 8.0, 8.0]);
+        assert_eq!(line.points.iter().map(|p| p.verdict.as_str()).collect::<Vec<_>>(), ["kept", "reverted", "rejected"]);
+        assert!((line.gain - 0.2).abs() < 1e-9);
+        let syn = crate::runs::synopsis(&r);
+        assert!(syn.headline.starts_with("1 of 3 experiments kept, speed from 10 to 8 (20.0% better)"), "{}", syn.headline);
+        assert!(syn.lines.iter().any(|l| l == "Fences held on #3"));
+        assert_eq!(crate::runs::running(std::slice::from_ref(&r)).len(), 1);
+        s.active = false;
+        let done = ledger(&s, String::new(), |_| None);
+        assert_eq!(done.state, "passed");
+        assert_eq!(done.seats[0].paths, ["src/a.rs"]);
+        assert!(crate::runs::running(&[done]).is_empty());
     }
 }
