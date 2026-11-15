@@ -70,7 +70,7 @@ const SeatNode = memo(({ data }: NodeProps<Node<SeatData>>) => {
 });
 
 const TeamNode = memo(({ data }: NodeProps<Node<TeamData>>) => (
-  <div className={`hub-team${data.picked ? " picked" : ""}`} style={{ "--team": data.team.color || "var(--line)" } as React.CSSProperties} data-team={data.team.name}>
+  <div className={`hub-team${data.picked ? " picked" : ""}`} style={{ "--team": data.team.color || (data.picked ? "var(--accent)" : "var(--line)") } as React.CSSProperties} data-team={data.team.name}>
     <div className="hub-team-head">
       <span className="hub-team-dot" />
       <span className="hub-team-name">{data.team.name || "unnamed"}</span>
@@ -179,8 +179,10 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
     return () => ro.disconnect();
   }, []);
   const far = useStore((s) => s.transform[2] < 0.85);
-  // on a phone, fit no smaller than seat names can be read; the rest pans
-  const floor = width > 0 && width < 600 ? 0.8 : 0.25;
+  // with the flow map on, fit no smaller than lane names can be read; the rest pans
+  const floor = map ? 0.6 : 0.25;
+  const builtRef = useRef(built);
+  builtRef.current = built;
   const fitted = useRef("");
   useEffect(() => {
     if (!width) return;
@@ -188,13 +190,16 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
     if (fitted.current === key) return;
     fitted.current = key;
     const t = window.setTimeout(() => {
-      rf.fitView({ padding: 0.14, duration: 0, maxZoom: 1, minZoom: floor });
-      // when the whole graph does not fit a phone, start at the first team's corner rather than mid graph
-      const first = d.draft[0] && rf.getNode(teamId(d.draft[0].name));
-      if (floor > 0.5 && first && rf.getViewport().zoom <= floor + 0.01) {
-        const top = map ? Math.min(...rf.getNodes().filter((n) => n.type === "lane").map((n) => n.position.y), first.position.y) : first.position.y;
-        rf.setViewport({ x: 16 - first.position.x * floor, y: 16 - top * floor, zoom: floor });
+      // a phone starts at the graph's top left corner at a size seat names can be read, and pans from there
+      if (window.matchMedia("(max-width: 600px)").matches) {
+        const top = builtRef.current.filter((n) => !n.parentId);
+        if (top.length) {
+          const x0 = Math.min(...top.map((n) => n.position.x)), y0 = Math.min(...top.map((n) => n.position.y));
+          rf.setViewport({ x: 16 - x0 * 0.8, y: 16 - y0 * 0.8, zoom: 0.8 });
+          return;
+        }
       }
+      rf.fitView({ padding: 0.14, duration: 0, maxZoom: 1, minZoom: floor });
     }, 30);
     return () => window.clearTimeout(t);
   }, [map, d.draft.length, rf, width, aspect, floor]);

@@ -147,6 +147,7 @@ function TeamPanel({ info, d, team, act }: { info: AgentsInfo; d: Draft; team: T
         <Field label="Name"><input className="input" value={team.name} onChange={(e) => d.renameTeam(team.name, e.target.value)} aria-label="Team name" /></Field>
         <Field label="Category">
           <div className="seg" role="radiogroup" aria-label="Category">
+            <button type="button" className={team.category ? "" : "on"} aria-pressed={!team.category} onClick={() => set({ category: undefined })}>none</button>
             {CATEGORIES.map((c) => <button key={c} type="button" className={team.category === c ? "on" : ""} aria-pressed={team.category === c} onClick={() => set({ category: team.category === c ? undefined : c })}>{c}</button>)}
           </div>
         </Field>
