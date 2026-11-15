@@ -59,17 +59,31 @@ export function place(teams: Team[], saved: Saved, research: (m: Member) => bool
     });
     out.teams.set(t.name, { x: 0, y: 0, w, h });
   }
-  // wrap the teams into rows near the canvas's own shape, so a fit fills it
+  // wrap the teams into rows: try every row width a run of teams can make and
+  // keep the one whose bounding box fits the canvas's own shape at the largest scale
   const boxes = [...out.teams.values()];
-  const area = boxes.reduce((a, b) => a + (b.w + TEAM_GAP) * (b.h + TEAM_GAP), 0);
-  const row = Math.max(...boxes.map((b) => b.w), Math.sqrt(area * Math.min(3, Math.max(0.8, aspect))));
-  let x = 0, y = 0, tall = 0;
-  for (const [name, b] of out.teams) {
-    if (x > 0 && x + b.w > row) { x = 0; y += tall + TEAM_GAP; tall = 0; }
-    const s = saved[teamId(name)];
-    b.x = s ? s[0] : x; b.y = s ? s[1] : y;
-    x += b.w + TEAM_GAP; tall = Math.max(tall, b.h);
+  const ar = Math.min(3, Math.max(0.6, aspect));
+  const wrap = (row: number) => {
+    let x = 0, y = 0, tall = 0, wide = 0;
+    const at = boxes.map((b) => {
+      if (x > 0 && x + b.w > row) { x = 0; y += tall + TEAM_GAP; tall = 0; }
+      const p = [x, y] as const;
+      x += b.w + TEAM_GAP; tall = Math.max(tall, b.h); wide = Math.max(wide, x - TEAM_GAP);
+      return p;
+    });
+    return { at, fit: Math.min(ar / Math.max(1, wide), 1 / Math.max(1, y + tall)) };
+  };
+  const rows = new Set<number>();
+  for (let a = 0; a < boxes.length; a++) {
+    let w = -TEAM_GAP;
+    for (let b = a; b < boxes.length; b++) { w += boxes[b].w + TEAM_GAP; rows.add(w); }
   }
+  let best = wrap(Infinity);
+  for (const r of rows) { const c = wrap(r); if (c.fit > best.fit) best = c; }
+  [...out.teams.entries()].forEach(([name, b], k) => {
+    const s = saved[teamId(name)];
+    b.x = s ? s[0] : best.at[k][0]; b.y = s ? s[1] : best.at[k][1];
+  });
   return out;
 }
 

@@ -710,8 +710,8 @@ test.describe("agent hub (H.4)", () => {
     await seat.click();
     await expect(insp.getByLabel("Seat name")).toHaveValue("team1-lead");
     // colour and a category tag
-    await insp.getByRole("radio", { name: "Colour #8fd694" }).click();
-    await expect(seat).toHaveAttribute("style", /--seat:\s*#8fd694/);
+    await insp.getByRole("radio", { name: "Colour #b5835a" }).click();
+    await expect(seat).toHaveAttribute("style", /--seat:\s*#b5835a/);
     await insp.getByLabel("Tags").fill("e2e,");
     await expect(seat.locator(".hub-tag")).toContainText("e2e");
     // a skill and an MCP server: from the palette onto the picked seat
@@ -734,7 +734,7 @@ test.describe("agent hub (H.4)", () => {
     await expect(page.locator(".hub-dirty")).toHaveCount(0);
     const toml = (await (await request.get("/api/file?path=kula.toml", { headers: { "x-kula-token": "test" } })).json()).content as string;
     expect(toml).toContain('name = "team1"');
-    expect(toml).toContain("#8fd694");
+    expect(toml).toContain("#b5835a");
     expect(toml).toContain('"e2e"');
     expect(toml).toContain(`"${skillName}"`);
     expect(toml).toContain(`"${mcpName}"`);

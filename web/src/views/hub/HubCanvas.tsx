@@ -5,7 +5,7 @@
 import "@xyflow/react/dist/style.css";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
-  Background, Controls, Handle, MarkerType, Position, ReactFlow, applyNodeChanges, useReactFlow,
+  Background, Controls, Handle, MarkerType, Position, ReactFlow, applyNodeChanges, useReactFlow, useStore,
   type Connection, type Edge, type Node, type NodeChange, type NodeProps,
 } from "@xyflow/react";
 import { api, type AgentsInfo, type FlowMap, type Member, type Research, type ResearchRun, type Team } from "../../api";
@@ -177,13 +177,15 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  const far = useStore((s) => s.transform[2] < 0.65);
+  const narrow = width > 0 && width < 700;
   const fitted = useRef("");
   useEffect(() => {
     if (!width) return;
     const key = `${!!map}:${d.draft.length}:${width}:${aspect}`;
     if (fitted.current === key) return;
     fitted.current = key;
-    const t = window.setTimeout(() => rf.fitView({ padding: 0.08, duration: 0, maxZoom: 1 }), 30);
+    const t = window.setTimeout(() => rf.fitView({ padding: 0.08, duration: 0, maxZoom: 1, minZoom: 0.25 }), 30);
     return () => window.clearTimeout(t);
   }, [map, d.draft.length, rf, width, aspect]);
 
@@ -229,7 +231,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
   };
 
   return (
-    <div ref={box} className="hub-canvas" onDragOver={(e) => { if (e.dataTransfer.types.includes(DND)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }} onDrop={onDrop}>
+    <div ref={box} className={`hub-canvas${far ? " far" : ""}`} onDragOver={(e) => { if (e.dataTransfer.types.includes(DND)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }} onDrop={onDrop}>
       <ReactFlow
         nodes={nodes} edges={edges} nodeTypes={nodeTypes}
         onNodesChange={onNodesChange} onConnect={onConnect} onEdgesDelete={onEdgesDelete}
@@ -241,11 +243,11 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
           else if (n.type === "flow") setFlow(n.id.slice(5));
         }}
         onPaneClick={() => { setPick(null); setFlow(null); }}
-        minZoom={0.45} maxZoom={1.6} proOptions={{ hideAttribution: true }} deleteKeyCode={["Backspace", "Delete"]}
+        minZoom={0.25} maxZoom={1.6} fitView fitViewOptions={{ padding: 0.08, maxZoom: 1, minZoom: 0.25 }} proOptions={{ hideAttribution: true }} deleteKeyCode={["Backspace", "Delete"]}
         connectionLineStyle={{ stroke: "#f97f3a", strokeWidth: 1.5 }}
       >
         <Background color="#1a1715" gap={22} size={1} />
-        <Controls className="cv-controls" showInteractive={false} />
+        <Controls className="cv-controls" showInteractive={false} position={narrow ? "top-right" : "bottom-left"} orientation={narrow ? "horizontal" : "vertical"} />
       </ReactFlow>
       {d.draft.length === 0 && <div className="cv-msg">Drag an agent or a template here</div>}
     </div>
