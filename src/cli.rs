@@ -249,10 +249,13 @@ pub(crate) enum Cmd {
         min_confidence: String,
     },
     /// Execution flows discovered from entry points.
-    #[command(after_help = "Examples:\n  kula flows   ·  kula flows --limit 20")]
+    #[command(after_help = "Examples:\n  kula flows   ·  kula flows --limit 20   ·  kula flows --ordered")]
     Flows {
         #[arg(short, long, default_value_t = 10)]
         limit: usize,
+        /// Steps in call order with if/loop/match/try flags, grouped into domains.
+        #[arg(long)]
+        ordered: bool,
     },
     /// Functional clusters (communities) in the codebase.
     #[command(after_help = "Examples:\n  kula clusters")]

@@ -8,10 +8,12 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 mod communities;
 mod diff;
+mod flowmap;
 mod paths;
 mod resolve;
 pub use communities::detect_communities;
 pub use diff::*;
+pub use flowmap::*;
 pub use paths::*;
 pub use resolve::resolve_one;
 

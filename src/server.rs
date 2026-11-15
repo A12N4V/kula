@@ -313,6 +313,11 @@ async fn flows(State(s): State<AppState>) -> ApiResult {
     blocking(move || Ok(json!(graph::flows(&Store::open(&s.repo)?, 25)?))).await
 }
 
+async fn flowmap(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    let limit = q.get("limit").and_then(|l| l.parse().ok()).unwrap_or(60usize).min(400);
+    blocking(move || Ok(json!(graph::flowmap(&Store::open(&s.repo)?, limit)?))).await
+}
+
 async fn file(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let p = q.get("path").cloned().unwrap_or_default();
@@ -1272,6 +1277,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/symbol/{id}", get(symbol))
         .route("/api/impact/{id}", get(impact))
         .route("/api/flows", get(flows))
+        .route("/api/flowmap", get(flowmap))
         .route("/api/isolate", post(isolate))
         .route("/api/scopes", get(scopes))
         .route("/api/scopes/{action}", post(scopes_action))

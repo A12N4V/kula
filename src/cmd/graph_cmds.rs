@@ -61,7 +61,27 @@ pub(crate) fn run(repo: &Repo, cmd: &Cmd, json: bool) -> Result<()> {
                 println!("  {} resolved {} · inferred {} · guessed {}", dim("tiers"), t.tiers[0], t.tiers[1], t.tiers[2]);
             }
         }
-        Cmd::Flows { limit } => {
+        Cmd::Flows { limit, ordered: true } => {
+            let m = graph::flowmap(&Store::open(repo)?, *limit)?;
+            if json {
+                out(&m);
+                return Ok(());
+            }
+            header("flow map");
+            for d in &m.domains {
+                println!("  {} {}", bold(&d.label), dim(&format!("{} flows", d.flows)));
+                for fl in m.flows.iter().filter(|f| f.domain == d.id) {
+                    let what = fl.route.clone().unwrap_or_else(|| fl.entry.name.clone());
+                    println!("    {} {}  {}", accent("▶"), bold(&what), dim(fl.kind));
+                    for s in fl.steps.iter().skip(1) {
+                        let pad = "  ".repeat(s.depth);
+                        let flag = s.branch.map(|b| format!(" [{b}]")).unwrap_or_default();
+                        println!("    {pad}{}{}  {}", s.name, dim(&flag), dim(&format!("{}:{}", s.path, s.line)));
+                    }
+                }
+            }
+        }
+        Cmd::Flows { limit, .. } => {
             let st = Store::open(repo)?;
             let f = graph::flows(&st, *limit)?;
             if json {

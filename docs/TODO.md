@@ -153,6 +153,20 @@ Gate G2: CLI audit has no blockers; release published.
 | P3.16 | ✓ Territories, scope brush, memory shelves, pockets, anchor pins, recall preview | MAIN | P3.15 | Brush refuses locked code; stale memories hatched |
 | P3.17 | ✓ `GET /api/agents/events` SSE, Live mode, run replay | WORKER, then MAIN | P3.14 | Hand-offs and gate verdicts paint within 1 s; 5 s poll fallback |
 
+## H – Agent hub (one node canvas over the flow map; [design](design/agent-hub.md))
+
+| ID | Task | Owner | needs | Acceptance |
+|---|---|---|---|---|
+| H.1 | ✓ Execution flow map: entries (route, main, test, entry) unrolled in call order with if, loop, match and try flags, grouped into domains; `/api/flowmap`, MCP `flowmap`, `kula flows --ordered` | MAIN | P1.2 | Fixture flow lists steps in call order with the right flags |
+| H.2 | Node schema in `kula.toml`: seat colour, tags, skills, MCP, memory, fence; team colour and category; per seat setup at launch | MAIN | H.1 | Old files parse; round trip keeps comments |
+| H.3 | Fence hardening: unknown level is an error, exact hook time verdicts, bare name warnings, `explain`, seat overlap check | MAIN | H.2 | Property tests: levels only rise, rule order never matters; audit cases refused |
+| H.4 | Hub canvas replaces the nine Agents tabs: palette, xyflow nodes, inspector, Build · Live · Runs, Map layer | MAIN | H.2 | e2e: add, colour, tag, attach, fence, save to fixture only; no page scroll at 1440×900 |
+| H.5 | Launcher and run ledger: wrap claude, codex and gemini; tokens, cost, time, score per seat and run | MAIN | H.2 | Fake agent run writes `.kula/runs/<id>.json` with usage and score |
+| H.6 | Runs: list, detail, synopsis, replay, changelog by flow, trends | MAIN | H.5 | Every run readable after the fact without the event log |
+| H.7 | Autoresearch nodes: experiments in the ledger, metric chart | MAIN | H.5 | Research run shows kept and reverted experiments |
+| H.8 | Deploy dialog and `[[schedule]]` (cron, push, pr) run inside `kula serve` | MAIN | H.5 | Due schedule fires once; one scheduled run at a time |
+| H.9 | ui-critic loop, then kula-critic over fences and launcher | UICRITIC, CRITIC | H.1–H.8 | Score target met; no open high findings |
+
 ---
 
 ## Attention track (runs alongside; owner is mostly YOU)

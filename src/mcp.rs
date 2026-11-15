@@ -29,6 +29,8 @@ fn tools() -> Value {
           "inputSchema": s(json!({ "select": { "type": "array", "items": { "type": "string" } }, "hops": { "type": "integer", "description": "neighbourhood for symbol selectors without ~N (default 1)" }, "limit": { "type": "integer", "description": "max nodes and peers listed (default 200)" } }), &["select"]) },
         { "name": "flows", "description": "Execution flows reachable from entry points.",
           "inputSchema": s(json!({ "limit": { "type": "integer" } }), &[]) },
+        { "name": "flowmap", "description": "The execution flow map: entry points (routes, main, tests, uncalled callers) unrolled into ordered steps in call order, each step flagged when it sits inside an if, loop, match or try, grouped into domains. Use it to see how a request or command actually runs before assigning work around it.",
+          "inputSchema": s(json!({ "limit": { "type": "integer", "description": "max flows (default 30)" } }), &[]) },
         { "name": "notes", "description": "Human notes and annotations attached to the repo, files and symbols.",
           "inputSchema": s(json!({ "target": { "type": "string" } }), &[]) },
         { "name": "issues", "description": "Local issues and proposals tracked in git.",
@@ -183,6 +185,7 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             json!({ "summary": d.summary, "changed": changed })
         }
         "flows" => json!(graph::flows(&st()?, int_arg("limit", 10))?),
+        "flowmap" => json!(graph::flowmap(&st()?, int_arg("limit", 30))?),
         "notes" => {
             let t = str_arg("target");
             let m = crate::meta::load(repo)?;
