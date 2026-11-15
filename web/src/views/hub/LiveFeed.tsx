@@ -14,10 +14,10 @@ export function LiveFeed({ events, via, runs, run, setRun, cursor, setCursor }: 
   const upto = cursor ?? n - 1;
   const shown = events.slice(Math.max(0, upto - 11), upto + 1).reverse();
   return (
-    <section className="card cv-live" aria-label="Live">
+    <section className="hub-sec cv-live" aria-label="Live">
       <div className="card-head">
-        <h2>Live</h2>
-        <span className={`cv-live-via ${via}`} data-via={via}>{via === "stream" ? (n ? "streaming" : "idle") : via === "poll" ? "polling every 5 s" : "off"}</span>
+        <h2 className="hub-insp-title">Live</h2>
+        <span className={`cv-live-via ${via}${via === "stream" && !n ? " idle" : ""}`} data-via={via}>{via === "stream" ? (n ? "streaming" : "idle") : via === "poll" ? "polling every 5 s" : "off"}</span>
         <span className="spacer" />
         {runs.length > 0 && (
           <select className="input sm mono" aria-label="Run" value={run} onChange={(e) => { setRun(e.target.value); setCursor(null); }}>

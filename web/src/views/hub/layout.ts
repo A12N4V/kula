@@ -34,7 +34,7 @@ export function seatH(m: Member, research = false): number {
   return SEAT_BASE + (chips ? CHIP_ROW : 0) + (fence ? FENCE_ROW : 0);
 }
 
-export function place(teams: Team[], saved: Saved, research: (m: Member) => boolean = () => false): Placed {
+export function place(teams: Team[], saved: Saved, research: (m: Member) => boolean = () => false, aspect = 1.6): Placed {
   const out: Placed = { teams: new Map(), seats: new Map() };
   for (const t of teams) {
     const rows: Member[][] = [];
@@ -59,10 +59,10 @@ export function place(teams: Team[], saved: Saved, research: (m: Member) => bool
     });
     out.teams.set(t.name, { x: 0, y: 0, w, h });
   }
-  // wrap the teams into rows near a 1.6:1 frame, so many teams stay readable when fitted
+  // wrap the teams into rows near the canvas's own shape, so a fit fills it
   const boxes = [...out.teams.values()];
   const area = boxes.reduce((a, b) => a + (b.w + TEAM_GAP) * (b.h + TEAM_GAP), 0);
-  const row = Math.max(...boxes.map((b) => b.w), Math.sqrt(area * 1.6));
+  const row = Math.max(...boxes.map((b) => b.w), Math.sqrt(area * Math.min(3, Math.max(0.8, aspect))));
   let x = 0, y = 0, tall = 0;
   for (const [name, b] of out.teams) {
     if (x > 0 && x + b.w > row) { x = 0; y += tall + TEAM_GAP; tall = 0; }
@@ -91,7 +91,7 @@ export function lanes(map: FlowMap): Lane[] {
   let acc = -(lineH.reduce((a, b) => a + b + LANE_GAP, -LANE_GAP) + 72);
   lineH.forEach((lh, li) => { tops[li] = acc; acc += lh + LANE_GAP; });
   return rows.map((r, i) => ({
-    id: r.d.id, label: r.d.label, more: r.more,
+    id: r.d.id, label: r.d.label === "." ? "root" : r.d.label, more: r.more,
     box: { x: (i % cols) * (LANE_W + LANE_GAP), y: tops[Math.floor(i / cols)], w: LANE_W, h: laneH(r) },
     flows: r.fs.map((f, j) => ({ id: f.id, y: LANE_HEAD + j * (FLOW_H + 4) })),
   }));

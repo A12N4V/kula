@@ -113,6 +113,8 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
   const covers = useMemo(() => (picked?.scope?.length ? matcher(picked.scope) : null), [picked?.scope]);
 
   const flows = useMemo(() => new Map(info.workflows.filter((w) => w.research?.metric).map((w) => [w.name, w.research!])), [info.workflows]);
+  const [width, setWidth] = useState(0);
+  const [aspect, setAspect] = useState(1.6);
   const built = useMemo(() => {
     const out: Node[] = [];
     if (map) {
@@ -128,7 +130,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
       }
     }
     const isResearch = (m: Member) => !!(m.workflow && flows.has(m.workflow));
-    const at = place(d.draft, saved, isResearch);
+    const at = place(d.draft, saved, isResearch, aspect);
     for (const t of d.draft) {
       const b = at.teams.get(t.name)!;
       out.push({ id: teamId(t.name), type: "team", position: { x: b.x, y: b.y }, style: { width: b.w, height: b.h }, data: { team: t, picked: pick?.team === t.name && !pick.key }, selectable: false });
@@ -138,7 +140,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
       }
     }
     return out;
-  }, [map, covers, flow, d.draft, saved, pick, paint, overlaps, flows, info.research]);
+  }, [map, covers, flow, d.draft, saved, pick, paint, overlaps, flows, info.research, aspect]);
 
   const [nodes, setNodes] = useState<Node[]>(built);
   useEffect(() => { setNodes(built); }, [built]);
@@ -168,23 +170,22 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
   // fit once there is something to fit, and again when the map comes or goes
   // (only once the canvas has a size, and again when its width settles elsewhere)
   const box = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => { const w = e.contentRect.width, h = e.contentRect.height; if (w > 0 && h > 0) setWidth(Math.round(w / 80) * 80); });
+    const ro = new ResizeObserver(([e]) => { const w = e.contentRect.width, h = e.contentRect.height; if (w > 0 && h > 0) { setWidth(Math.round(w / 80) * 80); setAspect(Math.round((w / h) * 4) / 4); } });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
   const fitted = useRef("");
   useEffect(() => {
     if (!width) return;
-    const key = `${!!map}:${d.draft.length}:${width}`;
+    const key = `${!!map}:${d.draft.length}:${width}:${aspect}`;
     if (fitted.current === key) return;
     fitted.current = key;
-    const t = window.setTimeout(() => rf.fitView({ padding: 0.12, duration: 0 }), 30);
+    const t = window.setTimeout(() => rf.fitView({ padding: 0.08, duration: 0, maxZoom: 1 }), 30);
     return () => window.clearTimeout(t);
-  }, [map, d.draft.length, rf, width]);
+  }, [map, d.draft.length, rf, width, aspect]);
 
   const parse = (id: string | null | undefined): { team: string; key: string } | null => {
     const m = id?.match(/^seat:([^/]*)\/(.+)$/);

@@ -51,8 +51,8 @@ function ExplainBox({ team, seat, d }: { team: string; seat: string; d: Draft })
   return (
     <div className="hub-explain">
       <div className="hub-row">
-        <input className="input" placeholder="path" value={path} onChange={(e) => setPath(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()} aria-label="Path to explain" />
-        <input className="input sym" placeholder="symbol" value={sym} onChange={(e) => setSym(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()} aria-label="Symbol to explain" />
+        <input className="input mono" placeholder="path" value={path} onChange={(e) => setPath(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()} aria-label="Path to explain" />
+        <input className="input mono hub-sym" placeholder="symbol" value={sym} onChange={(e) => setSym(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()} aria-label="Symbol to explain" />
         <button className="btn sm" onClick={run} disabled={!path.trim()}>Explain</button>
       </div>
       {err && <div className="team-err" role="alert">{err}</div>}

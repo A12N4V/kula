@@ -191,8 +191,8 @@ export function RunsTrends({ info }: { info: RunsInfo | null }) {
   return (
     <section className="hub-sec runs-trends" aria-label="Trends">
       <h3>Trends
-        <span className="seg hub-sec-aside" role="group" aria-label="Trend by">
-          {KINDS.map((k) => <button key={k.id} className={kind === k.id ? "on" : ""} aria-pressed={kind === k.id} onClick={() => setKind(k.id)}>{k.label}</button>)}
+        <span className="seg hub-sec-aside runs-trend-seg" role="group" aria-label="Trend by">
+          {KINDS.map((k) => <button key={k.id} className={kind === k.id ? "on" : ""} aria-pressed={kind === k.id} disabled={!info?.trends?.length} onClick={() => setKind(k.id)}>{k.label}</button>)}
         </span>
       </h3>
       {rows.length === 0

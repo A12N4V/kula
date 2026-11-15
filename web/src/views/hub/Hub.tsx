@@ -99,20 +99,20 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
   }, [pick]);
 
   return (
-    <div className="hub-body">
-      <Palette info={info} servers={servers} onUse={(it) => onItem(it, pick)} />
+    <div className={`hub-body mode-${mode}`}>
+      {mode === "build" && <Palette info={info} servers={servers} onUse={(it) => onItem(it, pick)} />}
       <div className="hub-center">
         <div className="hub-bar">
           <div className="seg" role="group" aria-label="Mode">
             {MODES.map((m) => <button key={m.id} className={mode === m.id ? "on" : ""} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>{m.label}</button>)}
           </div>
-          {mode !== "runs" && <span className="hub-bar-label">Link</span>}
-          {mode !== "runs" && <div className="seg" role="group" aria-label="Link">
+          {mode === "build" && <span className="hub-bar-label">Link</span>}
+          {mode === "build" && <div className="seg" role="group" aria-label="Link">
             <button className={link === "rt" ? "on" : ""} aria-pressed={link === "rt"} onClick={() => setLink("rt")} title="Drag between seats to set who reports to whom">Reports</button>
             <button className={link === "ho" ? "on" : ""} aria-pressed={link === "ho"} onClick={() => setLink("ho")} title="Drag between seats to hand work off">Hand off</button>
           </div>}
           <span className="spacer" />
-          {mode !== "runs" && <div className="seg" role="group" aria-label="Layers">
+          {mode === "build" && <div className="seg" role="group" aria-label="Layers">
             <button className={`${showMap ? "on" : ""}${showMap && !map ? " loading" : ""}`} aria-pressed={showMap} onClick={() => setShowMap(!showMap)} title="Draw the codebase's execution flows behind the teams">Flow map</button>
           </div>}
           {d.dirty && <span className="hub-dirty mono">unsaved</span>}

@@ -26,7 +26,7 @@ export function Palette({ info, servers, onUse }: { info: AgentsInfo; servers: s
         {groups.map((g) => {
           const items = g.items.filter((i) => has(i.label));
           return (
-            <section key={g.kind} className={`hub-pal-group${items.length ? "" : " empty"}`} data-kind={g.kind}>
+            <section key={g.kind} className={`hub-pal-group${items.length ? "" : " is-empty"}`} data-kind={g.kind}>
               <h3>{g.title}<span className="mono muted">{items.length}</span></h3>
               {items.map((i) => (
                 <button
