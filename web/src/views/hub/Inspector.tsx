@@ -13,7 +13,7 @@ import { MetricChart, pointsOf } from "./MetricChart";
 import { TaskCard } from "./TaskCard";
 
 // warm tints only: green, blue, violet, red and yellow mean skills, MCP, memory, lock and review
-export const SWATCHES = ["#f97f3a", "#e8e2d9", "#c2b9ac", "#b5835a", "#d9a066", "#8d8378", "#6f665d"];
+export const SWATCHES = ["#e8e2d9", "#c2b9ac", "#b5835a", "#d9a066", "#8d8378", "#6f665d"];
 const CATEGORIES = ["build", "research", "review"];
 
 function Sec({ title, children, aside, dot }: { title: string; children: ReactNode; aside?: ReactNode; dot?: string }) {

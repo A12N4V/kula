@@ -95,7 +95,9 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
   // on a narrow screen the inspector sits below the canvas: bring it into view when a seat is picked
   const inspRef = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (pick && window.matchMedia("(max-width: 1100px)").matches) inspRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (!pick || !window.matchMedia("(max-width: 1100px)").matches) return;
+    const phone = window.matchMedia("(max-width: 759px)").matches;
+    inspRef.current?.scrollIntoView({ block: phone ? "start" : "nearest", behavior: "smooth" });
   }, [pick]);
 
   return (

@@ -107,7 +107,7 @@ export function lanes(map: FlowMap): Lane[] {
   let acc = -(lineH.reduce((a, b) => a + b + LANE_GAP, -LANE_GAP) + 72);
   lineH.forEach((lh, li) => { tops[li] = acc; acc += lh + LANE_GAP; });
   return rows.map((r, i) => ({
-    id: r.d.id, label: r.d.label === "." ? "root" : r.d.label, more: r.more,
+    id: r.d.id, label: r.d.label.replace(/^\.(?=$| )/, "root"), more: r.more,
     box: { x: (i % cols) * (LANE_W + LANE_GAP), y: tops[Math.floor(i / cols)], w: LANE_W, h: laneH(r) },
     flows: r.fs.map((f, j) => ({ id: f.id, y: LANE_HEAD + j * (FLOW_H + 4) })),
   }));

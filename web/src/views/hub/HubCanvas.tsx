@@ -187,7 +187,15 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
     const key = `${!!map}:${d.draft.length}:${width}:${aspect}`;
     if (fitted.current === key) return;
     fitted.current = key;
-    const t = window.setTimeout(() => rf.fitView({ padding: 0.14, duration: 0, maxZoom: 1, minZoom: floor }), 30);
+    const t = window.setTimeout(() => {
+      rf.fitView({ padding: 0.14, duration: 0, maxZoom: 1, minZoom: floor });
+      // when the whole graph does not fit a phone, start at the first team's corner rather than mid graph
+      const first = d.draft[0] && rf.getNode(teamId(d.draft[0].name));
+      if (floor > 0.5 && first && rf.getViewport().zoom <= floor + 0.01) {
+        const top = map ? Math.min(...rf.getNodes().filter((n) => n.type === "lane").map((n) => n.position.y), first.position.y) : first.position.y;
+        rf.setViewport({ x: 16 - first.position.x * floor, y: 16 - top * floor, zoom: floor });
+      }
+    }, 30);
     return () => window.clearTimeout(t);
   }, [map, d.draft.length, rf, width, aspect, floor]);
 
