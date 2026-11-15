@@ -553,8 +553,10 @@
   .hub-body.mode-build { grid-template-columns: minmax(0, 1fr); grid-template-rows: 128px minmax(300px, 1fr) minmax(0, 36%); }
   .hub-body.mode-build .hub-insp-scroll { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; align-content: start; }
   .hub-body.mode-build .hub-insp-scroll > :not(.hub-sec) { grid-column: 1 / -1; }
-  .runs-board > .runs-empty { flex: 1; }
-  .hub-body.mode-build .hub-pal-scroll { align-items: flex-start; }
+  .hub-body.mode-build .hub-pal-scroll { align-items: flex-start; scrollbar-width: none; }
+  .hub-body.mode-build .hub-pal-scroll::-webkit-scrollbar { display: none; }
+  .hub-body.mode-build .hub-insp-scroll { grid-auto-flow: row dense; align-items: start; }
+  .hub-body.mode-build .hub-insp-scroll > .hub-sec:is([aria-label="Identity"], [aria-label="Hub"], [aria-label="Team"], [aria-label="Now"], [aria-label="Task"]) { grid-row: span 3; }
   .page.hub:has(.hub-body:is(.mode-live, .mode-runs)) { overflow: hidden; }
   .hub-body:is(.mode-live, .mode-runs) { flex: 1; min-height: 0; }
   .hub-pal-group h3 .mono { margin-left: 0; }
@@ -571,7 +573,8 @@
 }
 .cv-idle { max-height: none; margin-top: 10px; }
 .cv-idle li { color: var(--text-3); }
-.runs-board > .runs-empty { flex: none; min-height: 160px; }
+.runs-board > .runs-empty { flex: 1; min-height: 160px; }
+@media (max-width: 759px) { .runs-board > .runs-empty { flex: none; } }
 .hub-body.mode-runs .hub-inspector { min-height: 0; align-self: start; }
 .page.hub .hub-deploy-btn:disabled, .page.hub .hub-deploy .btn.primary:disabled { background: transparent; border-color: var(--line); font-weight: 500; color: var(--text-3); }
 .hub-sec h3 { font-size: 11px; }
@@ -582,3 +585,14 @@
 .hub-lane-n { flex: none; }
 .hub-canvas.far .hub-lane-more { display: block; font-size: 18px; line-height: 28px; }
 .page.hub .runs-trend-seg button.on:not(:disabled) { background: transparent; border-color: transparent; color: var(--text); box-shadow: inset 0 -1px 0 var(--accent); }
+/* fifteenth pass: far flow bars sized by steps, weights stepped in one accent, idle seats by team */
+.hub-canvas.far .hub-flow { width: calc(var(--w, 1) * 100%) !important; }
+.runs-weight-bar span:nth-child(2), .runs-weight-legend > span:nth-child(2) i::before { opacity: .8; }
+.runs-weight-bar span:nth-child(3), .runs-weight-legend > span:nth-child(3) i::before { opacity: .64; }
+.runs-weight-bar span:nth-child(4), .runs-weight-legend > span:nth-child(4) i::before { opacity: .5; }
+.runs-weight-bar span:nth-child(5), .runs-weight-legend > span:nth-child(5) i::before { opacity: .38; }
+.runs-weight-bar span:nth-child(6), .runs-weight-legend > span:nth-child(6) i::before { opacity: .28; }
+.runs-weight-legend > span i::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 1px; background: var(--accent); vertical-align: 1px; }
+.cv-idle li { display: flex; gap: 8px; }
+.cv-idle li .mono { color: var(--text-2); flex: none; }
+.cv-idle li span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

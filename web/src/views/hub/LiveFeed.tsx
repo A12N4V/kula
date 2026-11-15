@@ -36,8 +36,8 @@ export function LiveFeed({ events, via, runs, run, setRun, cursor, setCursor, se
       {n === 0
         ? <>
             <p className="muted">Seat activity streams here once a team runs</p>
-            {seats.length > 0 && <ol className="cv-events cv-idle" aria-label="Seats">{seats.map((s) => (
-              <li key={s}><span className="mono">idle</span><span>{s}</span></li>
+            {seats.length > 0 && <ol className="cv-events cv-idle" aria-label="Seats">{[...new Set(seats.map((s) => s.split(" · ")[0]))].map((t) => (
+              <li key={t}><span className="mono">{t}</span><span>{seats.filter((s) => s.split(" · ")[0] === t).map((s) => s.split(" · ").slice(1).join(" · ")).join(", ")}</span></li>
             ))}</ol>}
           </>
         : <ol className="cv-events" aria-label="Events">{shown.map((e) => (

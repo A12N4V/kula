@@ -3,7 +3,7 @@
 // on refs/kula/meta straight away, so moving things never dirties the tree.
 
 import "@xyflow/react/dist/style.css";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import {
   Background, Controls, Handle, MarkerType, Position, ReactFlow, applyNodeChanges, useReactFlow, useStore,
   type Connection, type Edge, type Node, type NodeChange, type NodeProps,
@@ -90,7 +90,7 @@ const LaneNode = memo(({ data }: NodeProps<Node<LaneData>>) => (
 ));
 
 const FlowNode = memo(({ data }: NodeProps<Node<FlowData>>) => (
-  <div className={`hub-flow${data.hit ? " hit" : ""}${data.picked ? " picked" : ""}`} title={`${data.kind} ${data.name}`}>
+  <div className={`hub-flow${data.hit ? " hit" : ""}${data.picked ? " picked" : ""}`} title={`${data.kind} ${data.name}`} style={{ "--w": Math.min(1, Math.max(0.2, data.steps / 40)) } as CSSProperties}>
     <span className={`hub-flow-kind ${data.kind}`}>{data.kind[0]}</span>
     <span className="hub-flow-name">{short(data.name, 24)}</span>
     <span className="mono muted">{data.steps}</span>
@@ -196,7 +196,10 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
         const x0 = Math.min(...top.map((n) => n.position.x)), y0 = Math.min(...top.map((n) => n.position.y));
         // with the map on, start halfway between the lanes and the teams so both show
         const teamsY = Math.min(...top.filter((n) => n.type === "team").map((n) => n.position.y));
-        const yAt = (z: number) => (map && Number.isFinite(teamsY) ? Math.max(y0, teamsY - (width / aspect / z) * 0.5) : y0);
+        const laneTops = top.filter((n) => n.type === "lane").map((n) => n.position.y);
+        // snapped to a lane top so no lane starts cut at the canvas edge
+        const snap = (y: number) => Math.max(y0, ...laneTops.filter((t) => t <= y));
+        const yAt = (z: number) => (map && Number.isFinite(teamsY) ? snap(teamsY - (width / aspect / z) * 0.5) : y0);
         if (window.matchMedia("(max-width: 600px)").matches) {
           const z = map ? 0.68 : 0.8;
           rf.setViewport({ x: 16 - x0 * z, y: 16 - yAt(z) * z, zoom: z });
