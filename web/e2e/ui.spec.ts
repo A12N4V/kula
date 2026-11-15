@@ -760,6 +760,90 @@ test.describe("agent hub (H.4)", () => {
   });
 });
 
+test.describe("agent hub runs (H.6)", () => {
+  test.describe.configure({ mode: "serial" });
+  test.use({ baseURL: ({ fx }, use) => use(fx) });
+  const desktopOnly = (info: { project: { name: string } }) => test.skip(info.project.name !== "desktop", "writes to the fixture");
+  const kulaOf = (fx: string) => path.join(fs.readFileSync(`/tmp/kula-fixture-${new URL(fx).port}.path`, "utf8").trim(), ".kula");
+  const usage = (i: number, o: number, c: number) => ({ tokens_in: i, tokens_out: o, cost_usd: c, turns: 3, duration_ms: 0 });
+  const seat = (slice: string, name: string, verdict: string, score: number, extra = {}) => ({
+    slice, seat: name, agent: "claude", usage: usage(1200, 300, 0.04), duration_ms: 42_000, files: 1, added: 12, removed: 3,
+    refusals: verdict === "passed" ? 0 : 1, attempts: verdict === "passed" ? 1 : 2, verdict, tests: verdict === "passed", score, ...extra,
+  });
+  const run = (id: string, started: number, score: number, seats: object[], state: string) => ({
+    schema: 1, id, plan: `plan-${id}`, team: "e2e-team", goal: `Goal of ${id}`, trigger: "manual", started, ended: started + 95_000,
+    base: "a".repeat(40), head: "b".repeat(40), state, seats, handoffs: [], usage: usage(2400, 600, 0.08), score,
+    weights: { gate: 40, tests: 20, refusals: 15, retries: 10, cost: 10, duration: 5 },
+  });
+  let evBefore: string | null = null;
+  const files: string[] = [];
+  test.beforeAll(async ({ fx }) => {
+    const k = kulaOf(fx);
+    fs.mkdirSync(path.join(k, "runs"), { recursive: true });
+    const t = Date.now() - 3_600_000;
+    const recs = [
+      run("e2e-run-1", t, 52, [seat("s1", "lead", "rejected", 30), seat("s2", "tester", "passed", 74, { paths: ["src/lib.rs"], commit: "c".repeat(40) })], "partial"),
+      run("e2e-run-2", t + 600_000, 91, [seat("s1", "lead", "passed", 92, { paths: ["src/main.rs"], commit: "d".repeat(40) })], "passed"),
+    ];
+    for (const r of recs) {
+      const f = path.join(k, "runs", `${r.id}.json`);
+      fs.writeFileSync(f, JSON.stringify(r));
+      files.push(f);
+    }
+    // one run still going: events with a run id and no run_end
+    const ev = path.join(k, "events.jsonl");
+    evBefore = fs.existsSync(ev) ? fs.readFileSync(ev, "utf8") : null;
+    const now = Date.now();
+    const lines = [
+      { seq: 0, ts: now - 5000, kind: "slice", plan: "plan-live", slice: "s1", verdict: "passed", run: "e2e-live", team: "e2e-team" },
+      { seq: 0, ts: now - 2000, kind: "attempt", plan: "plan-live", slice: "s2", run: "e2e-live", team: "e2e-team", usage: usage(500, 100, 0.01) },
+    ].map((e) => JSON.stringify(e)).join("\n") + "\n";
+    fs.writeFileSync(ev, (evBefore ?? "") + lines);
+  });
+  test.afterAll(async ({ fx }) => {
+    for (const f of files) fs.rmSync(f, { force: true });
+    const ev = path.join(kulaOf(fx), "events.jsonl");
+    if (evBefore === null) fs.rmSync(ev, { force: true });
+    else fs.writeFileSync(ev, evBefore);
+  });
+
+  test("H.6: the runs board lists runs, opens a synopsis and changelog, and shows trends", async ({ page }, info) => {
+    desktopOnly(info);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page, "agents");
+    await page.getByRole("group", { name: "Mode" }).getByRole("button", { name: "Runs" }).click();
+    const board = page.getByLabel("Runs", { exact: true });
+    await expect(board.locator(".runs-row")).toHaveCount(2, { timeout: 10_000 });
+    // newest first, and the newest is opened
+    await expect(board.locator(".runs-row").first()).toContainText("Goal of e2e-run-2");
+    await expect(page.getByLabel("Run detail")).toContainText("e2e-run-2");
+    await expect(page.getByLabel("Synopsis")).not.toBeEmpty();
+    await expect(page.getByRole("img", { name: "Score over time" })).toBeVisible();
+    // the run still going is pinned
+    await expect(page.getByLabel("Run e2e-live is running")).toContainText("1 of 2 slices passed");
+    // the older run: two seats, a rejected one, and its kept change in the changelog
+    await board.locator('.runs-row[data-run="e2e-run-1"]').click();
+    const detail = page.getByLabel("Run detail");
+    await expect(detail.locator("tbody tr")).toHaveCount(2);
+    await expect(detail.locator('tr[data-slice="s1"]')).toContainText("rejected");
+    await expect(detail.locator(".runs-cl")).toContainText("src/lib.rs");
+    await expect(detail.locator(".runs-cl")).toContainText("ccccccc");
+    // trends by seat, then by team
+    const trends = page.getByRole("region", { name: "Trends" });
+    await expect(trends.locator('li[data-key="lead"]')).toBeVisible();
+    await trends.getByRole("button", { name: "Teams" }).click();
+    await expect(trends.locator('li[data-key="e2e-team"]')).toContainText("2 runs");
+    await expect(page.getByLabel("Score weights")).toContainText("gate");
+    // the canvas tools are gone in Runs
+    await expect(page.getByRole("checkbox", { name: "Flow map" })).toHaveCount(0);
+    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= window.innerHeight)).toBe(true);
+    await page.screenshot({ path: "test-results/hub-runs.png", scale: "css" });
+    // Replay opens Live on that run
+    await detail.getByRole("button", { name: "Replay" }).click();
+    await expect(page.getByRole("group", { name: "Mode" }).getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
 test.describe("git board", () => {
   for (const [w, h] of [[1440, 900], [1280, 800]]) {
     test(`fills ${w}x${h} with every widget and no page scroll`, async ({ page }) => {

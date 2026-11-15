@@ -162,7 +162,7 @@ Gate G2: CLI audit has no blockers; release published.
 | H.3 | ✓ Fence hardening: unknown level is an error, exact hook time verdicts, bare name warnings, `explain`, seat overlap check | MAIN | H.2 | Property tests: levels only rise, rule order never matters; audit cases refused |
 | H.4 | ✓ Hub canvas replaces the nine Agents tabs: palette, xyflow nodes, inspector, Build · Live · Runs, Map layer | MAIN | H.2 | e2e: add, colour, tag, attach, fence, save to fixture only; no page scroll at 1440×900 |
 | H.5 | ✓ Launcher and run ledger: wrap claude, codex and gemini; apply each seat's skills, MCP and memory; tokens, cost, time, score per seat and run | MAIN | H.2 | Fake agent run writes `.kula/runs/<id>.json` with usage and score |
-| H.6 | Runs: list, detail, synopsis, replay, changelog by flow, trends | MAIN | H.5 | Every run readable after the fact without the event log |
+| H.6 | ✓ Runs: list, detail, synopsis, replay, changelog by flow, trends | MAIN | H.5 | Every run readable after the fact without the event log |
 | H.7 | Autoresearch nodes: experiments in the ledger, metric chart | MAIN | H.5 | Research run shows kept and reverted experiments |
 | H.8 | Deploy dialog and `[[schedule]]` (cron, push, pr) run inside `kula serve` | MAIN | H.5 | Due schedule fires once; one scheduled run at a time |
 | H.9 | ui-critic loop, then kula-critic over fences and launcher; prune the removed tabs' CSS; a place for the task loop overview | UICRITIC, CRITIC | H.1–H.8 | Score target met; no open high findings |

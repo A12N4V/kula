@@ -22,7 +22,7 @@ export const get = <T>(path: string) => req<T>("GET", path);
 export type KulaEvent = {
   seq: number; ts: number;
   kind: "team_start" | "team_stop" | "refused" | "handoff" | "slice" | "verdict" | string;
-  team?: string; agent?: string; from?: string; plan?: string; slice?: string; path?: string; verdict?: string; msg?: string;
+  team?: string; agent?: string; from?: string; plan?: string; slice?: string; path?: string; verdict?: string; msg?: string; run?: string; usage?: Usage;
 };
 
 /** Tail the event log as server sent events over fetch (EventSource cannot carry the token). Resolves when the stream ends. */
@@ -105,6 +105,19 @@ export interface FlowStep { id: number; name: string; kind: string; path: string
 export interface FlowPath { id: string; entry: Node; kind: "route" | "main" | "test" | "entry"; route?: string; domain: number; steps: FlowStep[]; files: string[] }
 export interface FlowDomain { id: number; label: string; flows: number; files: string[] }
 export interface FlowMap { domains: FlowDomain[]; flows: FlowPath[] }
+/** A run's ledger (src/launch.rs): one file per run under .kula/runs. */
+export interface Usage { tokens_in: number; tokens_out: number; cost_usd: number; turns: number; duration_ms: number; model?: string }
+export interface SeatRun { slice: string; seat?: string; agent: string; model?: string; usage: Usage; duration_ms: number; files: number; added: number; removed: number; refusals: number; attempts: number; verdict: string; tests: boolean | null; score: number; paths?: string[]; commit?: string }
+export interface Weights { gate: number; tests: number; refusals: number; retries: number; cost: number; duration: number }
+export interface Run { id: string; plan: string; team?: string; goal: string; trigger: string; started: number; ended: number; base: string; head: string; state: "passed" | "partial" | "failed" | string; seats: SeatRun[]; handoffs: { from: string; to: string }[]; usage: Usage; score: number; weights: Weights | null }
+export interface RunSummary { id: string; plan: string; team: string; goal: string; trigger: string; started: number; ended: number; state: string; score: number; usage: Usage; seats: number; passed: number; refusals: number; files: number }
+export interface CurrentRun { id: string; plan: string; team: string; started: number; last: number; slices: number; passed: number; attempts: number; usage: Usage }
+export interface Trend { kind: "seat" | "agent" | "team"; key: string; runs: number; score: number; scores: number[]; tokens: number; cost_usd: number; refusal_rate: number; pass_rate: number }
+export interface Synopsis { headline: string; lines: string[] }
+export interface ChangeTouch { path: string; run: string; slice: string; seat: string; commit: string; ended: number }
+export interface ChangeSection { domain: number | null; label: string; flows: { id: string; label: string }[]; changes: ChangeTouch[] }
+export interface RunsInfo { runs: RunSummary[]; current: CurrentRun[]; trends: Trend[]; weights: Weights }
+export interface RunDetail { synopsis: Synopsis; changelog: ChangeSection[]; run: Run }
 /** An autoresearch loop's settings ([workflow.research]). */
 export interface Research { metric: string; goal: "min" | "max" | ""; budget?: number; timeout?: number; icon?: string }
 export interface Experiment { n: number; hypothesis: string; value: number | null; best_before: number | null; kept: boolean; commit?: string; files: string[]; by: string; at: number; note?: string }
@@ -238,6 +251,9 @@ export const api = {
   overview: () => get<Overview>("/api/overview"),
   agents: () => get<AgentsInfo>("/api/agents"),
   flowmap: (limit = 60) => get<FlowMap>(`/api/flowmap?${q({ limit })}`),
+  runs: () => get<RunsInfo>("/api/runs"),
+  run: (id: string) => get<RunDetail>(`/api/runs/${encodeURIComponent(id)}`),
+  changelog: (since = 0) => get<{ since: number; sections: ChangeSection[] }>(`/api/changelog?${q({ since })}`),
   agentEvents: (since: number) => get<{ events: KulaEvent[]; now: number }>(`/api/agents/events?poll=1&since=${since}`),
   agentAction: <T = unknown>(action: AgentAction, body: Record<string, unknown> = {}) =>
     post<T>(`/api/agents/${action}`, body),

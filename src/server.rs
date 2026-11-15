@@ -318,6 +318,51 @@ async fn flowmap(State(s): State<AppState>, Query(q): Query<HashMap<String, Stri
     blocking(move || Ok(json!(graph::flowmap(&Store::open(&s.repo)?, limit)?))).await
 }
 
+/// H.6: the run ledger, read back.
+fn find_run(repo: &Repo, id: &str) -> anyhow::Result<crate::launch::Run> {
+    crate::launch::list(repo).into_iter().find(|r| r.id == id).ok_or_else(|| anyhow!("no run {id}"))
+}
+
+/// The flow map for grouping changes, when the repo has an index.
+fn run_map(repo: &Repo) -> Option<graph::FlowMap> {
+    Store::open(repo).ok().and_then(|st| graph::flowmap(&st, 200).ok())
+}
+
+async fn runs_list(State(s): State<AppState>) -> ApiResult {
+    blocking(move || {
+        let runs = crate::launch::list(&s.repo);
+        let list: Vec<_> = runs.iter().map(crate::runs::summary).collect();
+        let done: Vec<String> = runs.iter().map(|r| r.id.clone()).collect();
+        let ev = crate::events::read(&s.repo.kula_dir(), 0, 2000);
+        let current = crate::runs::current(&ev, &done, crate::events::now_ms());
+        Ok(json!({ "runs": list, "current": current, "trends": crate::runs::trends(&runs), "weights": crate::launch::WEIGHTS }))
+    })
+    .await
+}
+
+async fn run_detail(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || {
+        let r = find_run(&s.repo, &id)?;
+        let map = run_map(&s.repo);
+        let changelog = crate::runs::changelog(std::slice::from_ref(&r), map.as_ref(), 0);
+        Ok(json!({ "synopsis": crate::runs::synopsis(&r), "changelog": changelog, "run": r }))
+    })
+    .await
+}
+
+async fn run_synopsis(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || Ok(json!(crate::runs::synopsis(&find_run(&s.repo, &id)?)))).await
+}
+
+async fn runs_changelog(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let since = q.get("since").and_then(|v| v.parse().ok()).unwrap_or(0u64);
+        let runs = crate::launch::list(&s.repo);
+        Ok(json!({ "since": since, "sections": crate::runs::changelog(&runs, run_map(&s.repo).as_ref(), since) }))
+    })
+    .await
+}
+
 async fn file(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let p = q.get("path").cloned().unwrap_or_default();
@@ -895,7 +940,7 @@ fn recall_for(r: &Repo, target: &str, workflow: &str, scope: &[String]) -> anyho
     let got = crate::memory::recall(r, &st, Some(target), None, 24)?;
     // a target is repo, file:<path> or symbol:<path>:<name>
     let path_of = |t: &str| t.strip_prefix("file:").or_else(|| t.strip_prefix("symbol:").map(|s| s.rsplit_once(':').map(|x| x.0).unwrap_or(s))).map(String::from);
-    let keep: Vec<_> = got.into_iter().filter(|m| path_of(&m.target).is_none_or(|p| g.path(&p).level.readable())).collect();
+    let keep: Vec<_> = got.into_iter().filter(|m| path_of(&m.target).map_or(true, |p| g.path(&p).level.readable())).collect();
     Ok(json!({ "recalled": keep }))
 }
 
@@ -1306,6 +1351,10 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/impact/{id}", get(impact))
         .route("/api/flows", get(flows))
         .route("/api/flowmap", get(flowmap))
+        .route("/api/runs", get(runs_list))
+        .route("/api/runs/{id}", get(run_detail))
+        .route("/api/runs/{id}/synopsis", get(run_synopsis))
+        .route("/api/changelog", get(runs_changelog))
         .route("/api/isolate", post(isolate))
         .route("/api/scopes", get(scopes))
         .route("/api/scopes/{action}", post(scopes_action))

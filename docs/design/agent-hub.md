@@ -69,3 +69,13 @@ kula launches agents itself and reads their JSON output for tokens, cost and dur
 - **Score.** Out of 100: gate 40, tests 20, refusals 15, retries 10, cost 10, duration 5. Unknown usage scores cost at half; a slice stopped before its tests has no test result and scores tests as its gate. The run score is the mean of its seats. Weights are stored with each run so old scores stay explainable when they change.
 - **Stored.** `.kula/runs/<plan>-<secs>.json` in the checkout, and a copy in `refs/kula/meta` (`runs`, newest 200), so a cleaned `.kula/` keeps its history. Events gain `run` and `usage`; each attempt emits an `attempt` event and the run ends with `run_end`.
 - **Trigger.** `KULA_TRIGGER` (manual, schedule, push, pr) is recorded as given; H.8 sets it.
+
+### Runs view (H.6)
+
+- **Ledger read back.** `src/runs.rs` turns stored runs into a list, a synopsis, a changelog and trends. Nothing here reads the event log except the current run card, so every finished run is readable after `events.jsonl` is cleaned.
+- **Routes.** `GET /api/runs` returns `{runs, current, trends, weights}`; `/api/runs/{id}` returns `{run, synopsis, changelog}`; `/api/runs/{id}/synopsis` and `/api/changelog?since=` return one part each.
+- **Synopsis.** Deterministic: a headline (seats passed, score, tokens, cost, span), then one line per seat (verdict, files, lines, attempts, refusals, tests) and a line for any seat the fences held. The LLM synopsis from a cheap seat is deferred; the deterministic one covers what the plan asked of it and costs nothing.
+- **Changelog.** Each seat records the paths it changed (capped at 300) and the commit it landed. Only passed seats count. Paths are grouped by the H.1 domain that owns them, with the flows that touch them as chips; paths outside the map go under "Outside the map".
+- **Current run.** A run with events but no `run_end`, and an event in the last hour, is pinned as a card with slices passed, attempts, tokens and cost. Watch switches to Live with that run picked.
+- **Trends.** Per named seat, per agent and per team: mean score, scores over time, pass rate, refusals per run, tokens and cost.
+- **UI.** Runs mode swaps the canvas for the board (list with a score line over time, detail with synopsis, seats and changelog) and the inspector for trends and the weight bar. Replay opens the run in Live with the scrubber. The split stacks when the centre is under 760px wide.

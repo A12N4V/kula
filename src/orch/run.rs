@@ -123,8 +123,8 @@ fn launch(
 
 /// Files and lines a slice changed against `base`, untracked files too, without
 /// kula's own files or the agent wiring.
-fn diff_stats(wt: &Path, base: &str) -> (usize, u64, u64) {
-    let Ok(w) = Repo::discover(wt) else { return (0, 0, 0) };
+fn diff_stats(wt: &Path, base: &str) -> (Vec<String>, u64, u64) {
+    let Ok(w) = Repo::discover(wt) else { return (vec![], 0, 0) };
     let wired = super::wire::wired(wt);
     // Intent to add, so new files count; the wiring stays out of the index.
     let skip: Vec<String> = wired.iter().map(|f| format!(":(exclude){f}")).collect();
@@ -307,16 +307,22 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                     // What it learned and the fences it suggested outlive its worktree.
                     let (learned, sugg) = super::learn::harvest(repo, &wt, &log_dir, &id);
                     {
-                        let (files, added, removed) = diff_stats(&wt, &wt_base);
+                        let (mut paths, added, removed) = diff_stats(&wt, &wt_base);
                         let mut m = measured.lock().unwrap();
                         let e = m.entry(id.clone()).or_default();
-                        (e.files, e.added, e.removed) = (files, added, removed);
+                        (e.files, e.added, e.removed) = (paths.len(), added, removed);
+                        paths.truncate(crate::launch::MAX_PATHS);
+                        e.paths = paths;
                         e.duration_ms = t0.elapsed().as_millis() as u64;
                     }
                     let kept = match &r {
                         Ok(o) if o.state == SliceState::Passed => keep(repo, &wt, &snap, &id).err(),
                         _ => None,
                     };
+                    if kept.is_none() && matches!(&r, Ok(o) if o.state == SliceState::Passed) {
+                        let sha = repo.run(&["rev-parse", &snap.branch(&id)]).unwrap_or_default();
+                        measured.lock().unwrap().entry(id.clone()).or_default().commit = sha.trim().to_string();
+                    }
                     sh.update(|p| {
                         let s = p.slice_mut(&id).unwrap();
                         s.learned = learned;

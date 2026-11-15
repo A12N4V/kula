@@ -231,7 +231,15 @@ pub struct SeatRun {
     /// `None` when the plan runs no tests.
     pub tests: Option<bool>,
     pub score: f64,
+    /// Files it changed (wiring excluded), at most `MAX_PATHS`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub paths: Vec<String>,
+    /// The commit kept on the slice branch, when it passed.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub commit: String,
 }
+
+pub const MAX_PATHS: usize = 300;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Handoff {
@@ -298,16 +306,16 @@ pub fn tests_of(plan: &Plan, s: &Slice) -> Option<bool> {
     }
 }
 
-/// Lines added and removed in a `git diff --numstat`.
-pub fn numstat(text: &str) -> (usize, u64, u64) {
-    let mut n = (0, 0, 0);
+/// Paths changed and lines added and removed in a `git diff --numstat`.
+pub fn numstat(text: &str) -> (Vec<String>, u64, u64) {
+    let mut n = (vec![], 0, 0);
     for l in text.lines() {
         let mut it = l.split('\t');
         let (Some(a), Some(r), Some(p)) = (it.next(), it.next(), it.next()) else { continue };
         if p.starts_with(".kula/") || p.starts_with(".claude/") || p.starts_with(".codex/") || p.starts_with(".gemini/") {
             continue;
         }
-        n.0 += 1;
+        n.0.push(p.to_string());
         n.1 += a.parse::<u64>().unwrap_or(0);
         n.2 += r.parse::<u64>().unwrap_or(0);
     }
@@ -397,7 +405,6 @@ pub fn save(repo: &Repo, r: &Run) -> anyhow::Result<PathBuf> {
     Ok(p)
 }
 
-#[allow(dead_code)] // read by the Runs routes (H.6)
 /// Every run, newest first: the files in `.kula/runs/`, else the copies in `refs/kula/meta`.
 pub fn list(repo: &Repo) -> Vec<Run> {
     let mut out: BTreeMap<String, Run> = BTreeMap::new();
@@ -462,6 +469,6 @@ mod tests {
     #[test]
     fn numstat_skips_kula_and_wiring() {
         let n = numstat("3\t1\tsrc/a.rs\n10\t0\t.claude/settings.json\n-\t-\tlogo.png\n2\t2\t.kula/x\n");
-        assert_eq!(n, (2, 3, 1));
+        assert_eq!(n, (vec!["src/a.rs".to_string(), "logo.png".to_string()], 3, 1));
     }
 }

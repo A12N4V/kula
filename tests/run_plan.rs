@@ -410,6 +410,10 @@ fn a_run_leaves_a_ledger_with_usage_and_scores() {
     let a = &r["seats"][0];
     assert_eq!((a["seat"].as_str(), a["files"].as_u64(), a["added"].as_u64(), a["attempts"].as_u64()), (Some("ship/lead"), Some(1), Some(1), Some(1)), "{a}");
     assert_eq!(a["usage"]["model"], "fake");
+    // The changelog reads paths and the kept commit from the ledger, not the slice branch.
+    assert_eq!(a["paths"].as_array().map(|v| v.len()), Some(1), "{a}");
+    assert!(!a["paths"][0].as_str().unwrap().starts_with(".kula"), "{a}");
+    assert_eq!(a["commit"].as_str().map(str::len), Some(40), "{a}");
     assert!(a["score"].as_f64().unwrap() > 80.0 && r["score"].as_f64().unwrap() > 80.0, "{r}");
     assert_eq!(r["weights"]["gate"], 40.0);
 
@@ -435,6 +439,7 @@ fn a_rejected_seat_scores_low_and_keeps_its_diff_stats() {
     let a = &r["seats"][0];
     assert_eq!(a["verdict"], "rejected", "{a}");
     assert_eq!(a["files"], 1, "{a}");
+    assert!(a.get("commit").is_none(), "a rejected seat keeps no commit: {a}");
     assert!(a["score"].as_f64().unwrap() < 50.0, "{a}");
     assert_eq!(a["usage"]["tokens_in"], 0);
 }

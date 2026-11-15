@@ -13,6 +13,7 @@ import { ChangesCard, Inspector } from "./Inspector";
 import { paintAt, useEvents } from "./live";
 import { LiveFeed } from "./LiveFeed";
 import { Palette } from "./Palette";
+import { RunsBoard, RunsTrends, useRuns } from "./Runs";
 import { TEAM_TEMPLATES, teamFrom } from "./templates";
 
 type Mode = "build" | "live" | "runs";
@@ -47,8 +48,13 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
     const t = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, [live]);
-  const runs = useMemo(() => [...new Set(ev.events.map((e) => e.plan).filter((x): x is string => !!x))], [ev.events]);
-  const feed = useMemo(() => (run ? ev.events.filter((e) => e.plan === run) : ev.events), [ev.events, run]);
+  const runs = useMemo(() => {
+    const ids = ev.events.map((e) => e.run || e.plan).filter((x): x is string => !!x);
+    return [...new Set(run ? [...ids, run] : ids)];
+  }, [ev.events, run]);
+  const feed = useMemo(() => (run ? ev.events.filter((e) => e.run === run || e.plan === run) : ev.events), [ev.events, run]);
+  const ledger = useRuns(mode === "runs");
+  const replay = (id: string) => { setRun(id); setCursor(null); setMode("live"); };
   const at = cursor !== null && feed[cursor] ? feed[cursor].ts : now;
   const paint = useMemo(() => (live ? paintAt(info, [], feed.slice(0, cursor === null ? feed.length : cursor + 1), at) : undefined), [live, info, feed, cursor, at]);
 
@@ -89,26 +95,30 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
           <div className="seg" role="group" aria-label="Mode">
             {MODES.map((m) => <button key={m.id} className={mode === m.id ? "on" : ""} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>{m.label}</button>)}
           </div>
-          <div className="seg" role="group" aria-label="Link">
+          {mode !== "runs" && <div className="seg" role="group" aria-label="Link">
             <button className={link === "rt" ? "on" : ""} aria-pressed={link === "rt"} onClick={() => setLink("rt")} title="Drag between seats to set who reports to whom">Reports</button>
             <button className={link === "ho" ? "on" : ""} aria-pressed={link === "ho"} onClick={() => setLink("ho")} title="Drag between seats to hand work off">Hands off</button>
-          </div>
+          </div>}
           <span className="spacer" />
-          <label className="hub-toggle">
+          {mode !== "runs" && <label className="hub-toggle">
             <input type="checkbox" checked={showMap} onChange={(e) => setShowMap(e.target.checked)} aria-label="Flow map" />
             <span>Flow map</span>
-          </label>
+          </label>}
           {d.dirty && <span className="hub-dirty mono">unsaved</span>}
         </div>
-        <ReactFlowProvider>
-          <HubCanvas info={info} d={d} pick={pick} setPick={setPick} flow={flow} setFlow={setFlow} map={showMap ? map : null} link={link} paint={paint} onItem={onItem} />
-        </ReactFlowProvider>
+        {mode === "runs"
+          ? <RunsBoard info={ledger.info} err={ledger.err} onReplay={replay} />
+          : (
+            <ReactFlowProvider>
+              <HubCanvas info={info} d={d} pick={pick} setPick={setPick} flow={flow} setFlow={setFlow} map={showMap ? map : null} link={link} paint={paint} onItem={onItem} />
+            </ReactFlowProvider>
+          )}
       </div>
       <aside className="hub-inspector" aria-label="Inspector">
         <div className="hub-insp-scroll">
           {mode === "live" && <LiveFeed events={feed} via={ev.via} runs={runs} run={run} setRun={setRun} cursor={cursor} setCursor={setCursor} />}
-          {mode === "runs" && <section className="hub-sec" aria-label="Runs"><h3>Runs</h3><p className="muted">No runs recorded yet</p></section>}
-          <Inspector info={info} d={d} pick={pick} flow={flow} setFlow={setFlow} map={map} act={act} />
+          {mode === "runs" && <RunsTrends info={ledger.info} />}
+          {mode !== "runs" && <Inspector info={info} d={d} pick={pick} flow={flow} setFlow={setFlow} map={map} act={act} />}
         </div>
         <ChangesCard d={d} act={act} />
       </aside>
