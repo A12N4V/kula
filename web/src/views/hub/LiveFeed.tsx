@@ -6,8 +6,8 @@ import { line, type Via } from "./live";
 
 const clock = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
-export function LiveFeed({ events, via, runs, run, setRun, cursor, setCursor }: {
-  events: KulaEvent[]; via: Via; runs: string[]; run: string; setRun: (r: string) => void;
+export function LiveFeed({ events, via, runs, run, setRun, cursor, setCursor, seats = [] }: {
+  seats?: string[]; events: KulaEvent[]; via: Via; runs: string[]; run: string; setRun: (r: string) => void;
   cursor: number | null; setCursor: (c: number | null) => void;
 }) {
   const n = events.length;
@@ -34,7 +34,12 @@ export function LiveFeed({ events, via, runs, run, setRun, cursor, setCursor }: 
         </div>
       )}
       {n === 0
-        ? <p className="muted">Seat activity streams here once a team runs</p>
+        ? <>
+            <p className="muted">Seat activity streams here once a team runs</p>
+            {seats.length > 0 && <ol className="cv-events cv-idle" aria-label="Seats">{seats.map((s) => (
+              <li key={s}><span className="mono">idle</span><span>{s}</span></li>
+            ))}</ol>}
+          </>
         : <ol className="cv-events" aria-label="Events">{shown.map((e) => (
             <li key={e.seq} className={`ev-${e.kind} ${e.verdict ? `v-${e.verdict}` : ""}`} title={e.msg || undefined}>
               <span className="mono">{clock(e.ts)}</span><span>{line(e)}</span>

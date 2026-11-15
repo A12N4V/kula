@@ -119,7 +119,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
   const built = useMemo(() => {
     const out: Node[] = [];
     if (map) {
-      for (const l of lanes(map)) {
+      for (const l of lanes(map, width ? Math.max(1, Math.floor((width - 72) / 0.6 / (LANE_W + 14))) : Infinity)) {
         const dom = map.domains.find((x) => x.id === l.id);
         const fs = l.flows.map((f) => ({ f, path: map.flows.find((x) => x.id === f.id)! })).filter((x) => x.path);
         const hits = fs.map(({ path }) => !!covers && path.files.some(covers));
@@ -141,7 +141,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
       }
     }
     return out;
-  }, [map, covers, flow, d.draft, saved, pick, paint, overlaps, flows, info.research, aspect]);
+  }, [map, covers, flow, d.draft, saved, pick, paint, overlaps, flows, info.research, aspect, width]);
 
   const [nodes, setNodes] = useState<Node[]>(built);
   useEffect(() => { setNodes(built); }, [built]);

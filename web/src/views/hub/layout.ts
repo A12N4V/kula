@@ -10,7 +10,7 @@ export const SEAT_W = 184;
 const SEAT_BASE = 52, CHIP_ROW = 24, FENCE_ROW = 22;
 const GAP_X = 22, GAP_Y = 44, PAD = 18, HEAD = 36, TEAM_GAP = 56;
 export const LANE_W = 232, FLOW_H = 24;
-const LANE_HEAD = 34, LANE_GAP = 14, MAX_FLOWS = 8, MAX_LANES = 10;
+const LANE_HEAD = 40, LANE_GAP = 14, MAX_FLOWS = 8, MAX_LANES = 10;
 
 export type Box = { x: number; y: number; w: number; h: number };
 export type Placed = { teams: Map<string, Box>; seats: Map<string, { x: number; y: number }> };
@@ -92,7 +92,7 @@ export function place(teams: Team[], saved: Saved, research: (m: Member) => bool
 export type Lane = { id: number; label: string; box: Box; flows: { id: string; y: number }[]; more: number };
 
 /** The flow map as lanes above the teams: one per domain, its biggest flows inside. */
-export function lanes(map: FlowMap): Lane[] {
+export function lanes(map: FlowMap, fitCols = Infinity): Lane[] {
   const doms = [...map.domains].sort((a, b) => b.flows - a.flows).slice(0, MAX_LANES);
   const rows = doms.map((d) => {
     const fs = map.flows.filter((f) => f.domain === d.id).sort((a, b) => b.steps.length - a.steps.length);
@@ -100,7 +100,8 @@ export function lanes(map: FlowMap): Lane[] {
   });
   const laneH = (r: (typeof rows)[number]) => LANE_HEAD + Math.max(1, r.fs.length + (r.more ? 1 : 0)) * (FLOW_H + 4) + 8;
   // a grid rather than one long strip: about twice as wide as tall, each grid row as tall as its tallest lane
-  const cols = Math.max(1, Math.min(rows.length, Math.max(3, Math.ceil(Math.sqrt(rows.length * 2)))));
+  // and never wider than the canvas shows at the map's zoom floor, so no lane is cut at the right edge
+  const cols = Math.max(1, Math.min(rows.length, fitCols, Math.max(3, Math.ceil(Math.sqrt(rows.length * 2)))));
   const lineH: number[] = [];
   rows.forEach((r, i) => { const li = Math.floor(i / cols); lineH[li] = Math.max(lineH[li] ?? 0, laneH(r)); });
   const tops: number[] = [];

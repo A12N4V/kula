@@ -167,7 +167,7 @@ function TeamPanel({ info, d, team, act }: { info: AgentsInfo; d: Draft; team: T
       <div className="hub-row">
         {running
           ? <button className="btn sm" onClick={() => act("team_stop", {}, "Team stopped")}>Stop</button>
-          : <button className="btn sm" disabled={d.dirty || !saved} title={d.dirty ? "Save first" : undefined} onClick={() => act("team_start", { name: team.name }, "Team started")}>Launch</button>}
+          : <button className="btn sm" disabled={d.dirty || !saved} title={d.dirty ? "Save first" : undefined} onClick={() => act("team_start", { name: team.name }, "Team started")}>Run now</button>}
         <span className="spacer" />
         <button className="btn sm ghost" onClick={() => d.dropTeam(team.name)}>Delete team</button>
       </div>
@@ -207,7 +207,7 @@ function SuggestionRow({ s, act }: { s: Suggestion; act: Act }) {
       <div className="hub-row">
         <button className="btn sm ghost" onClick={() => act("suggestion_dismiss", { id: s.id }, "Dismissed").catch(() => {})}>Dismiss</button>
         <span className="spacer" />
-        <button className="btn sm primary" onClick={() => act("suggestion_accept", { id: s.id }, "Added to kula.toml").catch(() => {})}>Accept</button>
+        <button className="btn sm hub-accept" onClick={() => act("suggestion_accept", { id: s.id }, "Added to kula.toml").catch(() => {})}>Accept</button>
       </div>
     </li>
   );

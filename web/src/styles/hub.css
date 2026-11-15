@@ -111,7 +111,8 @@
 /* flow map lanes */
 .hub-lane { box-sizing: border-box; width: 100%; height: 100%; border: 1px dashed var(--line); border-radius: var(--r-lg); background: #030303; transition: border-color var(--flow, .16s ease); }
 .hub-lane.hit { border-color: var(--accent); border-style: solid; }
-.hub-lane-head { padding: 6px 10px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-lane-head { padding: 8px 10px; font-size: 10px; line-height: 24px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page.hub .hub-canvas.far .hub-lane-head { font-size: 20px; line-height: 24px; padding: 8px 10px; letter-spacing: .08em; }
 .hub-flow {
   box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; height: 100%; padding: 0 8px;
   border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); font-size: 11px; color: var(--text-2); cursor: pointer;
@@ -409,7 +410,6 @@
 .hub-canvas.far .hub-team-head { font-size: 26px; height: 40px; }
 .hub-canvas.far .hub-team-head .mono { visibility: hidden; }
 .hub-canvas.far .hub-flow { visibility: hidden; }
-.hub-canvas.far .hub-lane-head { font-size: 20px; padding: 10px 14px; }
 .hub-bar-group { display: flex; align-items: center; gap: 8px; }
 .runs-weight-bar span { flex-basis: 0; height: 4px; padding: 0; border-top: 0; background: var(--accent); border-radius: var(--r-sm); }
 .runs-weight-legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 10px; margin-top: 8px; }
@@ -499,7 +499,6 @@
 @media (max-width: 759px) { .page.hub .hub-inspector .input.mono, .page.hub .hub-sec .textarea { font-size: 16px; } }
 
 /* eleventh pass: map reads when far, quieter orange, larger micro labels */
-.page.hub .hub-canvas.far .hub-lane-head, .page.hub .hub-canvas.far .hub-lane-count { font-size: 20px; }
 .hub-canvas.far .hub-flow { visibility: visible; height: 6px !important; padding: 0; border-color: transparent; background: var(--line-2); }
 .hub-canvas.far .hub-flow > * { display: none; }
 .hub-canvas.far .hub-flow.hit { background: var(--accent); }
@@ -522,7 +521,6 @@
 
 /* twelfth pass: far lane heads clear their bars, labels on one line, no wrapping bar buttons */
 .hub-lane-n { display: none; color: var(--text-2); }
-.page.hub .hub-canvas.far .hub-lane-head { font-size: 15px; line-height: 18px; padding: 6px 10px; }
 .page.hub .hub-canvas.far .hub-lane-n { display: inline; }
 .page.hub .hub-canvas.far .hub-lane-count { display: none; }
 .hub-field { grid-template-columns: 84px minmax(0, 1fr); }
@@ -541,4 +539,29 @@
   .hub-canvas .react-flow__controls { background: var(--bg); }
 }
 .hub-canvas { position: relative; }
-.hub-canvas.mapped::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 28px; background: linear-gradient(transparent, var(--bg)); pointer-events: none; z-index: 4; border-radius: 0 0 var(--r-lg) var(--r-lg); }
+
+/* thirteenth pass: edge fades where the canvas pans, tablet inspector below, quieter accept */
+.hub-canvas.mapped::after, .hub-canvas.mapped::before { content: ""; position: absolute; pointer-events: none; z-index: 4; }
+.hub-canvas.mapped::after { left: 0; right: 0; bottom: 0; height: 28px; background: linear-gradient(transparent, var(--bg)); border-radius: 0 0 var(--r-lg) var(--r-lg); }
+.hub-canvas.mapped::before { top: 0; right: 0; bottom: 0; width: 28px; background: linear-gradient(90deg, transparent, var(--bg)); border-radius: 0 var(--r-lg) var(--r-lg) 0; }
+.hub-canvas .react-flow__controls { z-index: 5; }
+.page.hub .hub-sugg .btn.hub-accept { background: transparent; border-color: var(--accent); color: var(--accent); }
+.page.hub .hub-sugg .btn.hub-accept:hover { background: color-mix(in oklab, var(--accent) 12%, transparent); }
+.hub-insp-scroll .chips-in .input, .hub-inspector .chips-in .input { height: 100%; min-height: 24px; margin: 0; }
+.hub-inspector .chips { align-items: stretch; }
+@media (min-width: 760px) and (max-width: 1100px) {
+  .hub-body.mode-build { grid-template-columns: minmax(0, 1fr); grid-template-rows: 128px minmax(0, 1fr) minmax(0, 34%); }
+  .hub-body.mode-build .hub-palette { grid-column: 1; grid-row: 1; }
+  .hub-body.mode-build .hub-center { grid-row: 2; }
+  .hub-body.mode-build .hub-inspector { grid-row: 3; }
+}
+@media (max-width: 759px) {
+  .hub-body.mode-build .hub-pal-scroll { scrollbar-width: none; align-items: stretch; }
+  .hub-body.mode-build .hub-pal-scroll::-webkit-scrollbar { display: none; }
+}
+@media (max-width: 600px) {
+  .hub-canvas::before { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 28px; background: linear-gradient(90deg, transparent, var(--bg)); pointer-events: none; z-index: 4; border-radius: 0 var(--r-lg) var(--r-lg) 0; }
+}
+.cv-idle { max-height: none; margin-top: 10px; }
+.cv-idle li { color: var(--text-3); }
+.runs-board > .runs-empty { flex: none; min-height: 160px; }

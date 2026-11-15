@@ -136,7 +136,7 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
       </div>
       <aside className="hub-inspector" aria-label="Inspector" ref={inspRef}>
         <div className="hub-insp-scroll">
-          {mode === "live" && <LiveFeed events={feed} via={ev.via} runs={runs} run={run} setRun={setRun} cursor={cursor} setCursor={setCursor} />}
+          {mode === "live" && <LiveFeed seats={d.draft.flatMap((t) => t.members.map((m) => `${t.name} · ${m.name || m.agent}`))} events={feed} via={ev.via} runs={runs} run={run} setRun={setRun} cursor={cursor} setCursor={setCursor} />}
           {mode === "runs" && <><SchedulesCard /><RunsTrends info={ledger.info} /></>}
           {mode === "build" && <Inspector info={info} d={d} pick={pick} flow={flow} setFlow={setFlow} map={map} act={act} />}
         </div>
