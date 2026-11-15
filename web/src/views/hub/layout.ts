@@ -102,14 +102,18 @@ export function lanes(map: FlowMap, fitCols = Infinity): Lane[] {
   // a grid rather than one long strip: about twice as wide as tall, each grid row as tall as its tallest lane
   // and never wider than the canvas shows at the map's zoom floor, so no lane is cut at the right edge
   const cols = Math.max(1, Math.min(rows.length, fitCols, Math.max(3, Math.ceil(Math.sqrt(rows.length * 2)))));
-  const lineH: number[] = [];
-  rows.forEach((r, i) => { const li = Math.floor(i / cols); lineH[li] = Math.max(lineH[li] ?? 0, laneH(r)); });
-  const tops: number[] = [];
-  let acc = -(lineH.reduce((a, b) => a + b + LANE_GAP, -LANE_GAP) + 72);
-  lineH.forEach((lh, li) => { tops[li] = acc; acc += lh + LANE_GAP; });
+  // packed into the shortest column rather than grid rows, so a tall lane leaves no void beside it
+  const colH: number[] = Array(cols).fill(0);
+  const at = rows.map((r) => {
+    const c = colH.indexOf(Math.min(...colH));
+    const p = { x: c * (LANE_W + LANE_GAP), y: colH[c] };
+    colH[c] += laneH(r) + LANE_GAP;
+    return p;
+  });
+  const lift = Math.max(...colH) - LANE_GAP + 72;
   return rows.map((r, i) => ({
     id: r.d.id, label: r.d.label.replace(/^\.(?=$| )/, "root"), more: r.more,
-    box: { x: (i % cols) * (LANE_W + LANE_GAP), y: tops[Math.floor(i / cols)], w: LANE_W, h: laneH(r) },
+    box: { x: at[i].x, y: at[i].y - lift, w: LANE_W, h: laneH(r) },
     flows: r.fs.map((f, j) => ({ id: f.id, y: LANE_HEAD + j * (FLOW_H + 4) })),
   }));
 }

@@ -119,7 +119,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
   const built = useMemo(() => {
     const out: Node[] = [];
     if (map) {
-      for (const l of lanes(map, width ? Math.max(1, Math.floor((width - 72) / 0.6 / (LANE_W + 14))) : Infinity)) {
+      for (const l of lanes(map, width ? (width <= 600 ? 2 : Math.max(1, Math.floor((width - 72) / 0.6 / (LANE_W + 14)))) : Infinity)) {
         const dom = map.domains.find((x) => x.id === l.id);
         const fs = l.flows.map((f) => ({ f, path: map.flows.find((x) => x.id === f.id)! })).filter((x) => x.path);
         const hits = fs.map(({ path }) => !!covers && path.files.some(covers));
@@ -195,7 +195,8 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
       if (top.length) {
         const x0 = Math.min(...top.map((n) => n.position.x)), y0 = Math.min(...top.map((n) => n.position.y));
         if (window.matchMedia("(max-width: 600px)").matches) {
-          rf.setViewport({ x: 16 - x0 * 0.8, y: 16 - y0 * 0.8, zoom: 0.8 });
+          const z = map ? 0.68 : 0.8;
+          rf.setViewport({ x: 16 - x0 * z, y: 16 - y0 * z, zoom: z });
           return;
         }
         // when the whole graph would fit only below the floor, start at its top left at the floor and pan from there
