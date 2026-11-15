@@ -97,7 +97,9 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
   useEffect(() => {
     if (!pick || !window.matchMedia("(max-width: 1100px)").matches) return;
     const phone = window.matchMedia("(max-width: 759px)").matches;
-    inspRef.current?.scrollIntoView({ block: phone ? "start" : "nearest", behavior: "smooth" });
+    // after the inspector has drawn the picked seat, so the scroll lands on its final height
+    const t = window.setTimeout(() => inspRef.current?.scrollIntoView({ block: phone ? "start" : "nearest", behavior: "smooth" }), 80);
+    return () => window.clearTimeout(t);
   }, [pick]);
 
   return (

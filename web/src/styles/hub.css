@@ -482,8 +482,19 @@
 .hub-canvas.far .hub-warn { font-size: 13px; line-height: 18px; }
 .hub-seat-name { font-size: 17px; }
 .hub-team-head { font-size: 17px; }
-.hub-inspector .seg button.on { color: var(--text); border-color: var(--line-2); box-shadow: inset 0 -1px 0 var(--accent); }
+.page.hub .hub-inspector .seg button.on, .page.hub .hub-bar .seg[aria-label="Layers"] button.on { color: var(--text); border-color: var(--line-2); box-shadow: inset 0 -1px 0 var(--accent); }
 .hub-sec .textarea { font-size: 12px; }
 @media (max-width: 600px) { .hub-palette { max-height: 92px; } }
 .cv-live .card-head { align-items: baseline; }
 .cv-live .card-head .hub-insp-title { margin-bottom: 0; }
+
+/* tenth pass: stacked toggles on narrow, phone palette row, warm placeholders */
+.page.hub .input::placeholder, .page.hub .textarea::placeholder { color: var(--text-3); }
+@media (max-width: 1100px) { .hub-inspector .hub-field:has(.seg) { grid-template-columns: 1fr; gap: 4px; } }
+@media (max-width: 600px) {
+  .hub-pal-scroll { display: flex; gap: 12px; overflow-x: auto; overflow-y: hidden; }
+  .hub-pal-group { flex: none; min-width: 148px; }
+  .hub-palette .hub-pal-q { display: none; }
+  .hub-canvas .react-flow__controls { top: auto; bottom: 12px; }
+}
+@media (max-width: 759px) { .page.hub .hub-inspector .input.mono, .page.hub .hub-sec .textarea { font-size: 16px; } }

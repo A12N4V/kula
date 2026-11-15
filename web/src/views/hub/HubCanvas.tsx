@@ -191,11 +191,19 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
     fitted.current = key;
     const t = window.setTimeout(() => {
       // a phone starts at the graph's top left corner at a size seat names can be read, and pans from there
-      if (window.matchMedia("(max-width: 600px)").matches) {
-        const top = builtRef.current.filter((n) => !n.parentId);
-        if (top.length) {
-          const x0 = Math.min(...top.map((n) => n.position.x)), y0 = Math.min(...top.map((n) => n.position.y));
+      const top = builtRef.current.filter((n) => !n.parentId);
+      if (top.length) {
+        const x0 = Math.min(...top.map((n) => n.position.x)), y0 = Math.min(...top.map((n) => n.position.y));
+        if (window.matchMedia("(max-width: 600px)").matches) {
           rf.setViewport({ x: 16 - x0 * 0.8, y: 16 - y0 * 0.8, zoom: 0.8 });
+          return;
+        }
+        // when the whole graph would fit only below the floor, start at its top left at the floor and pan from there
+        const x1 = Math.max(...top.map((n) => n.position.x + (Number(n.style?.width) || 0)));
+        const y1 = Math.max(...top.map((n) => n.position.y + (Number(n.style?.height) || 0)));
+        const fit = Math.min(width / ((x1 - x0) * 1.28), width / aspect / ((y1 - y0) * 1.28));
+        if (fit < floor) {
+          rf.setViewport({ x: 16 - x0 * floor, y: 16 - y0 * floor, zoom: floor });
           return;
         }
       }
