@@ -15,6 +15,7 @@ mod index;
 mod isolate;
 mod kg;
 mod lang_cmd;
+mod launch;
 mod layers;
 mod mcp;
 mod memory;

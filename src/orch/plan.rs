@@ -162,6 +162,8 @@ pub fn plan(repo: &Repo, st: &Store, o: Opts) -> Result<Plan> {
         baseline_cycles: baseline,
         agents: BTreeMap::new(),
         mem_check: o.mem_check,
+        team: String::new(),
+        run: String::new(),
         slices,
     })
 }

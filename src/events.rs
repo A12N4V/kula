@@ -37,6 +37,12 @@ pub struct Event {
     pub verdict: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub msg: String,
+    /// The run the event belongs to (`<plan>-<start>`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub run: String,
+    /// What an agent attempt cost, on `attempt` events.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<crate::launch::Usage>,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -119,7 +125,7 @@ pub fn plan_diff(old: Option<&crate::orch::task::Plan>, new: &crate::orch::task:
             continue;
         }
         let st = serde_json::to_value(s.state).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
-        let base = Event { kind: "slice".into(), agent: s.agent.clone(), plan: new.id.clone(), slice: s.id.clone(), verdict: st.clone(), ..Default::default() };
+        let base = Event { kind: "slice".into(), agent: s.agent.clone(), plan: new.id.clone(), run: new.run.clone(), team: new.team.clone(), slice: s.id.clone(), verdict: st.clone(), ..Default::default() };
         if s.state == SliceState::Running {
             for d in &s.deps {
                 if let Some(dep) = new.slice(d) {

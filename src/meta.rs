@@ -28,6 +28,9 @@ pub struct Meta {
     /// a node never touches the working tree.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub layout: std::collections::BTreeMap<String, [f64; 2]>,
+    /// Run ledgers (`crate::launch::Run`), newest last, the last 200 kept.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runs: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

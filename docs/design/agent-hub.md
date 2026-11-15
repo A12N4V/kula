@@ -60,3 +60,12 @@ Still to come back to: the old per-task loop overview has no place in the hub ye
 ## Runs (H.5–H.8)
 
 kula launches agents itself and reads their JSON output for tokens, cost and duration. Each run is written to `.kula/runs/<id>.json`. Scores are a weighted mix of gate verdict, tests, refusals, retries, cost and duration, and the weights are shown in the UI. The Runs view adds a synopsis, a replay and a changelog grouped by flow. Schedules run inside `kula serve`, one scheduled run at a time.
+
+### Run ledger (H.5)
+
+- **Launch.** `run-plan` starts claude with `--output-format json`, codex with `exec --json` and gemini with `-o json`. `src/launch.rs` reads usage from any of the three, or from a `kula_usage` line (the fake agent prints one). Unknown output leaves usage empty; nothing fails on it.
+- **Seats.** A slice with `seat = "team/member"` gets that member's setup: only its MCP servers (`--mcp-config` + `--strict-mcp-config` for claude, `-c mcp_servers.*` for codex, `--allowed-mcp-server-names` for gemini), and a preamble with its skills, its memory file (capped at 16k characters, no `..`) and its prompt. The MCP file is written to the log directory, never the worktree.
+- **Measured per seat.** Tokens in and out, cost, turns, model, wall time, files and lines changed against the worktree base (wiring excluded), refusals from the guard (`KULA_RUN` on the refused event), attempts, gate verdict and test result.
+- **Score.** Out of 100: gate 40, tests 20, refusals 15, retries 10, cost 10, duration 5. Unknown usage scores cost at half; a slice stopped before its tests has no test result and scores tests as its gate. The run score is the mean of its seats. Weights are stored with each run so old scores stay explainable when they change.
+- **Stored.** `.kula/runs/<plan>-<secs>.json` in the checkout, and a copy in `refs/kula/meta` (`runs`, newest 200), so a cleaned `.kula/` keeps its history. Events gain `run` and `usage`; each attempt emits an `attempt` event and the run ends with `run_end`.
+- **Trigger.** `KULA_TRIGGER` (manual, schedule, push, pr) is recorded as given; H.8 sets it.

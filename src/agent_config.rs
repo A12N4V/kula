@@ -102,7 +102,7 @@ fn json_str(s: &str) -> serde_json::Value {
 }
 
 /// All servers in one agent's config file, JSON (`mcpServers`) or TOML (`mcp_servers`).
-fn read_mcp(root: &Path, path: &str) -> Result<Option<BTreeMap<String, McpDef>>> {
+pub(crate) fn read_mcp(root: &Path, path: &str) -> Result<Option<BTreeMap<String, McpDef>>> {
     let text = match std::fs::read_to_string(root.join(path)) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),

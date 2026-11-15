@@ -375,3 +375,66 @@ fn fence_suggestions_from_a_slice_wait_for_review_in_the_checkout() {
     let files = git(d, &["show", "--name-only", "--format=", "kula/t/a"]);
     assert!(!files.contains(".kula"), "{files}");
 }
+
+/// H.5: every run leaves a ledger with what each seat cost, changed and scored.
+#[test]
+fn a_run_leaves_a_ledger_with_usage_and_scores() {
+    let t = repo();
+    let d = t.path();
+    std::fs::write(d.join("kula.toml"), "[[team]]\nname = \"ship\"\nmembers = [\n  { name = \"lead\", agent = \"fake-agent\", memory = \"notes/lead.md\", skills = [\"review\"] },\n]\n").unwrap();
+    std::fs::create_dir_all(d.join("notes")).unwrap();
+    std::fs::write(d.join("notes/lead.md"), "Prefer small diffs.\n").unwrap();
+    let p = write_plan(d, &["a", "b"], "fake-agent", "true", 2);
+    let mut plan: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+    plan["team"] = json!("ship");
+    plan["slices"][0]["seat"] = json!("ship/lead");
+    plan["slices"][1]["deps"] = json!(["a"]);
+    std::fs::write(&p, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
+
+    let (o, p) = run(d, &[("FAKE_MODE", "clean"), ("KULA_TRIGGER", "schedule")]);
+    assert!(o.status.success(), "{}", text(&o));
+    let run_id = p["run"].as_str().unwrap().to_string();
+    assert!(run_id.starts_with("t-"), "{p}");
+
+    // The seat's memory and skills reached the prompt; the other slice got neither.
+    let prompt = std::fs::read_to_string(d.join(".kula/runs/t/a/prompt-1.md")).unwrap();
+    assert!(prompt.contains("Prefer small diffs.") && prompt.contains("review"), "{prompt}");
+    assert!(!std::fs::read_to_string(d.join(".kula/runs/t/b/prompt-1.md")).unwrap().contains("Prefer small diffs."));
+
+    let r: Value = serde_json::from_str(&std::fs::read_to_string(d.join(format!(".kula/runs/{run_id}.json"))).unwrap()).unwrap();
+    assert_eq!(r["state"], "passed", "{r}");
+    assert_eq!(r["team"], "ship");
+    assert_eq!(r["trigger"], "schedule");
+    assert_eq!(r["usage"]["tokens_in"], 2400, "{r}");
+    assert_eq!(r["handoffs"][0], json!({"from": "a", "to": "b"}));
+    let a = &r["seats"][0];
+    assert_eq!((a["seat"].as_str(), a["files"].as_u64(), a["added"].as_u64(), a["attempts"].as_u64()), (Some("ship/lead"), Some(1), Some(1), Some(1)), "{a}");
+    assert_eq!(a["usage"]["model"], "fake");
+    assert!(a["score"].as_f64().unwrap() > 80.0 && r["score"].as_f64().unwrap() > 80.0, "{r}");
+    assert_eq!(r["weights"]["gate"], 40.0);
+
+    // A copy is kept in refs/kula/meta, and the events carry the run.
+    let kept: Value = serde_json::from_str(&git(d, &["show", "refs/kula/meta:kula.json"])).unwrap();
+    assert_eq!(kept["runs"][0]["id"], run_id.as_str());
+    let ev = std::fs::read_to_string(d.join(".kula/events.jsonl")).unwrap();
+    assert!(ev.lines().any(|l| l.contains("\"kind\":\"attempt\"") && l.contains(&run_id) && l.contains("\"tokens_in\":1200")), "{ev}");
+    assert!(ev.lines().any(|l| l.contains("\"kind\":\"run_end\"") && l.contains(&run_id)), "{ev}");
+}
+
+/// A failed slice still counts what it changed, and scores below a passing one.
+#[test]
+fn a_rejected_seat_scores_low_and_keeps_its_diff_stats() {
+    let t = repo();
+    let d = t.path();
+    write_plan(d, &["a"], "fake-agent", "true", 1);
+    let (o, p) = run(d, &[("FAKE_MODE", "outside"), ("FAKE_USAGE", "0")]);
+    assert!(o.status.success() || o.status.code() == Some(1), "{}", text(&o));
+    let run_id = p["run"].as_str().unwrap();
+    let r: Value = serde_json::from_str(&std::fs::read_to_string(d.join(format!(".kula/runs/{run_id}.json"))).unwrap()).unwrap();
+    assert_eq!(r["state"], "failed", "{r}");
+    let a = &r["seats"][0];
+    assert_eq!(a["verdict"], "rejected", "{a}");
+    assert_eq!(a["files"], 1, "{a}");
+    assert!(a["score"].as_f64().unwrap() < 50.0, "{a}");
+    assert_eq!(a["usage"]["tokens_in"], 0);
+}

@@ -201,6 +201,9 @@ pub(crate) fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
                         path: crate::events::refused_path(&msg),
                         verdict: "refused".into(),
                         msg: msg.clone(),
+                        plan: std::env::var("KULA_PLAN").unwrap_or_default(),
+                        slice: std::env::var("KULA_SLICE").unwrap_or_default(),
+                        run: std::env::var("KULA_RUN").unwrap_or_default(),
                         ..Default::default()
                     },
                 );

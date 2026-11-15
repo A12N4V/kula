@@ -40,4 +40,8 @@ case "${FAKE_MODE:-clean}" in
     echo "touched" >> README.md
     ;;
 esac
+# What a real agent prints with JSON output on, for the run ledger.
+if [ "${FAKE_USAGE:-1}" != 0 ]; then
+  echo '{"kula_usage":{"tokens_in":1200,"tokens_out":300,"cost_usd":0.01,"turns":2,"model":"fake"}}'
+fi
 exit 0

@@ -58,6 +58,9 @@ pub struct Slice {
     /// Facts the agent learned, waiting to become memories once the slice is merged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub learned: Vec<Learned>,
+    /// The team seat (`team/key`) this slice runs as: its skills, MCP servers and memory.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub seat: String,
 }
 
 /// A fact about the code a slice's agent wants kept: `<symbol or file>: <fact>`.
@@ -90,6 +93,12 @@ pub struct Plan {
     /// memory. Falls back to `KULA_MEM_CHECK`.
     #[serde(default)]
     pub mem_check: Option<String>,
+    /// The team that runs the plan, when the hub deployed it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub team: String,
+    /// The current or last run (`<plan>-<start secs>`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub run: String,
     pub slices: Vec<Slice>,
 }
 

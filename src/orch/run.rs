@@ -19,9 +19,10 @@ pub fn agent_cmd(plan: &Plan, agent: &str) -> Vec<String> {
         return c.clone();
     }
     let v: &[&str] = match agent {
-        "claude" => &["claude", "-p", "{prompt}"],
-        "codex" => &["codex", "exec", "{prompt}"],
-        "gemini" => &["gemini", "-p", "{prompt}"],
+        // Machine readable output, so the run ledger can read tokens and cost.
+        "claude" => &["claude", "-p", "{prompt}", "--output-format", "json"],
+        "codex" => &["codex", "exec", "--json", "{prompt}"],
+        "gemini" => &["gemini", "-p", "{prompt}", "-o", "json"],
         _ => return vec![agent.to_string(), "{prompt}".into()],
     };
     v.iter().map(|s| s.to_string()).collect()
@@ -92,6 +93,7 @@ fn launch(
     state: &Path,
     n: u32,
     prompt: &str,
+    run: (&str, &str),
 ) -> (i32, String) {
     let _ = std::fs::create_dir_all(log_dir);
     let pf = log_dir.join(format!("prompt-{n}.md"));
@@ -110,11 +112,28 @@ fn launch(
         .env("KULA_PROMPT_FILE", &pf)
         .env("KULA_LEARNED", log_dir.join("learned.txt"))
         .env("KULA_EXE", exe)
+        .env("KULA_PLAN", run.0)
+        .env("KULA_RUN", run.1)
         .output();
     match out {
         Ok(o) => (o.status.code().unwrap_or(1), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))),
         Err(e) => (127, format!("could not start {}: {e}", args.first().map(String::as_str).unwrap_or("?"))),
     }
+}
+
+/// Files and lines a slice changed against `base`, untracked files too, without
+/// kula's own files or the agent wiring.
+fn diff_stats(wt: &Path, base: &str) -> (usize, u64, u64) {
+    let Ok(w) = Repo::discover(wt) else { return (0, 0, 0) };
+    let wired = super::wire::wired(wt);
+    // Intent to add, so new files count; the wiring stays out of the index.
+    let skip: Vec<String> = wired.iter().map(|f| format!(":(exclude){f}")).collect();
+    let mut args = vec!["add", "-A", "-N", "--", ".", ":(exclude).kula"];
+    args.extend(skip.iter().map(String::as_str));
+    let _ = w.run(&args);
+    let text = w.run(&["diff", "--numstat", base]).unwrap_or_default();
+    let kept: Vec<&str> = text.lines().filter(|l| !wired.iter().any(|f| l.ends_with(&format!("\t{f}")))).collect();
+    crate::launch::numstat(&kept.join("\n"))
 }
 
 /// The memory check for this plan: its own, else `KULA_MEM_CHECK`.
@@ -152,8 +171,14 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     let exe = std::env::current_exe()?;
     let run_dir = plan.run_dir(repo);
     std::fs::create_dir_all(&run_dir)?;
+    let started = crate::events::now_ms();
+    let run_id = format!("{}-{}", plan.id, started / 1000);
+    let cfg = crate::config::Config::load(&repo.root).unwrap_or_default();
+    let base_sha = repo.run(&["rev-parse", if plan.base_ref.is_empty() { "HEAD" } else { &plan.base_ref }]).map(|s| s.trim().to_string()).unwrap_or_default();
     let sh = Shared { plan: Mutex::new(plan), cv: Condvar::new(), state_path: run_dir.join("state.json") };
-    sh.update(|_| {});
+    sh.update(|p| p.run = run_id.clone());
+    // What each seat cost and changed, for the run ledger.
+    let measured: Mutex<std::collections::BTreeMap<String, crate::launch::SeatRun>> = Mutex::new(Default::default());
 
     std::thread::scope(|scope| -> Result<()> {
         loop {
@@ -178,7 +203,7 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                 .iter()
                 .filter(|s| s.state == SliceState::Queued && s.deps.iter().all(|d| st(d) == Some(SliceState::Passed)))
                 .map(|s| s.id.clone())
-                .take(p.max_parallel.saturating_sub(active))
+                .take(if p.max_parallel == 0 { 2 } else { p.max_parallel }.saturating_sub(active))
                 .collect();
             if ready.is_empty() {
                 if active == 0 {
@@ -236,18 +261,41 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                         continue;
                     }
                 };
-                let (sh, exe, run_dir, snap) = (&sh, &exe, &run_dir, snapshot.clone());
+                let wt_base = Repo::discover(&wt).and_then(|w| w.run(&["rev-parse", "HEAD"])).map(|s| s.trim().to_string()).unwrap_or_default();
+                let (sh, exe, run_dir, snap, measured, cfg, run_id) = (&sh, &exe, &run_dir, snapshot.clone(), &measured, &cfg, &run_id);
                 scope.spawn(move || {
                     let slice = snap.slice(&id).unwrap().clone();
                     let log_dir = run_dir.join(&id);
-                    let cmd = agent_cmd(&snap, &slice.agent);
+                    let mut cmd = agent_cmd(&snap, &slice.agent);
+                    // The seat's own MCP servers, skills and memory.
+                    let pre = match crate::launch::seat_of(cfg, &slice.seat) {
+                        Some(m) => {
+                            let (args, pre) = crate::launch::seat_setup(&repo.root, &slice.agent, m, &log_dir);
+                            cmd.extend(args);
+                            pre
+                        }
+                        None => String::new(),
+                    };
                     let scope_s = slice.scope.join(":");
+                    let t0 = std::time::Instant::now();
                     let r = retry::drive(
                         &snap,
                         &slice,
                         &wt,
                         &log_dir,
-                        |n, prompt| launch(exe, &wt, &log_dir, &id, &scope_s, &slice.agent, &cmd, &sh.state_path, n, prompt),
+                        |n, prompt| {
+                            let prompt = if pre.is_empty() { prompt.to_string() } else { format!("{pre}\n{prompt}") };
+                            let (code, out) = launch(exe, &wt, &log_dir, &id, &scope_s, &slice.agent, &cmd, &sh.state_path, n, &prompt, (&snap.id, run_id));
+                            let usage = crate::launch::parse(&out);
+                            if let Some(u) = &usage {
+                                measured.lock().unwrap().entry(id.clone()).or_default().usage.add(u);
+                            }
+                            crate::events::append(
+                                &repo.kula_dir(),
+                                crate::events::Event { kind: "attempt".into(), team: snap.team.clone(), agent: slice.agent.clone(), plan: snap.id.clone(), run: run_id.clone(), slice: id.clone(), msg: format!("attempt {n} exited {code}"), usage, ..Default::default() },
+                            );
+                            (code, out)
+                        },
                         |state, n, _| {
                             sh.update(|p| {
                                 let s = p.slice_mut(&id).unwrap();
@@ -258,6 +306,13 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                     );
                     // What it learned and the fences it suggested outlive its worktree.
                     let (learned, sugg) = super::learn::harvest(repo, &wt, &log_dir, &id);
+                    {
+                        let (files, added, removed) = diff_stats(&wt, &wt_base);
+                        let mut m = measured.lock().unwrap();
+                        let e = m.entry(id.clone()).or_default();
+                        (e.files, e.added, e.removed) = (files, added, removed);
+                        e.duration_ms = t0.elapsed().as_millis() as u64;
+                    }
                     let kept = match &r {
                         Ok(o) if o.state == SliceState::Passed => keep(repo, &wt, &snap, &id).err(),
                         _ => None,
@@ -289,6 +344,18 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
 
     let plan = sh.plan.into_inner().unwrap();
     plan.save(plan_path)?;
+    let head = repo.run(&["rev-parse", "HEAD"]).map(|s| s.trim().to_string()).unwrap_or_default();
+    let refused = crate::launch::refusals(&repo.kula_dir(), &run_id);
+    let trigger = std::env::var("KULA_TRIGGER").ok().filter(|t| !t.is_empty()).unwrap_or_else(|| "manual".into());
+    let mut ledger = crate::launch::build(&plan, &run_id, &trigger, started, crate::events::now_ms(), &head, measured.into_inner().unwrap(), &refused);
+    ledger.base = base_sha;
+    match crate::launch::save(repo, &ledger) {
+        Ok(_) => crate::events::append(
+            &repo.kula_dir(),
+            crate::events::Event { kind: "run_end".into(), team: plan.team.clone(), plan: plan.id.clone(), run: run_id, verdict: ledger.state.clone(), usage: Some(ledger.usage.clone()), msg: format!("score {}", ledger.score), ..Default::default() },
+        ),
+        Err(e) => eprintln!("kula: could not record run {run_id}: {e:#}"),
+    }
     Ok(plan)
 }
 
@@ -299,7 +366,7 @@ mod tests {
     #[test]
     fn agent_commands() {
         let plan = Plan::default();
-        assert_eq!(agent_cmd(&plan, "claude"), vec!["claude", "-p", "{prompt}"]);
+        assert_eq!(agent_cmd(&plan, "claude"), vec!["claude", "-p", "{prompt}", "--output-format", "json"]);
         assert_eq!(agent_cmd(&plan, "fake-agent"), vec!["fake-agent", "{prompt}"]);
         assert!(is_real_agent(&agent_cmd(&plan, "codex")));
         assert!(!is_real_agent(&agent_cmd(&plan, "fake-agent")));
