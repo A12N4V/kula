@@ -40,7 +40,7 @@ export const LOOP_TEMPLATES: LoopTemplate[] = [
     metric: { node: count("npx tsc --noEmit", "error TS"), python: count("mypy .", "error:") },
   },
   {
-    id: "coverage", title: "More coverage", about: "Line coverage in percent – agents write tests, the code under test stays put.", goal: "max", budget: 25, scope: ["tests/**", "**/*test*"],
+    id: "coverage", title: "More coverage", about: "Line coverage in percent. Agents write tests, the code under test stays put.", goal: "max", budget: 25, scope: ["tests/**", "**/*test*"],
     prompt: "Add tests for the least covered code that matters. Tests must assert behaviour, not just run lines.",
     metric: {
       rust: `cargo llvm-cov --summary-only 2>/dev/null | awk '/^TOTAL/ {print $(NF-3)}' | tr -d %`,

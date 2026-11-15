@@ -87,16 +87,15 @@ test("proposals, issues, notes", async ({ page }) => {
   await shot(page, "notes");
 });
 
-test("agents: overview, workflows, fences, memory, docs, connect", async ({ page }) => {
+test("agents: the hub, and the hub over the flow map", async ({ page }) => {
   await at(page, "agents");
-  await expect(page.locator(".loop-step").first()).toBeVisible();
-  await page.waitForTimeout(700); // cards fade in
+  await expect(page.locator(".hub-canvas")).toBeVisible();
+  await page.waitForTimeout(700);
   await shot(page, "agents");
-  for (const t of ["workflows", "fences", "memory", "docs", "connect"]) {
-    await at(page, `agents/${t}`);
-    await page.waitForTimeout(900);
-    await shot(page, `agents-${t}`);
-  }
+  await page.getByRole("checkbox", { name: "Flow map" }).check();
+  await expect(page.locator(".hub-lane").first()).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(500);
+  await shot(page, "agents-map");
 });
 
 test("notes autofill", async ({ page }) => {

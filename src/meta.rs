@@ -24,6 +24,10 @@ pub struct Meta {
     /// Orchestration plans by id, newest last, as `kula plan` and `kula run-plan` left them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plans: Vec<serde_json::Value>,
+    /// Hub canvas positions by node id (`seat:team/key`, `team:name`), so moving
+    /// a node never touches the working tree.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub layout: std::collections::BTreeMap<String, [f64; 2]>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -323,5 +327,21 @@ fn merge_meta(ours: &mut Meta, theirs: Meta) {
             Some(_) => {}
             None => ours.notes.push(n),
         }
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::Meta;
+
+    #[test]
+    fn layout_round_trips_and_old_meta_still_parses() {
+        let old: Meta = serde_json::from_str("{}").unwrap();
+        assert!(old.layout.is_empty());
+        assert!(!serde_json::to_string(&old).unwrap().contains("layout"));
+        let mut m = Meta::default();
+        m.layout.insert("seat:ship/claude".into(), [12.5, -40.0]);
+        let back: Meta = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
+        assert_eq!(back.layout.get("seat:ship/claude"), Some(&[12.5, -40.0]));
     }
 }

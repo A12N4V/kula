@@ -745,6 +745,7 @@ async fn agents_info(State(s): State<AppState>) -> ApiResult {
             "suggestions": crate::agents::suggestions(r),
             "guard_warnings": g.warnings(st.as_ref()),
             "seat_overlaps": st.as_ref().map(|s| crate::guard::team_overlaps(&cfg, s)).unwrap_or_default(),
+            "layout": meta::load(r).map(|m| m.layout).unwrap_or_default(),
             "teams": cfg.teams,
             "team": crate::guard::team(r),
             "research": crate::research::list(r),
@@ -917,6 +918,8 @@ struct AgentReq {
     teams: Vec<crate::config::Team>,
     /// Which agents to install a workflow for.
     targets: Vec<String>,
+    /// Hub canvas positions to keep on refs/kula/meta.
+    layout: std::collections::BTreeMap<String, [f64; 2]>,
 }
 
 async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Json(a): Json<AgentReq>) -> ApiResult {
@@ -1010,6 +1013,13 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
             "teams_preview" => {
                 let (before, after) = crate::config::preview_teams(&r.root, &a.teams)?;
                 json!({ "before": before, "after": after })
+            }
+            "layout_save" => {
+                // positions only: finite numbers, a bounded id, at most 2000 nodes
+                let mut m = meta::load(r)?;
+                m.layout = a.layout.into_iter().filter(|(k, v)| k.len() <= 200 && v.iter().all(|x| x.is_finite())).take(2000).collect();
+                meta::save(r, &m, "hub layout")?;
+                json!({ "ok": true, "nodes": m.layout.len() })
             }
             "teams_save" => {
                 crate::config::set_teams(&r.root, &a.teams)?;

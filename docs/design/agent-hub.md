@@ -43,6 +43,20 @@ Seats and teams stay in `kula.toml`. A seat gains `color`, `tags`, `skills`, `mc
 - **Explain.** `kula guard explain <path> [--symbol s] [--agent a]` and the hub's `explain` action list every rule that applies and mark the one that decides.
 - **Seat overlaps.** Two scoped seats in one team that may both write the same files are reported in `kula check` (`seat_overlaps`) and in the hub. Unscoped seats are left out.
 
+## Hub canvas (H.4)
+
+The nine Agents tabs are gone. Agents is one view in three columns:
+
+- **Palette** (left): agents, team templates, skills, MCP servers and memory files. Drag one onto a seat, a team or empty canvas, or click it to put it on whatever is picked. An agent on empty canvas starts a new team with a lead.
+- **Canvas** (centre, xyflow): a frame per team with its category, a node per seat with a colour stripe, agent, tags, skill and MCP chips, memory and fence badges. Solid edges are `reports_to`, arrows are `hands_off`; the Link toggle picks which one a drag between seats draws. Seats that may write the same files are flagged.
+- **Inspector** (right): the picked seat or team (identity, colour, tags, prompt, skills, MCP, memory, fences with the `explain` preview), or with nothing picked an overview: suggestions from agents to accept or dismiss, then fence warnings.
+- **Flow map**: a toggle that draws the H.1 domains as lanes behind the teams. Dropping a seat on a flow scopes it to that flow's files.
+- **Build · Live · Runs**: Build edits a draft; Live paints the event log onto the seats with a scrubber; Runs fills in with H.6.
+
+Edits stay in a draft until Save, which shows the `kula.toml` diff first and keeps the file's comments. Positions go through `layout_save` onto `refs/kula/meta` and never touch the tree.
+
+Still to come back to: the old per-task loop overview has no place in the hub yet, and the CSS of the removed tabs (`agents.css`, `agents-teams.css`) is pruned in H.9.
+
 ## Runs (H.5–H.8)
 
 kula launches agents itself and reads their JSON output for tokens, cost and duration. Each run is written to `.kula/runs/<id>.json`. Scores are a weighted mix of gate verdict, tests, refusals, retries, cost and duration, and the weights are shown in the UI. The Runs view adds a synopsis, a replay and a changelog grouped by flow. Schedules run inside `kula serve`, one scheduled run at a time.

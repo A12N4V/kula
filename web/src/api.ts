@@ -92,7 +92,19 @@ export interface AgentsInfo {
   git_hooks: [string, boolean][]; ci: string | null;
   research_scope: Record<string, { files: string[]; count: number; fenced: number }>;
   skills?: Skill[]; skill_strays?: SkillStray[]; stack?: string[];
+  guard_warnings?: string[]; seat_overlaps?: Overlap[]; layout?: Record<string, [number, number]>;
 }
+/** Two scoped seats in one team that may both write the same files (src/guard.rs). */
+export interface Overlap { team: string; a: string; b: string; count: number; paths: string[] }
+/** Every rule that applies to a path or symbol, and the one that decides (`kula guard explain`). */
+export interface Explain { path: string; symbol?: string; verdict: Verdict; hits: Verdict[] }
+/** Per seat fences, folded into the seat's guards (kula.toml [team.members.fence]). */
+export interface SeatFence { lock?: string[]; hide?: string[]; review?: string[] }
+/** One step of an ordered execution flow (src/graph/flowmap.rs). */
+export interface FlowStep { id: number; name: string; kind: string; path: string; line: number; site: number; depth: number; branch?: "if" | "loop" | "match" | "try"; conf: string }
+export interface FlowPath { id: string; entry: Node; kind: "route" | "main" | "test" | "entry"; route?: string; domain: number; steps: FlowStep[]; files: string[] }
+export interface FlowDomain { id: number; label: string; flows: number; files: string[] }
+export interface FlowMap { domains: FlowDomain[]; flows: FlowPath[] }
 /** An autoresearch loop's settings ([workflow.research]). */
 export interface Research { metric: string; goal: "min" | "max" | ""; budget?: number; timeout?: number; icon?: string }
 export interface Experiment { n: number; hypothesis: string; value: number | null; best_before: number | null; kept: boolean; commit?: string; files: string[]; by: string; at: number; note?: string }
@@ -103,8 +115,13 @@ export interface ResearchRun {
 }
 /** A team (kula.toml [[team]]): each agent in its own workflow. */
 export interface Team {
-  name: string; about?: string; prompt?: string; under?: string;
-  members: { name?: string; agent: string; model?: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[] }[];
+  name: string; about?: string; prompt?: string; under?: string; color?: string; category?: string;
+  members: Member[];
+}
+/** A seat in a team: one agent with its own workflow, scope, setup and fences. */
+export interface Member {
+  name?: string; agent: string; model?: string; workflow?: string; scope?: string[]; role?: string; prompt?: string; reports_to?: string; hands_off?: string[];
+  color?: string; tags?: string[]; skills?: string[]; mcp?: string[]; memory?: string; fence?: SeatFence;
 }
 /** A work mode (src/workflow.rs): its own fences, scope, steps, docs and memory policy. */
 export interface Workflow {
@@ -119,7 +136,7 @@ export interface Suggestion { id: number; kind: "guard" | "workflow"; guard?: Ra
 export type AgentAction = "task_start" | "task_done" | "remember" | "confirm" | "forget" | "memory_edit" | "memory_stale" | "guards_save" | "workflows_save"
   | "settings_save" | "doc_read" | "doc_save" | "docs_sync" | "brief" | "connect" | "suggestion_accept" | "suggestion_dismiss" | "preview"
   | "teams_save" | "teams_preview" | "team_prompt" | "team_start" | "team_stop" | "research_start" | "research_stop" | "workflow_install" | "hooks_install"
-  | "workflow_rename" | "skill_save" | "skill_delete" | "skills_sync" | "skill_adopt" | "territories" | "recall";
+  | "workflow_rename" | "skill_save" | "skill_delete" | "skills_sync" | "skill_adopt" | "territories" | "recall" | "explain" | "layout_save";
 /** A fence as it falls on a whole area: the most common level, and whether others share it. */
 export interface AreaFence { level: GuardLevel; mixed: boolean }
 /** A top level region of the repository on the canvas (P3.16). */
@@ -220,6 +237,7 @@ export const api = {
   history: (id: number) => get<SymbolHistory>(`/api/history/${id}`),
   overview: () => get<Overview>("/api/overview"),
   agents: () => get<AgentsInfo>("/api/agents"),
+  flowmap: (limit = 60) => get<FlowMap>(`/api/flowmap?${q({ limit })}`),
   agentEvents: (since: number) => get<{ events: KulaEvent[]; now: number }>(`/api/agents/events?poll=1&since=${since}`),
   agentAction: <T = unknown>(action: AgentAction, body: Record<string, unknown> = {}) =>
     post<T>(`/api/agents/${action}`, body),
