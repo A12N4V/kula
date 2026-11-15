@@ -13,7 +13,7 @@ import { seatKey } from "../../roster";
 import { Mark } from "../../brands";
 import type { Draft, LinkKind, Pick } from "./draft";
 import type { Paint } from "./live";
-import { FLOW_H, LANE_W, SEAT_H, SEAT_W, lanes, matcher, place, seatId, teamId, type Saved } from "./layout";
+import { FLOW_H, LANE_W, SEAT_W, lanes, matcher, place, seatH, seatId, teamId, type Saved } from "./layout";
 
 export type Item = { kind: "agent" | "skill" | "mcp" | "memory" | "template"; value: string };
 export const DND = "application/kula-hub";
@@ -36,7 +36,7 @@ const SeatNode = memo(({ data }: NodeProps<Node<SeatData>>) => {
       <div className="hub-seat-head">
         {m.agent ? <Mark id={m.agent} size={14} /> : <span className="hub-seat-dot" />}
         <span className="hub-seat-name">{seatKey(m)}</span>
-        {overlap && <span className="hub-warn" title="Shares files with another seat">!</span>}
+        {overlap && <span className="hub-warn mono" title="Shares files with another seat">shares</span>}
       </div>
       <div className="hub-seat-sub mono">{[m.agent || "any agent", m.model, m.role].filter(Boolean).join(" · ")}</div>
       {research ? (
@@ -46,18 +46,20 @@ const SeatNode = memo(({ data }: NodeProps<Node<SeatData>>) => {
           {!!research.timeout && <span title="Timeout per experiment">{research.timeout}s</span>}
           {loop && <span className={loop.active ? "accent" : "muted"} title={`base ${loop.baseline}`}>best {loop.best}</span>}
         </div>
-      ) : (
+      ) : (chips.length > 0 || m.memory) && (
       <div className="hub-seat-chips">
         {chips.slice(0, 3).map(([k, v]) => <span key={`${k}${v}`} className={`hub-chip ${k}`}>{short(v, 14)}</span>)}
         {chips.length > 3 && <span className="hub-chip more">+{chips.length - 3}</span>}
         {m.memory && <span className="hub-chip memory">{short(m.memory.split("/").pop() || m.memory, 12)}</span>}
       </div>
       )}
+      {(!!m.tags?.length || fences.some(([, n]) => !!n)) && (
       <div className="hub-seat-fence mono">
         {(m.tags ?? []).slice(0, 2).map((t) => <span key={t} className="hub-tag">{t}</span>)}
         <span className="spacer" />
         {fences.map(([k, n]) => !!n && <span key={k} className={`hub-fence ${k}`} title={`${n} ${k}`}>{k} {n}</span>)}
       </div>
+      )}
       <Handle type="source" position={Position.Bottom} />
       <Handle type="source" id="sr" position={Position.Right} className="hub-side" isConnectable={false} />
       <Handle type="source" id="sl" position={Position.Left} className="hub-side" isConnectable={false} />
@@ -125,13 +127,14 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
         }));
       }
     }
-    const at = place(d.draft, saved);
+    const isResearch = (m: Member) => !!(m.workflow && flows.has(m.workflow));
+    const at = place(d.draft, saved, isResearch);
     for (const t of d.draft) {
       const b = at.teams.get(t.name)!;
       out.push({ id: teamId(t.name), type: "team", position: { x: b.x, y: b.y }, style: { width: b.w, height: b.h }, data: { team: t, picked: pick?.team === t.name && !pick.key }, selectable: false });
       for (const m of t.members) {
         const id = seatId(t.name, seatKey(m));
-        out.push({ id, type: "seat", parentId: teamId(t.name), position: at.seats.get(id)!, style: { width: SEAT_W, height: SEAT_H }, data: { m, team: t, picked: pick?.team === t.name && pick.key === seatKey(m), live: paint?.seats.get(id), overlap: overlaps.has(id), research: m.workflow ? flows.get(m.workflow) : null, loop: m.workflow ? info.research.find((r) => r.workflow === m.workflow) : undefined }, selectable: false });
+        out.push({ id, type: "seat", parentId: teamId(t.name), position: at.seats.get(id)!, style: { width: SEAT_W, height: seatH(m, isResearch(m)) }, data: { m, team: t, picked: pick?.team === t.name && pick.key === seatKey(m), live: paint?.seats.get(id), overlap: overlaps.has(id), research: m.workflow ? flows.get(m.workflow) : null, loop: m.workflow ? info.research.find((r) => r.workflow === m.workflow) : undefined }, selectable: false });
       }
     }
     return out;

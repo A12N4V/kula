@@ -77,17 +77,17 @@
 /* seat node */
 .hub-seat {
   --seat: var(--line-2);
-  box-sizing: border-box; width: 212px; padding: 8px 10px 8px 12px; border: 1px solid var(--line-2); border-left: 1px solid var(--seat);
+  box-sizing: border-box; width: 184px; height: 100%; overflow: hidden; padding: 8px 10px 8px 12px; border: 1px solid var(--line-2); border-left: 1px solid var(--seat);
   border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: 12px; transition: border-color var(--flow, .16s ease), background var(--flow, .16s ease);
 }
 .hub-seat:hover { border-color: color-mix(in oklab, var(--accent) 60%, var(--line-2)); border-left-color: var(--seat); background: var(--panel-2); }
 .hub-seat.picked { border-color: var(--accent); border-left-color: var(--seat); }
 .hub-seat-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .hub-seat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 15px/1.1 var(--serif); }
-.hub-warn { margin-left: auto; color: var(--accent); font-weight: 700; }
+.hub-warn { margin-left: auto; flex: none; font-size: 9.5px; line-height: 14px; padding: 0 4px; border: 1px solid color-mix(in oklab, var(--accent) 50%, var(--line)); border-radius: var(--r-sm); color: var(--accent); }
 .hub-seat-sub { margin-top: 2px; font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hub-seat-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
-.hub-chip { font-size: 10px; line-height: 16px; padding: 0 5px; border: 1px solid var(--line-2); border-radius: var(--r-sm); color: var(--text-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-seat-chips { display: flex; flex-wrap: nowrap; gap: 3px; margin-top: 6px; min-width: 0; overflow: hidden; }
+.hub-chip { flex: 0 1 auto; min-width: 0; font-size: 10px; line-height: 16px; padding: 0 5px; border: 1px solid var(--line-2); border-radius: var(--r-sm); color: var(--text-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-chip.skill { border-color: color-mix(in oklab, var(--green) 45%, var(--line)); color: var(--green); }
 .hub-chip.mcp { border-color: color-mix(in oklab, var(--blue) 45%, var(--line)); color: var(--blue); }
 .hub-chip.memory { border-color: color-mix(in oklab, var(--violet) 45%, var(--line)); color: var(--violet); }
@@ -98,7 +98,7 @@
 .hub-seat-research { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 10px; color: var(--text-2); white-space: nowrap; overflow: hidden; }
 .hub-chip.research { border-color: color-mix(in oklab, var(--accent) 50%, var(--line)); color: var(--accent); }
 .hub-seat.research { background-image: linear-gradient(90deg, color-mix(in oklab, var(--accent) 6%, transparent), transparent 60%); }
-.hub-seat-fence { align-items: center;  display: flex; gap: 4px; margin-top: 6px; }
+.hub-seat-fence { align-items: center; display: flex; gap: 4px; margin-top: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
 .hub-fence { font-size: 10px; line-height: 16px; padding: 0 5px; border-radius: var(--r-sm); background: var(--panel-2); color: var(--text-2); }
 .hub-fence.lock { color: var(--red); }
 .hub-fence.hide { color: var(--violet); }
@@ -349,7 +349,8 @@
 /* type by role: names in the serif, controls in the interface face, data stays mono */
 .page.hub .page-head h1 { font: 600 30px/1 var(--serif); letter-spacing: 0; }
 .page.hub .btn, .page.hub .seg button, .page.hub .input:not(.mono), .page.hub .hub-toggle, .hub-deploy .btn { font-family: var(--ui); }
-.hub-bar .seg[aria-label="Mode"] button.on { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 55%, var(--line-2)); }
+.page.hub .seg button { border-radius: var(--r-sm); }
+.hub-bar .seg button.on { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 55%, var(--line-2)); }
 
 @media (max-width: 1100px) {
   .hub-body { flex: none; }
@@ -363,3 +364,20 @@
 .runs-empty-in { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .runs-empty-in .btn { letter-spacing: 0; text-transform: none; }
 .hub-deploy-hint { margin-right: auto; font-size: 11.5px; }
+
+/* the picked seat's name, set like the task title */
+.hub-insp-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-bottom: 10px; }
+.hub-insp-title > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 20px/1.15 var(--serif); color: var(--text); }
+.hub-insp-title .mono { flex: none; font-size: 10.5px; }
+.hub-sec > .chips, .hub-field .chips { width: 100%; box-sizing: border-box; }
+.hub-bar-label { font: 500 9.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); padding-left: 6px; border-left: 1px solid var(--line); }
+.hub-bar .seg button.loading { color: var(--text-3); }
+
+@media (max-width: 1360px) {
+  .hub-body { grid-template-columns: 184px minmax(0, 1fr) 300px; }
+  .page.hub .page-head { padding-bottom: 6px; }
+  .page.hub .page-head h1 { font-size: 24px; }
+}
+.hub-bar-hint { font-size: 11.5px; }
+.hub-pal-group.empty { margin-bottom: 6px; }
+.hub-pal-group.empty h3 { color: color-mix(in oklab, var(--text-3) 60%, transparent); margin-bottom: 0; }

@@ -747,7 +747,7 @@ test.describe("agent hub (H.4)", () => {
     desktopOnly(info);
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, "agents");
-    await page.getByRole("checkbox", { name: "Flow map" }).check();
+    await page.getByRole("button", { name: "Flow map" }).click();
     await expect(page.locator(".hub-lane").first()).toBeVisible({ timeout: 15_000 });
     await page.screenshot({ path: "test-results/hub-map.png", scale: "css" });
   });
@@ -868,7 +868,7 @@ test.describe("agent hub runs (H.6)", () => {
     await expect(trends.locator('li[data-key="e2e-team"]')).toContainText("2 runs");
     await expect(page.getByLabel("Score weights")).toContainText("gate");
     // the canvas tools are gone in Runs
-    await expect(page.getByRole("checkbox", { name: "Flow map" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Flow map" })).toHaveCount(0);
     expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= window.innerHeight)).toBe(true);
     await page.screenshot({ path: "test-results/hub-runs.png", scale: "css" });
     // Replay opens Live on that run

@@ -2,7 +2,7 @@
 // map of the codebase, and an inspector for whatever is picked. Build edits
 // the draft, Live paints the event log onto the seats, Runs lists past runs.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { api, type AgentsInfo, type FlowMap } from "../../api";
 import { useToast } from "../../ui";
@@ -92,6 +92,12 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
     }
   };
 
+  // on a narrow screen the inspector sits below the canvas: bring it into view when a seat is picked
+  const inspRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (pick && window.matchMedia("(max-width: 1100px)").matches) inspRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [pick]);
+
   return (
     <div className="hub-body">
       <Palette info={info} servers={servers} onUse={(it) => onItem(it, pick)} />
@@ -100,16 +106,17 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
           <div className="seg" role="group" aria-label="Mode">
             {MODES.map((m) => <button key={m.id} className={mode === m.id ? "on" : ""} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>{m.label}</button>)}
           </div>
+          {mode !== "runs" && <span className="hub-bar-label">Link</span>}
           {mode !== "runs" && <div className="seg" role="group" aria-label="Link">
             <button className={link === "rt" ? "on" : ""} aria-pressed={link === "rt"} onClick={() => setLink("rt")} title="Drag between seats to set who reports to whom">Reports</button>
-            <button className={link === "ho" ? "on" : ""} aria-pressed={link === "ho"} onClick={() => setLink("ho")} title="Drag between seats to hand work off">Hands off</button>
+            <button className={link === "ho" ? "on" : ""} aria-pressed={link === "ho"} onClick={() => setLink("ho")} title="Drag between seats to hand work off">Hand off</button>
           </div>}
           <span className="spacer" />
-          {mode !== "runs" && <label className="hub-toggle">
-            <input type="checkbox" checked={showMap} onChange={(e) => setShowMap(e.target.checked)} aria-label="Flow map" />
-            <span>Flow map</span>
-          </label>}
+          {mode !== "runs" && <div className="seg" role="group" aria-label="Layers">
+            <button className={`${showMap ? "on" : ""}${showMap && !map ? " loading" : ""}`} aria-pressed={showMap} onClick={() => setShowMap(!showMap)} title="Draw the codebase's execution flows behind the teams">Flow map</button>
+          </div>}
           {d.dirty && <span className="hub-dirty mono">unsaved</span>}
+          {mode !== "runs" && (d.dirty || !saved) && <span className="muted hub-bar-hint">{d.dirty ? "Save first" : "Pick a team"}</span>}
           {mode !== "runs" && <button className="btn sm primary hub-deploy-btn" disabled={!saved || d.dirty} onClick={() => saved && setDeploying(saved.name)}
             title={d.dirty ? "Save first" : saved ? `Deploy ${saved.name}` : "Pick a team"}>Deploy</button>}
         </div>
@@ -121,11 +128,11 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
             </ReactFlowProvider>
           )}
       </div>
-      <aside className="hub-inspector" aria-label="Inspector">
+      <aside className="hub-inspector" aria-label="Inspector" ref={inspRef}>
         <div className="hub-insp-scroll">
           {mode === "live" && <LiveFeed events={feed} via={ev.via} runs={runs} run={run} setRun={setRun} cursor={cursor} setCursor={setCursor} />}
           {mode === "runs" && <><SchedulesCard /><RunsTrends info={ledger.info} /></>}
-          {mode !== "runs" && <Inspector info={info} d={d} pick={pick} flow={flow} setFlow={setFlow} map={map} act={act} />}
+          {mode === "build" && <Inspector info={info} d={d} pick={pick} flow={flow} setFlow={setFlow} map={map} act={act} />}
         </div>
         <ChangesCard d={d} act={act} />
       </aside>

@@ -75,7 +75,8 @@ function SeatPanel({ info, d, team, m, act }: { info: AgentsInfo; d: Draft; team
   void act;
   return (
     <>
-      <Sec title="Identity" aside={<span className="mono muted">{team.name}</span>}>
+      <div className="hub-insp-title"><span>{key}</span><span className="mono muted">{team.name}</span></div>
+      <Sec title="Identity">
         <Swatches value={m.color} onChange={(c) => set({ color: c })} />
         <Field label="Name"><input className="input" value={m.name ?? ""} onChange={(e) => set({ name: e.target.value })} aria-label="Seat name" /></Field>
         <Field label="Agent">
@@ -117,8 +118,8 @@ function SeatPanel({ info, d, team, m, act }: { info: AgentsInfo; d: Draft; team
         <Field label="Lock"><Chips values={fence.lock ?? []} onChange={(v) => set({ fence: { ...fence, lock: v } })} placeholder="path or path:symbol" label="Lock" /></Field>
         <Field label="Hide"><Chips values={fence.hide ?? []} onChange={(v) => set({ fence: { ...fence, hide: v } })} placeholder="path" label="Hide" /></Field>
         <Field label="Review"><Chips values={fence.review ?? []} onChange={(v) => set({ fence: { ...fence, review: v } })} placeholder="path" label="Review" /></Field>
-        <ExplainBox team={team.name} seat={key} d={d} />
       </Sec>
+      <Sec title="Can it touch"><ExplainBox team={team.name} seat={key} d={d} /></Sec>
       {run && (
         <Sec title="Research" aside={<span className="mono muted">{run.active ? "running" : "stopped"}</span>}>
           <div className="hub-stats mono">

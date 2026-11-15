@@ -92,7 +92,7 @@ test("agents: the hub, and the hub over the flow map", async ({ page }) => {
   await expect(page.locator(".hub-canvas")).toBeVisible();
   await page.waitForTimeout(700);
   await shot(page, "agents");
-  await page.getByRole("checkbox", { name: "Flow map" }).check();
+  await page.getByRole("button", { name: "Flow map" }).check();
   await expect(page.locator(".hub-lane").first()).toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(500);
   await shot(page, "agents-map");

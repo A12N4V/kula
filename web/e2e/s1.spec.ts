@@ -26,7 +26,7 @@ test.describe("s1 agent hub", () => {
     await expect(page.getByRole("complementary", { name: "Inspector" })).toBeVisible();
     const mode = page.getByRole("group", { name: "Mode" });
     for (const m of ["Build", "Live", "Runs"]) await expect(mode.getByRole("button", { name: m })).toBeVisible();
-    await expect(page.getByRole("checkbox", { name: "Flow map" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Flow map" })).toBeVisible();
     await expect(page.locator(".ag-tabs")).toHaveCount(0);
   });
 });

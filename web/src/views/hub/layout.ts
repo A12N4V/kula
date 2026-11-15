@@ -2,10 +2,12 @@
 // how far they are from the lead), teams wrapped into rows, flow map lanes in a grid above.
 // Positions a person moved are kept on refs/kula/meta and win over the layout.
 
-import type { FlowMap, Team } from "../../api";
+import type { FlowMap, Member, Team } from "../../api";
 import { seatKey } from "../../roster";
 
-export const SEAT_W = 212, SEAT_H = 96;
+export const SEAT_W = 184;
+// a seat is as tall as what it shows: name and sub, then a chip row and a fence row when they have anything
+const SEAT_BASE = 52, CHIP_ROW = 24, FENCE_ROW = 22;
 const GAP_X = 22, GAP_Y = 44, PAD = 18, HEAD = 36, TEAM_GAP = 56;
 export const LANE_W = 232, FLOW_H = 24;
 const LANE_HEAD = 34, LANE_GAP = 14, MAX_FLOWS = 8, MAX_LANES = 10;
@@ -24,24 +26,36 @@ function depth(t: Team, key: string): number {
   return d;
 }
 
-export function place(teams: Team[], saved: Saved): Placed {
+/** How tall a seat node draws; `research` seats always show their loop row. */
+export function seatH(m: Member, research = false): number {
+  const f = m.fence ?? {};
+  const chips = research || !!(m.skills?.length || m.mcp?.length || m.memory);
+  const fence = !!(m.tags?.length || f.lock?.length || f.hide?.length || f.review?.length || m.scope?.length);
+  return SEAT_BASE + (chips ? CHIP_ROW : 0) + (fence ? FENCE_ROW : 0);
+}
+
+export function place(teams: Team[], saved: Saved, research: (m: Member) => boolean = () => false): Placed {
   const out: Placed = { teams: new Map(), seats: new Map() };
   for (const t of teams) {
-    const rows: string[][] = [];
-    for (const m of t.members) { const d = depth(t, seatKey(m)); (rows[d] ??= []).push(seatKey(m)); }
+    const rows: Member[][] = [];
+    for (const m of t.members) { const d = depth(t, seatKey(m)); (rows[d] ??= []).push(m); }
     const packed = rows.filter(Boolean);
     const wide = Math.max(1, ...packed.map((r) => r.length));
+    const tall = packed.map((r) => Math.max(...r.map((m) => seatH(m, research(m)))));
     let w = wide * (SEAT_W + GAP_X) - GAP_X + PAD * 2;
-    let h = HEAD + Math.max(1, packed.length) * (SEAT_H + GAP_Y) - GAP_Y + PAD * 2;
+    let h = HEAD + PAD * 2 + (tall.length ? tall.reduce((a, b) => a + b + GAP_Y, -GAP_Y) : SEAT_BASE);
+    let y = HEAD + PAD;
     packed.forEach((r, ri) => {
       const off = (w - (r.length * (SEAT_W + GAP_X) - GAP_X)) / 2;
-      r.forEach((k, i) => {
+      r.forEach((m, i) => {
+        const k = seatKey(m);
         const s = saved[seatId(t.name, k)];
-        const p = s ? { x: Math.max(PAD, s[0]), y: Math.max(HEAD, s[1]) } : { x: off + i * (SEAT_W + GAP_X), y: HEAD + PAD + ri * (SEAT_H + GAP_Y) };
+        const p = s ? { x: Math.max(PAD, s[0]), y: Math.max(HEAD, s[1]) } : { x: off + i * (SEAT_W + GAP_X), y };
         out.seats.set(seatId(t.name, k), p);
         w = Math.max(w, p.x + SEAT_W + PAD);
-        h = Math.max(h, p.y + SEAT_H + PAD);
+        h = Math.max(h, p.y + seatH(m, research(m)) + PAD);
       });
+      y += tall[ri] + GAP_Y;
     });
     out.teams.set(t.name, { x: 0, y: 0, w, h });
   }
@@ -68,15 +82,17 @@ export function lanes(map: FlowMap): Lane[] {
     const fs = map.flows.filter((f) => f.domain === d.id).sort((a, b) => b.steps.length - a.steps.length);
     return { d, fs: fs.slice(0, MAX_FLOWS), more: Math.max(0, fs.length - MAX_FLOWS) };
   });
-  const tall = Math.max(1, ...rows.map((r) => r.fs.length + (r.more ? 1 : 0)));
-  const h = LANE_HEAD + tall * (FLOW_H + 4) + 8;
-  // a grid rather than one long strip: about twice as wide as tall
-  const cols = Math.min(rows.length, Math.max(3, Math.ceil(Math.sqrt(rows.length * 2))));
-  const lines = Math.ceil(rows.length / Math.max(1, cols));
-  const top = -(lines * (h + LANE_GAP) - LANE_GAP + 72);
+  const laneH = (r: (typeof rows)[number]) => LANE_HEAD + Math.max(1, r.fs.length + (r.more ? 1 : 0)) * (FLOW_H + 4) + 8;
+  // a grid rather than one long strip: about twice as wide as tall, each grid row as tall as its tallest lane
+  const cols = Math.max(1, Math.min(rows.length, Math.max(3, Math.ceil(Math.sqrt(rows.length * 2)))));
+  const lineH: number[] = [];
+  rows.forEach((r, i) => { const li = Math.floor(i / cols); lineH[li] = Math.max(lineH[li] ?? 0, laneH(r)); });
+  const tops: number[] = [];
+  let acc = -(lineH.reduce((a, b) => a + b + LANE_GAP, -LANE_GAP) + 72);
+  lineH.forEach((lh, li) => { tops[li] = acc; acc += lh + LANE_GAP; });
   return rows.map((r, i) => ({
     id: r.d.id, label: r.d.label, more: r.more,
-    box: { x: (i % cols) * (LANE_W + LANE_GAP), y: top + Math.floor(i / cols) * (h + LANE_GAP), w: LANE_W, h },
+    box: { x: (i % cols) * (LANE_W + LANE_GAP), y: tops[Math.floor(i / cols)], w: LANE_W, h: laneH(r) },
     flows: r.fs.map((f, j) => ({ id: f.id, y: LANE_HEAD + j * (FLOW_H + 4) })),
   }));
 }

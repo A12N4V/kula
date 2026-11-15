@@ -196,7 +196,7 @@ export function RunsTrends({ info }: { info: RunsInfo | null }) {
         </span>
       </h3>
       {rows.length === 0
-        ? <p className="muted">No runs recorded yet</p>
+        ? <p className="muted">Trends show after the first run</p>
         : <ul className="runs-trend-list">{rows.map((t) => (
             <li key={t.key} data-key={t.key}>
               <div className="runs-trend-top"><span className="mono">{t.key}</span><span className="spacer" /><Spark values={t.scores} w={72} h={18} label={`${t.key} score`} /><span className={`mono ${tone(t.score)}`}>{Math.round(t.score)}</span></div>
