@@ -36,11 +36,12 @@ pub struct Usage {
 
 impl Usage {
     pub fn add(&mut self, o: &Usage) {
-        self.tokens_in += o.tokens_in;
-        self.tokens_out += o.tokens_out;
-        self.cost_usd += o.cost_usd;
-        self.turns += o.turns;
-        self.duration_ms += o.duration_ms;
+        // an agent prints its own usage lines, so the sums saturate instead of wrapping
+        self.tokens_in = self.tokens_in.saturating_add(o.tokens_in);
+        self.tokens_out = self.tokens_out.saturating_add(o.tokens_out);
+        self.cost_usd += if o.cost_usd.is_finite() { o.cost_usd.max(0.0) } else { 0.0 };
+        self.turns = self.turns.saturating_add(o.turns);
+        self.duration_ms = self.duration_ms.saturating_add(o.duration_ms);
         if self.model.is_empty() {
             self.model = o.model.clone();
         }

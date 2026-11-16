@@ -295,7 +295,12 @@ fn team_path(repo: &Repo) -> std::path::PathBuf {
 }
 
 pub fn team(repo: &Repo) -> Option<ActiveTeam> {
-    serde_json::from_str(&std::fs::read_to_string(team_path(repo)).ok()?).ok()
+    if let Some(t) = std::fs::read_to_string(team_path(repo)).ok().and_then(|s| serde_json::from_str(&s).ok()) {
+        return Some(t);
+    }
+    // a run-plan worktree carries its team in the environment (see `orch::run::launch`)
+    let name = std::env::var("KULA_TEAM").ok().filter(|n| !n.is_empty())?;
+    Some(ActiveTeam { name, started: crate::meta::now(), by: "run-plan".into() })
 }
 
 pub fn team_start(repo: &Repo, name: &str, by: &str) -> Result<ActiveTeam> {
@@ -438,8 +443,10 @@ impl Guards {
             if cfg.agents.hide_secrets { Some(globset(&SECRETS.iter().map(|s| s.to_string()).collect::<Vec<_>>())?) } else { None };
         let task = match task {
             Some(t) if !t.scope.is_empty() => {
-                let (paths, syms): (Vec<String>, Vec<String>) = cfg.expand_scope(&t.scope).into_iter().partition(|s| looks_like_path(s));
-                let g = globset(&paths)?;
+                let all = cfg.expand_scope(&t.scope);
+                let syms: Vec<String> = all.iter().filter(|s| !looks_like_path(s)).cloned().collect();
+                // a bare name (`core`) is a symbol or a top-level directory: it covers both
+                let g = globset(&all.iter().map(|s| s.trim_end_matches('/').to_string()).collect::<Vec<_>>())?;
                 Some((t, g, syms))
             }
             Some(t) => Some((t, GlobSet::empty(), vec![])),
@@ -852,7 +859,7 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
         // assignments and identity scrubbing
         while k < ws.len() {
             let w = &ws[k];
-            if w.contains('=') && w.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && !w.contains('/') {
+            if w.contains('=') && w.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && !w.split('=').next().unwrap_or("").contains('/') {
                 if let Some((n, v)) = w.split_once('=') {
                     if IDENTITY_VARS.contains(&n) {
                         return (extra, refuse("an agent does not decide whether it is an agent – identity vars are not yours to set"));
@@ -975,6 +982,32 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
 
 /// `git …` within `shell_guard`: the subcommands that rewrite history or trees
 /// behind the fences, and reads of hidden paths.
+/// Where git's subcommand sits after its global options (`-C dir`, `-c k=v`, `--git-dir=…`), and whether any of
+/// them moves the tree the command works on. A valued option's value is never the subcommand.
+pub fn git_sub<'a>(args: &[&'a str]) -> (usize, bool) {
+    let (mut i, mut moved) = (0, false);
+    while let Some(a) = args.get(i).copied() {
+        match a {
+            "-C" | "--git-dir" | "--work-tree" | "--namespace" | "--super-prefix" | "--exec-path" | "--config-env" => {
+                moved |= matches!(a, "-C" | "--git-dir" | "--work-tree");
+                i += 2;
+            }
+            "-c" => i += 2,
+            _ if a.starts_with("--git-dir=") || a.starts_with("--work-tree=") => {
+                moved = true;
+                i += 1;
+            }
+            _ if a.starts_with("-C") && a.len() > 2 => {
+                moved = true;
+                i += 1;
+            }
+            _ if a.starts_with('-') && !a.is_empty() => i += 1,
+            _ => break,
+        }
+    }
+    (i.min(args.len()), moved)
+}
+
 fn git_guard(
     args: &[&str],
     cd: &mut str,
@@ -985,10 +1018,13 @@ fn git_guard(
     extra: &mut Vec<String>,
 ) -> Option<String> {
     let refuse = |why: &str| Some(format!("kula guard: refused – {why}."));
+    let (at, moved) = git_sub(args);
+    let full = args;
+    let args = &args[at..];
     let sub = args.first().copied().unwrap_or("");
     // -c core.hooksPath=…, abbreviated --no-verify
-    for (i, a) in args.iter().enumerate() {
-        let val = if *a == "-c" { args.get(i + 1).copied().unwrap_or("") } else { a.strip_prefix("-c").unwrap_or(a) };
+    for (i, a) in full.iter().enumerate() {
+        let val = if *a == "-c" { full.get(i + 1).copied().unwrap_or("") } else { a.strip_prefix("-c").unwrap_or(a) };
         if (a.starts_with("-c") || *a == "-c") && val.contains("hooksPath") {
             return refuse("`git -c core.hooksPath` would switch kula's pre-commit fence check off");
         }
@@ -996,6 +1032,22 @@ fn git_guard(
             return refuse("`git commit --no-verify` (or its abbreviation) skips kula's pre-commit fence check");
         }
         let _ = val;
+    }
+    // `-C other`, `--git-dir`, `--work-tree` point git somewhere our path checks cannot follow
+    if moved && !fenced.is_empty() && matches!(sub, "checkout" | "restore" | "apply" | "am" | "stash" | "reset" | "rm" | "mv" | "clean") {
+        return refuse("`git -C`, `--git-dir` and `--work-tree` aim a rewrite at a tree kula cannot check");
+    }
+    // plumbing that writes commits or the index without the pre-commit check, and env-set git config
+    if !fenced.is_empty() {
+        if matches!(sub, "commit-tree" | "update-index" | "read-tree" | "checkout-index" | "hash-object" | "fast-import" | "replace") {
+            return refuse("git plumbing writes commits and the index without kula's pre-commit fence check");
+        }
+        if sub == "update-ref" && args.iter().any(|a| a.starts_with("refs/heads/") || *a == "HEAD") {
+            return refuse("`git update-ref` on a branch moves history past kula's pre-commit fence check");
+        }
+        if vars.keys().any(|k| k.starts_with("GIT_CONFIG") || k == "GIT_DIR" || k == "GIT_WORK_TREE" || k == "GIT_INDEX_FILE") {
+            return refuse("git's environment overrides (`GIT_CONFIG_*`, `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`) can switch the fences off");
+        }
     }
     // update-ref on kula's own refs (memories, issues, meta)
     if sub == "update-ref" && args.iter().any(|a| a.contains("refs/kula/")) {
@@ -1498,6 +1550,19 @@ mod tests {
 }
 
 #[cfg(test)]
+mod hub_global_option_tests {
+    use super::git_sub;
+    #[test]
+    fn global_options_are_skipped() {
+        assert_eq!(git_sub(&["commit", "-m", "x"]), (0, false));
+        assert_eq!(git_sub(&["-C", ".", "checkout", "--", "a"]), (2, true));
+        assert_eq!(git_sub(&["-c", "k=v", "reset"]), (2, false));
+        assert_eq!(git_sub(&["--git-dir=x", "-C", "y", "apply", "p"]), (3, true));
+        assert_eq!(git_sub(&["-C"]).0, 1);
+    }
+}
+
+#[cfg(test)]
 mod shell_guard_tests {
     use super::*;
 
@@ -1521,6 +1586,10 @@ mod shell_guard_tests {
             "git commit -am x --no-verif",
             "chmod -x .git/hooks/pre-commit",
             "unset KULA_AGENT; git commit",
+            "git commit-tree HEAD^{tree} -m x",
+            "git update-index --cacheinfo 100644,abc,tests/login.test.ts",
+            "git update-ref HEAD abc123",
+            "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/x git commit -m x",
         ] {
             let hidden = if cmd.contains(".env") { vec![f(".env")] } else { vec![] };
             let (more, why) = shell_guard(cmd, "", &fenced, &hidden);

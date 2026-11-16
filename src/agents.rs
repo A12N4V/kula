@@ -611,6 +611,12 @@ pub fn shell_targets(cmd: &str) -> (Vec<Target>, Option<String>) {
         let write = |p: &str, out: &mut Vec<Target>| out.push(Target { path: p.to_string(), write: true });
         match name.as_str() {
             "kula" => {
+                // `-C PATH` is a global option with a value: the value is never the subcommand
+                let mut skip = 0;
+                while let Some(a) = args.get(skip) {
+                    skip += match *a { "-C" => 2, _ if a.starts_with('-') => 1, _ => break };
+                }
+                let plain: Vec<&str> = args[skip.min(args.len())..].iter().copied().filter(|a| !a.is_empty() && !a.starts_with('-') && *a != "--").collect();
                 let sub = plain.first().copied().unwrap_or("");
                 let next = plain.get(1).copied().unwrap_or("");
                 let off = match sub {
@@ -626,6 +632,8 @@ pub fn shell_targets(cmd: &str) -> (Vec<Target>, Option<String>) {
                 }
             }
             "git" => {
+                let (at, _) = crate::guard::git_sub(&args);
+                let plain: Vec<&str> = args[at..].iter().copied().filter(|a| !a.is_empty() && !a.starts_with('-') && *a != "--").collect();
                 let sub = plain.first().copied().unwrap_or("");
                 if sub == "commit"
                     && (args.contains(&"--no-verify") || args.iter().any(|a| a.starts_with('-') && !a.starts_with("--") && a.contains('n')))
@@ -1040,6 +1048,12 @@ mod tests {
         assert_eq!(w(r#"python3 -c "open('src/crypto.py','w').write('x')""#), ["src/crypto.py"]);
         assert_eq!(w("node -e \"require('fs').writeFileSync('a.json', '')\""), ["a.json"]);
         assert!(shell_targets("git commit --no-verify -m x").1.is_some());
+        // a valued global option is never the subcommand
+        assert!(shell_targets("git -C . commit --no-verify -m x").1.is_some());
+        assert!(shell_targets("git -c user.name=x commit -n -m x").1.is_some());
+        assert!(shell_targets("kula -C . task done").1.is_some());
+        assert!(shell_targets("kula -C . task show").1.is_none());
+        assert_eq!(w("git -C . checkout -- src/a.rs"), vec!["src/a.rs".to_string()]);
         assert!(shell_targets("kula task show").1.is_none());
     }
 

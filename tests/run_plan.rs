@@ -515,7 +515,9 @@ fn a_teams_own_gate_command_is_the_plans() {
     let toml = std::fs::read_to_string(d.join("kula.toml")).unwrap().replace("name = \"core\"\n", "name = \"core\"\ntest = \"exit 0\"\n");
     std::fs::write(d.join("kula.toml"), toml).unwrap();
     let o = kula_cmd(d, &["deploy", "core", "tidy up", "--wait"]);
-    assert!(o.status.success(), "{}", text(&o));
+    let log = std::fs::read_to_string(d.join(".kula/runs/core-tidy-up/deploy.log")).unwrap_or_default()
+        + &std::fs::read_to_string(d.join(".kula/runs/core-tidy-up/tidy/attempt-1.md")).unwrap_or_default();
+    assert!(o.status.success(), "{}\n{log}", text(&o));
     let plans: Vec<_> = std::fs::read_dir(d.join(".kula/plans")).unwrap().flatten().map(|e| e.path()).collect();
     assert_eq!(plans.len(), 1, "{plans:?}");
     let plan: Value = serde_json::from_str(&std::fs::read_to_string(&plans[0]).unwrap()).unwrap();

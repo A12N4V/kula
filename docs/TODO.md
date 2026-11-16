@@ -165,7 +165,7 @@ Gate G2: CLI audit has no blockers; release published.
 | H.6 | ✓ Runs: list, detail, synopsis, replay, changelog by flow, trends | MAIN | H.5 | Every run readable after the fact without the event log |
 | H.7 | ✓ Autoresearch nodes: experiments in the ledger, metric chart | MAIN | H.5 | Research run shows kept and reverted experiments |
 | H.8 | ✓ Deploy dialog and `[[schedule]]` (cron, push, pr) run inside `kula serve` | MAIN | H.5 | Due schedule fires once; one scheduled run at a time |
-| H.9 | ui-critic loop, then kula-critic over fences and launcher; prune the removed tabs' CSS; a place for the task loop overview | UICRITIC, CRITIC | H.1–H.8 | Score target met; no open high findings |
+| H.9 | ✓ ui-critic loop, then kula-critic over fences and launcher; prune the removed tabs' CSS; a place for the task loop overview | UICRITIC, CRITIC | H.1–H.8 | Score target met; no open high findings |
 
 ---
 

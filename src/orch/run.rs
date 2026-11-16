@@ -93,7 +93,7 @@ fn launch(
     state: &Path,
     n: u32,
     prompt: &str,
-    run: (&str, &str),
+    run: (&str, &str, &str),
 ) -> (i32, String) {
     let _ = std::fs::create_dir_all(log_dir);
     let pf = log_dir.join(format!("prompt-{n}.md"));
@@ -114,6 +114,8 @@ fn launch(
         .env("KULA_EXE", exe)
         .env("KULA_PLAN", run.0)
         .env("KULA_RUN", run.1)
+        // a fresh worktree has no `.kula/team.json`, so the seat fences ride in the environment
+        .env("KULA_TEAM", run.2)
         .output();
     match out {
         Ok(o) => (o.status.code().unwrap_or(1), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))),
@@ -302,7 +304,7 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                         &log_dir,
                         |n, prompt| {
                             let prompt = if pre.is_empty() { prompt.to_string() } else { format!("{pre}\n{prompt}") };
-                            let (code, out) = launch(exe, &wt, &log_dir, &id, &scope_s, &slice.agent, &cmd, &sh.state_path, n, &prompt, (&snap.id, run_id));
+                            let (code, out) = launch(exe, &wt, &log_dir, &id, &scope_s, &slice.agent, &cmd, &sh.state_path, n, &prompt, (&snap.id, run_id, &snap.team));
                             let usage = crate::launch::parse(&out);
                             if let Some(u) = &usage {
                                 measured.lock().unwrap().entry(id.clone()).or_default().usage.add(u);
