@@ -63,11 +63,13 @@ const test = base.extend({
 });
 
 // Skip the once-per-session opening so every test lands on the app itself.
-async function open(page: Page, hash = "overview") {
-  await page.addInitScript(() => {
+// The map specs drive the force map, so it is the layout unless a test asks for the canvas.
+async function open(page: Page, hash = "overview", layout: "symbol" | "canvas" = "symbol") {
+  await page.addInitScript((layout) => {
     try { sessionStorage.setItem("kula.opened", "1"); } catch { /* */ }
     try { localStorage.setItem("kula.settings.v1", JSON.stringify({ opening: false })); } catch { /* */ }
-  });
+    try { if (!localStorage.getItem("kula.graph.layout")) localStorage.setItem("kula.graph.layout", layout); } catch { /* */ }
+  }, layout);
   await page.goto(`/#${hash}`);
 }
 
@@ -1571,5 +1573,66 @@ test.describe("P3.11 · six view rail", () => {
     await expect(page.locator("nav.rail").getByRole("button", { name: "Map" })).toHaveAttribute("aria-current", "page");
     await page.keyboard.press("Control+Backquote");
     await expect(page).toHaveURL(/#console\b/);
+  });
+});
+
+test.describe("code canvas", () => {
+  test("nested boxes: pick from the tree, link counts, names with where, go to, fold, filter, layout toggle", async ({ page }) => {
+    test.setTimeout(60_000);
+    await open(page, "graph", "canvas");
+    const stage = page.locator(".ct-stage canvas");
+    await expect(stage).toBeVisible({ timeout: 30_000 });
+    const side = page.getByRole("complementary", { name: "Selected" });
+    await expect(side.locator(".ct-sub")).toHaveText("Nothing picked");
+
+    // Picking a file in the tree fills the side panel and the URL.
+    const tree = page.getByRole("complementary", { name: "Files" });
+    await tree.getByRole("button", { name: "server.rs", exact: true }).click();
+    await expect(side.locator(".ct-sub")).toHaveText("src/server.rs");
+    await expect(page).toHaveURL(/#graph\/\d+/);
+    const out = side.locator(".ct-kind").first();
+    await expect(out.locator(".ct-num")).not.toHaveText("0");
+
+    // A name shows where it is defined and who uses it.
+    const row = side.locator(".ct-name-row").first();
+    const name = (await row.locator(".ct-name-txt").innerText()).trim();
+    await row.click();
+    await expect(side.locator("b").first()).toHaveText(name);
+    await expect(side.locator(".ct-where .ct-def")).toContainText("src/server.rs:");
+
+    // A link kind can be switched off; its slider goes with it.
+    await out.locator(".ct-kind-top").click();
+    await expect(out.locator(".ct-kind-top")).toHaveAttribute("aria-pressed", "false");
+    await expect(out.locator('input[type="range"]')).toBeDisabled();
+    await out.locator(".ct-kind-top").click();
+
+    // Cmd+P jumps by name.
+    await page.keyboard.press("ControlOrMeta+p");
+    const go = page.getByRole("textbox", { name: "Go to" });
+    await expect(go).toBeFocused();
+    await go.fill("config.rs");
+    await expect(page.getByRole("listbox").getByRole("option").first()).toBeVisible();
+    await go.press("Enter");
+    await expect(side.locator(".ct-sub")).toContainText("config.rs");
+
+    // Escape clears; the filter narrows the tree.
+    await page.keyboard.press("Escape");
+    await expect(side.locator(".ct-sub")).toHaveText("Nothing picked");
+    await tree.getByRole("textbox", { name: "Filter files" }).fill("*.toml");
+    await expect(tree.getByRole("button", { name: "server.rs", exact: true })).toHaveCount(0);
+    await tree.getByRole("button", { name: "Clear filter" }).click();
+
+    // Unticking a folder hides its files and offers them back.
+    await tree.getByRole("checkbox", { name: "Show src", exact: true }).first().click();
+    await expect(tree.getByRole("button", { name: /Show \d+ hidden/ })).toBeVisible();
+    await tree.getByRole("button", { name: /Show \d+ hidden/ }).click();
+
+    // The layout toggle swaps to the force map and back.
+    const layout = page.getByRole("group", { name: "Layout" });
+    await layout.getByRole("button", { name: "Symbols" }).click();
+    await expect(stage).toHaveCount(0);
+    await layout.getByRole("button", { name: "Canvas" }).click();
+    await expect(stage).toBeVisible();
+    await page.screenshot({ path: "test-results/canvas.png" });
   });
 });

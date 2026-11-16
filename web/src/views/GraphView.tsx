@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Graph from "graphology";
 import Sigma from "sigma";
@@ -20,6 +20,7 @@ import { GraphLoader, type LoadStep } from "../AsciiMark";
 import { PreEditPanel } from "../AgentChecks";
 import type { IndexProgress } from "../api";
 import Contrast from "./Contrast";
+import CodeCanvas from "./graph/CodeCanvas";
 import type { ContrastMode, Go } from "../nav";
 import { Grip } from "../resize";
 
@@ -79,7 +80,27 @@ export default function GraphView(props: Props) {
         }}
       />
     );
-  return <MapView {...props} />;
+  return <Layouts {...props} />;
+}
+
+type Layout = "canvas" | "symbol" | "file";
+const LAYOUT_KEY = "kula.graph.layout";
+
+/** Canvas draws the repo as nested boxes; Symbols and Files are the force map. */
+function Layouts(props: Props) {
+  const [layout, setLayoutRaw] = useState<Layout>(() => {
+    try { const v = localStorage.getItem(LAYOUT_KEY); return v === "symbol" || v === "file" ? v : "canvas"; } catch { return "canvas"; }
+  });
+  const setLayout = (v: Layout) => { setLayoutRaw(v); try { localStorage.setItem(LAYOUT_KEY, v); } catch { /* private window */ } };
+  const seg = (
+    <div className="seg" role="group" aria-label="Layout">
+      <button className={layout === "canvas" ? "on" : ""} aria-pressed={layout === "canvas"} onClick={() => setLayout("canvas")}>Canvas</button>
+      <button className={layout === "symbol" ? "on" : ""} aria-pressed={layout === "symbol"} onClick={() => setLayout("symbol")}>Symbols</button>
+      <button className={layout === "file" ? "on" : ""} aria-pressed={layout === "file"} onClick={() => setLayout("file")}>Files</button>
+    </div>
+  );
+  if (layout === "canvas") return <CodeCanvas focus={props.focus} setFocus={props.setFocus} version={props.version} layout={seg} />;
+  return <MapView {...props} level={layout} seg={seg} />;
 }
 
 type Filter = { type: "dir" | "cluster" | "kind"; key: string } | null;
@@ -106,14 +127,14 @@ export function shortest(g: Graph, from: string, to: string): string[] | null {
   return bfs((n) => g.outNeighbors(n)) ?? bfs((n) => g.inNeighbors(n)) ?? bfs((n) => g.neighbors(n));
 }
 
-function MapView(props: Props) {
+function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
   const { focus, setFocus, onChanged, version, setContrast, go } = props;
   const box = useRef<HTMLDivElement>(null);
   const sigma = useRef<Sigma | null>(null);
   const s = useSettings();
   const cfg = useRef(s);
   cfg.current = s;
-  const [level, setLevel] = useState<"symbol" | "file">("symbol");
+  const { level } = props;
   const [data, setData] = useState<GraphData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
@@ -624,10 +645,7 @@ function MapView(props: Props) {
       {err && <div className="loading"><Empty title={err.includes("WebGL") ? "Graph unavailable" : "No graph yet"}>{err}{!err.includes("WebGL") && <div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => api.reindex().then(onChanged)}>Build graph</button></div>}</Empty></div>}
 
       <div className="graph-overlay hud">
-        <div className="seg">
-          <button className={level === "symbol" ? "on" : ""} onClick={() => setLevel("symbol")}>Symbols</button>
-          <button className={level === "file" ? "on" : ""} onClick={() => setLevel("file")}>Files</button>
-        </div>
+        {props.seg}
         <button className={`btn sm hud-btn ${s.packages ? "on" : ""}`} aria-pressed={s.packages} onClick={() => settings.set({ packages: !s.packages })} title="Show external packages on the rim">
           <Icon.box /> Packages{pkgCount ? <span className="muted"> {pkgCount}</span> : null}
         </button>
