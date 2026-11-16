@@ -1,5 +1,6 @@
-// Where things sit on the code canvas: each folder is a box packing its
-// subfolders and files into rows, each file a block as tall as its code is long.
+// Where things sit on the code canvas: each folder is a hollow box with its name
+// above it, packing subfolders and files into rows. A file is a bar as tall as its
+// code is long and a little wider when it is big, its name in a column to its left.
 // Pure: the same tree, hidden set and collapsed set always give the same boxes.
 
 import type { DirN, FileN } from "./model";
@@ -12,8 +13,14 @@ export type Placed = {
   bounds: Box;
 };
 
-export const FILE_W = 84, LABEL_H = 13, GAP = 12, PAD = 12, HEAD = 24;
-const SHUT_W = 150, SHUT_H = 46;
+/** DIR_LABEL: room above a folder for its name. FLABEL: the name column left of a file bar. */
+export const DIR_LABEL = 20, FLABEL = 70, GAP = 18, PAD = 18;
+const SHUT_W = 120, SHUT_H = 34;
+
+/** A bar widens with the root of its length too, so big files read as big at a glance. */
+export const fileW = (loc: number) => Math.round(Math.min(44, Math.max(16, 12 + Math.sqrt(loc) * 0.65)));
+/** Roughly how wide a folder's name is drawn, in world units (mono at 11px). */
+export const dirLabelW = (name: string) => (name.length + 1) * 6.6;
 
 /** A block's height grows with the root of its length, so a 3k line file is tall without being a tower. */
 export const fileH = (loc: number) => Math.round(Math.min(280, Math.max(22, 6 + Math.sqrt(loc) * 3.4)));
@@ -26,14 +33,14 @@ export function place(root: DirN, show: (f: FileN) => boolean, shut: Set<string>
   const size = (d: DirN, top: boolean): Sized | null => {
     if (!top && shut.has(d.path)) {
       if (!d.files.some(show) && !d.dirs.some((c) => anyShown(c, show))) return null;
-      return { w: SHUT_W, h: SHUT_H, place: (x, y) => out.dirs.set(d, { x, y, w: SHUT_W, h: SHUT_H, shut: true }) };
+      return { w: SHUT_W, h: DIR_LABEL + SHUT_H, place: (x, y) => out.dirs.set(d, { x, y: y + DIR_LABEL, w: SHUT_W, h: SHUT_H, shut: true }) };
     }
     const items: Sized[] = [];
     for (const c of d.dirs) { const s = size(c, false); if (s) items.push(s); }
     for (const f of d.files) {
       if (!show(f)) continue;
-      const h = fileH(f.loc);
-      items.push({ w: FILE_W, h: LABEL_H + h, place: (x, y) => out.files.set(f, { x, y: y + LABEL_H, w: FILE_W, h }) });
+      const h = fileH(f.loc), w = fileW(f.loc);
+      items.push({ w: FLABEL + w, h, place: (x, y) => out.files.set(f, { x: x + FLABEL, y, w, h }) });
     }
     if (!items.length) return null;
     // tallest first, then try a range of row widths and keep the one closest to the wanted shape
@@ -41,13 +48,13 @@ export function place(root: DirN, show: (f: FileN) => boolean, shut: Set<string>
     const best = pack(items, top ? 1.35 : 1.05);
     const { at, wide } = best;
     const y = best.y, row = best.row;
-    const w = Math.max(wide + PAD * 2, Math.min(260, 40 + d.name.length * 7));
-    const h = HEAD + y + row + PAD;
+    const w = Math.max(wide + PAD * 2, Math.min(240, dirLabelW(d.name) + 24));
+    const h = PAD + y + row + PAD;
     return {
-      w, h,
+      w, h: DIR_LABEL + h,
       place: (bx, by) => {
-        out.dirs.set(d, { x: bx, y: by, w, h, shut: false });
-        items.forEach((it, i) => it.place(bx + PAD + at[i][0], by + HEAD + at[i][1]));
+        out.dirs.set(d, { x: bx, y: by + DIR_LABEL, w, h, shut: false });
+        items.forEach((it, i) => it.place(bx + PAD + at[i][0], by + DIR_LABEL + PAD + at[i][1]));
       },
     };
   };
@@ -73,7 +80,7 @@ function pack(items: Sized[], aspect: number) {
   const sumW = items.reduce((t, it) => t + it.w + GAP, 0);
   const area = items.reduce((t, it) => t + it.w * it.h, 0);
   let best = shelf(items, maxW), score = Infinity;
-  for (let t = maxW; t <= sumW + 1; t = Math.max(t * 1.12, t + FILE_W)) {
+  for (let t = maxW; t <= sumW + 1; t = Math.max(t * 1.12, t + 60)) {
     const r = shelf(items, t), h = r.y + r.row;
     const sc = Math.abs(Math.log(r.wide / h / aspect)) + 0.6 * Math.log((r.wide * h) / area);
     if (sc < score) { score = sc; best = r; }

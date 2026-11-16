@@ -116,3 +116,4 @@ body.resizing { cursor: col-resize; user-select: none; }
 }
 .sb-crumbs i { display: inline-grid; }
 .sb-crumbs i svg { width: 9px; height: 9px; }
+.tw-dock { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }

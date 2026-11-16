@@ -27,8 +27,8 @@ export type Model = {
 /** The kinds a person can toggle. In and out only split once something is picked. */
 export type KindId = "out" | "in" | "imports" | "importers" | "types";
 export const KINDS: { id: KindId; label: string; base: Base; dir: "out" | "in" | "both"; color: string }[] = [
-  { id: "out", label: "Outgoing calls", base: "calls", dir: "out", color: "--accent" },
-  { id: "in", label: "Incoming calls", base: "calls", dir: "in", color: "--blue" },
+  { id: "out", label: "Calls out", base: "calls", dir: "out", color: "--accent" },
+  { id: "in", label: "Calls in", base: "calls", dir: "in", color: "--blue" },
   { id: "imports", label: "Imports", base: "imports", dir: "out", color: "--green" },
   { id: "importers", label: "Imported by", base: "imports", dir: "in", color: "--violet" },
   { id: "types", label: "Type uses", base: "types", dir: "both", color: "--yellow" },

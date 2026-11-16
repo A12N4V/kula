@@ -1,5 +1,5 @@
 // What the code canvas remembers between visits: which links are on and how
-// strong, folded folders, hidden files and the filter. Kept in localStorage.
+// strong, merged and split per symbol, folded folders, hidden files and the filter. Kept in localStorage.
 
 import { useEffect, useState } from "react";
 import { KINDS, type KindId } from "./model";
@@ -8,6 +8,9 @@ export type Prefs = {
   on: KindId[];
   strength: Record<KindId, number>;
   bodies: boolean;
+  /** kinds whose links split per symbol when zoomed in, and how strong those split links are */
+  bodyOn: KindId[];
+  bodyStrength: Record<KindId, number>;
   only: boolean;
   shut: string[];
   hidden: string[];
@@ -19,6 +22,8 @@ const DEFAULTS: Prefs = {
   on: KINDS.map((k) => k.id),
   strength: Object.fromEntries(KINDS.map((k) => [k.id, 0.6])) as Record<KindId, number>,
   bodies: true,
+  bodyOn: KINDS.map((k) => k.id),
+  bodyStrength: Object.fromEntries(KINDS.map((k) => [k.id, 0.4])) as Record<KindId, number>,
   only: false,
   shut: [],
   hidden: [],
@@ -28,7 +33,7 @@ const DEFAULTS: Prefs = {
 function load(): Prefs {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    return raw ? { ...DEFAULTS, ...raw, strength: { ...DEFAULTS.strength, ...raw.strength } } : DEFAULTS;
+    return raw ? { ...DEFAULTS, ...raw, strength: { ...DEFAULTS.strength, ...raw.strength }, bodyStrength: { ...DEFAULTS.bodyStrength, ...raw.bodyStrength } } : DEFAULTS;
   } catch { return DEFAULTS; }
 }
 

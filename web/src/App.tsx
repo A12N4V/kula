@@ -39,6 +39,7 @@ function prefetchViews() {
 import { settings } from "./settings";
 import Opening from "./Opening";
 import ProjectTree from "./studio/ProjectTree";
+import { DockProvider, useDockHost } from "./studio/Dock";
 import Structure from "./studio/Structure";
 import FileEditor from "./studio/FileEditor";
 import EditorTabs, { tabKey, type Tab } from "./studio/EditorTabs";
@@ -219,6 +220,14 @@ export default function App() {
   const [lw, setLw] = useState(() => store.get("kula.studio.lw", 260));
   const [rw, setRw] = useState(() => store.get("kula.studio.rw", 260));
   useEffect(() => { store.set("kula.studio.left", left ? "1" : "0"); store.set("kula.studio.right", right ? "1" : "0"); }, [left, right]);
+  // a view that docks its own panel takes the right sidebar; hiding it there is remembered apart
+  const dock = useDockHost();
+  const [dockHide, setDockHide] = useState(() => store.flag("kula.studio.dock", false));
+  useEffect(() => { store.set("kula.studio.dock", dockHide ? "1" : "0"); }, [dockHide]);
+  const docked = !!dock.label;
+  const showRight = docked ? !dockHide : right;
+  const toggleRight = useRef(() => {});
+  toggleRight.current = () => (docked ? setDockHide((h) => !h) : setRight((r) => !r));
   useEffect(() => { store.set("kula.studio.lw", String(lw)); store.set("kula.studio.rw", String(rw)); }, [lw, rw]);
   const showView = useCallback((v: View) => {
     setFile(null);
@@ -284,7 +293,7 @@ export default function App() {
       // Tool windows by number, as in the IDE: ⌥1 Project, ⌥7 Structure.
       if (e.altKey && !e.metaKey && !e.ctrlKey && (e.code === "Digit1" || e.code === "Digit7")) {
         e.preventDefault();
-        if (e.code === "Digit1") setLeft((l) => !l); else setRight((r) => !r);
+        if (e.code === "Digit1") setLeft((l) => !l); else toggleRight.current();
         return;
       }
       if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") history.back(); else history.forward(); return; }
@@ -320,7 +329,8 @@ export default function App() {
 
   return (
     <CodeProvider onLocate={(id) => go("graph", { symbol: id })} onEdit={(t) => openFile(t.path, t.line)}>
-    <div className={`shell studio ${rail ? "rail-open" : ""} ${left ? "tw-l" : ""} ${right ? "tw-r" : ""}`}>
+    <DockProvider api={dock.api}>
+    <div className={`shell studio ${rail ? "rail-open" : ""} ${left ? "tw-l" : ""} ${showRight ? "tw-r" : ""}`}>
       <header className="topbar">
         <button className="brand" onClick={() => go("overview")} aria-label="Overview"><Logo /><span>kula</span></button>
         <button className="rail-toggle" onClick={() => setRail((r) => !r)} aria-label={rail ? "Hide sidebar" : "Show sidebar"} aria-expanded={rail} aria-controls="rail"><Icon.sidebar /></button>
@@ -361,7 +371,7 @@ export default function App() {
       {left && (
         <aside className="tw tw-left" style={{ width: lw }} aria-label="Project">
           <div className="tw-head"><span>Project</span><span className="spacer" /><button className="tw-hide" aria-label="Hide Project" title="Hide  ⌥1" onClick={() => setLeft(false)}><Icon.close /></button></div>
-          <ProjectTree repo={repo?.name ?? "…"} version={version} active={file?.path ?? null} onOpen={(p) => openFile(p)} />
+          <ProjectTree repo={repo?.name ?? "…"} version={version} active={file?.path ?? dock.active} onOpen={(p) => { if (file || !dock.reveal(p)) openFile(p); }} />
           <Resizer side="left" width={lw} onWidth={setLw} />
         </aside>
       )}
@@ -426,15 +436,15 @@ export default function App() {
         </main>
       </section>
 
-      {right && (
-        <aside className="tw tw-right" style={{ width: rw }} aria-label="Structure">
+      {showRight && (
+        <aside className="tw tw-right" style={{ width: rw }} aria-label={dock.label ?? "Structure"}>
           <Resizer side="right" width={rw} onWidth={setRw} />
-          <div className="tw-head"><span>Structure</span><span className="spacer" /><button className="tw-hide" aria-label="Hide Structure" title="Hide  ⌥7" onClick={() => setRight(false)}><Icon.close /></button></div>
-          <Structure path={file?.path ?? null} line={curLine} onJump={(n) => file && openFile(file.path, n)} />
+          <div className="tw-head"><span>{dock.label ?? "Structure"}</span><span className="spacer" /><button className="tw-hide" aria-label={`Hide ${dock.label ?? "Structure"}`} title="Hide  ⌥7" onClick={() => (docked ? setDockHide(true) : setRight(false))}><Icon.close /></button></div>
+          {docked ? <div className="tw-dock" ref={dock.setSlot} /> : <Structure path={file?.path ?? null} line={curLine} onJump={(n) => file && openFile(file.path, n)} />}
         </aside>
       )}
       <aside className="stripe-right" aria-label="Tool windows">
-        <button className={right ? "on" : ""} onClick={() => setRight((r) => !r)} data-tip="Structure  ⌥7" aria-label="Structure" aria-pressed={right}><Icon.structure /></button>
+        <button className={showRight ? "on" : ""} onClick={() => toggleRight.current()} data-tip={`${dock.label ?? "Structure"}  ⌥7`} aria-label="Structure" aria-pressed={showRight}><Icon.structure /></button>
       </aside>
 
       <footer className="statusbar">
@@ -459,6 +469,7 @@ export default function App() {
       {prefs && <SettingsPanel onClose={() => setPrefs(false)} />}
       {opening && <Opening repo={repo} onDone={endOpening} />}
     </div>
+    </DockProvider>
     </CodeProvider>
   );
 }

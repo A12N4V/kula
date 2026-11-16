@@ -1,21 +1,24 @@
-// Right pane of the code canvas: what is picked, which links to draw and how
-// strongly, and the names inside the pick with where each is defined and used.
+// The code canvas tool window, docked in the shell's right sidebar: go to, what is
+// picked, which links to draw and how strongly, and the names inside the pick.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon, Kind } from "../../ui";
 import { KINDS, type KindId, type Link, type Model, type Selection, type Sym } from "./model";
-import type { Prefs } from "./state";
+import { Glyph } from "./icons";
+import { GoTo } from "./GoTo";
+import { toggleIn, type Prefs } from "./state";
 
 type Props = {
   m: Model; sel: Selection; p: Prefs; counts: Record<KindId, number>;
   set: (patch: Partial<Prefs>) => void;
   pick: (s: Selection) => void;
   open: (s: Sym | null) => void;
+  rescan: () => void; busy: boolean;
 };
 
 const SHOWN = 400;
 
-export function SelectedPanel({ m, sel, p, counts, set, pick, open }: Props) {
+export function SelectedPanel({ m, sel, p, counts, set, pick, open, rescan, busy }: Props) {
   const [name, setName] = useState<Sym | null>(null);
   useEffect(() => { setName(sel?.type === "sym" ? sel.sym : null); }, [sel]);
 
@@ -31,55 +34,71 @@ export function SelectedPanel({ m, sel, p, counts, set, pick, open }: Props) {
     return out;
   }, [sel]);
 
+  const [byUse, setByUse] = useState(false);
+  const listed = useMemo(() => (byUse ? [...names].sort((a, b) => (m.into.get(b.id)?.length ?? 0) - (m.into.get(a.id)?.length ?? 0)) : names), [names, byUse, m]);
+  const pct = (v: number | undefined, d: number) => Math.round((v ?? d) * 100);
+
   return (
-    <aside className="ct-side" aria-label="Selected">
+    <div className="ct ct-side">
       <div className="ct-side-head">
-        <div className="ct-side-title">
-          <span className="ct-cap">Selected</span>
+        <div className={`ct-pick${sel ? " on" : ""}`}>
           <b title={title}>{title}</b>
           <span className="ct-sub" title={sub}>{sub}</span>
         </div>
-        {sel && sel.type !== "dir" && <button className="btn sm ghost" onClick={() => open(sel.type === "sym" ? sel.sym : null)} title="Open source" aria-label="Open source"><Icon.doc /></button>}
-        {sel && <button className="btn sm ghost" onClick={() => pick(null)} aria-label="Clear selection" title="Clear (Esc)"><Icon.close /></button>}
+        <Menu label="Selection actions" items={[
+          { label: "Open source", off: !sel || sel.type === "dir", run: () => sel && sel.type !== "dir" && open(sel.type === "sym" ? sel.sym : null) },
+          { label: "Clear selection", off: !sel, run: () => pick(null) },
+          { label: "Reset filters", run: () => set({ on: KINDS.map((k) => k.id), bodyOn: KINDS.map((k) => k.id), strength: fill(0.6), bodyStrength: fill(0.4), only: false }) },
+          { label: busy ? "Rescanning" : "Rescan repo", off: busy, run: rescan },
+        ]} />
       </div>
+      <GoTo m={m} pick={pick} />
 
       <div className="ct-side-scroll">
-        <section className="ct-sec">
-          <label className="ct-line">
-            <span>Show only connected files</span>
-            <button className={`switch${p.only ? " on" : ""}`} role="switch" aria-checked={p.only} aria-label="Show only connected files" disabled={!sel} onClick={() => set({ only: !p.only })}><i /></button>
-          </label>
-          <label className="ct-line">
-            <span>Bodies</span>
-            <button className={`switch${p.bodies ? " on" : ""}`} role="switch" aria-checked={p.bodies} aria-label="Show symbol bodies" onClick={() => set({ bodies: !p.bodies })}><i /></button>
-          </label>
+
+        <section className="ct-card">
+          <h4><Glyph.eye />Show</h4>
+          <Tick on={p.only} disabled={!sel} label="Only connected files" set={(v) => set({ only: v })} />
+          <Tick on={p.bodies} label="Symbols on files" set={(v) => set({ bodies: v })} />
         </section>
 
-        <section className="ct-sec">
-          <h4>Links</h4>
+        <section className="ct-card">
+          <h4><Glyph.funnel />Filters</h4>
           {KINDS.map((k) => {
-            const on = p.on.includes(k.id);
+            const on = p.on.includes(k.id), body = p.bodyOn.includes(k.id);
             const idle = !sel && (k.id === "in" || k.id === "importers");
+            const st = pct(p.strength[k.id], 0.6), bst = pct(p.bodyStrength[k.id], 0.4);
             return (
               <div key={k.id} className={`ct-kind${on ? "" : " off"}${idle ? " idle" : ""}`}>
-                <button className="ct-kind-top" aria-pressed={on} onClick={() => set({ on: on ? p.on.filter((x) => x !== k.id) : [...p.on, k.id] })} title={idle ? "Pick something to split in from out" : undefined}>
-                  <i className="ct-swatch" style={{ background: `var(${k.color})` }} />
-                  <span className={`ct-box${on ? " on" : ""}`}>{on && <Icon.check />}</span>
-                  <span className="ct-kind-name">{k.label}</span>
-                  <span className="ct-num">{counts[k.id]}</span>
-                </button>
-                <input type="range" min={0} max={100} value={Math.round((p.strength[k.id] ?? 0.6) * 100)} disabled={!on}
-                  aria-label={`${k.label} strength`} style={{ ["--fill" as string]: `${Math.round((p.strength[k.id] ?? 0.6) * 100)}%`, ["--c" as string]: `var(${k.color})` }}
-                  onChange={(e) => set({ strength: { ...p.strength, [k.id]: Number(e.target.value) / 100 } })} />
+                <div className="ct-kind-row">
+                  <button className="ct-kind-top" aria-pressed={on} onClick={() => set({ on: toggleIn(p.on, k.id) })} title={idle ? "Pick something to split in from out" : undefined}>
+                    <i className="ct-swatch" style={{ background: `var(${k.color})` }} />
+                    <span className={`ct-box${on ? " on" : ""}`}>{on && <Icon.check />}</span>
+                    <span className="ct-kind-name">{k.label}</span>
+                    <span className="ct-num">{counts[k.id]}</span>
+                  </button>
+                  <Slider value={st} disabled={!on} color={k.color} label={`${k.label} strength`} set={(v) => set({ strength: { ...p.strength, [k.id]: v } })} />
+                </div>
+                <div className={`ct-kind-row ct-body${body && on ? "" : " off"}`}>
+                  <button className="ct-kind-top" aria-pressed={body} disabled={!on} onClick={() => set({ bodyOn: toggleIn(p.bodyOn, k.id) })} title="Split per symbol when zoomed in">
+                    <span className={`ct-box${body ? " on" : ""}`}>{body && <Icon.check />}</span>
+                    <span className="ct-kind-name">Bodies</span>
+                  </button>
+                  <Slider value={bst} disabled={!on || !body} color={k.color} label={`${k.label} bodies strength`} set={(v) => set({ bodyStrength: { ...p.bodyStrength, [k.id]: v } })} />
+                </div>
               </div>
             );
           })}
         </section>
 
-        <section className="ct-sec">
-          <h4>Names <span className="ct-num">{names.length}</span></h4>
-          {!sel && <p className="ct-hint">Pick a file or folder to list its names</p>}
-          {names.slice(0, SHOWN).map((s) => (
+        <section className="ct-card">
+          <h4><Glyph.names />Names <span className="ct-num">{names.length || ""}</span><span className="spacer" />
+            <Menu label="Name actions" items={[
+              { label: byUse ? "Sort by line" : "Sort by uses", run: () => setByUse((x) => !x) },
+            ]} />
+          </h4>
+          {!names.length && <p className="ct-hint">Click a name on a card to see where it is defined and used.</p>}
+          {listed.slice(0, SHOWN).map((s) => (
             <div key={s.id}>
               <button className={`ct-name-row${name === s ? " on" : ""}`} onClick={() => (name === s ? setName(null) : pick({ type: "sym", sym: s }))} title={`${s.file.path}:${s.line}`}>
                 <Kind kind={s.kind} size={14} />
@@ -92,7 +111,53 @@ export function SelectedPanel({ m, sel, p, counts, set, pick, open }: Props) {
           {names.length > SHOWN && <p className="ct-hint">{names.length - SHOWN} more, use Go to</p>}
         </section>
       </div>
-    </aside>
+    </div>
+  );
+}
+
+const fill = (v: number) => Object.fromEntries(KINDS.map((k) => [k.id, v])) as Record<KindId, number>;
+
+/** A square tick with its label, the house checkbox. */
+function Tick({ on, label, set, disabled }: { on: boolean; label: string; set: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <button className="ct-tick" role="checkbox" aria-checked={on} disabled={disabled} onClick={() => set(!on)}>
+      <span className={`ct-box${on ? " on" : ""}`}>{on && <Icon.check />}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+/** A thin track with a round knob and its value as a percent. */
+function Slider({ value, set, color, label, disabled }: { value: number; set: (v: number) => void; color: string; label: string; disabled?: boolean }) {
+  return (
+    <span className="ct-slider">
+      <input type="range" min={0} max={100} value={value} disabled={disabled} aria-label={label}
+        style={{ ["--fill" as string]: `${value}%`, ["--c" as string]: `var(${color})` }}
+        onChange={(e) => set(Number(e.target.value) / 100)} />
+      <span className="ct-pct">{value}%</span>
+    </span>
+  );
+}
+
+/** A three dot button with a short list of actions. */
+function Menu({ label, items }: { label: string; items: { label: string; run: () => void; off?: boolean }[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+  return (
+    <div className="ct-menu" ref={ref}>
+      <button className="ct-ib" aria-label={label} aria-expanded={open} onClick={() => setOpen((x) => !x)}><Glyph.more /></button>
+      {open && (
+        <div className="ct-menu-list" role="menu">
+          {items.map((it) => <button key={it.label} role="menuitem" disabled={it.off} onClick={() => { it.run(); setOpen(false); }}>{it.label}</button>)}
+        </div>
+      )}
+    </div>
   );
 }
 

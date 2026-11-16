@@ -1577,7 +1577,7 @@ test.describe("P3.11 · six view rail", () => {
 });
 
 test.describe("code canvas", () => {
-  test("nested boxes: pick from the tree, link counts, names with where, go to, fold, filter, layout toggle", async ({ page }) => {
+  test("nested boxes: pick from the project tree, link counts, names with where, go to, layout toggle", async ({ page }) => {
     test.setTimeout(60_000);
     await open(page, "graph", "canvas");
     const stage = page.locator(".ct-stage canvas");
@@ -1585,9 +1585,11 @@ test.describe("code canvas", () => {
     const side = page.getByRole("complementary", { name: "Selected" });
     await expect(side.locator(".ct-sub")).toHaveText("Nothing picked");
 
-    // Picking a file in the tree fills the side panel and the URL.
-    const tree = page.getByRole("complementary", { name: "Files" });
-    await tree.getByRole("button", { name: "server.rs", exact: true }).click();
+    // Picking a file in the shell's Project tree picks it on the canvas, no tree of its own.
+    const tree = page.getByRole("complementary", { name: "Project" });
+    if (!(await tree.isVisible())) await page.locator("button.tool[aria-label=\"Project\"]").click();
+    await tree.getByRole("textbox", { name: "Filter files" }).fill("server.rs");
+    await tree.getByRole("button", { name: /^(src\/)?server\.rs$/ }).first().click();
     await expect(side.locator(".ct-sub")).toHaveText("src/server.rs");
     await expect(page).toHaveURL(/#graph\/\d+/);
     const out = side.locator(".ct-kind").first();
@@ -1601,10 +1603,10 @@ test.describe("code canvas", () => {
     await expect(side.locator(".ct-where .ct-def")).toContainText("src/server.rs:");
 
     // A link kind can be switched off; its slider goes with it.
-    await out.locator(".ct-kind-top").click();
-    await expect(out.locator(".ct-kind-top")).toHaveAttribute("aria-pressed", "false");
-    await expect(out.locator('input[type="range"]')).toBeDisabled();
-    await out.locator(".ct-kind-top").click();
+    await out.locator(".ct-kind-top").first().click();
+    await expect(out.locator(".ct-kind-top").first()).toHaveAttribute("aria-pressed", "false");
+    await expect(out.locator('input[type="range"]').first()).toBeDisabled();
+    await out.locator(".ct-kind-top").first().click();
 
     // Cmd+P jumps by name.
     await page.keyboard.press("ControlOrMeta+p");
@@ -1615,17 +1617,9 @@ test.describe("code canvas", () => {
     await go.press("Enter");
     await expect(side.locator(".ct-sub")).toContainText("config.rs");
 
-    // Escape clears; the filter narrows the tree.
+    // Escape clears.
     await page.keyboard.press("Escape");
     await expect(side.locator(".ct-sub")).toHaveText("Nothing picked");
-    await tree.getByRole("textbox", { name: "Filter files" }).fill("*.toml");
-    await expect(tree.getByRole("button", { name: "server.rs", exact: true })).toHaveCount(0);
-    await tree.getByRole("button", { name: "Clear filter" }).click();
-
-    // Unticking a folder hides its files and offers them back.
-    await tree.getByRole("checkbox", { name: "Show src", exact: true }).first().click();
-    await expect(tree.getByRole("button", { name: /Show \d+ hidden/ })).toBeVisible();
-    await tree.getByRole("button", { name: /Show \d+ hidden/ }).click();
 
     // The layout toggle swaps to the force map and back.
     const layout = page.getByRole("group", { name: "Layout" });

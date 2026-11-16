@@ -1,16 +1,17 @@
-// The code canvas: folders as boxes, files as blocks as tall as their code,
-// links drawn line to line. Files on the left, the canvas in the middle, the pick
-// and its link filters on the right. Model, layout and paint live beside this file.
+// The code canvas: folders as hollow boxes, files as bars as tall as their code,
+// links drawn line to line. The centre pane only draws; the pick and its link filters
+// dock into the shell's right sidebar and the Project tree picks files in place.
+// Model, layout and paint live beside this file.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { api, type GraphData } from "../../api";
 import { useCode } from "../../CodePanel";
 import { Empty, Icon, Kind, useToast } from "../../ui";
 import { hitTest, paint, readColors, type Hit, type View } from "./draw";
-import { FileTree } from "./FileTree";
-import { GoTo } from "./GoTo";
+import { CodePeek, type PeekFn } from "./CodePeek";
 import { place, type Box } from "./layout";
-import { build, connected, kindOf, KINDS, matcher, selKey, type FileN, type KindId, type Model, type Selection, type Sym } from "./model";
+import { Docked, useDockTree } from "../../studio/Dock";
+import { build, connected, kindOf, KINDS, selKey, type FileN, type KindId, type Model, type Selection, type Sym } from "./model";
 import { SelectedPanel } from "./SelectedPanel";
 import { usePrefs } from "./state";
 
@@ -49,21 +50,19 @@ function Canvas({ m, focus, setFocus, layout, rescan, busy }: Props & { m: Model
   const [hover, setHover] = useState<{ hit: Hit; x: number; y: number } | null>(null);
 
   const on = useMemo(() => new Set<KindId>(p.on), [p.on]);
-  const hidden = useMemo(() => new Set(p.hidden), [p.hidden]);
+  const bodyOn = useMemo(() => new Set<KindId>(p.bodyOn), [p.bodyOn]);
   const shut = useMemo(() => new Set(p.shut), [p.shut]);
-  const match = useMemo(() => matcher(p.filter), [p.filter]);
   const conn = useMemo(() => (sel ? connected(m, sel, on) : null), [m, sel, on]);
   const only = p.only && !!sel;
   const placed = useMemo(
-    () => place(m.root, (f) => !hidden.has(f.path) && match(f.path) && (!only || !!conn?.has(f)), shut),
-    [m, hidden, match, only, conn, shut],
+    () => place(m.root, (f) => !only || !!conn?.has(f), shut),
+    [m, only, conn, shut],
   );
   const counts = useMemo(() => {
     const c = Object.fromEntries(KINDS.map((k) => [k.id, 0])) as Record<KindId, number>;
     for (const l of m.links) { if (l.sf === l.df) continue; const k = kindOf(l, sel); if (k) c[k]++; }
     return c;
   }, [m, sel]);
-  const total = useMemo(() => m.links.filter((l) => l.sf !== l.df).length, [m]);
 
   // the canvas itself: sized to its box, painted on the next frame after any change
   const wrap = useRef<HTMLDivElement>(null);
@@ -71,14 +70,17 @@ function Canvas({ m, focus, setFocus, layout, rescan, busy }: Props & { m: Model
   const view = useRef<View>({ k: 1, x: 0, y: 0 });
   const size = useRef({ w: 0, h: 0 });
   const frame = useRef(0);
-  const state = useRef({ m, p: placed, sel, hover: null as FileN | Sym | null, on, strength: p.strength, bodies: p.bodies, dim: conn && !only ? conn : null });
-  state.current = { m, p: placed, sel, hover: hover?.hit?.type === "file" ? hover.hit.file : hover?.hit?.type === "sym" ? hover.hit.sym : null, on, strength: p.strength, bodies: p.bodies, dim: conn && !only ? conn : null };
+  const peek = useRef<PeekFn | null>(null);
+  const now = { m, p: placed, sel, hover: (hover?.hit?.type === "file" ? hover.hit.file : hover?.hit?.type === "sym" ? hover.hit.sym : null) as FileN | Sym | null, on, strength: p.strength, bodies: p.bodies, bodyOn, bodyStrength: p.bodyStrength, dim: conn && !only ? conn : null };
+  const state = useRef(now);
+  state.current = now;
   const draw = useCallback(() => {
     cancelAnimationFrame(frame.current);
     frame.current = requestAnimationFrame(() => {
       const c = cv.current, ctx = c?.getContext("2d");
       if (!c || !ctx) return;
       paint(ctx, size.current.w, size.current.h, window.devicePixelRatio || 1, { ...state.current, view: view.current });
+      peek.current?.(view.current, state.current.p);
     });
   }, []);
   useEffect(draw);
@@ -109,7 +111,7 @@ function Canvas({ m, focus, setFocus, layout, rescan, busy }: Props & { m: Model
   // refit when the set of drawn files changes shape
   const shape = `${placed.bounds.w}x${placed.bounds.h}`;
   const lastShape = useRef(shape);
-  useEffect(() => { if (lastShape.current !== shape) { lastShape.current = shape; if (only || p.filter) fit(); } }, [shape]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (lastShape.current !== shape) { lastShape.current = shape; if (only) fit(); } }, [shape]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const center = useCallback((b: Box) => {
     const { w, h } = size.current;
@@ -225,46 +227,62 @@ function Canvas({ m, focus, setFocus, layout, rescan, busy }: Props & { m: Model
     return () => window.removeEventListener("keydown", key);
   }, []);
 
-  const setHidden = (paths: string[], hide: boolean) => {
-    const h = new Set(p.hidden);
-    for (const x of paths) if (hide) h.add(x); else h.delete(x);
-    set({ hidden: [...h] });
-  };
+  // the Project tree in the left sidebar picks files here instead of opening them
+  const selFile = sel?.type === "file" ? sel.file : sel?.type === "sym" ? sel.sym.file : null;
+  useDockTree((path) => {
+    for (const f of m.files.values()) if (f.path === path) { pick({ type: "file", file: f }); return true; }
+    return false;
+  }, selFile?.path ?? null);
+
+  const hovered = hover?.hit?.type === "sym" ? hover.hit.sym : null;
 
   return (
     <div className="ct">
-      <FileTree m={m} sel={sel} hidden={hidden} filter={p.filter} links={total} setFilter={(filter) => set({ filter })} setHidden={setHidden} pick={(s) => pick(s)} />
       <div className="ct-stage" ref={wrap}>
         <canvas ref={cv} className="ct-canvas" aria-label="Code canvas" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={() => !drag.current && setHover(null)} onDoubleClick={onDouble}
           style={{ cursor: hover ? "pointer" : "default" }} />
-        <header className="ct-top">
-          <GoTo m={m} pick={(s) => pick(s)} />
-          <span className="spacer" />
+        <div className="ct-float">
           {layout}
-          <button className={`btn sm${busy ? " loading" : ""}`} onClick={rescan} disabled={busy} title="Index the repo again"><Icon.refresh />Rescan</button>
-        </header>
+          <Crumbs m={m} sel={sel} pick={(s) => pick(s)} />
+        </div>
+        <CodePeek reg={peek} sym={sel?.type === "sym" ? sel.sym : hovered} file={selFile} redraw={draw} open={openSrc} />
         <div className="ct-zoom" role="group" aria-label="Zoom">
           <button className="btn sm" aria-label="Zoom in" onClick={() => zoomAt(size.current.w / 2, size.current.h / 2, 1.25)}><Icon.plus /></button>
           <button className="btn sm" aria-label="Zoom out" onClick={() => zoomAt(size.current.w / 2, size.current.h / 2, 0.8)}><Icon.minus /></button>
           <button className="btn sm" aria-label="Fit" title="Fit" onClick={() => fit()}><Icon.target /></button>
         </div>
         {hover && <Tip hit={hover.hit} x={hover.x} y={hover.y} m={m} />}
-        {!placed.files.size && <div className="ct-empty">No files to draw<button className="btn sm" onClick={() => set({ filter: "", hidden: [], only: false })}>Show all</button></div>}
+        {!placed.files.size && <div className="ct-empty">No files to draw<button className="btn sm" onClick={() => set({ only: false })}>Show all</button></div>}
       </div>
-      <SelectedPanel m={m} sel={sel} p={p} counts={counts} set={set} pick={(s) => pick(s)} open={openSrc} />
+      <Docked label="Selected">
+        <SelectedPanel m={m} sel={sel} p={p} counts={counts} set={set} pick={(s) => pick(s)} open={openSrc} rescan={rescan} busy={busy} />
+      </Docked>
     </div>
+  );
+}
+
+/** Where the pick sits, from the repo down; each folder in the trail picks itself. */
+function Crumbs({ m, sel, pick }: { m: Model; sel: Selection; pick: (s: Selection) => void }) {
+  const d = sel?.type === "dir" ? sel.dir : sel?.type === "file" ? sel.file.dir : sel?.type === "sym" ? sel.sym.file.dir : null;
+  const trail: typeof m.root[] = [];
+  for (let x = d; x && x.parent; x = x.parent) trail.unshift(x);
+  return (
+    <nav className="ct-crumbs" aria-label="Path">
+      <button onClick={() => pick(null)}>{m.root.name}/</button>
+      {trail.map((x) => <button key={x.path} onClick={() => pick({ type: "dir", dir: x })}>{x.name}/</button>)}
+    </nav>
   );
 }
 
 function Tip({ hit, x, y, m }: { hit: Hit; x: number; y: number; m: Model }) {
   if (!hit) return null;
   const body = hit.type === "toggle"
-    ? <><b>{hit.dir.name}/</b><span>{hit.dir.count} files · click to fold</span></>
+    ? <><b>{hit.dir.name}/</b><span>{hit.dir.count} files</span></>
     : hit.type === "file"
-      ? <><b>{hit.file.path}</b><span>{hit.file.loc} lines · {hit.file.syms.length} names</span></>
+      ? <><b>{hit.file.path}</b><span>{hit.file.loc} lines</span></>
       : hit.type === "sym"
-        ? <><b><Kind kind={hit.sym.kind} size={12} /> {hit.sym.name}</b><span>{hit.sym.file.path}:{hit.sym.line} · {(m.into.get(hit.sym.id)?.length ?? 0)} in · {(m.out.get(hit.sym.id)?.length ?? 0)} out</span></>
+        ? <><Kind kind={hit.sym.kind} size={12} /><b>{hit.sym.name}</b><span>{(m.into.get(hit.sym.id)?.length ?? 0)} in {(m.out.get(hit.sym.id)?.length ?? 0)} out</span></>
         : null;
   if (!body) return null;
-  return <div className="ct-tip" style={{ left: x + 14, top: y + 14 }}>{body}</div>;
+  return <div className="ct-tip" style={{ left: x + 14, top: y + 14 }}>{hit.type !== "sym" && <span className="ct-dot" />}{body}</div>;
 }
