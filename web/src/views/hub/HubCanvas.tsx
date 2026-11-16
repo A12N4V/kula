@@ -5,7 +5,7 @@
 import "@xyflow/react/dist/style.css";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import {
-  Background, Controls, Handle, MarkerType, Position, ReactFlow, applyNodeChanges, useReactFlow, useStore,
+  Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, applyNodeChanges, useReactFlow, useStore,
   type Connection, type Edge, type Node, type NodeChange, type NodeProps,
 } from "@xyflow/react";
 import { api, type AgentsInfo, type FlowMap, type Member, type Research, type ResearchRun, type Team } from "../../api";
@@ -13,58 +13,40 @@ import { seatKey } from "../../roster";
 import { Mark } from "../../brands";
 import type { Draft, LinkKind, Pick } from "./draft";
 import type { Paint } from "./live";
-import { FLOW_H, LANE_W, SEAT_W, lanes, matcher, place, seatH, seatId, teamId, type Saved } from "./layout";
+import { FLOW_H, LANE_W, LAYOUT_MARK, SEAT_H, SEAT_W, lanes, matcher, place, seatId, teamId, type Saved } from "./layout";
 
 export type Item = { kind: "agent" | "skill" | "mcp" | "memory" | "template"; value: string };
 export const DND = "application/kula-hub";
 
-type SeatData = { m: Member; team: Team; picked: boolean; live?: string; overlap: boolean; research?: Research | null; loop?: ResearchRun };
+type SeatData = { m: Member; team: Team; picked: boolean; live?: string; overlap: boolean; research?: Research | null; loop?: ResearchRun; add: () => void };
 type TeamData = { team: Team; picked: boolean };
 type LaneData = { label: string; more: number; count: number; hit: boolean };
 type FlowData = { name: string; kind: string; steps: number; hit: boolean; picked: boolean };
 
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
+// A seat reads like a workflow node: an icon tile, its name under it, a port each side.
+// Left in takes a boss, right out feeds a report (drag to a left port, or press + for a new one).
 const SeatNode = memo(({ data }: NodeProps<Node<SeatData>>) => {
-  const { m, team, picked, live, overlap, research, loop } = data;
+  const { m, team, picked, live, overlap, research, loop, add } = data;
   const f = m.fence ?? {};
-  const fences = [["lock", f.lock?.length], ["hide", f.hide?.length], ["review", f.review?.length], ["scope", m.scope?.length]] as const;
-  const chips = [...(m.skills ?? []).map((s) => ["skill", s]), ...(m.mcp ?? []).map((s) => ["mcp", s])];
+  const fenced = !!(f.lock?.length || f.hide?.length || f.review?.length || m.scope?.length);
+  const attached = (m.skills?.length ?? 0) + (m.mcp?.length ?? 0) + (m.memory ? 1 : 0);
+  const sub = research ? `${research.goal === "max" ? "\u2191" : "\u2193"} ${short(research.metric, 12)}${loop ? ` ${loop.best}` : ""}` : [m.agent || "any agent", m.model].filter(Boolean).join(" · ");
   return (
     <div className={`hub-seat${picked ? " picked" : ""}${live ? ` live-${live}` : ""}${research ? " research" : ""}`} style={{ "--seat": m.color || team.color || "var(--line-2)" } as React.CSSProperties} data-seat={seatKey(m)}>
-      <Handle type="target" position={Position.Top} />
-      <div className="hub-seat-head">
-        {m.agent ? <Mark id={m.agent} size={14} /> : <span className="hub-seat-dot" />}
-        <span className="hub-seat-name">{seatKey(m)}</span>
-        {overlap && <span className="hub-warn mono" title="Shares files with another seat">shares</span>}
+      <Handle type="target" position={Position.Left} className="hub-port in" />
+      <Handle type="target" id="hi" position={Position.Top} className="hub-port ho" />
+      <div className="hub-tile">
+        {m.agent ? <Mark id={m.agent} size={24} /> : <span className="hub-seat-dot" />}
+        {attached > 0 && <span className="hub-tile-n mono" title={`${attached} skills, MCP or memory`}>{attached}</span>}
+        {(fenced || overlap) && <span className={`hub-tile-fence${overlap ? " warn" : ""}`} title={overlap ? "Shares files with another seat" : "Fenced"} />}
       </div>
-      <div className="hub-seat-sub mono">{[m.agent || "any agent", m.model, m.role].filter(Boolean).join(" · ")}</div>
-      {research ? (
-        <div className="hub-seat-research mono" aria-label={`Research on ${research.metric}`}>
-          <span className="hub-chip research" title={research.goal === "max" ? "higher is better" : "lower is better"}>{research.goal === "max" ? "\u2191" : "\u2193"} {short(research.metric, 12)}</span>
-          {!!research.budget && <span title="Budget">{loop ? `${loop.experiments.length}/` : ""}{research.budget}</span>}
-          {!!research.timeout && <span title="Timeout per experiment">{research.timeout}s</span>}
-          {loop && <span className={loop.active ? "accent" : "muted"} title={`base ${loop.baseline}`}>best {loop.best}</span>}
-        </div>
-      ) : (chips.length > 0 || m.memory) && (
-      <div className="hub-seat-chips">
-        {chips.slice(0, 3).map(([k, v]) => <span key={`${k}${v}`} className={`hub-chip ${k}`}>{short(v, 14)}</span>)}
-        {chips.length > 3 && <span className="hub-chip more">+{chips.length - 3}</span>}
-        {m.memory && <span className="hub-chip memory">{short(m.memory.split("/").pop() || m.memory, 12)}</span>}
-      </div>
-      )}
-      {(!!m.tags?.length || fences.some(([, n]) => !!n)) && (
-      <div className="hub-seat-fence mono">
-        {(m.tags ?? []).slice(0, 2).map((t) => <span key={t} className="hub-tag">{t}</span>)}
-        <span className="spacer" />
-        {fences.map(([k, n]) => !!n && <span key={k} className={`hub-fence ${k}`} title={`${n} ${k}`}>{k} {n}</span>)}
-      </div>
-      )}
-      <Handle type="source" position={Position.Bottom} />
-      <Handle type="source" id="sr" position={Position.Right} className="hub-side" isConnectable={false} />
-      <Handle type="source" id="sl" position={Position.Left} className="hub-side" isConnectable={false} />
-      <Handle type="target" id="tl" position={Position.Left} className="hub-side" isConnectable={false} />
-      <Handle type="target" id="tr" position={Position.Right} className="hub-side" isConnectable={false} />
+      <div className="hub-seat-name">{seatKey(m)}</div>
+      <div className="hub-seat-sub mono">{sub}</div>
+      <Handle type="source" position={Position.Right} className="hub-port out" />
+      <button className="hub-plus nodrag nopan" aria-label={`Add after ${seatKey(m)}`} onClick={(e) => { e.stopPropagation(); add(); }}>+</button>
+      <Handle type="source" id="ho" position={Position.Bottom} className="hub-port ho" />
     </div>
   );
 });
@@ -99,10 +81,10 @@ const FlowNode = memo(({ data }: NodeProps<Node<FlowData>>) => (
 
 const nodeTypes = { seat: SeatNode, team: TeamNode, lane: LaneNode, flow: FlowNode };
 
-export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, paint, onItem }: {
+export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, paint, onItem, onAfter, onEmpty }: {
   info: AgentsInfo; d: Draft; pick: Pick; setPick: (p: Pick) => void;
-  flow: string | null; setFlow: (f: string | null) => void; map: FlowMap | null; link: LinkKind;
-  paint?: Paint; onItem: (it: Item, at: Pick) => void;
+  flow: string | null; setFlow: (f: string | null) => void; map: FlowMap | null;
+  paint?: Paint; onItem: (it: Item, at: Pick) => void; onAfter: (at: { team: string; key: string }) => void; onEmpty: () => void;
 }) {
   const rf = useReactFlow();
   const [saved, setSaved] = useState<Saved>(info.layout ?? {});
@@ -137,11 +119,11 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
       out.push({ id: teamId(t.name), type: "team", position: { x: b.x, y: b.y }, style: { width: b.w, height: b.h }, data: { team: t, picked: pick?.team === t.name && !pick.key }, selectable: false });
       for (const m of t.members) {
         const id = seatId(t.name, seatKey(m));
-        out.push({ id, type: "seat", parentId: teamId(t.name), position: at.seats.get(id)!, style: { width: SEAT_W, height: seatH(m, isResearch(m)) }, data: { m, team: t, picked: pick?.team === t.name && pick.key === seatKey(m), live: paint?.seats.get(id), overlap: overlaps.has(id), research: m.workflow ? flows.get(m.workflow) : null, loop: m.workflow ? info.research.find((r) => r.workflow === m.workflow) : undefined }, selectable: false });
+        out.push({ id, type: "seat", parentId: teamId(t.name), position: at.seats.get(id)!, style: { width: SEAT_W, height: SEAT_H }, data: { add: () => onAfter({ team: t.name, key: seatKey(m) }), m, team: t, picked: pick?.team === t.name && pick.key === seatKey(m), live: paint?.seats.get(id), overlap: overlaps.has(id), research: m.workflow ? flows.get(m.workflow) : null, loop: m.workflow ? info.research.find((r) => r.workflow === m.workflow) : undefined }, selectable: false });
       }
     }
     return out;
-  }, [map, covers, flow, d.draft, saved, pick, paint, overlaps, flows, info.research, aspect, width]);
+  }, [map, covers, flow, d.draft, saved, pick, paint, overlaps, flows, info.research, aspect, width, onAfter]);
 
   const [nodes, setNodes] = useState<Node[]>(built);
   useEffect(() => { setNodes(built); }, [built]);
@@ -149,24 +131,17 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
 
   const edges = useMemo(() => {
     const out: Edge[] = [];
-    // a hand off between seats on one row runs side to side, not over the top of them
-    const at = new Map(built.map((n) => [n.id, n.position]));
-    const side = (a: string, b: string): Partial<Edge> => {
-      const p = at.get(a), q = at.get(b);
-      if (!p || !q || Math.abs(p.y - q.y) > 8) return {};
-      return p.x < q.x ? { sourceHandle: "sr", targetHandle: "tl", type: "smoothstep" } : { sourceHandle: "sl", targetHandle: "tr", type: "smoothstep" };
-    };
     for (const t of d.draft) {
       const keys = new Set(t.members.map(seatKey));
       for (const m of t.members) {
         const k = seatKey(m);
-        if (m.reports_to && keys.has(m.reports_to)) out.push({ id: `rt:${t.name}/${m.reports_to}>${k}`, source: seatId(t.name, m.reports_to), target: seatId(t.name, k), type: "smoothstep", className: "cv-edge-rt", data: { kind: "rt", team: t.name, from: m.reports_to, to: k } });
-        for (const h of m.hands_off ?? []) if (keys.has(h)) out.push({ id: `ho:${t.name}/${k}>${h}`, source: seatId(t.name, k), target: seatId(t.name, h), ...side(seatId(t.name, k), seatId(t.name, h)), className: "cv-edge-ho", markerEnd: { type: MarkerType.ArrowClosed, color: "#f97f3a", width: 14, height: 14 }, data: { kind: "ho", team: t.name, from: k, to: h } });
+        if (m.reports_to && keys.has(m.reports_to)) out.push({ id: `rt:${t.name}/${m.reports_to}>${k}`, source: seatId(t.name, m.reports_to), target: seatId(t.name, k), className: "cv-edge-rt", data: { kind: "rt", team: t.name, from: m.reports_to, to: k } });
+        for (const h of m.hands_off ?? []) if (keys.has(h)) out.push({ id: `ho:${t.name}/${k}>${h}`, source: seatId(t.name, k), target: seatId(t.name, h), sourceHandle: "ho", targetHandle: "hi", className: "cv-edge-ho", markerEnd: { type: MarkerType.ArrowClosed, color: "#f97f3a", width: 14, height: 14 }, data: { kind: "ho", team: t.name, from: k, to: h } });
       }
     }
     for (const h of paint?.handoffs ?? []) out.push({ ...h, className: "cv-edge-live", animated: true, deletable: false });
     return out;
-  }, [d.draft, paint, built]);
+  }, [d.draft, paint]);
 
   // fit once there is something to fit, and again when the map comes or goes
   // (only once the canvas has a size, and again when its width settles elsewhere)
@@ -227,7 +202,7 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
   };
   const onConnect = (c: Connection) => {
     const a = parse(c.source), b = parse(c.target);
-    if (a && b && a.team === b.team) d.connect(link, a.team, a.key, b.key);
+    if (a && b && a.team === b.team) d.connect(c.sourceHandle === "ho" ? "ho" : "rt", a.team, a.key, b.key);
   };
   const onEdgesDelete = (es: Edge[]) => es.forEach((e) => { const x = e.data as { kind?: LinkKind; team: string; from: string; to: string } | undefined; if (x?.kind) d.dropEdge(x.kind, x.team, x.from, x.to); });
 
@@ -244,8 +219,8 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
     }
     if (n.type !== "seat" && n.type !== "team") return;
     const ids = new Set(built.map((x) => x.id));
-    const next: Saved = {};
-    for (const [k, v] of Object.entries({ ...saved, [n.id]: [Math.round(n.position.x), Math.round(n.position.y)] as [number, number] })) if (ids.has(k)) next[k] = v;
+    const next: Saved = { [LAYOUT_MARK]: [2, 0] };
+    for (const [k, v] of Object.entries({ ...(saved[LAYOUT_MARK] ? saved : {}), [n.id]: [Math.round(n.position.x), Math.round(n.position.y)] as [number, number] })) if (ids.has(k)) next[k] = v;
     setSaved(next);
     api.agentAction("layout_save", { layout: next }).catch(() => undefined);
   };
@@ -278,10 +253,10 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, link, pa
         minZoom={0.25} maxZoom={1.6} fitView fitViewOptions={{ padding: 0.14, maxZoom: 1, minZoom: floor }} proOptions={{ hideAttribution: true }} deleteKeyCode={["Backspace", "Delete"]}
         connectionLineStyle={{ stroke: "#f97f3a", strokeWidth: 1.5 }}
       >
-        <Background color="#1a1715" gap={22} size={1} />
-        <Controls className="cv-controls" showInteractive={false} position="bottom-right" orientation="horizontal" />
+        <Background variant={BackgroundVariant.Dots} color="#2a2420" gap={20} size={1.2} />
+        <Controls className="cv-controls" showInteractive={false} position="bottom-left" orientation="horizontal" />
       </ReactFlow>
-      {d.draft.length === 0 && <div className="cv-msg">Drag an agent or a template here</div>}
+      {d.draft.length === 0 && <button className="cv-msg" onClick={onEmpty}><span className="cv-msg-plus">+</span>Add first agent</button>}
     </div>
   );
 }

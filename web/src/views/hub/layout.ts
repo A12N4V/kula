@@ -1,16 +1,17 @@
-// Where things sit on the hub canvas. A plain tree per team (seats in rows by
+// Where things sit on the hub canvas. A plain tree per team (seats in columns by
 // how far they are from the lead), teams wrapped into rows, flow map lanes in a grid above.
 // Positions a person moved are kept on refs/kula/meta and win over the layout.
 
 import type { FlowMap, Member, Team } from "../../api";
 import { seatKey } from "../../roster";
 
-export const SEAT_W = 184;
-// a seat is as tall as what it shows: name and sub, then a chip row and a fence row when they have anything
-const SEAT_BASE = 52, CHIP_ROW = 24, FENCE_ROW = 22;
-const GAP_X = 22, GAP_Y = 44, PAD = 18, HEAD = 36, TEAM_GAP = 56;
+// a seat is a small tile with its name under it, like a workflow node: columns run left to right by depth
+export const SEAT_W = 96, SEAT_H = 96;
+const COL_GAP = 64, ROW_GAP = 20, PAD = 20, HEAD = 34, TEAM_GAP = 56;
 export const LANE_W = 232, FLOW_H = 24;
 const LANE_HEAD = 40, LANE_GAP = 14, MAX_FLOWS = 8, MAX_LANES = 10;
+// positions saved before the left to right layout are in another frame, so they are ignored without this mark
+export const LAYOUT_MARK = "_v2";
 
 export type Box = { x: number; y: number; w: number; h: number };
 export type Placed = { teams: Map<string, Box>; seats: Map<string, { x: number; y: number }> };
@@ -26,36 +27,30 @@ function depth(t: Team, key: string): number {
   return d;
 }
 
-/** How tall a seat node draws; `research` seats always show their loop row. */
-export function seatH(m: Member, research = false): number {
-  const f = m.fence ?? {};
-  const chips = research || !!(m.skills?.length || m.mcp?.length || m.memory);
-  const fence = !!(m.tags?.length || f.lock?.length || f.hide?.length || f.review?.length || m.scope?.length);
-  return SEAT_BASE + (chips ? CHIP_ROW : 0) + (fence ? FENCE_ROW : 0);
-}
+/** Seats are one size; kept as a function so callers need not know. */
+export function seatH(_m?: Member, _research = false): number { return SEAT_H; }
 
-export function place(teams: Team[], saved: Saved, research: (m: Member) => boolean = () => false, aspect = 1.6): Placed {
+export function place(teams: Team[], saved: Saved, _research: (m: Member) => boolean = () => false, aspect = 1.6): Placed {
   const out: Placed = { teams: new Map(), seats: new Map() };
+  const keep = !!saved[LAYOUT_MARK];
   for (const t of teams) {
-    const rows: Member[][] = [];
-    for (const m of t.members) { const d = depth(t, seatKey(m)); (rows[d] ??= []).push(m); }
-    const packed = rows.filter(Boolean);
-    const wide = Math.max(1, ...packed.map((r) => r.length));
-    const tall = packed.map((r) => Math.max(...r.map((m) => seatH(m, research(m)))));
-    let w = wide * (SEAT_W + GAP_X) - GAP_X + PAD * 2;
-    let h = HEAD + PAD * 2 + (tall.length ? tall.reduce((a, b) => a + b + GAP_Y, -GAP_Y) : SEAT_BASE);
-    let y = HEAD + PAD;
-    packed.forEach((r, ri) => {
-      const off = (w - (r.length * (SEAT_W + GAP_X) - GAP_X)) / 2;
-      r.forEach((m, i) => {
+    const cols: Member[][] = [];
+    for (const m of t.members) { const d = depth(t, seatKey(m)); (cols[d] ??= []).push(m); }
+    const packed = cols.filter(Boolean);
+    const tall = Math.max(1, ...packed.map((c) => c.length));
+    const colH = (n: number) => n * (SEAT_H + ROW_GAP) - ROW_GAP;
+    let w = Math.max(1, packed.length) * (SEAT_W + COL_GAP) - COL_GAP + PAD * 2;
+    let h = HEAD + PAD * 2 + colH(tall);
+    packed.forEach((c, ci) => {
+      const off = (colH(tall) - colH(c.length)) / 2;
+      c.forEach((m, i) => {
         const k = seatKey(m);
-        const s = saved[seatId(t.name, k)];
-        const p = s ? { x: Math.max(PAD, s[0]), y: Math.max(HEAD, s[1]) } : { x: off + i * (SEAT_W + GAP_X), y };
+        const s = keep ? saved[seatId(t.name, k)] : undefined;
+        const p = s ? { x: Math.max(PAD, s[0]), y: Math.max(HEAD, s[1]) } : { x: PAD + ci * (SEAT_W + COL_GAP), y: HEAD + PAD + off + i * (SEAT_H + ROW_GAP) };
         out.seats.set(seatId(t.name, k), p);
         w = Math.max(w, p.x + SEAT_W + PAD);
-        h = Math.max(h, p.y + seatH(m, research(m)) + PAD);
+        h = Math.max(h, p.y + SEAT_H + PAD);
       });
-      y += tall[ri] + GAP_Y;
     });
     out.teams.set(t.name, { x: 0, y: 0, w, h });
   }
@@ -83,7 +78,7 @@ export function place(teams: Team[], saved: Saved, research: (m: Member) => bool
   let best = wrap(Infinity);
   for (const r of rows) { const c = wrap(r); if (c.fit > best.fit) best = c; }
   [...out.teams.entries()].forEach(([name, b], k) => {
-    const s = saved[teamId(name)];
+    const s = keep ? saved[teamId(name)] : undefined;
     b.x = s ? s[0] : best.at[k][0]; b.y = s ? s[1] : best.at[k][1];
   });
   return out;

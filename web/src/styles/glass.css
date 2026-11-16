@@ -77,7 +77,7 @@ html, body { background: var(--bg); }
 .pt-filter { border-radius: var(--r-sm); background: var(--panel-2); border-color: var(--glass-line-2); }
 .pt-row { margin: 0 4px; width: calc(100% - 8px); border-radius: var(--r-sm); transition: background var(--flow), color var(--flow); }
 .pt-row:hover { background: var(--sweep); }
-.pt-row.on { background: var(--sweep-on); color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
+.pt-row.on { background: var(--panel-2); color: var(--accent); }
 
 /* editor tabs: an orange underline marks the open one, like the workbench nav */
 .etabs { padding: 4px 4px 0; gap: 2px; border-bottom-color: var(--glass-line); }

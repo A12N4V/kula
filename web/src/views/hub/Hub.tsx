@@ -1,13 +1,13 @@
-// The agent hub: a palette of things to place, the team canvas over the flow
-// map of the codebase, and an inspector for whatever is picked. Build edits
-// the draft, Live paints the event log onto the seats, Runs lists past runs.
+// The agent hub: one canvas that fills the pane, with sub panes floating over it:
+// a node picker (+), an inspector for whatever is picked, and the changes dock.
+// Build edits the draft, Live paints the event log onto the seats, Runs lists past runs.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { api, type AgentsInfo, type FlowMap } from "../../api";
 import { useToast } from "../../ui";
 import type { Act } from "./data";
-import { useDraft, type LinkKind, type Pick } from "./draft";
+import { useDraft, type Pick } from "./draft";
 import { HubCanvas, type Item } from "./HubCanvas";
 import { DeployDialog, SchedulesCard } from "./Deploy";
 import { ChangesCard, Inspector } from "./Inspector";
@@ -26,7 +26,9 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
   const [flow, setFlow] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("build");
   const [showMap, setShowMap] = useState(false);
-  const [link, setLink] = useState<LinkKind>("rt");
+  const [adding, setAdding] = useState(false);
+  const [overview, setOverview] = useState(false);
+  const [after, setAfter] = useState<{ team: string; key: string } | null>(null);
   const [map, setMap] = useState<FlowMap | null>(null);
   const [servers, setServers] = useState<string[]>([]);
   const [deploying, setDeploying] = useState<string | null>(null);
@@ -68,7 +70,8 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
     const seat = at?.key ? at as { team: string; key: string } : null;
     switch (it.kind) {
       case "agent":
-        if (seat) d.setMember(seat.team, seat.key, { agent: it.value });
+        if (after) { d.addSeat(after.team, { agent: it.value, reports_to: after.key }); setAfter(null); }
+        else if (seat) d.setMember(seat.team, seat.key, { agent: it.value });
         else if (at) d.addSeat(at.team, { agent: it.value });
         else {
           const name = d.freeTeam();
@@ -92,56 +95,51 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
     }
   };
 
-  // on a narrow screen the inspector sits below the canvas: bring it into view when a seat is picked
-  const inspRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (!pick || !window.matchMedia("(max-width: 1100px)").matches) return;
-    const phone = window.matchMedia("(max-width: 759px)").matches;
-    // after the inspector has drawn the picked seat, so the scroll lands on its final height
-    const t = window.setTimeout(() => inspRef.current?.scrollIntoView({ block: phone ? "start" : "nearest", behavior: "smooth" }), 80);
-    return () => window.clearTimeout(t);
-  }, [pick]);
+  const openAfter = (at: { team: string; key: string }) => { setAfter(at); setAdding(true); };
+  const title = pick?.team ?? (d.draft.length === 1 ? d.draft[0].name : "Teams");
+  const showInsp = mode === "build" && (!!pick || !!flow || overview);
+  const inbox = info.suggestions.length + (info.guard_warnings?.length ?? 0) + (info.seat_overlaps?.length ?? 0);
 
   return (
     <div className={`hub-body mode-${mode}`}>
-      {mode === "build" && <Palette info={info} servers={servers} onUse={(it) => onItem(it, pick)} />}
-      <div className="hub-center">
-        <div className="hub-bar">
-          <div className="seg" role="group" aria-label="Mode">
-            {MODES.map((m) => <button key={m.id} className={mode === m.id ? "on" : ""} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>{m.label}</button>)}
+      {mode === "runs"
+        ? (
+          <div className="hub-runs">
+            <RunsBoard info={ledger.info} err={ledger.err} onReplay={replay} onBuild={() => setMode("build")} />
+            <div className="hub-runs-side"><SchedulesCard /><RunsTrends info={ledger.info} /></div>
           </div>
-          {mode === "build" && <div className="hub-bar-group">
-            <span className="hub-bar-label">Link</span>
-            <div className="seg" role="group" aria-label="Link">
-              <button className={link === "rt" ? "on" : ""} aria-pressed={link === "rt"} onClick={() => setLink("rt")} title="Drag between seats to set who reports to whom">Reports</button>
-              <button className={link === "ho" ? "on" : ""} aria-pressed={link === "ho"} onClick={() => setLink("ho")} title="Drag between seats to hand work off">Hand off</button>
-            </div>
-          </div>}
-          <span className="spacer" />
-          {mode === "build" && <div className="seg" role="group" aria-label="Layers">
-            <button className={`${showMap ? "on" : ""}${showMap && !map ? " loading" : ""}`} aria-pressed={showMap} onClick={() => setShowMap(!showMap)} title="Draw the codebase's execution flows behind the teams">Flow map</button>
-          </div>}
-          {d.dirty && <span className="hub-dirty mono">unsaved</span>}
-          {mode !== "runs" && (d.dirty || !saved) && <span className="muted hub-bar-hint">{d.dirty ? "Save first" : "Pick a team"}</span>}
-          {mode !== "runs" && <button className="btn sm primary hub-deploy-btn" disabled={!saved || d.dirty} onClick={() => saved && setDeploying(saved.name)}
-            title={d.dirty ? "Save first" : saved ? `Deploy ${saved.name}` : "Pick a team"}>Deploy</button>}
+        )
+        : (
+          <ReactFlowProvider key={mode}>
+            <HubCanvas info={info} d={d} pick={pick} setPick={setPick} flow={flow} setFlow={setFlow} map={showMap && mode === "build" ? map : null} paint={paint} onItem={onItem} onAfter={openAfter} onEmpty={() => setAdding(true)} />
+          </ReactFlowProvider>
+        )}
+      <header className="hub-top">
+        <span className="hub-title">{title}</span>
+        {d.dirty && <span className="hub-dirty mono">unsaved</span>}
+        <div className="seg" role="group" aria-label="Mode">
+          {MODES.map((m) => <button key={m.id} className={mode === m.id ? "on" : ""} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>{m.label}</button>)}
         </div>
-        {mode === "runs"
-          ? <RunsBoard info={ledger.info} err={ledger.err} onReplay={replay} onBuild={() => setMode("build")} />
-          : (
-            <ReactFlowProvider key={mode}>
-              <HubCanvas info={info} d={d} pick={pick} setPick={setPick} flow={flow} setFlow={setFlow} map={showMap && mode === "build" ? map : null} link={link} paint={paint} onItem={onItem} />
-            </ReactFlowProvider>
-          )}
-      </div>
-      <aside className="hub-inspector" aria-label="Inspector" ref={inspRef}>
-        <div className="hub-insp-scroll">
-          {mode === "live" && <LiveFeed seats={d.draft.flatMap((t) => t.members.map((m) => `${t.name} · ${m.name || m.agent}`))} events={feed} via={ev.via} runs={runs} run={run} setRun={setRun} cursor={cursor} setCursor={setCursor} />}
-          {mode === "runs" && <><SchedulesCard /><RunsTrends info={ledger.info} /></>}
-          {mode === "build" && <Inspector info={info} d={d} pick={pick} flow={flow} setFlow={setFlow} map={map} act={act} />}
-        </div>
-        <ChangesCard d={d} act={act} />
-      </aside>
+        <span className="spacer" />
+        {mode === "build" && <button className={`btn sm${showMap ? " primary" : ""}${showMap && !map ? " loading" : ""}`} aria-pressed={showMap} onClick={() => setShowMap(!showMap)} title="Draw the codebase's execution flows behind the teams">Flow map</button>}
+        {mode !== "runs" && <button className="btn sm primary hub-deploy-btn" disabled={!saved || d.dirty} onClick={() => saved && setDeploying(saved.name)}
+          title={d.dirty ? "Save first" : saved ? `Deploy ${saved.name}` : "Pick a team"}>Deploy</button>}
+        {mode === "build" && <button className={`btn sm hub-overview${overview ? " on" : ""}`} aria-pressed={overview} onClick={() => { setOverview(!overview); if (!overview) { setPick(null); setFlow(null); } }} title="Task, suggestions and fence warnings">Overview{inbox > 0 && <span className="hub-badge mono">{inbox}</span>}</button>}
+        {mode === "build" && <button className={`btn sm hub-add${adding ? " on" : ""}`} aria-label="Add node" aria-expanded={adding} onClick={() => { setAdding(!adding); setAfter(null); }}>+</button>}
+      </header>
+      {mode === "build" && adding && <Palette info={info} servers={servers} after={after?.key} onClose={() => { setAdding(false); setAfter(null); }} onUse={(it) => onItem(it, pick)} />}
+      {mode === "live" && (
+        <aside className="hub-inspector" aria-label="Live">
+          <div className="hub-insp-scroll"><LiveFeed seats={d.draft.flatMap((t) => t.members.map((m) => `${t.name} · ${m.name || m.agent}`))} events={feed} via={ev.via} runs={runs} run={run} setRun={setRun} cursor={cursor} setCursor={setCursor} /></div>
+        </aside>
+      )}
+      {showInsp && (
+        <aside className="hub-inspector" aria-label="Inspector">
+          <div className="hub-insp-head"><span className="hub-insp-title mono">{pick?.key ? `${pick.team} / ${pick.key}` : pick?.team ?? (flow ? "Flow" : "Overview")}</span><button className="btn sm ghost" aria-label="Close inspector" onClick={() => { setPick(null); setFlow(null); setOverview(false); }}>×</button></div>
+          <div className="hub-insp-scroll"><Inspector info={info} d={d} pick={pick} flow={flow} setFlow={setFlow} map={map} act={act} /></div>
+        </aside>
+      )}
+      {mode === "build" && <div className="hub-dock"><ChangesCard d={d} act={act} /></div>}
       {deployTeam && <DeployDialog team={deployTeam} map={map} onClose={() => setDeploying(null)} onDeployed={(plan) => { setDeploying(null); replay(plan); }} />}
     </div>
   );

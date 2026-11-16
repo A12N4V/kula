@@ -108,7 +108,7 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .af-area .af-pop { top: calc(100% - 2px); }
 .af-grp { padding: 6px 8px 3px; font: 600 9.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
 .af-opt { display: grid; grid-template-columns: 18px auto minmax(0, 1fr); align-items: center; gap: 8px; padding: 5px 8px; cursor: pointer; font-size: 12px; }
-.af-opt.on { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+.af-opt.on { background: var(--panel-2); }
 .af-ico { width: 16px; text-align: center; color: var(--text-3); }
 .af-label { white-space: nowrap; }
 .af-hint { color: var(--text-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

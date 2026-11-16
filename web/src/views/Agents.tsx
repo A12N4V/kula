@@ -29,7 +29,6 @@ export default function Agents({ version, onChanged }: Nav) {
   if (!info) return <div className="loading"><div className="mini-loader"><div className="ml-field"><AsciiMark period={3.2} /></div><span>Reading teams and fences</span></div></div>;
   return (
     <div className="page agents hub">
-      <header className="page-head"><div><h1>Agents</h1></div></header>
       <Hub info={info} act={act} />
     </div>
   );

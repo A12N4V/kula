@@ -63,7 +63,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .pt-rows { overflow: auto; flex: 1; padding-bottom: 12px; }
 .pt-row { display: flex; align-items: center; gap: 6px; width: 100%; height: 24px; padding-right: 8px; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 12px; text-align: left; cursor: pointer; white-space: nowrap; }
 .pt-row:hover { background: var(--hover-bg); color: var(--text); }
-.pt-row.on { background: var(--sel-bg); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+.pt-row.on { background: var(--sel-bg); color: var(--text); }
 .pt-row svg { width: 14px; height: 14px; flex: none; color: var(--text-3); }
 .pt-row.dir { color: var(--text); }
 .pt-row.mod .pt-name { color: var(--blue); }

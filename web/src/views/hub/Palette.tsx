@@ -9,7 +9,7 @@ import { AGENT_IDS, AGENT_NAME } from "./data";
 import { TEAM_TEMPLATES } from "./templates";
 import { DND, type Item } from "./HubCanvas";
 
-export function Palette({ info, servers, onUse }: { info: AgentsInfo; servers: string[]; onUse: (it: Item) => void }) {
+export function Palette({ info, servers, after, onClose, onUse }: { info: AgentsInfo; servers: string[]; after?: string; onClose: () => void; onUse: (it: Item) => void }) {
   const [q, setQ] = useState("");
   const has = (s: string) => !q || s.toLowerCase().includes(q.toLowerCase());
   const groups: { title: string; kind: Item["kind"]; items: { value: string; label: string; icon?: string }[] }[] = [
@@ -21,7 +21,10 @@ export function Palette({ info, servers, onUse }: { info: AgentsInfo; servers: s
   ];
   return (
     <aside className="hub-palette" aria-label="Palette">
-      <input className="input hub-pal-q" placeholder="Filter" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter palette" />
+      <div className="hub-pal-top">
+        <input className="input hub-pal-q" placeholder={after ? `Add after ${after}` : "Search nodes"} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter palette" autoFocus />
+        <button className="btn sm ghost" aria-label="Close" onClick={onClose}>×</button>
+      </div>
       <div className="hub-pal-scroll">
         {groups.map((g) => {
           const items = g.items.filter((i) => has(i.label));
