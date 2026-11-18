@@ -991,7 +991,7 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
           <button className="btn ghost sm" onClick={onClose} aria-label="Close" title="Close  esc"><Icon.close /></button>
         </div>
         <h2>{ctx?.node.name ?? "…"}</h2>
-        {ctx && <div className="muted mono" style={{ fontSize: 11.5 }}>{ctx.node.path}:{ctx.node.start_line}–{ctx.node.end_line}</div>}
+        {ctx && <div className="muted mono" style={{ fontSize: 11.5 }}>{ctx.node.path}:{ctx.node.start_line} to {ctx.node.end_line}</div>}
         {ctx && (
           <div className="insp-facts">
             <span><b className="in">{ctx.callers.length + ctx.imported_by.length}</b> in</span>
@@ -1053,7 +1053,7 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
                 {l.slice(0, 60).map((n) => <Sym key={n.id} n={n} onClick={go} right={n.path === ctx.node.path ? `:${n.start_line}` : undefined} />)}
               </div>
             ))}
-            {lists.every(([, l]) => !l.length) && <Empty title="Isolated">No resolved relationships.</Empty>}
+            {lists.every(([, l]) => !l.length) && <Empty title="No resolved relationships" />}
           </>
         ) : tab === "impact" ? (
           <>
@@ -1079,7 +1079,7 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
                     </div>
                   ) : null;
                 })}
-                {!impact.hits.length && <Empty title="Nothing ripples">Changing this is contained.</Empty>}
+                {!impact.hits.length && <Empty title="Nothing ripples" />}
               </>
             )}
           </>

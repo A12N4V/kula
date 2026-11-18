@@ -155,3 +155,16 @@ body.resizing { cursor: col-resize; user-select: none; }
   .studio > .tw-right { max-width: 280px; }
 }
 .studio > .topbar { position: relative; z-index: 40; }
+
+/* ---------- commit detail */
+.show-head { display: flex; flex-direction: column; gap: 4px; }
+.show-msg { margin: 0; white-space: pre-wrap; font-size: 13px; line-height: 1.5; color: var(--text); }
+.show-msg::first-line { font-weight: 500; }
+.show-meta { margin: 0; font-size: 11px; color: var(--text-3); }
+.show-files { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--r-md); }
+.show-files li { display: flex; align-items: center; gap: 10px; height: 26px; padding: 0 10px; font-size: 11.5px; }
+.show-files li + li { border-top: 1px solid var(--line); }
+.show-files li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.show-files b { flex: none; min-width: 32px; text-align: right; font-weight: 400; font-size: 11px; }
+.show-files .add { color: var(--accent); }
+.show-files .del { color: var(--red); }

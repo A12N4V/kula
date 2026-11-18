@@ -57,7 +57,7 @@ function DiskRows({ q }: { q: string }) {
         <Seg value={after} options={[[0, "Off"], [5, "5m"], [10, "10m"], [15, "15m"], [20, "20m"], [30, "30m"], [60, "1h"]]} onChange={pick} />
       </Row>
       <Row label="Disk used" hint={note || ".kula in this repository"} q={q}>
-        <span className="mono">{used === null ? "–" : size(used)}</span>
+        <span className="mono">{used === null ? "0" : size(used)}</span>
         <button className="btn sm" onClick={now}>Clean now</button>
       </Row>
     </>

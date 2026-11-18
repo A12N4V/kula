@@ -118,7 +118,7 @@ export function Changes({ onChanged, version }: Nav) {
             </div>
             <Diff text={diff} />
           </div>
-        ) : <Empty title="Select a file">Review a diff, stage it, then commit.</Empty>}
+        ) : <Empty title="Select a file" />}
       </div>
     </div>
   );

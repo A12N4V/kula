@@ -79,7 +79,7 @@ function CodePanel({ t, onClose, onLocate, onEdit }: { t: CodeTarget; onClose: (
   return (
     <aside className="code-panel" aria-label={`Source of ${t.name ?? t.path}`}>
       <header>
-        <div className="cp-kind">{t.kind && <Kind kind={t.kind} size={14} />}<span>{t.kind ?? "file"}</span>{t.line ? <span className="muted">· lines {t.line}–{t.end ?? t.line}</span> : <span className="muted">· {lines.length} lines</span>}</div>
+        <div className="cp-kind">{t.kind && <Kind kind={t.kind} size={14} />}<span>{t.kind ?? "file"}</span>{t.line ? <span className="muted">· lines {t.line} to {t.end ?? t.line}</span> : <span className="muted">· {lines.length} lines</span>}</div>
         <h2>{t.name ?? file}</h2>
         <div className="cp-path"><span className="muted">{dir}</span>{file}</div>
         <div className="cp-actions">

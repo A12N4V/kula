@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import type { Node } from "./api";
+import { relTime, type Node } from "./api";
 import { GLYPH, kindColor } from "./colors";
 import { nodeTarget, useCode } from "./CodePanel";
 import { markPath, N } from "./mark";
@@ -162,13 +162,44 @@ export function Diff({ text }: { text: string }) {
 }
 
 /** `git show` output: header lines, then the patch. */
+/** Files a patch touches with added and removed line counts. */
+export function numstat(patch: string) {
+  const out: { path: string; add: number; del: number }[] = [];
+  for (const l of patch.split("\n")) {
+    if (l.startsWith("diff --git ")) out.push({ path: l.replace(/^diff --git a\/.* b\//, ""), add: 0, del: 0 });
+    else if (!out.length || l.startsWith("+++") || l.startsWith("---")) continue;
+    else if (l[0] === "+") out[out.length - 1].add++;
+    else if (l[0] === "-") out[out.length - 1].del++;
+  }
+  return out;
+}
+
+/** git show output: the message, who and when, the files touched, then the patch. */
 export function ShowOutput({ text }: { text: string }) {
   const i = text.indexOf("\ndiff --git");
   const head = i >= 0 ? text.slice(0, i) : text;
   const patch = i >= 0 ? text.slice(i + 1) : "";
+  const meta = (k: string) => head.match(new RegExp(`^${k}:\\s*(.*)$`, "m"))?.[1]?.trim();
+  const msg = head.split("\n").filter((l) => l.startsWith("    ")).map((l) => l.slice(4)).join("\n").trim();
+  const author = meta("Author")?.replace(/\s*<.*>$/, "");
+  const raw = meta("AuthorDate") ?? meta("Date");
+  const ms = raw ? Date.parse(raw) : NaN;
+  const date = Number.isNaN(ms) ? raw : relTime(ms / 1000);
+  const files = numstat(patch);
+  if (!msg) return <div className="stack"><pre className="code" style={{ maxHeight: "none", whiteSpace: "pre-wrap" }}>{head.trim()}</pre>{patch && <Diff text={patch} />}</div>;
   return (
-    <div className="stack">
-      <pre className="code" style={{ maxHeight: "none", whiteSpace: "pre-wrap" }}>{head.trim()}</pre>
+    <div className="stack show-out">
+      <div className="show-head">
+        <p className="show-msg">{msg}</p>
+        <p className="show-meta mono">{[author, date].filter(Boolean).join(" · ")}</p>
+      </div>
+      {files.length > 0 && (
+        <ul className="show-files" aria-label="Files changed">
+          {files.map((f) => (
+            <li key={f.path}><span className="mono">{f.path}</span><b className="mono add">+{f.add}</b><b className="mono del">-{f.del}</b></li>
+          ))}
+        </ul>
+      )}
       {patch && <Diff text={patch} />}
     </div>
   );

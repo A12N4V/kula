@@ -7,7 +7,7 @@
 .hud { top: 14px; left: 14px; display: flex; gap: 6px; }
 .seg { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); }
 .seg button { height: 26px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2); cursor: pointer; }
-.seg button.on { background: var(--panel-2); color: var(--text); box-shadow: 0 0 0 1px var(--line-2); }
+.seg button.on { color: var(--text); background: transparent; border-color: transparent; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 60%, transparent); }
 .legend { left: 14px; bottom: 14px; width: 250px; max-height: 45%; overflow: auto; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); }
 .legend .li { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: var(--r-sm); cursor: pointer; color: var(--text-2); }
 .legend .li:hover, .legend .li.on { background: var(--panel-2); color: var(--text); }
@@ -185,7 +185,7 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 
 /* D1: hover/focus system – quiet borders instead of decoration shadows. */
 .seg button { border: 1px solid transparent; }
-.seg button.on { box-shadow: none; border-color: var(--line-2); }
+.seg button.on { color: var(--text); background: transparent; border-color: transparent; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 60%, transparent); }
 .inspector { box-shadow: none; border-left: 1px solid var(--line-2); border-top: 1px solid var(--line-2); }
 .hover-card { box-shadow: none; border: 1px solid var(--line-2); }
 .node-menu { box-shadow: none; }

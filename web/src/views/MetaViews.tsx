@@ -56,7 +56,7 @@ export function Issues({ version, onChanged, openSymbol, target }: Nav) {
           <div className="seg"><button className={show === "open" ? "on" : ""} onClick={() => setShow("open")}>Open</button><button className={show === "closed" ? "on" : ""} onClick={() => setShow("closed")}>Closed</button></div>
           <span className="spacer" /><button className="btn sm primary" onClick={() => setSel("new")}><Icon.plus /> New</button>
         </div>
-        {list.length === 0 && <Empty title={`No ${show} issues`}>Issues live in <code>refs/kula/meta</code> and travel with <code>kula sync</code>.</Empty>}
+        {list.length === 0 && <Empty title={`No ${show} issues`} />}
         {list.map((i) => (
           <div key={i.id} className={`item ${sel === i.id ? "on" : ""}`} onClick={() => setSel(i.id)}>
             <span style={{ color: i.status === "open" ? "var(--green)" : "var(--text-3)", marginTop: 1 }}><Icon.issues /></span>
@@ -214,7 +214,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
           <aside className="notes-side detail-pad" style={graphOn ? undefined : { borderLeft: 0, maxWidth: 980 }}>
             <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{shown.length}</span><span className="spacer" />{sel && <button className="btn sm ghost" onClick={() => setSel("")}>All</button>}<button className={`btn sm graph-toggle ${graphOn ? "on" : ""}`} aria-pressed={graphOn} onClick={toggleGraph} title="Show notes as a graph beside the list"><Icon.graph /> Graph {graphOn ? "on" : "off"}</button></div>
             <input className="input" style={{ width: "100%", marginBottom: 14 }} placeholder="Search notes…" value={q} onChange={(e) => setQ(e.target.value)} />
-            {shown.length === 0 && <Empty title={sel ? "No notes here" : "No notes yet"}>{sel ? "Write one on the left, the target is filled in." : "Annotate the repo, any file, symbol, commit or cluster."}</Empty>}
+            {shown.length === 0 && <Empty title={sel ? "No notes here" : "No notes yet"} />}
             {[...groups.entries()].filter(([t]) => !sel || t === sel).map(([t, list]) => (
               <div key={t} style={{ marginBottom: 18 }}>
                 <div className="row" style={{ marginBottom: 6 }}>

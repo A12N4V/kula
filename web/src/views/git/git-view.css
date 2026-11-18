@@ -56,13 +56,13 @@
 .gv-filter { width: 120px; }
 .gv-ref {
   flex: none; max-width: 120px; padding: 0 6px; height: 18px; line-height: 16px;
-  border: 1px solid var(--line-2); border-radius: var(--r-sm); font-family: var(--mono); font-size: 10.5px; color: var(--text-2);
+  border: 1px solid var(--line-2); border-radius: var(--r-sm); font-family: var(--mono); font-size: 11px; color: var(--text-2);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .gv-ref.head { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 45%, transparent); }
 .gv-ref.tag { color: var(--yellow); }
-.gv-when { flex: none; font-family: var(--mono); font-size: 10.5px; }
-.gv-track { flex: none; max-width: 120px; font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gv-when { flex: none; font-family: var(--mono); font-size: 11px; }
+.gv-track { flex: none; max-width: 120px; font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gv-dot { flex: none; width: 7px; height: 7px; border: 1px solid var(--text-3); border-radius: 50%; }
 .gv-dot.cur { border-color: var(--accent); background: var(--accent); }
 .gv-dot.tag { border-radius: 1px; transform: rotate(45deg); border-color: var(--yellow); }

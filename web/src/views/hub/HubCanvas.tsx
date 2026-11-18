@@ -5,12 +5,13 @@
 import "@xyflow/react/dist/style.css";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import {
-  Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, applyNodeChanges, useReactFlow, useStore,
+  Background, BackgroundVariant, Handle, MarkerType, Position, ReactFlow, applyNodeChanges, useReactFlow, useStore,
   type Connection, type Edge, type Node, type NodeChange, type NodeProps,
 } from "@xyflow/react";
 import { api, type AgentsInfo, type FlowMap, type Member, type Research, type ResearchRun, type Team } from "../../api";
 import { seatKey } from "../../roster";
 import { Mark } from "../../brands";
+import { Icon } from "../../ui";
 import type { Draft, LinkKind, Pick } from "./draft";
 import type { Paint } from "./live";
 import { FLOW_H, LANE_W, LAYOUT_MARK, SEAT_H, SEAT_W, lanes, matcher, place, seatId, teamId, type Saved } from "./layout";
@@ -254,7 +255,11 @@ export function HubCanvas({ info, d, pick, setPick, flow, setFlow, map, paint, o
         connectionLineStyle={{ stroke: "#f97f3a", strokeWidth: 1.5 }}
       >
         <Background variant={BackgroundVariant.Dots} color="#2a2420" gap={20} size={1.2} />
-        <Controls className="cv-controls" showInteractive={false} position="bottom-left" orientation="horizontal" />
+        <div className="graph-overlay zoom">
+          <button className="btn" aria-label="Zoom in" onClick={() => rf.zoomIn({ duration: 200 })}><Icon.plus /></button>
+          <button className="btn" aria-label="Zoom out" onClick={() => rf.zoomOut({ duration: 200 })}><Icon.minus /></button>
+          <button className="btn" aria-label="Fit view" title="Fit" onClick={() => rf.fitView({ padding: 0.14, duration: 300, maxZoom: 1, minZoom: floor })}><Icon.target /></button>
+        </div>
       </ReactFlow>
       {d.draft.length === 0 && <button className="cv-msg" onClick={onEmpty}><span className="cv-msg-plus">+</span>Add first agent</button>}
     </div>

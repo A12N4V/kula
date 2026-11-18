@@ -57,12 +57,12 @@ export default function Overview({ repo, version, go }: Props) {
           <section className="card ov-index">
             <div className="card-head"><h2>Index</h2><span className={`tag ${repo?.index === "current" ? "" : "warn"}`}>{repo?.index ?? "…"}</span></div>
             <dl className="ov-health">
-              <dt>Parsed</dt><dd className="mono">{s ? `${s.parsed.toLocaleString()} / ${s.files.toLocaleString()} files` : "–"}</dd>
-              <dt>Symbols</dt><dd className="mono">{s?.symbols.toLocaleString() ?? "–"}</dd>
-              <dt>Edges</dt><dd className="mono">{s?.edges.toLocaleString() ?? "–"}</dd>
-              <dt>Communities</dt><dd className="mono">{s?.communities.toLocaleString() ?? "–"}</dd>
+              <dt>Parsed</dt><dd className="mono">{s ? `${s.parsed.toLocaleString()} / ${s.files.toLocaleString()} files` : "0"}</dd>
+              <dt>Symbols</dt><dd className="mono">{s?.symbols.toLocaleString() ?? "0"}</dd>
+              <dt>Edges</dt><dd className="mono">{s?.edges.toLocaleString() ?? "0"}</dd>
+              <dt>Communities</dt><dd className="mono">{s?.communities.toLocaleString() ?? "0"}</dd>
               <dt>Indexed</dt><dd className="mono">{repo?.indexed_head?.slice(0, 8) ?? "never"}{repo?.indexed_head && repo.indexed_head !== repo.head ? " · behind HEAD" : ""}</dd>
-              <dt>Build</dt><dd className="mono">{s ? `${s.millis} ms` : "–"}</dd>
+              <dt>Build</dt><dd className="mono">{s ? `${s.millis} ms` : "0"}</dd>
             </dl>
           </section>
         </div>
