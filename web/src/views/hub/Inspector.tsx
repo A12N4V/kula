@@ -1,6 +1,7 @@
 // The right side of the hub: whatever is picked (a seat, a team or a flow),
 // laid out as plain sections, and the kula.toml changes waiting to be saved.
 
+import Picker from "../../studio/Picker";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, type AgentsInfo, type Explain, type FlowMap, type Member, type ResearchRun, type Suggestion, type Team } from "../../api";
 import { Chips } from "../../Autofill";
@@ -81,10 +82,8 @@ function SeatPanel({ info, d, team, m, act }: { info: AgentsInfo; d: Draft; team
         <Swatches value={m.color} onChange={(c) => set({ color: c })} />
         <Field label="Name"><input className="input" value={m.name ?? ""} placeholder={key} onChange={(e) => set({ name: e.target.value })} aria-label="Seat name" /></Field>
         <Field label="Agent">
-          <select className="input" value={m.agent} onChange={(e) => set({ agent: e.target.value })} aria-label="Agent">
-            <option value="">Any connected</option>
-            {AGENT_IDS.map((a) => <option key={a} value={a}>{AGENT_NAME[a]}</option>)}
-          </select>
+          <Picker label="Agent" value={m.agent} onChange={(v) => set({ agent: v })}
+            options={[["", "Any connected"], ...AGENT_IDS.map((a): [string, string] => [a, AGENT_NAME[a]])]} />
         </Field>
         <Field label="Model">
           <input className="input mono" list="hub-models" value={m.model ?? ""} placeholder="default" onChange={(e) => set({ model: e.target.value || undefined })} aria-label="Model" />
@@ -92,16 +91,12 @@ function SeatPanel({ info, d, team, m, act }: { info: AgentsInfo; d: Draft; team
         </Field>
         <Field label="Role"><input className="input" value={m.role ?? ""} onChange={(e) => set({ role: e.target.value || undefined })} aria-label="Role" /></Field>
         <Field label="Workflow">
-          <select className="input" value={m.workflow ?? ""} onChange={(e) => set({ workflow: e.target.value })} aria-label="Workflow">
-            <option value="">None</option>
-            {info.workflows.map((w) => <option key={w.name} value={w.name}>{w.name}</option>)}
-          </select>
+          <Picker label="Workflow" value={m.workflow ?? ""} onChange={(v) => set({ workflow: v })}
+            options={[["", "None"], ...info.workflows.map((w) => w.name)]} />
         </Field>
         <Field label="Reports to">
-          <select className="input" value={m.reports_to ?? ""} onChange={(e) => set({ reports_to: e.target.value })} aria-label="Reports to">
-            <option value="">Nobody</option>
-            {others.map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
+          <Picker label="Reports to" value={m.reports_to ?? ""} onChange={(v) => set({ reports_to: v })}
+            options={[["", "Nobody"], ...others]} />
         </Field>
         <Field label="Tags"><Chips values={m.tags ?? []} onChange={(v) => set({ tags: v })} as="name" placeholder="tag" label="Tags" /></Field>
       </Sec>
@@ -153,10 +148,8 @@ function TeamPanel({ info, d, team, act }: { info: AgentsInfo; d: Draft; team: T
         </Field>
         <Field label="About"><input className="input" value={team.about ?? ""} onChange={(e) => set({ about: e.target.value })} aria-label="About" /></Field>
         <Field label="Under">
-          <select className="input" value={team.under ?? ""} onChange={(e) => set({ under: e.target.value })} aria-label="Under">
-            <option value="">Top level</option>
-            {d.draft.filter((t) => t.name !== team.name).map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
-          </select>
+          <Picker label="Under" value={team.under ?? ""} onChange={(v) => set({ under: v })}
+            options={[["", "Top level"], ...d.draft.filter((t) => t.name !== team.name).map((t) => t.name)]} />
         </Field>
       </Sec>
       <Sec title="Prompt"><textarea className="textarea" rows={3} value={team.prompt ?? ""} onChange={(e) => set({ prompt: e.target.value })} aria-label="Team prompt" /></Sec>

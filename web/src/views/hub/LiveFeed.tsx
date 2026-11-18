@@ -1,6 +1,7 @@
 // Live mode's side card (P3.17): how the log arrives, the run to replay, a
 // scrubber over its events and the newest lines up to the moment shown.
 
+import Picker from "../../studio/Picker";
 import type { KulaEvent } from "../../api";
 import { line, type Via } from "./live";
 
@@ -20,10 +21,7 @@ export function LiveFeed({ events, via, runs, run, setRun, cursor, setCursor, se
         <span className={`cv-live-via ${via}${via === "stream" && !n ? " idle" : ""}`} data-via={via}>{via === "stream" ? (n ? "streaming" : "idle") : via === "poll" ? "polling every 5 s" : "off"}</span>
         <span className="spacer" />
         {runs.length > 0 && (
-          <select className="input sm mono" aria-label="Run" value={run} onChange={(e) => { setRun(e.target.value); setCursor(null); }}>
-            <option value="">all events</option>
-            {runs.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
+          <Picker label="Run" value={run} onChange={(v) => { setRun(v); setCursor(null); }} options={[["", "All events"], ...runs]} />
         )}
       </div>
       {n > 1 && (

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import Picker from "../studio/Picker";
 import { api, relTime, type Branch, type Commit, type Compare, type FileStatus, type GraphData, type RepoInfo } from "../api";
 import Dither from "../Dither";
 import Life from "../Life";
@@ -307,9 +308,9 @@ export function Branches({ onChanged, openSymbol, version, initialCompare, go }:
         <div className="detail-pad">
           <div className="row" style={{ marginBottom: 6 }}><Icon.compare /><h1 style={{ fontSize: 17 }}>Compare</h1></div>
           <div className="row" style={{ marginBottom: 16, flexWrap: "wrap" }}>
-            <select className="input" style={{ width: 200 }} value={base} onChange={(e) => setBase(e.target.value)}>{names.map((n) => <option key={n}>{n}</option>)}</select>
+            <Picker className="w200" label="Base" value={base} onChange={setBase} options={names} />
             <span className="muted">←</span>
-            <select className="input" style={{ width: 200 }} value={head} onChange={(e) => setHead(e.target.value)}>{names.map((n) => <option key={n}>{n}</option>)}</select>
+            <Picker className="w200" label="Head" value={head} onChange={setHead} options={names} />
             <span className="spacer" />
             {cmp && !data?.branches.find((b) => b.name === head)?.remote && head !== base && (
               <>

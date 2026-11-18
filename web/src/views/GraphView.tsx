@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Picker from "../studio/Picker";
 import { createPortal } from "react-dom";
 import Graph from "graphology";
 import Sigma from "sigma";
@@ -709,10 +710,8 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
       {fences && !trace && graph && (
         <div className="graph-overlay fence-key" role="note">
           <span className="eyebrow">{fenceWf ? "preview" : "for agents"}</span>
-          <select className="fk-wf" value={fenceWf} onChange={(e) => setFenceWf(e.target.value)} aria-label="Fences of">
-            <option value="">{fenceInfo.active ? `now · ${fenceInfo.active}` : "now"}</option>
-            {fenceInfo.workflows.map((w) => <option key={w} value={w}>{w} workflow</option>)}
-          </select>
+          <Picker className="fk-wf" label="Fences of" value={fenceWf} onChange={setFenceWf}
+            options={[["", fenceInfo.active ? `Now · ${fenceInfo.active}` : "Now"], ...fenceInfo.workflows.map((w): [string, string] => [w, `${w} workflow`])]} />
           {(["locked", "hidden", "review"] as GuardLevel[]).map((l) => {
             const n = [...fences.values()].filter((v) => v === l).length;
             return n ? <span key={l} className="fk" title={LEVEL_MEANS[l]}><GuardTag level={l} /> {n} <span className="muted fk-means">{LEVEL_MEANS[l]}</span></span> : null;

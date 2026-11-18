@@ -14,16 +14,16 @@ async function open(page: Page, hash = "overview") {
 }
 
 test.describe("s1 agent hub", () => {
-  test("the hub composes palette, canvas and inspector", async ({ page }) => {
+  test("the hub composes canvas, palette and modes", async ({ page }) => {
     test.skip(test.info().project.name !== "desktop");
     await open(page);
     await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
-    await expect(page.locator(".page-head h1")).toHaveText("Agents");
+    await expect(page.locator(".hub-canvas")).toBeVisible();
+    await page.getByRole("button", { name: "Add node" }).click();
     const palette = page.getByRole("complementary", { name: "Palette" });
     await expect(palette).toBeVisible();
     for (const g of ["agent", "template", "skill", "mcp", "memory"]) await expect(palette.locator(`.hub-pal-group[data-kind="${g}"]`)).toBeVisible();
     await expect(page.locator(".hub-canvas")).toBeVisible();
-    await expect(page.getByRole("complementary", { name: "Inspector" })).toBeVisible();
     const mode = page.getByRole("group", { name: "Mode" });
     for (const m of ["Build", "Live", "Runs"]) await expect(mode.getByRole("button", { name: m })).toBeVisible();
     await expect(page.getByRole("button", { name: "Flow map" })).toBeVisible();

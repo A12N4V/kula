@@ -672,10 +672,11 @@ test.describe("fences on the graph", () => {
     await expect(key).toBeVisible({ timeout: 45_000 });
     await expect(key.locator(".guard-tag.locked")).toBeVisible();
     await expect(key).toContainText("harden the MCP server");
-    await expect(key.locator("select")).toHaveValue("");
-    await expect(page.getByRole("button", { name: /Fences/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(key.getByRole("button", { name: "Fences of" })).toContainText("Now");
+    await expect(page.locator(".hud-btn", { hasText: "Fences" })).toHaveAttribute("aria-pressed", "true");
     await page.screenshot({ path: "test-results/graph-fences.png" });
-    await key.locator("select").selectOption("refactor");
+    await key.getByRole("button", { name: "Fences of" }).click();
+    await key.getByRole("option", { name: "refactor workflow" }).click();
     await expect(key).toContainText("preview");
     await expect(key.locator(".guard-tag.locked")).toBeVisible();
     await page.keyboard.press("f");

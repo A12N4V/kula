@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import Picker from "../studio/Picker";
 import Graph from "graphology";
 import Sigma from "sigma";
 import forceAtlas2 from "graphology-layout-forceatlas2";
@@ -292,13 +293,9 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, mode
           <button className={mode === "report" ? "on" : ""} onClick={() => setMode("report")} title="Textual analysis">Report</button>
         </div>
         <div className="rev-pick">
-          <select className="input" value={base} onChange={(e) => onChange(e.target.value, head)} aria-label="Base revision">
-            {[...new Set([base, ...refs])].map((r) => <option key={r}>{r}</option>)}
-          </select>
+          <Picker label="Base revision" value={base} onChange={(v) => onChange(v, head)} options={[...new Set([base, ...refs])]} />
           <button className="btn sm ghost" title="Swap" aria-label="Swap revisions" onClick={() => onChange(head, base)}>⇄</button>
-          <select className="input" value={head} onChange={(e) => onChange(base, e.target.value)} aria-label="Head revision">
-            {[...new Set([head, ...refs])].map((r) => <option key={r}>{r}</option>)}
-          </select>
+          <Picker label="Head revision" value={head} onChange={(v) => onChange(base, v)} options={[...new Set([head, ...refs])]} />
         </div>
         {mode !== "report" && (
           <div className="seg">

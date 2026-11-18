@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { Branch, Proposal } from "../../api";
 import { relTime } from "../../api";
+import Picker from "../../studio/Picker";
 import { Icon } from "../../ui";
 import { IB, WEmpty, Widget, type Sel, type SetSel } from "./parts";
 
@@ -14,9 +15,9 @@ export function Review({ proposals, branches, current, sel, setSel }: { proposal
     <Widget area="rev" title="Review" count={proposals.length}
       foot={
         <div className="w-line gv-one">
-          <select className="input gv-input" aria-label="Base" value={b} onChange={(e) => setBase(e.target.value)}>{names.map((x) => <option key={x}>{x}</option>)}</select>
+          <Picker label="Base" value={b} options={names} onChange={setBase} />
           <Icon.arrow />
-          <select className="input gv-input" aria-label="Head" value={h} onChange={(e) => setHead(e.target.value)}>{names.map((x) => <option key={x}>{x}</option>)}</select>
+          <Picker label="Head" value={h} options={names} onChange={setHead} />
           <IB tip="Compare" disabled={!b || !h || b === h} onClick={() => setSel({ kind: "compare", base: b, head: h })}><Icon.compare /></IB>
         </div>
       }>

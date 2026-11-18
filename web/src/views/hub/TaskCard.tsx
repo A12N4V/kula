@@ -2,6 +2,7 @@
 // agent runs on it, with the edit stage held by the fences. With no task, a
 // short form starts one. Shown in the inspector when nothing is picked.
 
+import Picker from "../../studio/Picker";
 import { useState } from "react";
 import { relTime, type AgentsInfo } from "../../api";
 import { Chips } from "../../Autofill";
@@ -26,10 +27,7 @@ export function TaskCard({ info, act }: { info: AgentsInfo; act: Act }) {
     return (
       <form className="hub-task" aria-label="Start a task" onSubmit={(e) => { e.preventDefault(); if (title.trim()) act("task_start", { title: title.trim(), scope, workflow: wf }, "Task started").then(() => { setTitle(""); setScope([]); }).catch(() => {}); }}>
         <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What the agents are doing" aria-label="Task title" />
-        <select className="input mono" value={wf} onChange={(e) => setWf(e.target.value)} aria-label="Workflow">
-          <option value="">no workflow</option>
-          {info.workflows.map((w) => <option key={w.name} value={w.name}>{w.name}</option>)}
-        </select>
+        <Picker label="Workflow" value={wf} onChange={setWf} options={[["", "No workflow"], ...info.workflows.map((w) => w.name)]} />
         <Chips values={scope} onChange={setScope} placeholder="scope, empty for the whole repo" label="Scope" />
         <div className="hub-row end"><button className="btn sm primary" disabled={!title.trim()}>Start task</button></div>
       </form>
