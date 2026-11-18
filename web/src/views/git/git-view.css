@@ -1,0 +1,109 @@
+/* ================================================================ Git view
+   Header strip, then one list beside Detail. The page never scrolls; only a
+   widget body does. Sync and output live in the docked sidebar. */
+
+.gv { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+
+/* ---------- header strip */
+.gv-head {
+  flex: none; display: flex; align-items: center; gap: 8px; min-width: 0;
+  height: 44px; padding: 0 10px; border-bottom: 1px solid var(--line);
+}
+.gv-head .spacer { flex: 1; }
+.gv-branch-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; min-width: 0; max-width: 220px;
+  border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--text-2); font-size: 12px;
+}
+.gv-branch-chip svg { width: 14px; height: 14px; flex: none; color: var(--accent); }
+.gv-branch-chip b { font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gv-modes { flex: none; }
+.gv-modes button {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+  transition: background var(--dur), color var(--dur), border-color var(--dur);
+}
+.gv-modes button svg { width: 13px; height: 13px; }
+.gv-modes button:hover:not(.on) { color: var(--text); background: var(--sweep); }
+.gv-modes button.on svg { color: var(--accent); }
+.gv-modes em { font-style: normal; letter-spacing: 0; color: var(--text-3); }
+.gv-modes button.on em { color: var(--accent); }
+.gv-track-pair { display: inline-flex; gap: 8px; font-size: 11.5px; color: var(--text-3); }
+.gv-track-pair > span { display: inline-flex; align-items: center; gap: 1px; }
+.gv-track-pair svg { width: 13px; height: 13px; }
+.gv-track-pair .up.on { color: var(--accent); }
+.gv-track-pair .down.on { color: var(--yellow); }
+.gv-busy { font-size: 11px; color: var(--accent); letter-spacing: .08em; text-transform: uppercase; }
+
+/* ---------- list beside detail */
+.gv-main {
+  position: relative; flex: 1; min-height: 0;
+  display: grid; grid-template-columns: var(--list-w, 380px) minmax(0, 1fr); gap: 8px; padding: 8px;
+}
+.gv-main > .grip { right: auto; width: 8px; left: calc(var(--list-w, 380px) + 8px); }
+.gv-main > .grip::after { right: auto; left: 3px; }
+.gv-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+.gv-list > .widget { flex: 1; }
+.gv-list > .widget.alert { flex: 0 1 auto; max-height: 45%; }
+
+
+.gv-one { flex-wrap: nowrap; }
+.gv-one > svg { flex: none; width: 14px; height: 14px; color: var(--text-3); }
+.gv-input { height: 26px; flex: 1; min-width: 0; font-size: 12px; }
+.gv-msg { width: 100%; resize: none; font-size: 12.5px; line-height: 1.45; padding: 6px 8px; }
+.gv-check { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-2); cursor: pointer; }
+.gv-none { padding: 2px 12px 6px; }
+.gv-chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; max-width: 140px;
+  border: 1px solid var(--line-2); border-radius: var(--r-sm); background: transparent; color: var(--text-2);
+  font-family: var(--mono); font-size: 11px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gv-chip.on { border-color: color-mix(in oklab, var(--accent) 50%, transparent); color: var(--accent); }
+.gv-chip:hover { border-color: var(--accent); }
+.gv-filter { width: 120px; }
+.gv-ref {
+  flex: none; max-width: 120px; padding: 0 6px; height: 18px; line-height: 16px;
+  border: 1px solid var(--line-2); border-radius: var(--r-sm); font-family: var(--mono); font-size: 10.5px; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gv-ref.head { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 45%, transparent); }
+.gv-ref.tag { color: var(--yellow); }
+.gv-when { flex: none; font-family: var(--mono); font-size: 10.5px; }
+.gv-track { flex: none; max-width: 120px; font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gv-dot { color: var(--text-3); font-weight: 400; }
+.gv-dot.cur { color: var(--accent); }
+.gv-prop .gv-dot { width: auto; min-width: 18px; }
+
+/* ---------- detail */
+.gv-detail { min-height: 0; }
+.gv-title { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; font-size: 12px; white-space: nowrap; }
+.gv-title b { font-weight: 500; color: var(--text); }
+.gv-title span { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; }
+.gv-tag {
+  flex: none; height: 20px; line-height: 18px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: var(--r-sm);
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-3);
+}
+.gv-tag.on { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 45%, transparent); }
+.gv-detail .widget-body { padding: 0; }
+
+/* ---------- docked side */
+.gv-side .ct-card h4 .spacer { flex: 1; }
+.gv-side .ct-card h4 { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
+.gv-pad { margin: 0; padding: 2px 0; }
+.gv-out { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 6px; }
+.gv-out:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+.gv-out-head { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-3); }
+.gv-out-head b { font-weight: 500; color: var(--text-2); letter-spacing: .12em; text-transform: uppercase; }
+.gv-out.err .gv-out-head b { color: var(--red); }
+.gv-out .w-out { padding: 4px 0 0; max-height: 200px; overflow: auto; }
+
+/* ---------- narrow */
+@media (max-width: 1100px) {
+  .gv-modes button span { display: none; }
+}
+@media (max-width: 760px) {
+  .gv { position: static; }
+  .gv-head { height: auto; flex-wrap: wrap; padding: 8px; }
+  .gv-main { grid-template-columns: minmax(0, 1fr); }
+  .gv-main > .grip { display: none; }
+  .gv-list > .widget, .gv-detail { height: 420px; flex: none; }
+}

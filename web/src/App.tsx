@@ -8,10 +8,12 @@ import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, canonView, fuzzyScore } from "./na
 // the rest arrive as their own chunks (prefetched on idle – see PREFETCH below).
 const GraphView = lazy(() => import("./views/GraphView"));
 const Agents = lazy(() => import("./views/Agents"));
-const Query = lazy(() => import("./views/Query"));
-const GitBoard = lazy(() => import("./views/GitBoard"));
+const Query = lazy(() => import("./views/query/Ask"));
+const GitView = lazy(() => import("./views/git"));
 const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
-const Flows = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Flows })));
+const Flows = lazy(() => import("./views/query/Flows"));
+const Impact = lazy(() => import("./views/query/Impact"));
+const Slice = lazy(() => import("./views/query/Slice"));
 const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
 const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
 const Proposals = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Proposals })));
@@ -23,9 +25,10 @@ import SettingsPanel from "./SettingsPanel";
 const PREFETCH: Array<() => Promise<unknown>> = [
   () => import("./views/GraphView"),
   () => import("./views/Agents"),
-  () => import("./views/Query"),
+  () => import("./views/query/Ask"),
+  () => import("./views/query/Flows"),
   () => import("./views/GitViews"),
-  () => import("./views/GitBoard"),
+  () => import("./views/git"),
   () => import("./views/MetaViews"),
 ];
 let prefetched = false;
@@ -72,7 +75,9 @@ const VIEWS: ViewDef[] = [
   { id: "git", label: "Git", short: "Git", icon: Icon.branches, key: "2" },
   { id: "graph", label: "Graph", short: "Graph", icon: Icon.graph, key: "" },
   { id: "flows", label: "Flows", short: "Flows", icon: Icon.flows, key: "" },
-  { id: "query", label: "Query (SPARQL)", short: "Query", icon: Icon.query, key: "q" },
+  { id: "query", label: "Query", short: "Query", icon: Icon.query, key: "" },
+  { id: "impact", label: "Impact", short: "Impact", icon: Icon.target, key: "" },
+  { id: "slice", label: "Slice", short: "Slice", icon: Icon.isolate, key: "" },
   { id: "proposals", label: "Proposals", short: "Proposals", icon: Icon.pr, key: "" },
   { id: "issues", label: "Issues", short: "Issues", icon: Icon.issues, key: "" },
   { id: "notes", label: "Notes", short: "Notes", icon: Icon.notes, key: "" },
@@ -81,13 +86,14 @@ const VIEWS: ViewDef[] = [
 ];
 const vdef = (id: View) => VIEWS.find((x) => x.id === id)!;
 
-/** The rail: six places. Map and Work hold sub views behind a toggle and remember the last one. */
+/** The rail: seven places. Query and Work hold sub views behind a toggle and remember the last one. */
 type RailEntry = { id: string; label: string; icon: () => React.ReactElement; key: string; views: View[] };
 const RAIL: RailEntry[][] = [
   [
     { id: "overview", label: "Overview", icon: Icon.home, key: "1", views: ["overview"] },
     { id: "git", label: "Git", icon: Icon.branches, key: "2", views: ["git"] },
-    { id: "map", label: "Map", icon: Icon.graph, key: "3", views: ["graph", "flows", "query"] },
+    { id: "map", label: "Graph", icon: Icon.graph, key: "3", views: ["graph"] },
+    { id: "query", label: "Query", icon: Icon.query, key: "q", views: ["query", "flows", "impact", "slice"] },
     { id: "work", label: "Work", icon: Icon.issues, key: "4", views: ["proposals", "issues", "notes"] },
     { id: "agents", label: "Agents", icon: Icon.agents, key: "5", views: ["agents"] },
   ],
@@ -101,7 +107,7 @@ const lastSub = (r: RailEntry): View => {
   return r.views.includes(s) ? s : r.views[0];
 };
 
-/** The glass toggle over a grouped view: Graph · Flows · Query, or Proposals · Issues · Notes. */
+/** The glass toggle over a grouped view: Query, Flows, Impact and Slice, or Proposals, Issues and Notes. */
 function SubToggle({ view, go, badge }: { view: View; go: (v: View) => void; badge: Partial<Record<View, number>> }) {
   const r = railOf(view);
   if (!r || r.views.length < 2) return null;
@@ -304,7 +310,6 @@ export default function App() {
       const r = RAIL_FLAT.find((x) => x.key === e.key);
       if (r) go(lastSub(r));
       else if (e.key === "a") go("agents");
-      else if (e.key === "q") go("query");
       if (e.key === "/") { e.preventDefault(); setPalette(true); }
       if (e.key === "?") setHelp((h) => !h);
       if (e.key === ",") setPrefs((p) => !p);
@@ -419,13 +424,15 @@ export default function App() {
             <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
               {view === "overview" && <Overview repo={repo} version={version} go={go} />}
               {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
-              {view === "git" && <GitBoard {...nav} />}
+              {view === "git" && <GitView {...nav} />}
               {view === "proposals" && <Proposals {...nav} />}
               {view === "issues" && <Issues {...nav} />}
               {view === "notes" && <Notes {...nav} />}
               {view === "flows" && <Flows {...nav} />}
               {view === "agents" && <Agents {...nav} />}
               {view === "query" && <Query {...nav} />}
+              {view === "impact" && <Impact {...nav} />}
+              {view === "slice" && <Slice {...nav} />}
               {view === "console" && <Console {...nav} />}
             </Suspense>
             </div>

@@ -1,0 +1,62 @@
+/* ================================================================ widgets
+   The pane frame shared by the Git and Query views (views/widget.tsx): a mono
+   title strip, a body that alone scrolls, rows with a fluid hover. */
+/* ---------- widget frame */
+.widget {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--panel); overflow: hidden; transition: border-color var(--dur);
+}
+.widget:hover { border-color: var(--line-2); }
+.widget-head {
+  flex: none; height: 36px; display: flex; align-items: center; gap: 6px;
+  padding: 0 6px 0 12px; border-bottom: 1px solid var(--line);
+}
+.widget-title { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
+.widget-count { font-family: var(--mono); font-size: 10.5px; color: var(--text-3); }
+.widget-head .spacer { flex: 1; }
+.widget-head .input { height: 24px; font-size: 11.5px; padding: 0 8px; min-width: 0; }
+.widget-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
+.widget-foot { flex: none; border-top: 1px solid var(--line); padding: 8px; display: grid; gap: 6px; }
+.widget.alert { border-color: color-mix(in oklab, var(--accent) 45%, transparent); }
+.widget.alert .widget-title { color: var(--accent); }
+
+/* empty state: an outlined glyph, one line */
+.w-empty { height: 100%; min-height: 72px; display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--text-3); font-size: 12px; text-align: center; padding: 12px; }
+.w-empty svg { width: 18px; height: 18px; opacity: .55; }
+
+/* ---------- rows */
+.w-sec { display: flex; align-items: center; gap: 6px; padding: 8px 12px 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
+.w-sec .spacer { flex: 1; }
+.w-row {
+  display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 3px 6px 3px 8px; margin: 0 4px;
+  border: 1px solid transparent; border-radius: var(--r-sm); cursor: pointer; font-size: 12.5px; min-width: 0;
+  transition: border-color var(--dur), background var(--dur);
+}
+.w-row:hover { background: var(--sweep); }
+.w-row.on { background: var(--panel-2); border-color: var(--line-2); }
+.w-row.on:hover { border-color: color-mix(in oklab, var(--accent) 40%, var(--line-2)); }
+.w-row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-row .dim { color: var(--text-3); font-size: 11.5px; white-space: nowrap; }
+.w-row .acts { display: flex; gap: 2px; opacity: 0; transition: opacity var(--dur); }
+.w-row:hover .acts, .w-row.on .acts, .w-row:focus-within .acts { opacity: 1; }
+.w-code { width: 18px; flex: none; text-align: center; font-family: var(--mono); font-size: 11px; font-weight: 600; }
+.w-code.A, .w-code.q { color: var(--green); } .w-code.D { color: var(--red); } .w-code.M { color: var(--yellow); } .w-code.R { color: var(--violet); } .w-code.U { color: var(--accent); }
+.w-base { color: var(--text); }
+.w-dir { color: var(--text-3); margin-left: 6px; font-size: 11px; }
+.w-pad { padding: 10px 12px; }
+.w-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.w-line .spacer { flex: 1; }
+.w-note { font-size: 11.5px; color: var(--text-3); }
+.w-out { margin: 0; padding: 8px 10px; font-family: var(--mono); font-size: 11px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
+.w-commit { min-height: 34px; padding-left: 4px; }
+.w-commit svg { flex: none; }
+.w-detail-bar { flex: none; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--line); min-width: 0; }
+.w-detail-bar .spacer { flex: 1; }
+.widget-body .diff, .widget-body pre.code { border: 0; border-radius: 0; background: transparent; margin: 0; }
+.w-sync { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.w-stat { display: grid; gap: 2px; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); }
+.w-stat b { font-family: var(--mono); font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-stat b.acc { color: var(--accent); }
+.w-stat b.warn { color: var(--yellow); }
+.w-stat span { font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }

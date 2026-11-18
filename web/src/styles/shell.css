@@ -252,3 +252,23 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 }
 
 @media (max-width: 600px) { .statusbar > .sb-crumbs { flex-shrink: 1; min-width: 0; overflow: hidden; } }
+
+/* ------------------------------------------- grouped views: the sub toggle */
+.view-body { position: absolute; inset: 0; }
+.has-sub > .view-body { top: 42px; }
+.subtoggle {
+  position: absolute; top: 8px; left: 8px; height: 28px; z-index: 5;
+  display: inline-flex; gap: 2px; padding: 2px;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--panel);
+}
+.subtoggle button {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0 10px;
+  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer;
+  transition: background var(--dur), color var(--dur);
+}
+.subtoggle button svg { width: 13px; height: 13px; }
+.subtoggle button:hover { color: var(--accent); background: var(--sweep); }
+.subtoggle button.on { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 35%, transparent); }
+.subtoggle .badge { font-size: 9.5px; letter-spacing: 0; color: var(--accent); }

@@ -417,7 +417,7 @@ test.describe("animation", () => {
 const VIEWS: [string, string][] = [
   ["overview", ".ov-title h1"], ["graph", ".graph-wrap"], ["git", "[data-testid=w-tree]"],
   ["issues", ".list-head"], ["notes", ".list-head"], ["console", ".console"],
-  ["agents", ".hub-top"], ["query", ".kq-text"],
+  ["agents", ".hub-top"], ["query", ".kq-text"], ["flows", ".qv-head"], ["impact", ".qv-head"], ["slice", ".qv-head"],
 ];
 for (const [view, sel] of VIEWS) {
   test(`@responsive ${view} fits without sideways scroll`, async ({ page }, info) => {
@@ -590,12 +590,13 @@ test.describe("query", () => {
     const rows = page.locator(".kq-table tbody tr");
     await expect(rows.first()).toBeVisible();
     expect(await rows.count()).toBeGreaterThan(3);
-    await expect(page.locator(".kq-bar").last()).toContainText(/rows · \d+ ms/);
+    await expect(page.getByTestId("w-results")).toContainText(/rows in \d+ ms/);
     await page.screenshot({ path: "test-results/query.png" });
     // A name beside its path opens the symbol in the map.
     await rows.first().locator("td").first().locator("button").click();
     await expect(page).toHaveURL(/#graph\/\d+/);
-    await page.getByRole("radio", { name: "Query (SPARQL)" }).click();
+    await page.goBack();
+    await expect(page).toHaveURL(/#query\b/);
     const q = page.getByRole("textbox", { name: "SPARQL query" });
     await q.fill("SELECT ?x WHERE { ?x kula:nope }}");
     await q.press("ControlOrMeta+Enter");
@@ -603,11 +604,42 @@ test.describe("query", () => {
     await q.fill("ASK { ?s a kula:Function }");
     await q.press("ControlOrMeta+Enter");
     await expect(page.locator(".kq-bool")).toHaveText("true");
-    await page.locator(".kq .seg").getByRole("button", { name: "Vocabulary" }).click();
+    await page.getByTestId("query-side").getByRole("radio", { name: "Vocabulary" }).click();
     await expect(page.locator(".kq-v").first()).toBeVisible();
     const dl = page.waitForEvent("download");
     await page.getByRole("button", { name: "ttl", exact: true }).click();
     expect((await dl).suggestedFilename()).toBe("kula-graph.ttl");
+  });
+  test("flows, impact and slice: pick, read, hand off to the graph, no page scroll", async ({ page }) => {
+    await open(page, "flows");
+    const flows = page.getByTestId("w-flows");
+    await expect(flows.locator(".qv-flow").first()).toBeVisible({ timeout: 20_000 });
+    await flows.locator(".qv-flow").first().click();
+    await expect(page.getByTestId("w-steps").locator(".qv-step").first()).toBeVisible();
+    await expect(page.getByTestId("flows-side")).toContainText("Steps");
+    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= innerHeight)).toBe(true);
+    await page.screenshot({ path: "test-results/query-flows.png" });
+
+    await page.getByRole("radio", { name: "Impact" }).click();
+    await expect(page).toHaveURL(/#impact\b/);
+    const pick = page.getByRole("textbox", { name: "Symbol to change" });
+    await pick.fill("open");
+    await page.locator(".qv-pick-menu .w-row").first().click();
+    await expect(page.getByTestId("w-impact")).toContainText(/reached/);
+    await expect(page.getByTestId("impact-side")).toContainText("Risk");
+    await page.getByRole("radio", { name: "Callees" }).click();
+    await expect(page.getByTestId("w-impact")).toContainText(/reached/);
+    await page.screenshot({ path: "test-results/query-impact.png" });
+
+    await page.getByRole("radio", { name: "Slice" }).click();
+    await expect(page).toHaveURL(/#slice\b/);
+    const sel = page.getByRole("textbox", { name: "Slice selectors" });
+    await sel.fill("src/graph/**");
+    await sel.press("Enter");
+    await expect(page.getByTestId("w-slice")).toContainText(/\d+ nodes/);
+    await expect(page.getByTestId("w-inbound")).toBeVisible();
+    await expect(page.getByTestId("slice-side")).toContainText("Crossings");
+    await page.screenshot({ path: "test-results/query-slice.png" });
   });
 });
 
@@ -1079,8 +1111,14 @@ test.describe("git board", () => {
     test(`fills ${w}x${h} with every widget and no page scroll`, async ({ page }) => {
       await page.setViewportSize({ width: w, height: h });
       await open(page, "git");
-      for (const a of ["tree", "hist", "br", "det", "sync", "stash", "rev"]) await expect(page.getByTestId(`w-${a}`)).toBeVisible();
-      await expect(page.getByTestId("w-det").locator(".w-detail-bar")).toBeVisible();
+      const modes = page.getByRole("radiogroup", { name: "Git list" });
+      for (const [m, a] of [["Changes", "tree"], ["History", "hist"], ["Branches", "br"], ["Stashes", "stash"], ["Review", "rev"]]) {
+        await modes.getByRole("radio", { name: new RegExp(`^${m}`) }).click();
+        await expect(page.getByTestId(`w-${a}`)).toBeVisible();
+      }
+      await expect(page.getByTestId("w-det")).toBeVisible();
+      await expect(page.getByTestId("w-sync")).toBeVisible();
+      await modes.getByRole("radio", { name: /^Changes/ }).click();
       const over = await page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight);
       expect(over).toBeLessThanOrEqual(0);
     });
@@ -1100,7 +1138,7 @@ test.describe("changes", () => {
   test("stage a file, commit it, and discard the rest", async ({ page }) => {
     await open(page, "git");
     const tree = page.getByTestId("w-tree");
-    const kg = tree.locator(".w-row").filter({ hasText: "src/kg.rs" }).first();
+    const kg = tree.locator(".w-row").filter({ hasText: "kg.rs" }).first();
     await expect(kg).toBeVisible();
     await kg.hover();
     await kg.getByRole("button", { name: "Stage", exact: true }).click();
@@ -1347,7 +1385,7 @@ test.describe("g1 – graph, inspector and git by keyboard", () => {
 test.describe("N1 · shell: palette, shortcuts, states", () => {
   const VIEWS: [string, string][] = [
     ["Overview", "overview"], ["Graph", "graph"], ["Flows", "flows"], ["Git", "git"], ["Proposals", "proposals"],
-    ["Issues", "issues"], ["Notes", "notes"], ["Agents", "agents"], ["Query (SPARQL)", "query"], ["Console", "console"],
+    ["Issues", "issues"], ["Notes", "notes"], ["Agents", "agents"], ["Query", "query"], ["Impact", "impact"], ["Slice", "slice"], ["Console", "console"],
   ];
 
   test("N1.1: every view is reachable from the palette", async ({ page }) => {
@@ -1402,11 +1440,14 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
     await expect(page).toHaveURL(/#agents\b/);
     await page.keyboard.press("q");
     await expect(page).toHaveURL(/#query\b/);
-    // 3 opens Map on the sub view used last; the toggle switches it.
+    // q opens Query on the sub view used last; the toggle switches it.
+    await page.getByRole("radio", { name: "Flows" }).click();
+    await expect(page).toHaveURL(/#flows\b/);
     await page.keyboard.press("3");
-    await expect(page).toHaveURL(/#query\b/);
-    await page.getByRole("radio", { name: "Graph" }).click();
     await expect(page).toHaveURL(/#graph\b/);
+    await page.keyboard.press("q");
+    await expect(page).toHaveURL(/#flows\b/);
+    await page.keyboard.press("3");
     // A context shortcut: f shows the fences in force on the graph.
     // The fence overlay draws once the graph is up; under load the layout takes a while.
     await expect(page.locator(".graph-wrap canvas").first()).toBeVisible({ timeout: 30_000 });
@@ -1554,11 +1595,11 @@ test.describe("isolate from the map", () => {
   });
 });
 
-test.describe("P3.11 · six view rail", () => {
-  test("six places; Map and Work toggle their sub views and remember the last one", async ({ page }) => {
+test.describe("P3.11 · view rail", () => {
+  test("seven places; Query and Work toggle their sub views and remember the last one", async ({ page }) => {
     await open(page, "overview");
     const names = await page.locator("nav.rail .rail-group:not(.rail-tools) button").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
-    expect(names).toEqual(["Overview", "Git", "Map", "Work", "Agents", "Console"]);
+    expect(names).toEqual(["Overview", "Git", "Graph", "Query", "Work", "Agents", "Console"]);
     await page.keyboard.press("4");
     await expect(page).toHaveURL(/#proposals\b/);
     await page.getByRole("radio", { name: "Issues" }).click();
@@ -1570,7 +1611,7 @@ test.describe("P3.11 · six view rail", () => {
     // Old hashes still land on their sub view, under the right rail entry.
     await page.goto("/#flows");
     await expect(page.getByRole("radio", { name: "Flows" })).toHaveAttribute("aria-checked", "true");
-    await expect(page.locator("nav.rail").getByRole("button", { name: "Map" })).toHaveAttribute("aria-current", "page");
+    await expect(page.locator("nav.rail").getByRole("button", { name: "Query" })).toHaveAttribute("aria-current", "page");
     await page.keyboard.press("Control+Backquote");
     await expect(page).toHaveURL(/#console\b/);
   });
