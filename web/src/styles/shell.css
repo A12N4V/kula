@@ -135,7 +135,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .op-corner.bl { bottom: 10px; left: 10px; border-bottom-width: 1px; border-left-width: 1px; }
 .op-corner.br { bottom: 10px; right: 10px; border-bottom-width: 1px; border-right-width: 1px; }
 .op-foot { position: absolute; left: 36px; right: 36px; bottom: 34px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
-.op-word { font: 800 clamp(72px, 14vw, 190px)/.92 var(--display); letter-spacing: -.05em; color: var(--text); animation: op-word .9s var(--ease) .15s both; }
+.op-word { font: 600 clamp(72px, 14vw, 190px)/.92 var(--display); letter-spacing: -.01em; color: var(--text); animation: op-word .9s var(--ease) .15s both; }
 @keyframes op-word { from { opacity: 0; transform: translateY(18px); letter-spacing: .12em; } }
 .op-tag { margin-top: 20px; font: 500 11px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--text-3); }
 .op-facts { margin: 0; display: grid; grid-template-columns: auto auto; gap: 4px 18px; font: 500 11.5px var(--mono); min-width: 260px; }
@@ -272,3 +272,5 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .subtoggle button:hover { color: var(--accent); background: var(--sweep); }
 .subtoggle button.on { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 35%, transparent); }
 .subtoggle .badge { font-size: 9.5px; letter-spacing: 0; color: var(--accent); }
+.help { max-height: calc(100vh - 64px); overflow: auto; }
+@media (max-width: 1100px) { .help-grid { grid-template-columns: 1fr; } }

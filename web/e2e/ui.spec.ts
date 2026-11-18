@@ -88,7 +88,7 @@ test.describe("shell", () => {
   test("top bar carries only navigation, search and settings", async ({ page }) => {
     await open(page);
     const bar = page.locator(".topbar");
-    await expect(bar.getByText(/graph current|no graph/)).toHaveCount(0);
+    await expect(bar.getByText(/graph current|no graph/i)).toHaveCount(0);
     await expect(bar.getByRole("button", { name: /Reindex/ })).toHaveCount(0);
     await expect(bar.getByRole("button", { name: "Keyboard shortcuts" })).toHaveCount(0);
     await expect(bar.getByRole("button", { name: "Settings" })).toBeVisible();
@@ -152,14 +152,13 @@ test.describe("shell", () => {
 });
 
 test.describe("design language", () => {
-  test("one typeface: JetBrains Mono everywhere", async ({ page }) => {
+  test("type by role: Jost for the interface, JetBrains Mono for data", async ({ page }) => {
     await open(page);
-    for (const sel of ["body", ".ov-title h1", ".stat-table td", ".stat-table .st-note", ".card-head h2", ".section-title, .stat-table th"]) {
-      const ff = await page.locator(sel).first().evaluate((el) => getComputedStyle(el).fontFamily);
-      expect(ff, sel).toMatch(/^"?JetBrains Mono/);
-    }
+    const ff = (sel: string) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).fontFamily);
+    for (const sel of ["body", ".btn", ".top-search"]) expect(await ff(sel), sel).toMatch(/^"?Jost/);
+    for (const sel of [".stat-table td", ".card-head h2"]) expect(await ff(sel), sel).toMatch(/^"?JetBrains Mono/);
     const faces = await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].map((f) => f.family); });
-    expect(faces.join(",")).not.toMatch(/Antonio|Cormorant|Geist/);
+    expect(faces.join(",")).not.toMatch(/Antonio|Geist|Simulacra/);
   });
 
   test("Homonin ground and accent", async ({ page }) => {
@@ -168,16 +167,16 @@ test.describe("design language", () => {
       const s = getComputedStyle(document.documentElement);
       return { bg: s.getPropertyValue("--bg").trim(), accent: s.getPropertyValue("--accent").trim(), line: s.getPropertyValue("--line").trim() };
     });
-    expect(v).toEqual({ bg: "#050505", accent: "#f97f3a", line: "#24201d" });
+    expect(v).toEqual({ bg: "#000", accent: "#f97f3a", line: "#24201d" });
   });
 
-  test("soft: framed surfaces are rounded 8, controls 6, and panels are frosted glass", async ({ page }) => {
+  test("flat: framed surfaces 6, controls 4, and nothing is frosted", async ({ page }) => {
     await open(page);
-    for (const sel of [".card", ".stat-table.ov-stats"]) expect(await radius(page, sel), sel).toBe("8px");
-    for (const sel of [".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("6px");
+    for (const sel of [".card", ".stat-table.ov-stats"]) expect(await radius(page, sel), sel).toBe("6px");
+    for (const sel of [".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("4px");
     for (const sel of [".topbar", ".card"]) {
       const bf = await page.locator(sel).first().evaluate((el) => { const s = getComputedStyle(el); return s.backdropFilter || (s as any).webkitBackdropFilter; });
-      expect(bf, sel).toMatch(/blur/);
+      expect(bf, sel).not.toMatch(/blur/);
     }
   });
 
@@ -188,7 +187,7 @@ test.describe("design language", () => {
     const t = page.getByTestId("server-error");
     await expect(t).toBeVisible();
     const b = await t.evaluate((el) => { const s = getComputedStyle(el.querySelector("p.mono")!); return [s.borderLeftWidth, s.borderTopWidth, s.borderRightWidth, s.borderBottomWidth, s.borderTopLeftRadius]; });
-    expect(b).toEqual(["1px", "1px", "1px", "1px", "6px"]);
+    expect(b).toEqual(["1px", "1px", "1px", "1px", "4px"]);
   });
 });
 
@@ -494,7 +493,17 @@ test.describe("console", () => {
 async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: number; y: number; id: string; label: string }; b: { x: number; y: number; id: string; label: string } }> {
   await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 20_000 });
   await page.waitForFunction(() => !!(window as any).__kula);
-  await page.waitForTimeout(400);
+  // Wait until the layout holds still: a background reindex can nudge nodes.
+  let last = "";
+  await expect.poll(async () => {
+    const now = await page.evaluate(() => {
+      const { sigma, graph } = (window as any).__kula;
+      return graph.order + ":" + graph.nodes().slice(0, 40).map((id: string) => {
+        const p = sigma.getNodeDisplayData(id); return p ? `${Math.round(p.x * 1e4)},${Math.round(p.y * 1e4)}` : "";
+      }).join(";");
+    });
+    const same = now === last; last = now; return same;
+  }, { timeout: 20_000, intervals: [400] }).toBe(true);
   return page.evaluate((pick) => {
     const { sigma, graph } = (window as any).__kula;
     const box = sigma.getContainer().getBoundingClientRect();
@@ -564,6 +573,13 @@ test.describe("graph interactions", () => {
       return (await read()) === first ? first : "moving";
     });
     expect(to).not.toBe("moving");
+    // The flight centres a; bring both ends into frame so b is on screen.
+    await page.evaluate(([ia, ib]) => {
+      const { sigma } = (window as any).__kula;
+      const p = sigma.getNodeDisplayData(ia), q = sigma.getNodeDisplayData(ib);
+      sigma.getCamera().setState({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+    }, [a.id, b.id]);
+    await page.waitForTimeout(150);
     const spot = await page.evaluate((id) => {
       const { sigma } = (window as any).__kula;
       const box = sigma.getContainer().getBoundingClientRect();
@@ -1207,7 +1223,7 @@ test.describe("design system", () => {
     });
     expect(stray).toEqual([]);
     // The rendered page is not enough – sweep the sources too: no <svg> outside
-    // ui.tsx and brands.tsx unless the element is marked as a data figure, and
+    // ui.tsx, brands.tsx and graph/icons.tsx unless the element is marked as a data figure, and
     // no unicode glyph standing in for an icon.
     const fs = await import("node:fs");
     const path = await import("node:path");
@@ -1227,7 +1243,7 @@ test.describe("design system", () => {
     for (const f of files) {
       const rel = path.relative(root, f);
       for (const [i, line] of fs.readFileSync(f, "utf8").split("\n").entries()) {
-        if (line.includes("<svg") && !/ui\.tsx$/.test(rel) && !/brands\.tsx$/.test(rel) && !line.includes("data-figure") && !line.includes("rf-wires"))
+        if (line.includes("<svg") && !/ui\.tsx$/.test(rel) && !/brands\.tsx$/.test(rel) && !/graph\/icons\.tsx$/.test(rel) && !line.includes("data-figure") && !line.includes("rf-wires"))
           svgBad.push(`${rel}:${i + 1}`);
         // Text-label glyphs (colors.ts, ui.tsx kind letters, keyboard notation,
         // canvas map labels) are exempt; DOM icon glyphs are not.
@@ -1290,7 +1306,7 @@ test.describe("g1 – graph, inspector and git by keyboard", () => {
     await page.mouse.move(a.x, a.y, { steps: 4 });
     const card = page.locator(".hover-card");
     await expect(card).toBeVisible({ timeout: 1500 });
-    await expect(card.locator(".hc-name")).toHaveText(a.label);
+    await expect(card.locator(".hc-name")).toHaveText(new RegExp(`^${a.label}(hub)?$`));
     // path:line – a real location, not a bare path.
     await expect(card.locator(".hc-path")).toHaveText(/:\d+$/);
     await expect(card.locator(".hc-stats b.in")).toHaveText(/^\d+$/);

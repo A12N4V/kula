@@ -47,7 +47,7 @@
   --row-h: 26px;
   --font: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
   --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
-  --display: var(--mono);
+  --display: var(--serif);
   --serif: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
   --ui: "Jost Variable", "Avenir Next", system-ui, sans-serif;
   --module: 8px;
@@ -78,7 +78,7 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--text); font: 13px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+body { background: var(--bg); color: var(--text); font: 13px/1.5 var(--ui); -webkit-font-smoothing: antialiased; }
 button, input, textarea, select { font: inherit; color: inherit; }
 code, pre, .mono { font-family: var(--mono); font-size: 12px; }
 ::selection { background: var(--accent-soft); }

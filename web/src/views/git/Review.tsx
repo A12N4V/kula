@@ -22,7 +22,7 @@ export function Review({ proposals, branches, current, sel, setSel }: { proposal
       }>
       {proposals.length === 0 ? <WEmpty icon={<Icon.pr />}>No open proposals</WEmpty> : proposals.map((p) => (
         <div key={p.id} className={`w-row gv-prop${sel?.kind === "compare" && sel.proposal === p.id ? " on" : ""}`} onClick={() => setSel({ kind: "compare", base: p.base, head: p.head, proposal: p.id })} title={p.title}>
-          <span className="w-code gv-dot">#{p.id}</span>
+          <span className="w-code gv-num">#{p.id}</span>
           <span className="grow">{p.title}</span>
           <span className="gv-track mono">{p.head}</span>
           <span className="dim gv-when">{relTime(p.created)}</span>

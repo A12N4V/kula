@@ -17,7 +17,7 @@ export function Stashes({ stashes, run, sel, setSel }: { stashes: string[]; run:
       }>
       {stashes.length === 0 ? <WEmpty icon={<Icon.doc />}>No stashes</WEmpty> : stashes.map((s, n) => (
         <div key={s} className={`w-row${sel?.kind === "stash" && sel.n === n ? " on" : ""}`} onClick={() => setSel({ kind: "stash", n })} title={s}>
-          <span className="w-code gv-dot">{n}</span>
+          <span className="w-code gv-num">{n}</span>
           <span className="grow">{s.replace(/^stash@\{\d+\}:\s*/, "")}</span>
           <span className="acts"><IB tip="Pop" onClick={() => run("stash_pop", { name: String(n) }, "Popped")}><Icon.up /></IB></span>
         </div>

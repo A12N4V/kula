@@ -143,9 +143,12 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
   const [impact, setImpact] = useState<Impact | null>(null);
   const [legendOpen, setLegendOpen] = useState(() => window.innerWidth > 760);
   const [settling, setSettling] = useState(false);
-  // The loader outlives the load by its exit animation.
-  const busy = !err && (!data || settling);
+  // The loader outlives the load by its exit animation. It blocks only the first
+  // load of a level; a refresh keeps the old map up until the new one lands.
+  const shown = useRef<string | null>(null);
+  const busy = !err && (!data || (settling && shown.current !== level));
   const [loaderOn, setLoaderOn] = useState(true);
+  useEffect(() => { if (!busy && data) shown.current = level; else if (shown.current !== level) lastPos.current = null; });
   useEffect(() => {
     if (busy) { setLoaderOn(true); return; }
     const t = window.setTimeout(() => setLoaderOn(false), 500);
@@ -206,7 +209,7 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
 
   useEffect(() => {
     let dead = false;
-    setData(null);
+    if (shown.current !== level) setData(null);
     setErr(null);
     // A first run indexes behind the loader: while the server is building, keep waiting instead of failing.
     const load = (tries: number) => api.graph(level).then((d) => { if (!dead) { setData(d); setSettling(true); } }).catch(async (e) => {
@@ -259,6 +262,8 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
   useEffect(() => { knownDirs.set({ list: groups.sizes.map(([d, n]) => [d, n, groups.label(d)]), depth: groups.depth }); }, [groups]);
 
   // Build the graph: seeded by directory on a golden-angle spiral, refined live by the worker.
+  // Positions of the last map, so a refresh lands every known symbol where it was.
+  const lastPos = useRef<Map<string, { x: number; y: number }> | null>(null);
   const graph = useMemo(() => {
     if (!data) return null;
     const g = new Graph({ multi: false, type: "directed" });
@@ -304,6 +309,12 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
     placePackages(g);
     if (g.order > 1) forceAtlas2.assign(g, { iterations: 40, settings: layoutSettings(g) });
     placePackages(g);
+    const old = lastPos.current;
+    if (old) {
+      let hit = 0;
+      g.forEachNode((id, at) => { const p = old.get(id); if (p && !at.virtual && at.dir !== PKG) { g.mergeNodeAttributes(id, p); hit++; } });
+      g.setAttribute("kept", hit > g.order * 0.5);
+    }
     return g;
   }, [data]);
 
@@ -478,7 +489,12 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
 
     let worker: FA2Layout | null = null;
     let timer = 0;
-    if (!reduced && graph.order > 2) {
+    const kept = !!graph.getAttribute("kept");
+    if (kept) {
+      setSettling(false);
+      noverlap.assign(graph, { maxIterations: 20, settings: { margin: 3, ratio: 1.15 } });
+      placePackages(graph);
+    } else if (!reduced && graph.order > 2) {
       worker = new FA2Layout(graph, { settings: layoutSettings(graph) });
       worker.start();
       const settleMs = Math.min(4500, 1400 + graph.order * 4);
@@ -502,6 +518,11 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
     return () => {
       clearTimeout(timer);
       worker?.kill();
+      if (shown.current === level) {
+        const m = new Map<string, { x: number; y: number }>();
+        graph.forEachNode((id, at) => { m.set(id, { x: at.x, y: at.y }); });
+        lastPos.current = m;
+      }
       ov.kill();
       overlay.current = null;
       r.kill();
@@ -595,7 +616,7 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
       if (e.key === "t" && focusRef.current != null) {
         armed.current = true;
         setTraceArmed(true);
-        toastRef.current("Trace armed – press an arrow for a neighbour or click another symbol");
+        toastRef.current("Trace armed, press an arrow for a neighbour or click another symbol");
       }
       // Walk the neighbours of the selection: arrows down/right follow calls out,
       // up/left follow calls in. Repeats cycle through that side's neighbours.
@@ -697,7 +718,7 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
             return n ? <span key={l} className="fk" title={LEVEL_MEANS[l]}><GuardTag level={l} /> {n} <span className="muted fk-means">{LEVEL_MEANS[l]}</span></span> : null;
           })}
           {fenceTask && <span className="fk" title="Agents may change only these"><span className="guard-tag open">editable</span> {graph.filterNodes((id, a) => !a.virtual && a.dir !== PKG && !fences.has(id)).length}<span className="muted fk-task">{fenceTask}</span></span>}
-          {![...fences.values()].some((v) => v !== "scope") && !fenceTask && <span className="muted">nothing fenced – agents may change everything shown</span>}
+          {![...fences.values()].some((v) => v !== "scope") && !fenceTask && <span className="muted">nothing fenced, agents may change everything shown</span>}
           <button className="btn ghost sm" onClick={() => setFencesOn(false)} aria-label="Hide fences"><Icon.close /></button>
         </div>
       )}
@@ -734,7 +755,7 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
       </div>
 
       {focus != null && <Inspector id={focus} tabReq={tabReq} onClose={() => setFocus(null)} setFocus={setFocus} impact={impact} setImpact={setImpact} go={go} churn={churn} deg={graph?.hasNode(String(focus)) ? [graph.getNodeAttribute(String(focus), "din"), graph.getNodeAttribute(String(focus), "dout")] : null}
-        onTrace={() => { armed.current = true; setTraceArmed(true); toast("Trace armed – press an arrow for a neighbour or click another symbol"); }}
+        onTrace={() => { armed.current = true; setTraceArmed(true); toast("Trace armed, press an arrow for a neighbour or click another symbol"); }}
         traceArmed={traceArmed} />}
     </div>
   );
@@ -1123,7 +1144,7 @@ function Inspector({ id, tabReq, onClose, setFocus, impact, setImpact, go: goVie
                 try {
                   if (asMemory) await api.agentAction("remember", { target: target.replace(/^symbol:/, ""), text: note });
                   else await api.metaAction("notes", "new", { target, body: note });
-                  setNote(""); toast(asMemory ? "Remembered – anchored to this code" : "Note saved to refs/kula/meta"); load();
+                  setNote(""); toast(asMemory ? "Remembered, anchored to this code" : "Note saved to refs/kula/meta"); load();
                 } catch (e: any) { toast(e.message, "err"); }
               }}>{asMemory ? "Remember" : "Save note"}</button>
             </div>
@@ -1158,7 +1179,7 @@ function IsolateAsk({ initial, hops: hops0, onRun, onClose }: { initial: string;
       {scopes.length > 0 && (
         <div className="iso-help">
           <span className="muted">saved</span>
-          {scopes.map((sc) => <button key={sc.name} type="button" className="iso-chip" title={`${sc.select.join(" + ")} · ${sc.paths.length} files${sc.about ? ` – ${sc.about}` : ""}`} onClick={() => run(`@${sc.name}`)}><span className="mono">@{sc.name}</span> <span className="muted">{sc.paths.length}</span></button>)}
+          {scopes.map((sc) => <button key={sc.name} type="button" className="iso-chip" title={`${sc.select.join(" + ")} · ${sc.paths.length} files${sc.about ? `, ${sc.about}` : ""}`} onClick={() => run(`@${sc.name}`)}><span className="mono">@{sc.name}</span> <span className="muted">{sc.paths.length}</span></button>)}
         </div>
       )}
     </div>
@@ -1178,7 +1199,7 @@ function IsolatePanel({ iso, inGraph, focus, onExit, onEdit }: {
   useEffect(() => { setSaved(null); setName(""); }, [slice]);
   const byId = useMemo(() => new Map(slice.nodes.map((n) => [n.id, n])), [slice]);
   const absent = slice.nodes.filter((n) => !inGraph(n.id)).length;
-  const save = () => api.scopeSave(name.trim(), slice.selectors, hops).then((sc) => { setSaved(sc.name); toast(`Saved @${sc.name} in kula.toml – ${sc.paths.length} files`); }).catch((e) => toast(e.message, "err"));
+  const save = () => api.scopeSave(name.trim(), slice.selectors, hops).then((sc) => { setSaved(sc.name); toast(`Saved @${sc.name} in kula.toml, ${sc.paths.length} files`); }).catch((e) => toast(e.message, "err"));
   const list: Peer[] = side === "in" ? slice.inbound : side === "out" ? slice.outbound : [];
   return (
     <div className="graph-overlay iso-panel" role="region" aria-label="Isolated slice">
@@ -1211,9 +1232,9 @@ function IsolatePanel({ iso, inGraph, focus, onExit, onEdit }: {
         {side !== "files" && !list.length && <div className="muted iso-row">{side === "in" ? "Nothing outside uses it." : "It uses nothing outside itself."}</div>}
         {side !== "files" && list.length > 80 && <div className="muted iso-row">… {list.length - 80} more</div>}
       </div>
-      {absent > 0 && <div className="muted iso-note">{absent} not drawn – the map shows the most connected symbols</div>}
+      {absent > 0 && <div className="muted iso-note">{absent} not drawn, the map shows the most connected symbols</div>}
       <form className="iso-save" onSubmit={(e) => { e.preventDefault(); if (name.trim()) save(); }}>
-        {saved ? <span className="muted">saved as <span className="mono">@{saved}</span> – use it in a workflow as <span className="mono">scope = ["@{saved}"]</span></span> : <>
+        {saved ? <span className="muted">saved as <span className="mono">@{saved}</span>, use it in a workflow as <span className="mono">scope = ["@{saved}"]</span></span> : <>
           <input className="mono" value={name} onChange={(e) => setName(e.target.value)} placeholder="scope name" aria-label="Scope name" pattern="[A-Za-z0-9_-]+" />
           <button className="btn sm" type="submit" disabled={!name.trim()}>Save scope</button>
         </>}

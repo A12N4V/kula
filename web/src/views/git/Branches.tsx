@@ -14,7 +14,7 @@ export function Branches({ branches, tags, current, run, sel, setSel, showHistor
 
   const row = (b: Branch) => (
     <div key={(b.remote ? "r:" : "l:") + b.name} className={`w-row gv-branch${isOn(b) ? " on" : ""}`} onClick={() => setSel({ kind: "commit", sha: b.sha })} title={b.subject}>
-      <span className={`w-code gv-dot${b.current ? " cur" : ""}`}>{b.current ? "●" : "○"}</span>
+      <span className={`gv-dot${b.current ? " cur" : ""}`} aria-hidden />
       <span className="grow mono">{b.name}</span>
       {b.track && <span className="gv-track mono">{b.track.replace(/[[\]]/g, "")}</span>}
       <span className="dim gv-when">{relTime(b.time)}</span>
@@ -46,7 +46,7 @@ export function Branches({ branches, tags, current, run, sel, setSel, showHistor
               <div className="w-sec">Tags {tags.length}</div>
               {tags.map((t) => (
                 <div key={"t:" + t} className={`w-row${sel?.kind === "commit" && sel.sha === t ? " on" : ""}`} onClick={() => setSel({ kind: "commit", sha: t })} title={t}>
-                  <span className="w-code gv-dot">◇</span>
+                  <span className="gv-dot tag" aria-hidden />
                   <span className="grow mono">{t}</span>
                   <span className="acts"><IB tip={`Compare with ${current}`} onClick={() => setSel({ kind: "compare", base: current, head: t })}><Icon.compare /></IB></span>
                 </div>

@@ -117,3 +117,35 @@ body.resizing { cursor: col-resize; user-select: none; }
 .sb-crumbs i { display: inline-grid; }
 .sb-crumbs i svg { width: 9px; height: 9px; }
 .tw-dock { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+
+/* ---------- top bar menus (branch switcher) */
+.tb-menu { position: relative; display: inline-flex; min-width: 0; }
+.tb-caret { display: inline-flex; color: var(--text-3); }
+.tb-caret svg { width: 12px; height: 12px; }
+.menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: 280px;
+  display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
+}
+.menu-filter {
+  height: 32px; margin: 0; padding: 0 10px; border: 0; border-bottom: 1px solid var(--line); border-radius: var(--r-md) var(--r-md) 0 0;
+  background: transparent; color: var(--text); font: 12px var(--ui); outline: none;
+}
+.menu-filter::placeholder { color: var(--text-3); }
+.menu-list { max-height: 320px; overflow: auto; padding: 4px; display: flex; flex-direction: column; }
+.menu-item, .menu-foot {
+  position: relative; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--text-2); font: 11px var(--mono); text-align: left; cursor: pointer;
+  transition: background var(--dur), color var(--dur);
+}
+.menu-item svg, .menu-foot svg { width: 13px; height: 13px; flex: none; color: var(--text-3); }
+.menu-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-item.hi, .menu-foot:hover { background: var(--sweep); color: var(--text); }
+.menu-item.on { color: var(--accent); }
+.menu-item.on svg { color: var(--accent); }
+.menu-item.on::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; border-radius: 0 2px 2px 0; background: var(--accent); }
+.menu-none { margin: 0; padding: 8px; font: 11px var(--mono); color: var(--text-3); }
+.menu-foot { margin: 0; border-top: 1px solid var(--line); border-radius: 0 0 var(--r-md) var(--r-md); height: 32px; padding: 0 12px; font-family: var(--ui); font-size: 12px; }
+@media (max-width: 1000px) and (min-width: 761px) {
+  .studio > .tw-right { max-width: 280px; }
+}
+.studio > .topbar { position: relative; z-index: 40; }

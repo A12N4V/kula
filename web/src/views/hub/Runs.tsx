@@ -30,7 +30,7 @@ export function Spark({ values, w = 120, h = 22, label }: { values: number[]; w?
   const pts = values.map((v, i) => `${(i * step).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const last = values[values.length - 1];
   return (
-    <svg className="runs-spark" width={w} height={h} viewBox={`-2 0 ${w + 4} ${h}`} role="img" aria-label={label}>
+    <svg data-figure className="runs-spark" width={w} height={h} viewBox={`-2 0 ${w + 4} ${h}`} role="img" aria-label={label}>
       <line x1={0} x2={w} y1={y(50)} y2={y(50)} className="runs-spark-mid" />
       {values.length > 1 && <polyline points={pts} />}
       <circle cx={(values.length - 1) * step} cy={y(last)} r={2} className={tone(last)} />

@@ -5,7 +5,7 @@ import { Icon, Kind, Logo, useToast } from "./ui";
 import type { ContrastMode, Go, Target, View } from "./nav";
 import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, canonView, fuzzyScore } from "./nav";
 // Heavy views load on demand: the first paint ships the shell + Overview only,
-// the rest arrive as their own chunks (prefetched on idle – see PREFETCH below).
+// the rest arrive as their own chunks (prefetched on idle, see PREFETCH below).
 const GraphView = lazy(() => import("./views/GraphView"));
 const Agents = lazy(() => import("./views/Agents"));
 const Query = lazy(() => import("./views/query/Ask"));
@@ -45,6 +45,7 @@ import ProjectTree from "./studio/ProjectTree";
 import { DockProvider, useDockHost } from "./studio/Dock";
 import Structure from "./studio/Structure";
 import FileEditor from "./studio/FileEditor";
+import BranchMenu from "./studio/BranchMenu";
 import EditorTabs, { tabKey, type Tab } from "./studio/EditorTabs";
 
 // Tool window widths survive a reload; storage may be blocked, so every touch is guarded.
@@ -207,8 +208,7 @@ export default function App() {
       const p = parseHash();
       popping.current = true;
       setView(p.view); setTarget(p.target); setContrast(p.contrast); setFocus(p.focus);
-      setNoTabs(false); setFile(null);
-      setTabs((ts) => (ts.some((t) => t.kind === "view" && t.view === p.view) ? ts : [...ts, { kind: "view", view: p.view }]));
+      setFile(null);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -217,8 +217,8 @@ export default function App() {
   // Phones: the sidebar is a drawer, summoned from the top bar.
   const [rail, setRail] = useState(false);
 
-  // Editor tabs: every view you visit and every file you open; files live here only, not in the URL.
-  const [tabs, setTabs] = useState<Tab[]>([{ kind: "view", view: initial.view }]);
+  // Editor tabs hold opened files only; views live on the rail. Files stay out of the URL.
+  const [tabs, setTabs] = useState<Tab[]>([]);
   const [file, setFile] = useState<{ path: string; line?: number } | null>(null);
   const [curLine, setCurLine] = useState<number | undefined>();
   const [left, setLeft] = useState(() => store.flag("kula.studio.left", window.innerWidth >= 1440));
@@ -235,10 +235,7 @@ export default function App() {
   const toggleRight = useRef(() => {});
   toggleRight.current = () => (docked ? setDockHide((h) => !h) : setRight((r) => !r));
   useEffect(() => { store.set("kula.studio.lw", String(lw)); store.set("kula.studio.rw", String(rw)); }, [lw, rw]);
-  const showView = useCallback((v: View) => {
-    setFile(null);
-    setTabs((ts) => (ts.some((t) => t.kind === "view" && t.view === v) ? ts : [...ts, { kind: "view", view: v }]));
-  }, []);
+  const showView = useCallback((_v: View) => { setFile(null); }, []);
   const openFile = useCallback((path: string, line?: number) => {
     setFile({ path, line }); setCurLine(line);
     setTabs((ts) => (ts.some((t) => t.kind === "file" && t.path === path)
@@ -246,11 +243,10 @@ export default function App() {
       : [...ts, { kind: "file", path, line }]));
     setRail(false);
   }, []);
-  const [noTabs, setNoTabs] = useState(false);
 
   const go: Go = useCallback((to, t = {}) => {
     const v = canonView(to);
-    showView(v); setNoTabs(false);
+    showView(v);
     setView(v);
     setTarget(t);
     const r = railOf(v);
@@ -262,9 +258,8 @@ export default function App() {
     }
   }, [showView]);
 
-  const activeKey = noTabs ? null : file ? `f:${file.path}` : `v:${view}`;
+  const activeKey = file ? `f:${file.path}` : `v:${view}`;
   const pickTab = (t: Tab) => {
-    setNoTabs(false);
     if (t.kind === "file") { setFile({ path: t.path, line: t.line }); setCurLine(t.line); }
     else go(t.view as View);
   };
@@ -275,7 +270,7 @@ export default function App() {
     setTabs(rest);
     if (k !== activeKey) return;
     const next = rest[Math.min(i, rest.length - 1)];
-    if (!next) { setFile(null); setNoTabs(true); return; }
+    if (!next) { setFile(null); return; }
     if (next.kind === "file") { setFile({ path: next.path, line: next.line }); setCurLine(next.line); }
     else { setFile(null); setView(next.view as View); setTarget({}); }
   };
@@ -339,8 +334,8 @@ export default function App() {
       <header className="topbar">
         <button className="brand" onClick={() => go("overview")} aria-label="Overview"><Logo /><span>kula</span></button>
         <button className="rail-toggle" onClick={() => setRail((r) => !r)} aria-label={rail ? "Hide sidebar" : "Show sidebar"} aria-expanded={rail} aria-controls="rail"><Icon.sidebar /></button>
-        <button className="crumb-repo tb-widget" onClick={() => go("overview")} title="Project"><b>{repo?.name ?? "…"}</b><span className="tb-caret"><Icon.chevron /></span></button>
-        <button className="chip tb-widget" onClick={() => go("git")} title="Current branch"><Icon.branches /><b className="mono">{repo?.branch ?? "…"}</b><span className="tb-caret"><Icon.chevron /></span></button>
+        <button className="crumb-repo tb-widget" onClick={() => go("overview")} title="Overview"><b>{repo?.name ?? "…"}</b></button>
+        <BranchMenu branch={repo?.branch} onChanged={onChanged} openGit={() => go("git")} />
         <span className="spacer" />
         <div className="top-actions">
           <button className="btn sm ghost icon-only" aria-label="Back" title="Back  ⌥←" onClick={() => history.back()}><Icon.back /></button>
@@ -361,7 +356,7 @@ export default function App() {
               const here = r.views.includes(view);
               const n = r.views.reduce((s, v) => s + (badge[v] ?? 0), 0);
               return (
-                <button key={r.id} className={!file && !noTabs && here ? "on" : ""} onClick={() => { go(here ? view : lastSub(r)); setRail(false); }} data-tip={`${r.label}  ${r.key}`} aria-label={r.label} aria-current={here ? "page" : undefined}>
+                <button key={r.id} className={!file && here ? "on" : ""} onClick={() => { go(here ? view : lastSub(r)); setRail(false); }} data-tip={`${r.label}  ${r.key}`} aria-label={r.label} aria-current={here ? "page" : undefined}>
                   <r.icon />
                   <span className="rail-label">{r.label}</span>
                   {!!n && <span className="badge">{n}</span>}
@@ -382,7 +377,7 @@ export default function App() {
       )}
 
       <section className="editor">
-        {tabs.length > 0 && <EditorTabs tabs={tabs} active={activeKey} label={tabLabel} onPick={pickTab} onClose={closeTab} />}
+        {tabs.length > 0 && <EditorTabs tabs={[{ kind: "view", view }, ...tabs]} active={activeKey} label={tabLabel} onPick={pickTab} onClose={closeTab} />}
         <main className="main">
           {/* Full panel only when nothing has loaded; once data is in, a failed poll
               is a slim banner so the view (and its state) survives the blip. */}
@@ -390,7 +385,7 @@ export default function App() {
             <div className="shell-error" data-testid="server-error" role="alert">
               <h2>Server unreachable</h2>
               <p className="mono">{serverError}</p>
-              <p className="hint">kula's server answers every view – nothing can load until it is back.</p>
+              <p className="hint">Waiting for the kula server.</p>
               <div className="shell-error-actions">
                 <button className="btn primary" onClick={refresh}>Retry now</button>
                 <span className="muted">or restart with <code>kula serve</code></span>
@@ -404,17 +399,7 @@ export default function App() {
               <button className="btn sm" onClick={refresh}>Retry</button>
             </div>
           )}
-          {noTabs ? (
-            <div className="editor-empty" data-testid="editor-empty">
-              <dl>
-                <dt>Search everywhere</dt><dd><kbd>⇧⇧</kbd></dd>
-                <dt>Project</dt><dd><kbd>⌥1</kbd></dd>
-                <dt>Structure</dt><dd><kbd>⌥7</kbd></dd>
-                <dt>Map</dt><dd><kbd>3</kbd></dd>
-                <dt>Shortcuts</dt><dd><kbd>?</kbd></dd>
-              </dl>
-            </div>
-          ) : file ? (
+          {file ? (
             <FileEditor path={file.path} line={file.line} onLine={setCurLine} />
           ) : (
           /* Keyed so each view change plays a short enter transition. */
@@ -451,12 +436,12 @@ export default function App() {
         </aside>
       )}
       <aside className="stripe-right" aria-label="Tool windows">
-        <button className={showRight ? "on" : ""} onClick={() => toggleRight.current()} data-tip={`${dock.label ?? "Structure"}  ⌥7`} aria-label="Structure" aria-pressed={showRight}><Icon.structure /></button>
+        <button className={showRight ? "on" : ""} onClick={() => toggleRight.current()} data-tip={`${dock.label ?? "Structure"}  ⌥7`} aria-label={dock.label ?? "Structure"} aria-pressed={showRight}><Icon.structure /></button>
       </aside>
 
       <footer className="statusbar">
         <span>kula {repo?.version}</span>
-        {(indexing || repo?.index !== "current") && <span className="sb-warn">{indexing || repo?.index === "stale" ? "reindexing…" : "no graph – ⌘K, then Reindex"}</span>}
+        {(indexing || repo?.index !== "current") && <span className="sb-warn">{indexing || repo?.index === "stale" ? "reindexing…" : "No graph. ⌘K, Reindex"}</span>}
         <span className="sb-crumbs">
           <span>{repo?.name ?? "…"}</span>
           {(file ? file.path.split("/") : [contrast && view === "graph" ? "Contrast" : current.label]).map((p, i) => <span key={i}><i><Icon.chevron /></i>{p}</span>)}

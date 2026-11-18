@@ -33,7 +33,7 @@ export function MetricChart({ points, baseline, metric, goal, h = 96 }: { points
   const kept = points.filter((p) => p.verdict === "kept").length;
   return (
     <figure className="metric-chart" aria-label={`${metric} over ${points.length} experiments`}>
-      <svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${metric}, ${goal === "max" ? "higher" : "lower"} is better`}>
+      <svg data-figure viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${metric}, ${goal === "max" ? "higher" : "lower"} is better`}>
         <line className="base" x1={0} x2={w} y1={y(baseline)} y2={y(baseline)} />
         <path className="best" d={d} />
         {points.map((p, i) => p.value === null

@@ -101,8 +101,8 @@ export default function GitView({ onChanged, openSymbol, version, go, target }: 
 
   return (
     <div className="gv" data-testid="git-board">
-      <Header branch={branch} upstream={current?.upstream} ahead={ahead} behind={behind} mode={mode} setMode={setMode}
-        counts={{ changes: files.length, branches: local.length, stashes: stashes.length, review: proposals.length }} busy={busy} sync={sync} />
+      <Header upstream={current?.upstream} ahead={ahead} behind={behind} mode={mode} setMode={setMode}
+        counts={{ changes: files.length, branches: local.length, stashes: stashes.length, review: proposals.length }} busy={busy} />
       <div className="gv-main" style={listWidth("git", 380)}>
         <div className="gv-list">
           {op && <Conflicts op={op} files={conflicts} run={run} sel={sel} setSel={setSel} />}
@@ -112,7 +112,7 @@ export default function GitView({ onChanged, openSymbol, version, go, target }: 
         <Detail sel={sel} setSel={setSel} files={files} run={run} go={go} openSymbol={openSymbol} current={branch} version={version + tick} />
       </div>
       <Docked label="Git">
-        <Side current={current} ahead={ahead} behind={behind} busy={busy} log={log} kula={kula} clear={() => setLog([])} />
+        <Side current={current} ahead={ahead} behind={behind} busy={busy} log={log} kula={kula} sync={sync} clear={() => setLog([])} />
       </Docked>
     </div>
   );

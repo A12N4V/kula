@@ -355,7 +355,7 @@ export function drawOutlinedLabel(ctx: CanvasRenderingContext2D, data: any, sett
 }
 
 /** Hover: outline the node's own shape, then a bolder label. Same language as
-    the DOM system – a quiet 1.5px accent line, no glow or shadow. */
+    the DOM system, a quiet 1.5px accent line, no glow or shadow. */
 export function drawHover(ctx: CanvasRenderingContext2D, data: any, settings: any) {
   ctx.lineWidth = 1.5;
   ctx.strokeStyle = css("--accent") || "#f97f3a";

@@ -23,7 +23,7 @@
   --glass-line-2: #332d28;
   --blur: none;
   --sheen: none;
-  --lift: 0 20px 38px rgba(0, 0, 0, 0.58);
+  --lift: none;
   --ground: none;
   --sweep: linear-gradient(90deg, transparent, rgba(249, 127, 58, 0.055));
   --sweep-on: linear-gradient(90deg, rgba(249, 127, 58, 0.1), rgba(249, 127, 58, 0.04));
@@ -34,7 +34,7 @@
     --bg: #efe7dc; --bg-2: #e8dfd2; --panel: #f4f2ee; --panel-2: #ebe4d9;
     --glass: #f4f2ee; --glass-2: #faf6f0; --glass-line: #e2ddd4; --glass-line-2: #d3cdc2; --line-soft: #e8e2d9;
     --text: #231d18; --text-2: #5d5850; --text-3: #938c81;
-    --lift: 0 16px 30px -14px rgba(60, 40, 20, 0.25);
+    --lift: none;
     --sweep: linear-gradient(90deg, transparent, rgba(240, 82, 1, 0.06));
     --sweep-on: linear-gradient(90deg, rgba(240, 82, 1, 0.1), rgba(240, 82, 1, 0.03));
   }
@@ -43,7 +43,7 @@
   --bg: #efe7dc; --bg-2: #e8dfd2; --panel: #f4f2ee; --panel-2: #ebe4d9;
   --glass: #f4f2ee; --glass-2: #faf6f0; --glass-line: #e2ddd4; --glass-line-2: #d3cdc2; --line-soft: #e8e2d9;
   --text: #231d18; --text-2: #5d5850; --text-3: #938c81;
-  --lift: 0 16px 30px -14px rgba(60, 40, 20, 0.25);
+  --lift: none;
   --sweep: linear-gradient(90deg, transparent, rgba(240, 82, 1, 0.06));
   --sweep-on: linear-gradient(90deg, rgba(240, 82, 1, 0.1), rgba(240, 82, 1, 0.03));
 }
@@ -59,17 +59,9 @@ html, body { background: var(--bg); }
 }
 .topbar, .statusbar { background: var(--bg); }
 
-/* islands: tool windows and the editor sit as framed panes on black */
-@media (min-width: 761px) {
-  .shell.studio { column-gap: 6px; padding: 0 6px; }
-  .studio > .topbar, .studio > .statusbar { margin: 0 -6px; }
-  .studio > .rail, .studio > .stripe-right, .studio > .tw, .studio > .editor { margin: 6px 0; border: 1px solid var(--glass-line); border-radius: var(--r-lg); overflow: hidden; }
-  .studio > .tw { overflow: visible; }
-  .studio > .tw > .tw-head { border-radius: var(--r-lg) var(--r-lg) 0 0; }
-  .studio > .editor { background: var(--bg); }
-  .studio .file-editor { background: transparent; }
-  .code-panel { top: 46px; bottom: 30px; right: 6px; border-radius: var(--r-lg); }
-}
+/* one flat frame: regions meet on single warm hairlines, no gaps, no islands */
+.studio > .editor { background: var(--bg); }
+.studio .file-editor { background: transparent; }
 
 /* tool window parts */
 .tw-head { background: transparent; border-color: var(--glass-line); }
@@ -89,9 +81,9 @@ html, body { background: var(--bg); }
 /* toolbar widgets and stripes */
 .tb-widget, .studio .topbar .chip.tb-widget { border-radius: var(--r-sm); }
 .rail button, .stripe-right button { border-radius: var(--r-sm); transition: background var(--flow), color var(--flow); }
-.rail button:hover, .stripe-right button:hover { color: var(--accent); }
+.rail button:hover, .stripe-right button:hover { color: var(--text); background: var(--sweep); }
 .rail button.on, .stripe-right button.on, .studio .rail .rail-tools button.on { background: rgba(249, 127, 58, 0.09); color: var(--accent); }
-.rail button.on::before { border-radius: 2px; }
+.rail button.on::before { left: -1px; width: 2px; border-radius: 0 2px 2px 0; }
 .brand { border-radius: var(--r-md); }
 
 /* controls: near black, warm hairline, orange on hover */
@@ -122,18 +114,18 @@ kbd { border-radius: var(--r-sm); }
 }
 .card:hover { border-color: var(--glass-line-2); }
 .stat-table { border-collapse: separate; border-spacing: 0; overflow: hidden; }
-.inspector, .legend { box-shadow: var(--lift); background: var(--glass-2); border-color: var(--glass-line-2); }
+.inspector, .legend { background: var(--glass-2); border-color: var(--glass-line-2); }
 .ov-row, .hot-row, .br-row, .palette .res, .legend .li, .sym { border-radius: var(--r-sm); transition: background var(--flow), color var(--flow); }
 .ov-row:hover, .hot-row:hover, .br-row:hover, .palette .res:hover { background: var(--sweep); }
 
 /* overlays: palette, sheets, settings, toasts, tooltips */
 .scrim { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(0, 0, 0, 0.6); }
 .palette, .settings.dialog, .toast {
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   border: 1px solid var(--glass-line-2);
   background: var(--glass-2);
   -webkit-backdrop-filter: none; backdrop-filter: none;
-  box-shadow: var(--lift);
+  box-shadow: none;
   overflow: hidden;
 }
 .settings:not(.dialog) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }

@@ -6,9 +6,9 @@ import { IB } from "./parts";
 
 export type Out = { label: string; text: string; at: number; err?: boolean };
 
-export function Side({ current, ahead, behind, busy, log, kula, clear }: {
+export function Side({ current, ahead, behind, busy, log, kula, sync, clear }: {
   current?: Branch; ahead: number; behind: number; busy: string; log: Out[];
-  kula: (label: "Share" | "Sync") => void; clear: () => void;
+  kula: (label: "Share" | "Sync") => void; sync: (label: "Fetch" | "Pull" | "Push") => void; clear: () => void;
 }) {
   return (
     <div className="ct ct-side gv-side" data-testid="w-sync">
@@ -17,7 +17,11 @@ export function Side({ current, ahead, behind, busy, log, kula, clear }: {
       </div>
       <div className="ct-side-scroll">
         <section className="ct-card">
-          <h4>Sync</h4>
+          <h4>Sync<span className="spacer" />
+            <IB tip="Fetch" disabled={!!busy} onClick={() => sync("Fetch")}><Icon.refresh /></IB>
+            <IB tip="Pull" disabled={!!busy || !current?.upstream} onClick={() => sync("Pull")}><Icon.down /></IB>
+            <IB tip="Push" disabled={!!busy} primary={ahead > 0} onClick={() => sync("Push")}><Icon.up /></IB>
+          </h4>
           <div className="w-sync">
             <div className="w-stat"><b className={ahead ? "acc" : ""}>{ahead}</b><span>Ahead</span></div>
             <div className="w-stat"><b className={behind ? "warn" : ""}>{behind}</b><span>Behind</span></div>

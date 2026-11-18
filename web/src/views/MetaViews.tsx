@@ -202,7 +202,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
               <HereHint onUse={setTarget} />
             </div>
           )}
-          <LinkArea minHeight={200} placeholder={"Write in markdown-ish text.\n`code`, **bold**, [[ links a symbol – it autofills.\n\nNotes are versioned in git and visible to AI agents via MCP."} value={body} onChange={setBody}
+          <LinkArea minHeight={200} placeholder={"Write in markdown-ish text.\n`code`, **bold**, [[ links a symbol, it autofills.\n\nNotes are versioned in git and visible to AI agents via MCP."} value={body} onChange={setBody}
             onSubmit={() => { if (body.trim()) save(); }} label="Note text" />
           <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn primary" disabled={!body.trim()} onClick={save}>{editing ? "Update" : "Save note"}</button></div>
         </div>
@@ -214,7 +214,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
           <aside className="notes-side detail-pad" style={graphOn ? undefined : { borderLeft: 0, maxWidth: 980 }}>
             <div className="row" style={{ marginBottom: 12 }}><h1>Notes</h1><span className="muted">{shown.length}</span><span className="spacer" />{sel && <button className="btn sm ghost" onClick={() => setSel("")}>All</button>}<button className={`btn sm graph-toggle ${graphOn ? "on" : ""}`} aria-pressed={graphOn} onClick={toggleGraph} title="Show notes as a graph beside the list"><Icon.graph /> Graph {graphOn ? "on" : "off"}</button></div>
             <input className="input" style={{ width: "100%", marginBottom: 14 }} placeholder="Search notes…" value={q} onChange={(e) => setQ(e.target.value)} />
-            {shown.length === 0 && <Empty title={sel ? "No notes here" : "No notes yet"}>{sel ? "Write one on the left – the target is filled in." : "Annotate the repo, any file, symbol, commit or cluster."}</Empty>}
+            {shown.length === 0 && <Empty title={sel ? "No notes here" : "No notes yet"}>{sel ? "Write one on the left, the target is filled in." : "Annotate the repo, any file, symbol, commit or cluster."}</Empty>}
             {[...groups.entries()].filter(([t]) => !sel || t === sel).map(([t, list]) => (
               <div key={t} style={{ marginBottom: 18 }}>
                 <div className="row" style={{ marginBottom: 6 }}>
@@ -224,7 +224,7 @@ export function Notes({ version, onChanged, openSymbol }: Nav) {
                   <div key={n.id} className={`note ${n.kind === "memory" ? "mem" : ""}`}>
                     <Md text={n.body} onSymbol={(s) => openByName(s, openSymbol)} />
                     <div className="row" style={{ marginTop: 8, fontSize: 11.5 }}>
-                      {n.kind === "memory" && <span className="tag accent" title="An agent memory – see Agents">memory</span>}
+                      {n.kind === "memory" && <span className="tag accent" title="An agent memory, see Agents">memory</span>}
                       <span className="muted">#{n.id} · {n.author} · {relTime(n.updated)}</span><span className="spacer" />
                       <button className="btn sm ghost" onClick={() => { setEditing(n.id); setBody(n.body); }}>Edit</button>
                       <button className="btn sm ghost danger" onClick={async () => { if (confirm("Delete this note?")) { await api.metaAction("notes", n.id, { status: "deleted" }); load(); } }}>Delete</button>

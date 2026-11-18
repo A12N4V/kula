@@ -53,7 +53,7 @@ function DiskRows({ q }: { q: string }) {
   if (after === null) return null;
   return (
     <>
-      <Row label="Clean up after" hint={after ? `Once kula has been idle ${after} min: old agent run copies, temp files, cached graphs; the store is compacted` : "Off – use Clean now or `kula clean`"} q={q}>
+      <Row label="Clean up after" hint={after ? `Once kula has been idle ${after} min: old agent run copies, temp files, cached graphs; the store is compacted` : "Off. Use Clean now or `kula clean`"} q={q}>
         <Seg value={after} options={[[0, "Off"], [5, "5m"], [10, "10m"], [15, "15m"], [20, "20m"], [30, "30m"], [60, "1h"]]} onChange={pick} />
       </Row>
       <Row label="Disk used" hint={note || ".kula in this repository"} q={q}>
@@ -86,7 +86,7 @@ function LangRows({ q }: { q: string }) {
         <span className="mono">{indexed.length}</span>
       </Row>
       {missing.map((r) => (
-        <Row key={r.id} label={r.name} hint={`${r.files} file${r.files === 1 ? "" : "s"} skipped – needs the ${r.id} language pack${r.tier ? ` (${r.tier === "imports" ? "definitions, calls, imports" : r.tier === "calls" ? "definitions and calls" : "definitions"})` : ""}`} q={q}>
+        <Row key={r.id} label={r.name} hint={`${r.files} file${r.files === 1 ? "" : "s"} skipped, needs the ${r.id} language pack${r.tier ? ` (${r.tier === "imports" ? "definitions, calls, imports" : r.tier === "calls" ? "definitions and calls" : "definitions"})` : ""}`} q={q}>
           <button className="btn sm" disabled={!!busy} onClick={() => add([r.id])}>{busy.split(" ").includes(r.id) ? "Installing…" : "Install"}</button>
         </Row>
       ))}
@@ -204,7 +204,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                 </label>
               );
             })}
-            {q && !visible.length && <div className="muted set-empty">No directories match “{q}” – the rest of the settings above still searched.</div>}
+            {q && !visible.length && <div className="muted set-empty">No directories match “{q}”, the rest of the settings above still searched.</div>}
           </div>
           {(!q || fuzzyScore(q, "languages language packs grammars install") >= 0) && <div className="set-sec" id="set-langs">Languages</div>}
           <LangRows q={q} />

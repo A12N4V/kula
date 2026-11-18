@@ -31,9 +31,9 @@ export interface Shortcut { keys: string; label: string }
 
 /** Active in every view; each one is proven working by an e2e test (N1.2). */
 export const GLOBAL_SHORTCUTS: Shortcut[] = [
-  { keys: "⌘K /", label: "Command palette – symbols, #issues, @branches, >commands" },
+  { keys: "⌘K /", label: "Command palette, symbols, #issues, @branches, >commands" },
   { keys: "⇧⇧", label: "Search everywhere" },
-  { keys: "1 – 5 0", label: "Go to a view (the rail shows which key)" },
+  { keys: "1 to 5, 0", label: "Go to a view (the rail shows which key)" },
   { keys: "a q", label: "Agents, Query" },
   { keys: "⌃`", label: "Console" },
   { keys: "⌥1", label: "Project tool window" },
