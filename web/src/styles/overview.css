@@ -109,3 +109,38 @@
 .ov-health dt { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); align-self: center; }
 .ov-health dd { margin: 0; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag.warn { color: var(--yellow); border-color: color-mix(in oklab, var(--yellow) 40%, transparent); }
+
+/* v4: the Git standard. One 44px strip, a body that never scrolls, side in the dock. */
+.overview { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; padding: 0; background: var(--bg); }
+.overview > * { max-width: none; margin: 0; }
+.ov-head { flex: none; display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; height: 44px; margin: 0; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); }
+.ov-head .spacer { flex: 1; }
+.ov-head .btn { flex: none; }
+.ov-title { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+.overview .ov-head .ov-title h1 { margin: 0; font-family: var(--display); font-weight: 500; font-size: 22px; line-height: 1; letter-spacing: 0; }
+.overview .ov-head .ov-title h1::before { content: none; }
+.ov-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 12px; overflow: auto; }
+.ov-body > .coupling { flex: none; margin: 0; }
+/* The six counts as one strip: number over label, the note on hover. */
+.stat-table.ov-stats { flex: none; display: block; margin: 0; border-radius: var(--r-md); overflow: hidden; }
+.ov-stats tbody { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.ov-stats tr { display: flex; flex-direction: column-reverse; justify-content: center; gap: 4px; min-height: 56px; padding: 0 14px; border: 1px solid transparent; }
+.ov-stats tr + tr { border-top: 1px solid transparent; border-left-color: var(--line); }
+.ov-stats td, .ov-stats th { padding: 0; text-align: left; }
+.ov-stats td { font-size: 18px; }
+.ov-stats th { font-family: var(--ui); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-stats .st-note { display: none; }
+.stat-table tr.go:hover { background: var(--sweep); }
+.ov-stats tr.go:hover { border-color: var(--accent); }
+@media (max-width: 900px) { .ov-stats tbody { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+/* Side */
+.ov-side { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; padding: 10px; overflow: hidden; background: var(--bg-2); }
+.ov-side .card { flex: none; animation: none; }
+.ov-side .ov-hot { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ov-hot-list { flex: 1; min-height: 0; overflow: auto; }
+.ov-side .hot-row { grid-template-columns: minmax(0, 1fr) 44px 40px 36px; gap: 8px; padding: 6px 8px; border: 1px solid transparent; }
+.hot-row:hover, .ov-row:hover { background: var(--sweep); border-color: var(--accent); }
+.hot-headrow:hover { background: none; border-color: transparent; }
+.hot-bar i { background: var(--accent); }
+.card:hover { border-color: var(--accent); }
+.overview .card-head h2, .ov-side .card-head h2 { font-family: var(--display); font-weight: 500; font-size: 17px; letter-spacing: 0; }

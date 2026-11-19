@@ -2,7 +2,7 @@
 // picked, which links to draw and how strongly, and the names inside the pick.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Icon, Kind } from "../../ui";
+import { Kind } from "../../ui";
 import { KINDS, type KindId, type Link, type Model, type Selection, type Sym } from "./model";
 import { Glyph } from "./icons";
 import { STRENGTH, toggleIn, type Prefs } from "./state";
@@ -55,37 +55,37 @@ export function SelectedPanel({ m, sel, p, counts, set, pick, open, rescan, busy
       <div className="ct-side-scroll">
 
         <section className="ct-card">
-          <h4><Glyph.eye />Show</h4>
-          <Tick on={p.only} disabled={!sel} label="Only connected files" set={(v) => set({ only: v })} />
-          <Tick on={p.bodies} label="Symbols on files" set={(v) => set({ bodies: v })} />
+          <h4><Glyph.funnel />Links<span className="spacer" /><span className="ct-h4-hint">click to show or hide</span></h4>
+          <div className="ct-ibs ct-kinds" role="group" aria-label="Link kinds">
+            {KINDS.map((k) => {
+              const on = p.on.includes(k.id);
+              const idle = !sel && (k.id === "in" || k.id === "importers");
+              const G = Glyph[k.id];
+              return (
+                <button key={k.id} className={`ct-kind-top${idle ? " idle" : ""}`} aria-pressed={on} aria-label={k.label}
+                  title={idle ? `${k.label}: pick something to split in from out` : k.label}
+                  style={{ ["--c" as string]: `var(${k.color})` }} onClick={() => set({ on: toggleIn(p.on, k.id) })}>
+                  <G /><span className="ct-num">{counts[k.id]}</span>
+                </button>
+              );
+            })}
+          </div>
+          {KINDS.filter((k) => p.on.includes(k.id)).map((k) => (
+            <div key={k.id} className="ct-kind" style={{ ["--c" as string]: `var(${k.color})` }}>
+              <span className="ct-kind-name"><i className="ct-dot" />{k.label}</span>
+              <Slider value={pct(p.strength[k.id], STRENGTH[k.id])} color={k.color} label={`${k.label} strength`} set={(v) => set({ strength: { ...p.strength, [k.id]: v } })} />
+            </div>
+          ))}
+          {!p.on.length && <p className="ct-hint">All links hidden</p>}
         </section>
 
         <section className="ct-card">
-          <h4><Glyph.funnel />Filters</h4>
-          {KINDS.map((k) => {
-            const on = p.on.includes(k.id), body = p.bodyOn.includes(k.id);
-            const idle = !sel && (k.id === "in" || k.id === "importers");
-            const st = pct(p.strength[k.id], STRENGTH[k.id]), bst = pct(p.bodyStrength[k.id], 0.4);
-            return (
-              <div key={k.id} className={`ct-kind${on ? "" : " off"}${idle ? " idle" : ""}`}>
-                <div className="ct-kind-row">
-                  <button className="ct-kind-top" aria-pressed={on} onClick={() => set({ on: toggleIn(p.on, k.id) })} title={idle ? "Pick something to split in from out" : undefined}>
-                    <span className={`ct-box${on ? " on" : ""}`} style={{ ["--c" as string]: `var(${k.color})` }}>{on && <Icon.check />}</span>
-                    <span className="ct-kind-name">{k.label}</span>
-                    <span className="ct-num">{counts[k.id]}</span>
-                  </button>
-                  <Slider value={st} disabled={!on} color={k.color} label={`${k.label} strength`} set={(v) => set({ strength: { ...p.strength, [k.id]: v } })} />
-                </div>
-                <div className={`ct-kind-row ct-body${body && on ? "" : " off"}`}>
-                  <button className="ct-kind-top" aria-pressed={body} disabled={!on} onClick={() => set({ bodyOn: toggleIn(p.bodyOn, k.id) })} title="Split per symbol when zoomed in">
-                    <span className={`ct-box${body ? " on" : ""}`}>{body && <Icon.check />}</span>
-                    <span className="ct-kind-name">Bodies</span>
-                  </button>
-                  <Slider value={bst} disabled={!on || !body} color={k.color} label={`${k.label} bodies strength`} set={(v) => set({ bodyStrength: { ...p.bodyStrength, [k.id]: v } })} />
-                </div>
-              </div>
-            );
-          })}
+          <h4><Glyph.eye />View</h4>
+          <div className="ct-ibs ct-views" role="group" aria-label="View options">
+            <Opt on={p.only} disabled={!sel} icon={<Glyph.link />} label="Connected" tip="Only files linked to the pick" set={(v) => set({ only: v })} />
+            <Opt on={p.bodies} icon={<Glyph.rows />} label="Symbols" tip="Draw symbols inside files" set={(v) => set({ bodies: v })} />
+            <Opt on={p.bodyOn.length > 0} icon={<Glyph.split />} label="Per symbol" tip="Split links per symbol when zoomed in" set={(v) => set({ bodyOn: v ? KINDS.map((k) => k.id) : [] })} />
+          </div>
         </section>
 
         <section className="ct-card">
@@ -114,12 +114,11 @@ export function SelectedPanel({ m, sel, p, counts, set, pick, open, rescan, busy
 
 const fill = (v: number) => Object.fromEntries(KINDS.map((k) => [k.id, v])) as Record<KindId, number>;
 
-/** A square tick with its label, the house checkbox. */
-function Tick({ on, label, set, disabled }: { on: boolean; label: string; set: (v: boolean) => void; disabled?: boolean }) {
+/** An icon button that lights up while its option is on. */
+function Opt({ on, icon, label, tip, set, disabled }: { on: boolean; icon: React.ReactNode; label: string; tip: string; set: (v: boolean) => void; disabled?: boolean }) {
   return (
-    <button className="ct-tick" role="checkbox" aria-checked={on} disabled={disabled} onClick={() => set(!on)}>
-      <span className={`ct-box${on ? " on" : ""}`}>{on && <Icon.check />}</span>
-      <span>{label}</span>
+    <button className="ct-opt" aria-pressed={on} disabled={disabled} title={tip} onClick={() => set(!on)}>
+      {icon}<span>{label}</span>
     </button>
   );
 }

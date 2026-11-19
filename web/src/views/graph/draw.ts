@@ -20,7 +20,7 @@ const PATH_AT = 2.2; // zoom where each file shows its whole path
 type Colors = Record<"bg" | "line" | "line2" | "panel" | "text" | "text2" | "text3" | "accent", string> & Record<KindId, string> & { hues: string[] };
 let colors: Colors | null = null;
 /** One hue per top level folder, so a part of the repo keeps its colour wherever it is drawn. */
-const HUES = ["--accent", "--blue", "--green", "--violet", "--yellow", "--cyan", "--pink", "--red"];
+const HUES = ["--map-orange", "--map-blue", "--map-green", "--map-violet", "--map-yellow", "--map-cyan", "--map-pink", "--map-red"];
 export function readColors() {
   const c = {
     bg: cssVar("--bg"), line: cssVar("--line"), line2: cssVar("--line-2"), panel: cssVar("--panel-2"),
@@ -111,9 +111,9 @@ export function paint(ctx: CanvasRenderingContext2D, w: number, h: number, dpr: 
     if (!seen({ x: b.x, y: b.y - DIR_LABEL, w: b.w, h: b.h + DIR_LABEL })) continue;
     const on = d === selDir, tint = hue(c, d), top = !!d.parent && !d.parent.parent;
     rr(ctx, b, 6);
-    ctx.fillStyle = rgba(tint, b.shut ? 0.14 : top ? 0.035 : 0.02);
+    ctx.fillStyle = rgba(tint, b.shut ? 0.2 : top ? 0.06 : 0.035);
     ctx.fill();
-    ctx.strokeStyle = on ? c.accent : rgba(tint, top ? 0.55 : 0.32);
+    ctx.strokeStyle = on ? c.accent : rgba(tint, top ? 0.8 : 0.5);
     ctx.lineWidth = on ? 1.5 * px : px;
     ctx.stroke();
     if (11 * k < 4.5) continue;
@@ -145,10 +145,10 @@ export function paint(ctx: CanvasRenderingContext2D, w: number, h: number, dpr: 
     const lit = f === selFile || f === s.hover;
     const linked = reach.get(f);
     rr(ctx, b, 3);
-    ctx.fillStyle = isSel ? rgba(c.accent, 0.34) : rgba(tint, lit ? 0.45 : linked ? 0.36 : 0.24);
+    ctx.fillStyle = isSel ? rgba(c.accent, 0.34) : rgba(tint, lit ? 0.55 : linked ? 0.46 : 0.32);
     ctx.fill();
     ctx.lineWidth = (isSel ? 1.5 : linked && !lit ? 1.25 : 1) * px;
-    ctx.strokeStyle = isSel ? c.accent : linked && !lit ? c[linked] : rgba(tint, lit ? 0.95 : 0.5);
+    ctx.strokeStyle = isSel ? c.accent : linked && !lit ? c[linked] : rgba(tint, lit ? 1 : 0.72);
     ctx.stroke();
     if (s.bodies && b.h * k > 14 && b.w * k > 18) {
       for (const sy of f.syms) {
@@ -194,7 +194,7 @@ export function paint(ctx: CanvasRenderingContext2D, w: number, h: number, dpr: 
     const bend = Math.max(30, Math.abs(bx - ax) * 0.45, Math.abs(g.yb - g.ya) * 0.2);
     const sameSide = ax === bx || (ax === g.a.x + g.a.w && bx === g.b.x + g.b.w);
     const st = (g.body ? s.bodyStrength[g.kind] : s.strength[g.kind]) ?? 0.6;
-    ctx.strokeStyle = rgba(c[g.kind], Math.min(1, (picked ? 1.4 : 0.22) * st * (g.n > 1 ? 1.15 : 1)));
+    ctx.strokeStyle = rgba(c[g.kind], Math.min(1, (picked ? 1.4 : 0.3) * st * (g.n > 1 ? 1.15 : 1)));
     ctx.lineWidth = (picked ? 1.6 : 0.9) * Math.min(picked ? 4 : 2.5, 1 + Math.log2(g.n)) * px;
     ctx.beginPath();
     ctx.moveTo(ax, g.ya);

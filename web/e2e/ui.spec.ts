@@ -156,7 +156,8 @@ test.describe("design language", () => {
     await open(page);
     const ff = (sel: string) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).fontFamily);
     for (const sel of ["body", ".btn", ".top-search"]) expect(await ff(sel), sel).toMatch(/^"?Jost/);
-    for (const sel of [".stat-table td", ".card-head h2"]) expect(await ff(sel), sel).toMatch(/^"?JetBrains Mono/);
+    expect(await ff(".stat-table td"), ".stat-table td").toMatch(/^"?JetBrains Mono/);
+    for (const sel of [".ov-title h1", ".card-head h2"]) expect(await ff(sel), sel).toMatch(/^"?Cormorant/);
     const faces = await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].map((f) => f.family); });
     expect(faces.join(",")).not.toMatch(/Antonio|Geist|Simulacra/);
   });
@@ -1649,7 +1650,7 @@ test.describe("code canvas", () => {
     await tree.getByRole("button", { name: /^(src\/)?server\.rs$/ }).first().click();
     await expect(side.locator(".ct-sub")).toHaveText("src/server.rs");
     await expect(page).toHaveURL(/#graph\/\d+/);
-    const out = side.locator(".ct-kind").first();
+    const out = side.getByRole("button", { name: "Calls out" });
     await expect(out.locator(".ct-num")).not.toHaveText("0");
 
     // A name shows where it is defined and who uses it.
@@ -1660,10 +1661,11 @@ test.describe("code canvas", () => {
     await expect(side.locator(".ct-where .ct-def")).toContainText("src/server.rs:");
 
     // A link kind can be switched off; its slider goes with it.
-    await out.locator(".ct-kind-top").first().click();
-    await expect(out.locator(".ct-kind-top").first()).toHaveAttribute("aria-pressed", "false");
-    await expect(out.locator('input[type="range"]').first()).toBeDisabled();
-    await out.locator(".ct-kind-top").first().click();
+    await out.click();
+    await expect(out).toHaveAttribute("aria-pressed", "false");
+    await expect(side.getByRole("slider", { name: "Calls out strength" })).toHaveCount(0);
+    await out.click();
+    await expect(side.getByRole("slider", { name: "Calls out strength" })).toBeVisible();
 
     // Cmd+P jumps by name.
     await page.keyboard.press("ControlOrMeta+p");

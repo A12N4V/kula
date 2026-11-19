@@ -5,6 +5,7 @@ import type { Go } from "../nav";
 import Coupling from "../Coupling";
 import { useCode } from "../CodePanel";
 import AsciiMark from "../AsciiMark";
+import { Docked } from "../studio/Dock";
 
 type Props = { repo: RepoInfo | null; version: number; go: Go };
 
@@ -25,63 +26,61 @@ export default function Overview({ repo, version, go }: Props) {
   const stale = o.branches.filter((b) => b.behind > 0).length;
 
   return (
-    <div className="overview">
+    <div className="overview" data-testid="overview">
       <header className="ov-head">
         <div className="ov-title">
           <h1>{repo?.name}</h1>
           <span className="muted mono">{repo?.branch}</span>
           {repo?.branch !== o.default_branch && <span className="muted">from <span className="mono">{o.default_branch}</span></span>}
-          {s && <span className="muted ov-facts">{s.files.toLocaleString()} files · {s.symbols.toLocaleString()} symbols · indexed in {s.millis}ms</span>}
         </div>
-        <div className="row" style={{ gap: 8 }}>
-          <button className="btn" onClick={() => go("graph")}><Icon.graph /> Open map</button>
-          <button className="btn primary" onClick={() => go("graph", { contrast: { base: o.default_branch, head: repo?.branch === o.default_branch ? "WORKTREE" : repo?.branch ?? "WORKTREE" } })}><Icon.compare /> {repo?.branch === o.default_branch ? "Contrast HEAD with working tree" : `Contrast with ${o.default_branch}`}</button>
-        </div>
+        <span className="spacer" />
+        <button className="btn" onClick={() => go("graph")}><Icon.graph /> Open map</button>
+        <button className="btn primary" onClick={() => go("graph", { contrast: { base: o.default_branch, head: repo?.branch === o.default_branch ? "WORKTREE" : repo?.branch ?? "WORKTREE" } })}><Icon.compare /> {repo?.branch === o.default_branch ? "Contrast HEAD with working tree" : `Contrast with ${o.default_branch}`}</button>
       </header>
 
+      <div className="ov-body">
+        <StatTable className="ov-stats" label="Repository at a glance" rows={([
+            ["Proposals", o.proposals.length, highRisk ? `${highRisk} high risk` : o.proposals.length ? "none high risk" : "queue empty", () => go("proposals"), highRisk ? "bad" : ""],
+            ["Issues", o.issues_open, Number.isFinite(oldest) ? `oldest ${relTime(oldest).replace(" ago", "")}` : "none open", () => go("issues"), ""],
+            ["Uncommitted", o.changes, o.changes ? "files in worktree" : "clean", () => go("git"), o.changes ? "warn" : ""],
+            ["Branches", o.branches.length, stale ? `${stale} behind ${o.default_branch}` : "all current", () => go("git"), ""],
+            ["Hotspots", o.hotspots.length, o.hotspots[0] ? o.hotspots[0].path.split("/").pop()! : "no churn", () => go("graph", { search: o.hotspots[0]?.path }), ""],
+            ["Notes", o.notes, "on symbols and files", () => go("notes"), ""],
+          ] as [string, number, string, () => void, string][]).map(([label, value, note, onClick, tone]) => ({ label, value, note, onClick, tone, title: note }))} />
+        <Coupling onDir={(d) => go("graph", { search: d })} />
+      </div>
 
-      <StatTable className="ov-stats" label="Repository at a glance" rows={([
-          ["Proposals", o.proposals.length, highRisk ? `${highRisk} high risk` : o.proposals.length ? "none high risk" : "queue empty", () => go("proposals"), highRisk ? "bad" : ""],
-          ["Issues", o.issues_open, Number.isFinite(oldest) ? `oldest ${relTime(oldest).replace(" ago", "")}` : "none open", () => go("issues"), ""],
-          ["Uncommitted", o.changes, o.changes ? "files in worktree" : "clean", () => go("git"), o.changes ? "warn" : ""],
-          ["Branches", o.branches.length, stale ? `${stale} behind ${o.default_branch}` : "all current", () => go("git"), ""],
-          ["Hotspots", o.hotspots.length, o.hotspots[0] ? o.hotspots[0].path.split("/").pop()! : "no churn", () => go("graph", { search: o.hotspots[0]?.path }), ""],
-          ["Notes", o.notes, "on symbols & files", () => go("notes"), ""],
-        ] as [string, number, string, () => void, string][]).map(([label, value, note, onClick, tone]) => ({ label, value, note, onClick, tone }))} />
-
-      <Coupling onDir={(d) => go("graph", { search: d })} />
-
-      {/* Health only: counts and signals. Lists of commits, branches and reviews live in Git and Work. */}
-      <div className="ov-grid">
-        <div className="ov-col">
+      {/* Index health and hotspots ride in the shell's right sidebar. */}
+      <Docked label="Overview">
+        <div className="ov-side" data-testid="overview-side">
           <section className="card ov-index">
             <div className="card-head"><h2>Index</h2><span className={`tag ${repo?.index === "current" ? "" : "warn"}`}>{repo?.index ?? "…"}</span></div>
             <dl className="ov-health">
-              <dt>Parsed</dt><dd className="mono">{s ? `${s.parsed.toLocaleString()} / ${s.files.toLocaleString()} files` : "0"}</dd>
+              <dt>Parsed</dt><dd className="mono">{s ? `${s.parsed.toLocaleString()} / ${s.files.toLocaleString()}` : "0"}</dd>
               <dt>Symbols</dt><dd className="mono">{s?.symbols.toLocaleString() ?? "0"}</dd>
               <dt>Edges</dt><dd className="mono">{s?.edges.toLocaleString() ?? "0"}</dd>
               <dt>Communities</dt><dd className="mono">{s?.communities.toLocaleString() ?? "0"}</dd>
-              <dt>Indexed</dt><dd className="mono">{repo?.indexed_head?.slice(0, 8) ?? "never"}{repo?.indexed_head && repo.indexed_head !== repo.head ? " · behind HEAD" : ""}</dd>
+              <dt>Indexed</dt><dd className="mono">{repo?.indexed_head?.slice(0, 8) ?? "never"}{repo?.indexed_head && repo.indexed_head !== repo.head ? " behind HEAD" : ""}</dd>
               <dt>Build</dt><dd className="mono">{s ? `${s.millis} ms` : "0"}</dd>
             </dl>
           </section>
-        </div>
-        <div className="ov-col">
-          <section className="card">
-            <div className="card-head" title="Files that change often and sit at the centre of the call graph: where review time pays off most."><h2>Hotspots</h2><span className="muted">churn × centrality · 90d</span></div>
-            {o.hotspots.length === 0 && <div className="card-empty">Not enough history yet.</div>}
+          <section className="card ov-hot">
+            <div className="card-head" title="Churn times centrality over 90 days"><h2>Hotspots</h2></div>
+            {o.hotspots.length === 0 && <div className="card-empty">Not enough history yet</div>}
             {o.hotspots.length > 0 && <div className="hot-row hot-headrow muted"><span>file</span><span>score</span><span>commits</span><span>edges</span></div>}
-            {o.hotspots.map((h) => (
-              <div key={h.path} className={`hot-row ${code.target?.path === h.path ? "on" : ""}`} onClick={() => code.open({ path: h.path })} title={`${h.churn} commits · ${h.symbols} symbols · ${h.degree} call edges`}>
-                <span className="mono hot-path">{h.path}</span>
-                <div className="hot-bar"><i style={{ width: `${(h.score / maxScore) * 100}%` }} /></div>
-                <span className="hot-n">{h.churn}</span>
-                <span className="hot-n">{h.degree}</span>
-              </div>
-            ))}
+            <div className="ov-hot-list">
+              {o.hotspots.map((h) => (
+                <div key={h.path} className={`hot-row ${code.target?.path === h.path ? "on" : ""}`} onClick={() => code.open({ path: h.path })} title={`${h.churn} commits, ${h.symbols} symbols, ${h.degree} call edges`}>
+                  <span className="mono hot-path">{h.path}</span>
+                  <div className="hot-bar"><i style={{ width: `${(h.score / maxScore) * 100}%` }} /></div>
+                  <span className="hot-n">{h.churn}</span>
+                  <span className="hot-n">{h.degree}</span>
+                </div>
+              ))}
+            </div>
           </section>
         </div>
-      </div>
+      </Docked>
     </div>
   );
 }

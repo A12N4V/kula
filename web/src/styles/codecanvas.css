@@ -138,3 +138,21 @@
 .ct-body .ct-box.on { background: none; border-color: var(--line-2); color: var(--text-2); }
 .ct-num, .ct-pct, .ct-sub, .ct-at, .ct-crumbs, .ct-tip b { font-family: "JetBrains Mono", ui-monospace, monospace; }
 .graph-head .ct-crumbs { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* v3: link kinds and view options as icon buttons that light up when on. */
+.ct-ibs { display: grid; gap: 4px; margin-bottom: 6px; }
+.ct-kinds { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.ct-views { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 0; }
+.ct-kinds .ct-kind-top, .ct-opt { --c: var(--accent); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 46px; min-width: 0; padding: 0 2px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg); color: var(--text-3); cursor: pointer; transition: background var(--dur), border-color var(--dur), color var(--dur); }
+.ct-kinds .ct-kind-top .ct-num { padding: 0; font-size: 10.5px; color: inherit; }
+.ct-opt span { font-family: var(--ui); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ct-kinds .ct-kind-top:hover, .ct-opt:hover:not(:disabled) { background: var(--sweep); border-color: var(--accent); color: var(--text-2); }
+.ct-kinds .ct-kind-top[aria-pressed="true"], .ct-opt[aria-pressed="true"] { border-color: var(--c); background: color-mix(in srgb, var(--c) 16%, var(--bg)); color: var(--c); }
+.ct-opt[aria-pressed="true"] span { color: var(--text); }
+.ct-kinds .ct-kind-top.idle[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 7%, var(--bg)); }
+.ct-opt:disabled { opacity: .4; cursor: default; }
+.ct-card h4 .ct-h4-hint { font-size: 10.5px; color: var(--text-3); font-weight: 400; }
+.ct-card .ct-kind { display: grid; grid-template-columns: minmax(0, 1fr) 96px; align-items: center; gap: 8px; height: 26px; padding: 0; }
+.ct-card .ct-kind + .ct-kind { border-top: 0; }
+.ct-kind .ct-kind-name { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text-2); }
+.ct-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
