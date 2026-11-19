@@ -71,7 +71,7 @@ export default function Flows({ version, go }: Nav) {
         <Widget area="steps" title={flow ? <span className="mono">{flow.route ?? flow.entry.name}</span> : "Steps"} count={flow ? `${flow.steps.length} steps` : undefined}
           tools={flow && <>
             <IB tip="Open entry" onClick={() => code.open({ path: flow.entry.path, line: flow.entry.start_line, id: flow.entry.id, name: flow.entry.name, kind: flow.entry.kind })}><Icon.file /></IB>
-            <IB tip="Show on graph" primary onClick={() => go?.("graph", { symbol: flow.entry.id })}><Icon.graph /></IB>
+            <IB tip="Show on graph" onClick={() => go?.("graph", { symbol: flow.entry.id })}><Icon.graph /></IB>
           </>}>
           {!flow ? <WEmpty icon={<Icon.flows />}>Pick a flow</WEmpty> : (
             <ol className="qv-steps">

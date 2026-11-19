@@ -289,11 +289,11 @@ test.describe("graph chrome", () => {
     await open(page, "graph");
     const gl = page.locator(".graph-loader");
     await expect(gl).toBeVisible();
-    // It covers the whole graph area, opaque, and takes the pointer.
+    // It covers the graph area under the 44px header, opaque, and takes the pointer.
     const [box, wrap] = await Promise.all([gl.boundingBox(), page.locator(".graph-wrap").boundingBox()]);
     // Sub-pixel drift between the two measurements is float noise, not layout.
     const near = (a: number, b: number) => Math.abs(a - b) < 0.5;
-    expect(box && wrap && near(box.x, wrap.x) && near(box.y, wrap.y) && near(box.width, wrap.width) && near(box.height, wrap.height)).toBe(true);
+    expect(box && wrap && near(box.x, wrap.x) && near(box.y, wrap.y + 44) && near(box.width, wrap.width) && near(box.height, wrap.height - 44)).toBe(true);
     expect(await gl.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(0, 0, 0)");
     // The ASCII field animates: the zoom falls into the centre, frame after frame.
     const ascii = gl.locator(".ascii-mark");

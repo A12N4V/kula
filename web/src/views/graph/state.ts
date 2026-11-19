@@ -17,10 +17,12 @@ export type Prefs = {
   filter: string;
 };
 
-const KEY = "kula.canvas";
+const KEY = "kula.canvas.v2";
+/** Calls out and imports are dense, so they start faint; a pick lights them up. */
+export const STRENGTH: Record<KindId, number> = { out: 0.12, in: 0.6, imports: 0.08, importers: 0.6, types: 0.3 };
 const DEFAULTS: Prefs = {
   on: KINDS.map((k) => k.id),
-  strength: Object.fromEntries(KINDS.map((k) => [k.id, 0.6])) as Record<KindId, number>,
+  strength: { ...STRENGTH },
   bodies: true,
   bodyOn: KINDS.map((k) => k.id),
   bodyStrength: Object.fromEntries(KINDS.map((k) => [k.id, 0.4])) as Record<KindId, number>,

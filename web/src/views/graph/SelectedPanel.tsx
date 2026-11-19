@@ -5,8 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon, Kind } from "../../ui";
 import { KINDS, type KindId, type Link, type Model, type Selection, type Sym } from "./model";
 import { Glyph } from "./icons";
-import { GoTo } from "./GoTo";
-import { toggleIn, type Prefs } from "./state";
+import { STRENGTH, toggleIn, type Prefs } from "./state";
 
 type Props = {
   m: Model; sel: Selection; p: Prefs; counts: Record<KindId, number>;
@@ -48,11 +47,10 @@ export function SelectedPanel({ m, sel, p, counts, set, pick, open, rescan, busy
         <Menu label="Selection actions" items={[
           { label: "Open source", off: !sel || sel.type === "dir", run: () => sel && sel.type !== "dir" && open(sel.type === "sym" ? sel.sym : null) },
           { label: "Clear selection", off: !sel, run: () => pick(null) },
-          { label: "Reset filters", run: () => set({ on: KINDS.map((k) => k.id), bodyOn: KINDS.map((k) => k.id), strength: fill(0.6), bodyStrength: fill(0.4), only: false }) },
+          { label: "Reset filters", run: () => set({ on: KINDS.map((k) => k.id), bodyOn: KINDS.map((k) => k.id), strength: { ...STRENGTH }, bodyStrength: fill(0.4), only: false }) },
           { label: busy ? "Rescanning" : "Rescan repo", off: busy, run: rescan },
         ]} />
       </div>
-      <GoTo m={m} pick={pick} />
 
       <div className="ct-side-scroll">
 
@@ -67,13 +65,12 @@ export function SelectedPanel({ m, sel, p, counts, set, pick, open, rescan, busy
           {KINDS.map((k) => {
             const on = p.on.includes(k.id), body = p.bodyOn.includes(k.id);
             const idle = !sel && (k.id === "in" || k.id === "importers");
-            const st = pct(p.strength[k.id], 0.6), bst = pct(p.bodyStrength[k.id], 0.4);
+            const st = pct(p.strength[k.id], STRENGTH[k.id]), bst = pct(p.bodyStrength[k.id], 0.4);
             return (
               <div key={k.id} className={`ct-kind${on ? "" : " off"}${idle ? " idle" : ""}`}>
                 <div className="ct-kind-row">
                   <button className="ct-kind-top" aria-pressed={on} onClick={() => set({ on: toggleIn(p.on, k.id) })} title={idle ? "Pick something to split in from out" : undefined}>
-                    <i className="ct-swatch" style={{ background: `var(${k.color})` }} />
-                    <span className={`ct-box${on ? " on" : ""}`}>{on && <Icon.check />}</span>
+                    <span className={`ct-box${on ? " on" : ""}`} style={{ ["--c" as string]: `var(${k.color})` }}>{on && <Icon.check />}</span>
                     <span className="ct-kind-name">{k.label}</span>
                     <span className="ct-num">{counts[k.id]}</span>
                   </button>
@@ -97,7 +94,7 @@ export function SelectedPanel({ m, sel, p, counts, set, pick, open, rescan, busy
               { label: byUse ? "Sort by line" : "Sort by uses", run: () => setByUse((x) => !x) },
             ]} />
           </h4>
-          {!names.length && <p className="ct-hint">Click a name on a card to see where it is defined and used.</p>}
+          {!names.length && <p className="ct-hint">Pick a name to see its uses</p>}
           {listed.slice(0, SHOWN).map((s) => (
             <div key={s.id}>
               <button className={`ct-name-row${name === s ? " on" : ""}`} onClick={() => (name === s ? setName(null) : pick({ type: "sym", sym: s }))} title={`${s.file.path}:${s.line}`}>

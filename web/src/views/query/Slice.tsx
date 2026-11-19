@@ -70,7 +70,7 @@ export default function Slice({ go, version, target }: Nav) {
       {!res ? (
         <div className="qv-main one">
           <Widget area="slice" title="Slice">{err ? <pre className="w-out">{err}</pre> : (
-            <div className="qv-list">
+            <div className="qv-list qv-hot">
               <WEmpty icon={<Icon.isolate />}>Name what to cut out or pick a hotspot</WEmpty>
               {hot.map((h) => (
                 <button key={h} className="kq-ex" onClick={() => { setText(h); cut([h]); }}>

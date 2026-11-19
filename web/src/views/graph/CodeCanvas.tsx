@@ -15,6 +15,7 @@ import { Docked, useDockTree } from "../../studio/Dock";
 import { build, connected, kindOf, KINDS, selKey, type FileN, type KindId, type Model, type Selection, type Sym } from "./model";
 import { SelectedPanel } from "./SelectedPanel";
 import { usePrefs } from "./state";
+import { GoTo } from "./GoTo";
 
 type Props = { focus: number | null; setFocus: (id: number | null) => void; version: number; layout: ReactNode };
 
@@ -242,7 +243,7 @@ function Canvas({ m, focus, setFocus, layout, rescan, busy }: Props & { m: Model
       <header className="qv-head graph-head">
         <ModeToggle />
         {layout}
-        <span className="spacer" />
+        <GoTo m={m} pick={(s) => pick(s)} />
         <Crumbs m={m} sel={sel} pick={(s) => pick(s)} />
       </header>
       <div className="ct-stage" ref={wrap}>
@@ -250,9 +251,11 @@ function Canvas({ m, focus, setFocus, layout, rescan, busy }: Props & { m: Model
           style={{ cursor: hover ? "pointer" : "default" }} />
         <CodePeek reg={peek} sym={sel?.type === "sym" ? sel.sym : hovered} file={selFile} redraw={draw} open={openSrc} />
         <div className="ct-zoom" role="group" aria-label="Zoom">
-          <button className="btn sm" aria-label="Zoom in" onClick={() => zoomAt(size.current.w / 2, size.current.h / 2, 1.25)}><Icon.plus /></button>
+          <button className="btn sm" aria-label="Fit" title="Fit" onClick={() => fit()}><Icon.fit /></button>
+          <button className="btn sm" aria-label="Locate" title="Locate selection" disabled={!sel} onClick={() => { const b = boxOf(sel); if (b) center(b); }}><Icon.target /></button>
+          <i className="ct-zoom-sep" />
           <button className="btn sm" aria-label="Zoom out" onClick={() => zoomAt(size.current.w / 2, size.current.h / 2, 0.8)}><Icon.minus /></button>
-          <button className="btn sm" aria-label="Fit" title="Fit" onClick={() => fit()}><Icon.target /></button>
+          <button className="btn sm" aria-label="Zoom in" onClick={() => zoomAt(size.current.w / 2, size.current.h / 2, 1.25)}><Icon.plus /></button>
         </div>
         {hover && <Tip hit={hover.hit} x={hover.x} y={hover.y} m={m} />}
         {!placed.files.size && <div className="ct-empty">No files to draw<button className="btn sm" onClick={() => set({ only: false })}>Show all</button></div>}

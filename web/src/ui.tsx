@@ -36,6 +36,7 @@ export const Icon = {
   refresh: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" /></svg>),
   plus: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M12 5v14M5 12h14" /></svg>),
   minus: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M5 12h14" /></svg>),
+  fit: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg>),
   target: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /></svg>),
   gear: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M18.88 9.87L21.36 10.39L21.36 13.61L18.88 14.13L18.37 15.36L19.76 17.48L17.48 19.76L15.36 18.37L14.13 18.88L13.61 21.36L10.39 21.36L9.87 18.88L8.64 18.37L6.52 19.76L4.24 17.48L5.63 15.36L5.12 14.13L2.64 13.61L2.64 10.39L5.12 9.87L5.63 8.64L4.24 6.52L6.52 4.24L8.64 5.63L9.87 5.12L10.39 2.64L13.61 2.64L14.13 5.12L15.36 5.63L17.48 4.24L19.76 6.52L18.37 8.64Z" /><circle cx="12" cy="12" r="3" /></svg>),
   // An agent: a head (structure) wired to the graph by its antenna (a node), eyes as "you are here" marks.
