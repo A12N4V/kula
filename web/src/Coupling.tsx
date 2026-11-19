@@ -64,7 +64,7 @@ export default function Coupling({ onDir }: { onDir: (dir: string) => void }) {
   const read = hover
     ? hi === hj ? `${dirs[hi].label} · ${m[hi][hi]} internal dependencies`
       : `${dirs[hi].label} → ${dirs[hj].label} · ${m[hi][hj]}${m[hj][hi] ? ` · back ${m[hj][hi]}` : ""}`
-    : "";
+    : "row depends on column · calls + imports";
 
   return (
     <section className="card coupling">

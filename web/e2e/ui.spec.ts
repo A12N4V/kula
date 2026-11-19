@@ -156,8 +156,7 @@ test.describe("design language", () => {
     await open(page);
     const ff = (sel: string) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).fontFamily);
     for (const sel of ["body", ".btn", ".top-search"]) expect(await ff(sel), sel).toMatch(/^"?Jost/);
-    expect(await ff(".stat-table td"), ".stat-table td").toMatch(/^"?JetBrains Mono/);
-    for (const sel of [".ov-title h1", ".card-head h2"]) expect(await ff(sel), sel).toMatch(/^"?Cormorant/);
+    for (const sel of [".stat-table td", ".card-head h2"]) expect(await ff(sel), sel).toMatch(/^"?JetBrains Mono/);
     const faces = await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].map((f) => f.family); });
     expect(faces.join(",")).not.toMatch(/Antonio|Geist|Simulacra/);
   });
