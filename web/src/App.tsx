@@ -12,7 +12,6 @@ const Query = lazy(() => import("./views/query/Ask"));
 const GitView = lazy(() => import("./views/git"));
 const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
 const Flows = lazy(() => import("./views/query/Flows"));
-const Impact = lazy(() => import("./views/query/Impact"));
 const Slice = lazy(() => import("./views/query/Slice"));
 const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
 const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
@@ -76,9 +75,8 @@ const VIEWS: ViewDef[] = [
   { id: "git", label: "Git", short: "Git", icon: Icon.branches, key: "2" },
   { id: "graph", label: "Graph", short: "Graph", icon: Icon.graph, key: "" },
   { id: "flows", label: "Flows", short: "Flows", icon: Icon.flows, key: "" },
-  { id: "query", label: "Query", short: "Query", icon: Icon.query, key: "" },
-  { id: "impact", label: "Impact", short: "Impact", icon: Icon.target, key: "" },
   { id: "slice", label: "Slice", short: "Slice", icon: Icon.isolate, key: "" },
+  { id: "query", label: "Ask", short: "Ask", icon: Icon.query, key: "" },
   { id: "proposals", label: "Proposals", short: "Proposals", icon: Icon.pr, key: "" },
   { id: "issues", label: "Issues", short: "Issues", icon: Icon.issues, key: "" },
   { id: "notes", label: "Notes", short: "Notes", icon: Icon.notes, key: "" },
@@ -87,14 +85,14 @@ const VIEWS: ViewDef[] = [
 ];
 const vdef = (id: View) => VIEWS.find((x) => x.id === id)!;
 
-/** The rail: seven places. Query and Work hold sub views behind a toggle and remember the last one. */
-type RailEntry = { id: string; label: string; icon: () => React.ReactElement; key: string; views: View[] };
+/** The rail: five places. Graph and Work hold sub views behind a toggle and remember the last one;
+ *  `also` views (Ask) light the entry without a toggle of their own. */
+type RailEntry = { id: string; label: string; icon: () => React.ReactElement; key: string; views: View[]; also?: View[] };
 const RAIL: RailEntry[][] = [
   [
     { id: "overview", label: "Overview", icon: Icon.home, key: "1", views: ["overview"] },
     { id: "git", label: "Git", icon: Icon.branches, key: "2", views: ["git"] },
-    { id: "map", label: "Graph", icon: Icon.graph, key: "3", views: ["graph"] },
-    { id: "query", label: "Query", icon: Icon.query, key: "q", views: ["query", "flows", "impact", "slice"] },
+    { id: "map", label: "Graph", icon: Icon.graph, key: "3", views: ["graph", "flows", "slice"], also: ["query"] },
     { id: "work", label: "Work", icon: Icon.issues, key: "4", views: ["proposals", "issues", "notes"] },
     { id: "agents", label: "Agents", icon: Icon.agents, key: "5", views: ["agents"] },
   ],
@@ -102,13 +100,13 @@ const RAIL: RailEntry[][] = [
   [{ id: "console", label: "Console", icon: Icon.console, key: "0", views: ["console"] }],
 ];
 const RAIL_FLAT = RAIL.flat();
-const railOf = (v: View) => RAIL_FLAT.find((r) => r.views.includes(v))!;
+const railOf = (v: View) => RAIL_FLAT.find((r) => r.views.includes(v) || r.also?.includes(v))!;
 const lastSub = (r: RailEntry): View => {
   const s = store.str(`kula.rail.${r.id}`, r.views[0]) as View;
   return r.views.includes(s) ? s : r.views[0];
 };
 
-/** The glass toggle over a grouped view: Query, Flows, Impact and Slice, or Proposals, Issues and Notes. */
+/** The toggle over a grouped view: Map, Flows and Slice, or Proposals, Issues and Notes. */
 function SubToggle({ view, go, badge }: { view: View; go: (v: View) => void; badge: Partial<Record<View, number>> }) {
   const r = railOf(view);
   if (!r || r.views.length < 2) return null;
@@ -250,7 +248,7 @@ export default function App() {
     setView(v);
     setTarget(t);
     const r = railOf(v);
-    if (r && r.views.length > 1) store.set(`kula.rail.${r.id}`, v);
+    if (r && r.views.length > 1 && r.views.includes(v)) store.set(`kula.rail.${r.id}`, v);
     if (v === "graph") {
       setContrast(t.contrast ?? null);
       if (t.symbol) setFocus(t.symbol);
@@ -305,6 +303,7 @@ export default function App() {
       const r = RAIL_FLAT.find((x) => x.key === e.key);
       if (r) go(lastSub(r));
       else if (e.key === "a") go("agents");
+      else if (e.key === "q") go("query");
       if (e.key === "/") { e.preventDefault(); setPalette(true); }
       if (e.key === "?") setHelp((h) => !h);
       if (e.key === ",") setPrefs((p) => !p);
@@ -354,7 +353,7 @@ export default function App() {
         {RAIL.map((g, gi) => (
           <div key={gi} className="rail-group">
             {g.map((r) => {
-              const here = r.views.includes(view);
+              const here = r.views.includes(view) || !!r.also?.includes(view);
               const n = r.views.reduce((s, v) => s + (badge[v] ?? 0), 0);
               return (
                 <button key={r.id} className={!file && here ? "on" : ""} onClick={() => { go(here ? view : lastSub(r)); setRail(false); }} data-tip={`${r.label}  ${r.key}`} aria-label={r.label} aria-current={here ? "page" : undefined}>
@@ -417,7 +416,6 @@ export default function App() {
               {view === "flows" && <Flows {...nav} />}
               {view === "agents" && <Agents {...nav} />}
               {view === "query" && <Query {...nav} />}
-              {view === "impact" && <Impact {...nav} />}
               {view === "slice" && <Slice {...nav} />}
               {view === "console" && <Console {...nav} />}
             </Suspense>

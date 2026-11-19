@@ -733,6 +733,7 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
           isolate={(n) => isolate([n.kind === "file" ? `path:${n.path}` : n.kind === "package" ? `symbol:${n.id}` : `symbol:${n.path}:${n.name}`], 1)}
           traceFrom={() => { if (focus != null && String(focus) !== menu.id) setTrace({ from: String(focus), to: menu.id, path: shortest(graph, String(focus), menu.id) }); else { setFocus(Number(menu.id)); toast("Shift-click another symbol to trace a path to it"); } }}
           copied={(what) => toast(`Copied ${what}`)}
+          slice={(sel) => go("slice", { slice: sel })}
         />, document.body,
       )}
 
@@ -782,7 +783,8 @@ function HoverCard({ n, dir, deg, churn, hub, fence }: { n: Node; dir: string; d
 }
 
 /** Right-click on a node: everything you can do with it, without hunting through tabs. */
-function NodeMenu({ x, y, n, onClose, inspect, source, traceFrom, copied, isolate }: {
+function NodeMenu({ x, y, n, onClose, inspect, source, traceFrom, copied, isolate, slice }: {
+  slice?: (sel: string) => void;
   x: number; y: number; n: Node; onClose: () => void; inspect: (tab?: InspectorTab) => void; source: (n: Node) => void; traceFrom: () => void; copied: (what: string) => void;
   isolate: (n: Node) => void;
 }) {
@@ -802,6 +804,7 @@ function NodeMenu({ x, y, n, onClose, inspect, source, traceFrom, copied, isolat
     ["Impact", "", () => { inspect("impact"); onClose(); }],
     ...(n.kind !== "file" && n.kind !== "package" ? [["Pre-edit check", "", () => { inspect("edit"); onClose(); }] as [string, string, () => void]] : []),
     [n.kind === "file" ? "Isolate file" : "Isolate neighbourhood", "1 hop", () => { isolate(n); onClose(); }],
+    ...(slice ? [["Slice from here", "", () => { slice(n.kind === "file" ? `path:${n.path}` : n.kind === "package" ? `symbol:${n.id}` : `symbol:${n.path}:${n.name}`); onClose(); }] as [string, string, () => void]] : []),
     ["Path from selection", "⇧ click", () => { traceFrom(); onClose(); }],
     ["Notes & memory", "", () => { inspect("notes"); onClose(); }],
     ["Copy location", loc.length > 28 ? "" : loc, () => copy(loc, loc)],

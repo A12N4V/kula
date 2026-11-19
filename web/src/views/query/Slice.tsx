@@ -25,7 +25,7 @@ function Peers({ title, area, peers, open }: { title: string; area: string; peer
   );
 }
 
-export default function Slice({ go, version }: Nav) {
+export default function Slice({ go, version, target }: Nav) {
   const [text, setText] = useSaved<string>(KEY, "");
   const [hops, setHops] = useSaved<number>("kula.slice.hops", 1);
   const [res, setRes] = useState<S | null>(null);
@@ -39,6 +39,13 @@ export default function Slice({ go, version }: Nav) {
     api.isolate(sels, hops).then(setRes).catch((e) => { setErr(e.message); setRes(null); }).finally(() => setBusy(false));
   };
   useEffect(() => { if (sels.length && res) run(); }, [hops, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  // "Slice from here" on a graph node lands with its selector and cuts at once.
+  useEffect(() => {
+    const t = target?.slice;
+    if (!t) return;
+    setText(t); setBusy(true); setErr("");
+    api.isolate([t], hops).then(setRes).catch((e) => { setErr(e.message); setRes(null); }).finally(() => setBusy(false));
+  }, [target?.slice]); // eslint-disable-line react-hooks/exhaustive-deps
   const openNode = (n: { path: string; start_line: number; id: number; name: string; kind: any }) => code.open({ path: n.path, line: n.start_line, id: n.id, name: n.name, kind: n.kind });
   const files = res ? groupBy(res.nodes.filter((n) => n.kind !== "file" && n.kind !== "package"), (n) => n.path) : [];
 

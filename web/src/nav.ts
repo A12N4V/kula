@@ -7,6 +7,8 @@ export interface Target {
   proposal?: number;
   sha?: string;
   symbol?: number;
+  /** Selectors to cut out on the Slice mode of Graph. */
+  slice?: string;
   /** Search the map and focus the best hit (e.g. a file path from Hotspots). */
   search?: string;
   /** Open the graph in contrast mode between two revisions. */
@@ -19,7 +21,7 @@ export interface Target {
 export type ContrastMode = "overlay" | "split" | "report";
 
 /** Changes, History and Branches merged into the Git board; the old ids still route there. */
-export const canonView = (v: View): View => (v === "changes" || v === "history" || v === "branches" ? "git" : v);
+export const canonView = (v: View): View => (v === "changes" || v === "history" || v === "branches" ? "git" : v === "impact" ? "graph" : v);
 
 export type Go = (view: View, target?: Target) => void;
 
@@ -34,10 +36,10 @@ export const GLOBAL_SHORTCUTS: Shortcut[] = [
   { keys: "⌘K /", label: "Command palette, symbols, #issues, @branches, >commands" },
   { keys: "⇧⇧", label: "Search everywhere" },
   { keys: "1 to 5, 0", label: "Go to a view (the rail shows which key)" },
-  { keys: "a q", label: "Agents, Query" },
+  { keys: "a q", label: "Agents, Ask" },
   { keys: "⌃`", label: "Console" },
   { keys: "⌥1", label: "Project tool window" },
-  { keys: "⌥7", label: "Structure tool window" },
+  { keys: "⌥7", label: "Right pane, or the top bar toggle" },
   { keys: "?", label: "This sheet" },
   { keys: ",", label: "Settings" },
   { keys: "⌥← ⌥→", label: "Back / forward through views" },
@@ -52,7 +54,7 @@ export const CONTEXT_SHORTCUTS: Shortcut[] = [
   { keys: "right-click", label: "Graph: actions for a symbol" },
   { keys: "[[", label: "Notes and memories: link a symbol (autofill)" },
   { keys: "tab", label: "Accept the autofill" },
-  { keys: "⌘↵", label: "Commit (Git) · save (Notes) · run (Query)" },
+  { keys: "⌘↵", label: "Commit (Git) · save (Notes) · run (Ask)" },
   { keys: "j k s u", label: "Git: walk files, stage, unstage" },
   { keys: "↑ ↓", label: "Command history (Console)" },
 ];
