@@ -159,8 +159,8 @@
 .hub-explain { margin-top: 8px; }
 .hub-verdict { margin-top: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r-md); }
 .hub-verdict ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
-.hub-verdict li { display: flex; gap: 6px; align-items: center; min-width: 0; padding-left: 6px; border-left: 1px solid var(--line); }
-.hub-verdict li.decides { border-left-color: var(--accent); }
+.hub-verdict li { display: flex; gap: 6px; align-items: center; min-width: 0; padding-left: 0; }
+.hub-verdict li.decides { color: var(--accent); }
 .hub-verdict li .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--text-2); margin-bottom: 6px; }
 .hub-list { list-style: none; margin: 0 0 8px; padding: 0; font-size: 12px; }
@@ -203,11 +203,11 @@
 .cv-replay { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
 .cv-replay input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
 .cv-events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
-.cv-events li { display: flex; gap: 8px; padding: 3px 6px; border-left: 1px solid var(--line); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-events li { display: flex; gap: 8px; padding: 3px 6px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv-events li .mono { font-size: 11px; color: var(--text-3); }
-.cv-events li.ev-refused, .cv-events li.v-failed, .cv-events li.v-rejected { border-left-color: var(--red); }
-.cv-events li.ev-handoff { border-left-color: var(--accent); }
-.cv-events li.v-passed { border-left-color: var(--green); }
+.cv-events li.ev-refused, .cv-events li.v-failed, .cv-events li.v-rejected { color: var(--red); }
+.cv-events li.ev-handoff { color: var(--accent); }
+.cv-events li.v-passed { color: var(--green); }
 
 
 /* runs: the ledger board in the centre, trends in the side card */

@@ -37,7 +37,7 @@
 .ct-goto-box kbd { padding: 0 4px; border: 1px solid var(--line-2); border-radius: 3px; color: var(--text-3); font: inherit; font-size: 10.5px; }
 .ct-goto-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 10; display: flex; flex-direction: column; max-height: 360px; overflow: auto; padding: 4px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel); }
 .ct-goto-list button { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: none; text-align: left; cursor: pointer; }
-.ct-goto-list button.on { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+.ct-goto-list button.on { background: var(--panel-2); color: var(--accent); }
 .ct-goto-label { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ct-goto-list .ct-at { margin-left: auto; }
 .ct-ico { display: grid; place-items: center; width: 14px; color: var(--text-3); }
@@ -118,7 +118,7 @@
 .ct-kind input[type="range"]:disabled { opacity: .3; cursor: default; }
 .ct-name-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 26px; padding: 0 6px; border: 0; border-radius: var(--r-sm); background: none; text-align: left; cursor: pointer; }
 .ct-name-row:hover { background: var(--panel-2); }
-.ct-name-row.on { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+.ct-name-row.on { background: var(--panel-2); color: var(--accent); }
 .ct-name-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ct-where { display: flex; flex-direction: column; gap: 8px; margin: 2px 0 8px 12px; padding: 8px 0 4px 10px; border-left: 1px solid var(--line-2); }
 .ct-def { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg); text-align: left; cursor: pointer; transition: border-color var(--dur) var(--ease); }

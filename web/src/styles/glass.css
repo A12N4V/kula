@@ -83,7 +83,6 @@ html, body { background: var(--bg); }
 .rail button, .stripe-right button { border-radius: var(--r-sm); transition: background var(--flow), color var(--flow); }
 .rail button:hover, .stripe-right button:hover { color: var(--text); background: var(--sweep); }
 .rail button.on, .stripe-right button.on, .studio .rail .rail-tools button.on { background: rgba(249, 127, 58, 0.09); color: var(--accent); }
-.rail button.on::before { left: -1px; width: 2px; border-radius: 0 2px 2px 0; }
 .brand { border-radius: var(--r-md); }
 
 /* controls: near black, warm hairline, orange on hover */

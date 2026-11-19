@@ -43,7 +43,7 @@
 .stat { padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg-2); }
 .stat b { display: block; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .stat span { color: var(--text-3); font-size: 11px; }
-.note { padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--violet); border-radius: var(--r-sm); background: var(--bg-2); margin-bottom: 8px; white-space: pre-wrap; }
+.note { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg-2); margin-bottom: 8px; white-space: pre-wrap; }
 
 /* ================================================================ graph v3
    One variable per channel; no glow. Structure comes from territories,
