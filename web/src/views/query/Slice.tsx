@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { api, type Peer, type Slice as S } from "../../api";
 import { useCode } from "../../CodePanel";
+import { ModeToggle } from "../../modes";
 import { Docked } from "../../studio/Dock";
 import { Icon, Kind } from "../../ui";
 import { groupBy, IB, Seg, splitPath, useSaved, WEmpty, Widget, type Nav } from "./parts";
@@ -33,6 +34,12 @@ export default function Slice({ go, version, target }: Nav) {
   const [busy, setBusy] = useState(false);
   const code = useCode();
   const sels = text.split(/[\s,]+/).filter(Boolean);
+  const [hot, setHot] = useState<string[]>([]);
+  useEffect(() => { api.overview().then((o) => setHot(o.hotspots.slice(0, 5).map((h) => h.path))).catch(() => {}); }, []);
+  const cut = (list: string[]) => {
+    setBusy(true); setErr("");
+    api.isolate(list, hops).then(setRes).catch((e) => { setErr(e.message); setRes(null); }).finally(() => setBusy(false));
+  };
   const run = () => {
     if (!sels.length) return;
     setBusy(true); setErr("");
@@ -52,6 +59,7 @@ export default function Slice({ go, version, target }: Nav) {
   return (
     <div className="qv" data-testid="query-slice">
       <header className="qv-head">
+        <ModeToggle />
         <form className="qv-pick" onSubmit={(e) => { e.preventDefault(); run(); }}>
           <Icon.isolate />
           <input className="input qv-pick-in" value={text} onChange={(e) => setText(e.target.value)} placeholder="Symbols, paths or globs" aria-label="Slice selectors" />
@@ -61,7 +69,16 @@ export default function Slice({ go, version, target }: Nav) {
       </header>
       {!res ? (
         <div className="qv-main one">
-          <Widget area="slice" title="Slice">{err ? <pre className="w-out">{err}</pre> : <WEmpty icon={<Icon.isolate />}>Name what to cut out, like src/graph or Repo.status</WEmpty>}</Widget>
+          <Widget area="slice" title="Slice">{err ? <pre className="w-out">{err}</pre> : (
+            <div className="qv-list">
+              <WEmpty icon={<Icon.isolate />}>Name what to cut out or pick a hotspot</WEmpty>
+              {hot.map((h) => (
+                <button key={h} className="kq-ex" onClick={() => { setText(h); cut([h]); }}>
+                  <b>{splitPath(h).base}</b><span className="mono">{h}</span>
+                </button>
+              ))}
+            </div>
+          )}</Widget>
         </div>
       ) : (
         <div className="qv-main" style={{ ["--list-w" as string]: "minmax(0, 1fr)" }}>
@@ -90,7 +107,7 @@ export default function Slice({ go, version, target }: Nav) {
       <Docked label="Slice">
         <div className="ct ct-side qv-side" data-testid="slice-side">
           <div className="ct-side-head">
-            <div className="ct-pick on"><b>{sels.length ? sels.join(" ") : "No slice"}</b><span className="ct-sub">{`${hops} hop${hops === 1 ? "" : "s"} around`}</span></div>
+            <div className={`ct-pick${sels.length ? " on" : ""}`}><b>{sels.length ? sels.join(" ") : "No slice"}</b><span className="ct-sub">{`${hops} hop${hops === 1 ? "" : "s"} around`}</span></div>
           </div>
           {res && (
             <div className="ct-side-scroll">

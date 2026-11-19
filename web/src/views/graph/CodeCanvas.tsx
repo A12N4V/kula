@@ -3,6 +3,7 @@
 // dock into the shell's right sidebar and the Project tree picks files in place.
 // Model, layout and paint live beside this file.
 
+import { ModeToggle } from "../../modes";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { api, type GraphData } from "../../api";
 import { useCode } from "../../CodePanel";
@@ -238,13 +239,15 @@ function Canvas({ m, focus, setFocus, layout, rescan, busy }: Props & { m: Model
 
   return (
     <div className="ct">
+      <header className="qv-head graph-head">
+        <ModeToggle />
+        {layout}
+        <span className="spacer" />
+        <Crumbs m={m} sel={sel} pick={(s) => pick(s)} />
+      </header>
       <div className="ct-stage" ref={wrap}>
         <canvas ref={cv} className="ct-canvas" aria-label="Code canvas" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={() => !drag.current && setHover(null)} onDoubleClick={onDouble}
           style={{ cursor: hover ? "pointer" : "default" }} />
-        <div className="ct-float">
-          {layout}
-          <Crumbs m={m} sel={sel} pick={(s) => pick(s)} />
-        </div>
         <CodePeek reg={peek} sym={sel?.type === "sym" ? sel.sym : hovered} file={selFile} redraw={draw} open={openSrc} />
         <div className="ct-zoom" role="group" aria-label="Zoom">
           <button className="btn sm" aria-label="Zoom in" onClick={() => zoomAt(size.current.w / 2, size.current.h / 2, 1.25)}><Icon.plus /></button>

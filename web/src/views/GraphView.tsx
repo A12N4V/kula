@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Picker from "../studio/Picker";
 import { createPortal } from "react-dom";
 import Graph from "graphology";
@@ -21,6 +21,7 @@ import { GraphLoader, type LoadStep } from "../AsciiMark";
 import { PreEditPanel } from "../AgentChecks";
 import type { IndexProgress } from "../api";
 import Contrast from "./Contrast";
+import { ModeToggle } from "../modes";
 import CodeCanvas from "./graph/CodeCanvas";
 import type { ContrastMode, Go } from "../nav";
 import { Grip } from "../resize";
@@ -142,7 +143,7 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
   const [filter, setFilter] = useState<Filter>(null);
   const [peek, setPeek] = useState<string | null>(null);
   const [impact, setImpact] = useState<Impact | null>(null);
-  const [legendOpen, setLegendOpen] = useState(() => window.innerWidth > 760);
+  const [legendOpen, setLegendOpen] = useState(() => window.innerWidth > 1200);
   const [settling, setSettling] = useState(false);
   // The loader outlives the load by its exit animation. It blocks only the first
   // load of a level; a refresh keeps the old map up until the new one lands.
@@ -666,7 +667,8 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
       {loaderOn && <GraphLoader steps={steps} at={busy ? load : steps.length} frac={busy ? loadFrac : 1} detail={busy ? loadDetail : undefined} leaving={!busy} />}
       {err && <div className="loading"><Empty title={err.includes("WebGL") ? "Graph unavailable" : "No graph yet"}>{err}{!err.includes("WebGL") && <div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => api.reindex().then(onChanged)}>Build graph</button></div>}</Empty></div>}
 
-      <div className="graph-overlay hud">
+      <header className="qv-head graph-head">
+        <ModeToggle />
         {props.seg}
         <button className={`btn sm hud-btn ${s.packages ? "on" : ""}`} aria-pressed={s.packages} onClick={() => settings.set({ packages: !s.packages })} title="Show external packages on the rim">
           <Icon.box /> Packages{pkgCount ? <span className="muted"> {pkgCount}</span> : null}
@@ -679,7 +681,7 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
           <Icon.lock /> Fences{fences ? <span className="muted"> {[...fences.values()].filter((v) => v !== "scope").length}</span> : null}
         </button>
         {data && (
-          <span className="hud-stats hide-sm">
+          <span className="hud-stats">
             {settling ? <><span className="dot warn pulse" /> settling</> : <>
               <b>{data.nodes.length.toLocaleString()}</b> {level === "file" ? "files" : "symbols"}<i />
               <b>{data.edges.length.toLocaleString()}</b> edges<i />
@@ -688,7 +690,7 @@ function MapView(props: Props & { level: "symbol" | "file"; seg: ReactNode }) {
             </>}
           </span>
         )}
-      </div>
+      </header>
 
       {trace && graph && (
         <div className="graph-overlay trace-chip" role="status">
@@ -822,7 +824,10 @@ function NodeMenu({ x, y, n, onClose, inspect, source, traceFrom, copied, isolat
       }}>
       <div className="nm-head"><Kind kind={n.kind} size={14} /><span className="mono">{n.name}</span></div>
       {items.map(([label, hint, run]) => (
-        <button key={label} role="menuitem" onClick={run}><span>{label}</span>{hint && <span className="muted mono">{hint}</span>}</button>
+        <Fragment key={label}>
+          {(label.startsWith("Isolate") || label === "Copy location") && <hr role="separator" />}
+          <button role="menuitem" onClick={run}><span>{label}</span>{hint && <span className="muted mono">{hint}</span>}</button>
+        </Fragment>
       ))}
     </div>
   );

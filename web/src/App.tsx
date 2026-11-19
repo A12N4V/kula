@@ -42,6 +42,7 @@ import { settings } from "./settings";
 import Opening from "./Opening";
 import ProjectTree from "./studio/ProjectTree";
 import { DockProvider, useDockHost } from "./studio/Dock";
+import { ModeCtx, type Modes } from "./modes";
 import Structure from "./studio/Structure";
 import FileEditor from "./studio/FileEditor";
 import BranchMenu from "./studio/BranchMenu";
@@ -87,12 +88,12 @@ const vdef = (id: View) => VIEWS.find((x) => x.id === id)!;
 
 /** The rail: five places. Graph and Work hold sub views behind a toggle and remember the last one;
  *  `also` views (Ask) light the entry without a toggle of their own. */
-type RailEntry = { id: string; label: string; icon: () => React.ReactElement; key: string; views: View[]; also?: View[] };
+type RailEntry = { id: string; label: string; icon: () => React.ReactElement; key: string; views: View[]; also?: View[]; inline?: boolean };
 const RAIL: RailEntry[][] = [
   [
     { id: "overview", label: "Overview", icon: Icon.home, key: "1", views: ["overview"] },
     { id: "git", label: "Git", icon: Icon.branches, key: "2", views: ["git"] },
-    { id: "map", label: "Graph", icon: Icon.graph, key: "3", views: ["graph", "flows", "slice"], also: ["query"] },
+    { id: "map", label: "Graph", icon: Icon.graph, key: "3", views: ["graph", "flows", "slice", "query"], inline: true },
     { id: "work", label: "Work", icon: Icon.issues, key: "4", views: ["proposals", "issues", "notes"] },
     { id: "agents", label: "Agents", icon: Icon.agents, key: "5", views: ["agents"] },
   ],
@@ -109,7 +110,7 @@ const lastSub = (r: RailEntry): View => {
 /** The toggle over a grouped view: Map, Flows and Slice, or Proposals, Issues and Notes. */
 function SubToggle({ view, go, badge }: { view: View; go: (v: View) => void; badge: Partial<Record<View, number>> }) {
   const r = railOf(view);
-  if (!r || r.views.length < 2) return null;
+  if (!r || r.views.length < 2 || r.inline) return null;
   return (
     <div className="subtoggle" role="radiogroup" aria-label={r.label}>
       {r.views.map((v) => {
@@ -323,6 +324,10 @@ export default function App() {
   const openIssues = meta?.issues.filter((i) => i.status === "open").length ?? 0;
   const openPrs = meta?.proposals.filter((p) => p.status === "open").length ?? 0;
   const badge: Partial<Record<View, number>> = { git: changes, issues: openIssues, proposals: openPrs };
+  const modeRail = railOf(view);
+  const modes: Modes | null = modeRail?.inline
+    ? { label: modeRail.label, view, go: (v) => go(v), items: modeRail.views.map((v) => ({ ...vdef(v), badge: badge[v] })) }
+    : null;
   const nav = { onChanged, openSymbol: (id: number) => go("graph", { symbol: id }), version, go, target };
   const current = VIEWS.find((v) => v.id === view)!;
 
@@ -403,7 +408,8 @@ export default function App() {
             <FileEditor path={file.path} line={file.line} onLine={setCurLine} />
           ) : (
           /* Keyed so each view change plays a short enter transition. */
-          <div className={`view-enter ${railOf(view)?.views.length > 1 ? "has-sub" : ""}`} key={view + (contrast ? ":c" : "")}>
+          <ModeCtx.Provider value={modes}>
+          <div className={`view-enter ${railOf(view)?.views.length > 1 && !railOf(view)?.inline ? "has-sub" : ""}`} key={view + (contrast ? ":c" : "")}>
             <SubToggle view={view} go={(v) => go(v)} badge={badge} />
             <div className="view-body">
             <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
@@ -421,6 +427,7 @@ export default function App() {
             </Suspense>
             </div>
           </div>
+          </ModeCtx.Provider>
           )}
           </>
           )}

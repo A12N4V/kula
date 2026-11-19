@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type SparqlResult, type SparqlValue } from "../../api";
 import { useCode } from "../../CodePanel";
+import { ModeToggle } from "../../modes";
 import { Docked } from "../../studio/Dock";
 import { Icon, useToast } from "../../ui";
 import { Seg, useSaved, WEmpty, Widget, type Nav } from "./parts";
@@ -108,12 +109,14 @@ export default function Ask({ openSymbol }: Nav) {
 
   return (
     <div className="qv qv-ask" data-testid="query-ask">
+      <header className="qv-head">
+        <ModeToggle />
+        <span className="spacer" />
+        <span className="kq-hint mono">⌘↵</span>
+        <button className="btn sm primary" onClick={() => run()} disabled={busy || !q.trim()}><Icon.play /> Run</button>
+      </header>
       <div className="qv-stack">
-        <Widget area="editor" title="SPARQL" count="read only" className="kq-editor"
-          tools={<>
-            <span className="kq-hint mono">⌘↵</span>
-            <button className="btn sm primary" onClick={() => run()} disabled={busy || !q.trim()}><Icon.play /> Run</button>
-          </>}>
+        <Widget area="editor" title="SPARQL" count="read only" className="kq-editor">
           <textarea ref={area} className="textarea mono kq-text" value={q} spellCheck={false} aria-label="SPARQL query"
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {

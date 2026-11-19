@@ -87,7 +87,7 @@ html, body { background: var(--bg); }
 
 /* controls: near black, warm hairline, orange on hover */
 .btn, .input, .textarea, select.input, .chip, .seg, .search-trigger, .top-search, .hud-stats { border-radius: var(--r-sm); }
-.seg button { border-radius: var(--r-xs); }
+.seg button { border-radius: var(--r-sm); }
 .btn { background: var(--panel-2); border-color: var(--glass-line-2); color: var(--text); transition: background var(--flow), border-color var(--flow), color var(--flow); }
 .btn:hover { background: var(--panel-2); border-color: var(--accent); color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }

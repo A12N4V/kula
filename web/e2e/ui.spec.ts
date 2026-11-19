@@ -427,7 +427,7 @@ if (view === "graph") { test.setTimeout(60_000); await expect(page.locator(".gra
     const over = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
     expect(over).toBeLessThanOrEqual(0);
     // Nothing important is pushed off the right edge.
-    const clipped = await page.evaluate(() => [...document.querySelectorAll(".topbar button, .rail button, .kpi-cell, .card-head h2, .list-head h2, .hud button, .zoom button")]
+    const clipped = await page.evaluate(() => [...document.querySelectorAll(".topbar button, .rail button, .kpi-cell, .card-head h2, .list-head h2, .graph-head button, .zoom button")]
       .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > window.innerWidth + 1; }).map((el) => el.textContent?.trim().slice(0, 30)));
     expect(clipped).toEqual([]);
     await page.screenshot({ path: `test-results/${info.project.name}-${view}.png` });
