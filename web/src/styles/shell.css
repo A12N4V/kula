@@ -272,3 +272,4 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .subtoggle .badge { font-size: 9.5px; letter-spacing: 0; color: var(--accent); }
 .help { max-height: calc(100vh - 64px); overflow: auto; }
 @media (max-width: 1100px) { .help-grid { grid-template-columns: 1fr; } }
+.top-actions .btn.on { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 45%, transparent); }

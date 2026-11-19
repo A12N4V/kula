@@ -340,6 +340,7 @@ export default function App() {
         <div className="top-actions">
           <button className="btn sm ghost icon-only" aria-label="Back" title="Back  ⌥←" onClick={() => history.back()}><Icon.back /></button>
           <button className="btn sm ghost top-search" aria-label="Search" title="Search everywhere  ⇧⇧  ⌘K" onClick={() => setPalette(true)}><Icon.search /><kbd>⌘K</kbd></button>
+          <button className={`btn sm ghost icon-only${showRight ? " on" : ""}`} aria-label={`${showRight ? "Hide" : "Show"} ${dock.label ?? "Structure"}`} title={`${dock.label ?? "Structure"}  ⌥7`} aria-pressed={showRight} onClick={() => toggleRight.current()}><Icon.panelRight /></button>
           <button className="btn sm ghost icon-only" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.gear /></button>
         </div>
       </header>
@@ -435,9 +436,6 @@ export default function App() {
           {docked ? <div className="tw-dock" ref={dock.setSlot} /> : <Structure path={file?.path ?? null} line={curLine} onJump={(n) => file && openFile(file.path, n)} />}
         </aside>
       )}
-      <aside className="stripe-right" aria-label="Tool windows">
-        <button className={showRight ? "on" : ""} onClick={() => toggleRight.current()} data-tip={`${dock.label ?? "Structure"}  ⌥7`} aria-label={dock.label ?? "Structure"} aria-pressed={showRight}><Icon.structure /></button>
-      </aside>
 
       <footer className="statusbar">
         <span>kula {repo?.version}</span>

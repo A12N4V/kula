@@ -52,7 +52,7 @@
 html, body { background: var(--bg); }
 
 /* shell chrome: toolbar, stripes, tool windows, tabs, status bar */
-.topbar, .rail, .stripe-right, .statusbar, .tw, .etabs {
+.topbar, .rail, .statusbar, .tw, .etabs {
   background: var(--glass);
   -webkit-backdrop-filter: none; backdrop-filter: none;
   border-color: var(--glass-line);
@@ -80,9 +80,9 @@ html, body { background: var(--bg); }
 
 /* toolbar widgets and stripes */
 .tb-widget, .studio .topbar .chip.tb-widget { border-radius: var(--r-sm); }
-.rail button, .stripe-right button { border-radius: var(--r-sm); transition: background var(--flow), color var(--flow); }
-.rail button:hover, .stripe-right button:hover { color: var(--text); background: var(--sweep); }
-.rail button.on, .stripe-right button.on, .studio .rail .rail-tools button.on { background: rgba(249, 127, 58, 0.09); color: var(--accent); }
+.rail button { border-radius: var(--r-sm); transition: background var(--flow), color var(--flow); }
+.rail button:hover { color: var(--text); background: var(--sweep); }
+.rail button.on, .studio .rail .rail-tools button.on { background: rgba(249, 127, 58, 0.09); color: var(--accent); }
 .brand { border-radius: var(--r-md); }
 
 /* controls: near black, warm hairline, orange on hover */
@@ -128,7 +128,7 @@ kbd { border-radius: var(--r-sm); }
   overflow: hidden;
 }
 .settings:not(.dialog) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
-.rail [data-tip]:hover::after, .stripe-right button[data-tip]:hover::after {
+.rail [data-tip]:hover::after {
   border-radius: var(--r-sm);
   background: var(--glass-2);
   border: 1px solid var(--glass-line-2);

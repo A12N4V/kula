@@ -57,6 +57,7 @@ export const Icon = {
   copy: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="8.5" y="8.5" width="11" height="11" /><path d="M15.5 8.5V5.5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3" /></svg>),
   play: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M7 5v14l11-7z" fill="currentColor" /></svg>),
   lock: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="5" y="11" width="14" height="9" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>),
+  panelRight: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="4.5" width="17" height="15" /><path d="M14.5 4.5v15" /></svg>),
   sidebar: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><rect x="3.5" y="4.5" width="17" height="15" /><path d="M9.5 4.5v15" /><path d="M5.8 8.5h1.6M5.8 11h1.6M5.8 13.5h1.6" /></svg>),
   folder: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M3.5 6.5h6l2 2h9v10h-17z" /></svg>),
   file: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="M6 3.5h8l4 4v13H6z" /><path d="M14 3.5v4h4" /></svg>),
