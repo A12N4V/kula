@@ -122,18 +122,18 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .settings.dialog { width: min(760px, calc(100vw - 32px)); height: min(640px, calc(100vh - 14vh - 24px)); border: 1px solid var(--line); border-left: 1px solid var(--line); animation: pop-in .16s var(--ease) both; transform-origin: top center; }
 .settings.dialog .set-main { flex: 1; min-height: 0; display: grid; grid-template-columns: 180px minmax(0, 1fr); }
 .set-nav { display: grid; align-content: start; gap: 2px; padding: 12px 8px; border-right: 1px solid var(--line); }
-.set-nav button { text-align: left; padding: 7px 10px; font: inherit; font-size: 12.5px; color: var(--text-2); background: none; border: 0; border-left: 2px solid transparent; cursor: pointer; }
+.set-nav button { text-align: left; padding: 7px 10px; font: inherit; font-size: 12.5px; color: var(--text-2); background: none; border: 0; border-radius: var(--r-sm); cursor: pointer; }
 .settings.dialog .set-row.toggle { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
 .set-nav button:hover { color: var(--text); background: var(--bg-2); }
-.set-nav button.on { color: var(--text); border-left-color: var(--accent); background: var(--bg-2); }
+.set-nav button.on { color: var(--accent); background: #14110f; }
 .settings.dialog .set-body { padding: 4px 22px 20px; }
 @media (max-width: 760px) {
   .scrim:has(.settings.dialog) { padding-top: 16px; }
   .settings.dialog { height: calc(100vh - 32px); }
   .settings.dialog .set-main { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
   .set-nav { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 6px 8px; }
-  .set-nav button { white-space: nowrap; border-left: 0; border-bottom: 2px solid transparent; }
-  .set-nav button.on { border-bottom-color: var(--accent); }
+  .set-nav button { white-space: nowrap; border-radius: 0; border-bottom: 2px solid transparent; }
+  .set-nav button.on { background: none; border-bottom-color: var(--accent); }
 }
 
 /* N1: phones – every settings control meets the 40px floor. */
