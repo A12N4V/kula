@@ -5,7 +5,7 @@
 
 import type { MapModel } from "./model";
 import type { OverlayState } from "./overlays";
-import { FIXTURE_EVENTS } from "./overlays";
+import { FIXTURE_EVENTS, seedLive } from "./overlays";
 
 export type VariantId = "a" | "b" | "c";
 export const VARIANTS: VariantId[] = ["a", "b", "c"];
@@ -131,10 +131,14 @@ export function buildTasks(model: MapModel, overlays: OverlayState, now: number)
   push(dom ? `Find the district ${dom.label}` : "", dom ? { kind: "domain", id: String(dom.id) } : null);
 
   // 6 · find where a live agent is working (fixture-seeded when nothing is live).
-  const evts = eventsForSeed(overlays, now);
-  const liveTop = Object.entries(overlays.live).sort((a, b) => b[1] - a[1])[0];
+  const seed = eventsForSeed(overlays, now);
+  const liveMap = Object.keys(overlays.live).length
+    ? overlays.live
+    : seed
+      ? seedLive(model, seed, now)
+      : {};
+  const liveTop = Object.entries(liveMap).sort((a, b) => b[1] - a[1])[0];
   const st = liveTop ? model.stations.find((s) => s.id === liveTop[0]) : undefined;
-  void evts;
   push(st ? `Find where the agent is working: ${st.name}` : "", st ? { kind: "station", id: st.id } : null);
 
   return tasks;

@@ -121,3 +121,77 @@ test("model: dedup, degree, layer, determinism (in page)", async ({ page }) => {
   expect(r.entryLayered).toBe(true);
   expect(r.layersKnown).toBe(true);
 });
+
+// The model on the fixture repo (sh e2e/fixture.sh): same checks as above but
+// against a different, disposable repo, so the builder is proven repo-shape
+// independent. The fixture is spawned like ui.spec.ts does, on a free port.
+test("model: the builder holds on the fixture repo too", async ({ page }) => {
+  test.setTimeout(240_000);
+  const path = await import("node:path");
+  const fs = await import("node:fs");
+  const { spawn } = await import("node:child_process");
+  let script = "";
+  for (const cwd of [process.cwd(), path.resolve(process.cwd(), "..")]) {
+    const p = path.join(cwd, "e2e", "fixture.sh");
+    if (fs.existsSync(p)) { script = p; break; }
+  }
+  test.skip(!script, "e2e/fixture.sh not found");
+  let port = Number(process.env.KULA_PW_PORT ?? 7431) + 20;
+  const taken = async (p: number) => {
+    try { await fetch(`http://localhost:${p}/`, { signal: AbortSignal.timeout(300) }); return true; } catch { return false; }
+  };
+  for (let p = port; p < port + 12 && (await taken(port)); p++) port = p + 1;
+  const logFile = `/tmp/kula-fx-m0-${port}.log`;
+  const log = fs.openSync(logFile, "w");
+  const proc = spawn("sh", [script, String(port)], {
+    cwd: path.dirname(script) + "/..",
+    stdio: ["ignore", log, log],
+    env: { ...process.env, TMPDIR: "/tmp" },
+  });
+  const url = `http://localhost:${port}`;
+  let up = false;
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    try { if ((await fetch(url)).ok) { up = true; break; } } catch { /* not up yet */ }
+    await new Promise((f) => setTimeout(f, 300));
+  }
+  try {
+    if (!up) throw new Error(`fixture did not come up:\n${fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : ""}`);
+    // Fetch on the Node side: the page runs on another port, and the fixture
+    // server sends no CORS headers, so an in-page fetch would be refused.
+    const tok = { "x-kula-token": "test" };
+    const fm = await (await fetch(`${url}/api/flowmap`, { headers: tok })).json();
+    const graph = await (await fetch(`${url}/api/graph`, { headers: tok })).json();
+    await page.goto("/#map");
+    await page.waitForFunction(() => !!((window as any).__kulaMap?.build));
+    const r = await page.evaluate(({ fm, graph }) => {
+      const { build } = (window as any).__kulaMap;
+      const a = build(fm, graph);
+      const b = build(fm, graph);
+      const json = (m: any) => JSON.stringify({ d: m.domains, f: m.flows, s: m.stations, i: m.interchanges.map((x: any) => x.id) });
+      const totalSteps = fm.flows.reduce((n: number, f: any) => n + f.steps.length, 0);
+      return {
+        deterministic: json(a) === json(b),
+        dedup: a.stations.length <= totalSteps,
+        degreeOk: a.stations.every((s: any) => s.degree === s.flows.length && s.degree >= 1),
+        interchanges: a.interchanges.every((s: any) => s.degree >= 2) && a.interchanges.length > 0,
+        entryLayered: a.flows.every((f: any) => f.steps[0]?.layer === "test" || f.steps[0]?.layer === "entry"),
+        layersKnown: a.stations.every((s: any) => ["entry", "handler", "logic", "data", "io", "test"].includes(s.layer)),
+      };
+    }, { fm, graph });
+    expect(r.deterministic).toBe(true);
+    expect(r.dedup).toBe(true);
+    expect(r.degreeOk).toBe(true);
+    expect(r.interchanges).toBe(true);
+    expect(r.entryLayered).toBe(true);
+    expect(r.layersKnown).toBe(true);
+  } finally {
+    proc.kill("SIGTERM");
+    fs.closeSync(log);
+    try {
+      const repo = fs.readFileSync(`/tmp/kula-fixture-${port}.path`, "utf8").trim();
+      fs.rmSync(repo, { recursive: true, force: true });
+      fs.rmSync(`/tmp/kula-fixture-${port}.path`, { force: true });
+    } catch { /* fixture may have died before writing the path file */ }
+  }
+});

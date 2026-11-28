@@ -7,6 +7,7 @@ import { api } from "../../api";
 import { fuzzyScore } from "../../nav";
 import { buildMapModel, type MapModel } from "./model";
 import { buildOverlays, type OverlayState } from "./overlays";
+import { useEvents } from "../hub/live";
 import { domainGrid, flowColor, inks, roundRect, withAlpha, LAYER_COLORS } from "./layout-common";
 import { Inspector, HoverCard } from "./Inspector";
 import { Test } from "./Test";
@@ -241,6 +242,8 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
   const [find, setFind] = useState("");
   const [findOpen, setFindOpen] = useState(false);
   const [compare, setCompare] = useState(false);
+  const baseRef = useRef<{ graph: import("../../api").GraphData | null; info: import("../../api").AgentsInfo | null }>({ graph: null, info: null });
+  const { events } = useEvents(show.live);
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const canvas2 = useRef<HTMLCanvasElement>(null);
@@ -252,6 +255,7 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
       .then(([fm, graph, info]) => {
         if (dead) return;
         const m = buildMapModel(fm, graph);
+        baseRef.current = { graph, info };
         setModel(m);
         setOverlays(buildOverlays(m, { events: [], now: Date.now(), graph, info }));
         stubLayoutCached = stubLayout(m);
@@ -259,6 +263,13 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
       .catch(() => {});
     return () => { dead = true; };
   }, []);
+
+  // Live events rebuild the live overlay: heat is a sum over recent events,
+  // anchored at now, so every arrival (or the stream going quiet) recomputes.
+  useEffect(() => {
+    if (!model) return;
+    setOverlays((o) => ({ ...o, live: buildOverlays(model, { events, now: Date.now() }).live }));
+  }, [model, events]);
 
   // Expose the pure model builder and current model for tests and the probe.
   useEffect(() => {

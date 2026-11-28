@@ -328,6 +328,7 @@ export default function App() {
         else if (act === "agents") go("agents");
         else if (act === "query") go("query");
         else if (act === "extensions") go("extensions");
+        else if (act === "map") go("map");
         else if (act === "settings") setPrefs((p) => (p ? null : "general"));
         else if (act === "keys") setPrefs((p) => (p === "keys" ? null : "keys"));
         return;

@@ -27,7 +27,10 @@ export function Test({ model, overlays, now, pick, onVariant }: {
   onVariant: (v: VariantId) => void;
 }) {
   const order = useMemo(() => sessionOrder(), []);
-  const tasks = useMemo(() => buildTasks(model, overlays, now), [model, overlays, now]);
+  const tasks = useMemo(
+    () => buildTasks(model, overlays, now).filter((t) => t.available),
+    [model, overlays, now],
+  );
   const [ti, setTi] = useState(0);
   const [vi, setVi] = useState(0);
   const [phase, setPhase] = useState<Phase>("task");
@@ -90,7 +93,7 @@ export function Test({ model, overlays, now, pick, onVariant }: {
       {phase === "task" && task && (
         <div className="map-test-task" data-testid="ab-task">
           <p className="map-sentence">
-            Task {task.n + ti * 0} of 6 · variant {VARIANT_LABEL[variant]}
+            Task {task.n} of 6 · variant {VARIANT_LABEL[variant]}
           </p>
           <p className="map-task-text">{task.prompt || "No data for this task on this repo"}</p>
           <p className="map-hint">Answer by clicking the thing on the map.</p>

@@ -252,6 +252,12 @@
 }
 
 /* Phones: the inspector and drawer become sheets over the stage. */
+/* Narrow headers: let the toggles wrap instead of pushing find off the edge. */
+@media (max-width: 1100px) {
+  .map-header { flex-wrap: wrap; row-gap: 4px; }
+  .map-find { margin-left: auto; }
+}
+
 @media (max-width: 600px) {
   .map-inspector, .map-test { width: 100%; border-left: none; border-top: 1px solid var(--line); top: auto; height: 60%; }
   .map-find-input { width: 120px; }
