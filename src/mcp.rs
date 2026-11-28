@@ -39,6 +39,8 @@ fn tools() -> Value {
           "inputSchema": s(json!({}), &[]) },
         { "name": "kula_ops", "description": "The swarm operation log on refs/kula/ops: one commit per op (launch, save, commit, handoff, gate, merge, undo), each recording a VIEW – the head of every seat in the run – plus run id and parent op. Use it to see what the team did and to undo to an earlier view.",
           "inputSchema": s(json!({ "op": { "type": "string", "description": "one op id to read in full" }, "limit": { "type": "integer", "description": "max ops (default 20)" } }), &[]) },
+        { "name": "kula_seats", "description": "Every seat as a pure function of kula.toml: the merged spec, its rendered folder under .kula/seats/ with hash8, drift against what is on disk, and lint verdicts (8 checks). The same data /api/seats returns.",
+          "inputSchema": s(json!({ "render": { "type": "boolean", "description": "render folders now (default true)" } }), &[]) },
         { "name": "context_pack", "description": "The code you need for a task, not whole files: give symbols, files or a plain-language question; get their definitions plus what they use, who uses them, containers and tests, ranked by graph distance and fitted to a token budget (big bodies shrink to signatures). Use it before reading files.",
           "inputSchema": s(json!({ "targets": { "type": "array", "items": { "type": "string" }, "description": "symbol names, path:name, file paths, or a question" }, "budget": { "type": "integer", "description": "token budget (default 6000)" } }), &["targets"]) },
         { "name": "pre_edit", "description": "Call before changing a symbol: direct callers, total dependents and risk, the tests that reach it through the call graph, files that historically change with it, human notes, and concrete advice.",
@@ -190,6 +192,41 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
         }
         "flows" => json!(graph::flows(&st()?, int_arg("limit", 10))?),
         "flowmap" | "kula_flows" => json!(graph::flowmap(&st()?, int_arg("limit", 60))?),
+        "kula_seats" => {
+            let cfg = crate::config::Config::load(&repo.root)?;
+            let specs = crate::config::merge_config(&cfg);
+            let lint = crate::launch::lint(&repo.root, &cfg);
+            let render = a.get("render").and_then(|v| v.as_bool()).unwrap_or(true);
+            let mut rows = vec![];
+            for spec in &specs {
+                let (hash, dir) = if render {
+                    match crate::agent_config::render_seat(&repo.root, spec) {
+                        Ok(d) => (d.hash, d.path),
+                        Err(_) => (String::new(), String::new()),
+                    }
+                } else {
+                    (String::new(), String::new())
+                };
+                let errs: Vec<_> = lint.iter().filter(|e| e.seat == spec.id()).collect();
+                rows.push(json!({
+                    "seat": spec.id(), "team": spec.team, "key": spec.key, "agent": spec.agent,
+                    "workflow": spec.workflow, "budget": spec.budget, "max_parallel": spec.max_parallel,
+                    "hash": hash, "dir": dir,
+                    "lint": errs.iter().map(|e| json!({ "field": e.field, "problem": e.problem })).collect::<Vec<_>>(),
+                    "ok": errs.is_empty(),
+                }));
+            }
+            let drift = if render {
+                crate::agent_config::drift(&repo.root, &specs)?
+                    .into_iter()
+                    .filter(|d| d.drifted)
+                    .map(|d| json!({ "seat": d.seat, "disk_hash": d.disk_hash, "fresh_hash": d.fresh_hash }))
+                    .collect::<Vec<_>>()
+            } else {
+                vec![]
+            };
+            json!({ "seats": rows, "drift": drift })
+        }
         "notes" => {
             let t = str_arg("target");
             let m = crate::meta::load(repo)?;

@@ -442,9 +442,336 @@ pub fn memory_layers(repo: &Repo) -> Result<Vec<MemoryLayer>> {
     Ok(out)
 }
 
+// –– Seat rendering: a seat is a pure function of the config –––––––––––––––
+
+/// A rendered seat: the folder `.kula/seats/<name>@<hash8>/` plus the files
+/// that went into it, kept in sorted order so the hash is order-stable.
+#[derive(Debug, Clone, Serialize)]
+pub struct SeatDir {
+    /// Seat id, `<team>/<key>`.
+    pub seat: String,
+    /// BLAKE3 of the rendered folder, canonical serialisation, first 8 hex chars.
+    pub hash: String,
+    /// The folder, `<root>/.kula/seats/<seat>@<hash8>`.
+    pub path: String,
+    /// file (relative) → content. Sorted; this is what the hash covers.
+    pub files: BTreeMap<String, String>,
+    /// Present on disk and equal to this render?
+    pub rendered: bool,
+}
+
+/// BLAKE3 over the canonical serialisation of a folder: for every file in
+/// sorted order, its path, its length and its bytes. Never walk a directory
+/// to hash – walk the map, or identical seats drift apart on walk order.
+pub fn seat_hash(seat: &str, files: &BTreeMap<String, String>) -> String {
+    let mut h = blake3::Hasher::new();
+    h.update(seat.as_bytes());
+    for (path, content) in files {
+        h.update(path.as_bytes());
+        h.update(&content.len().to_le_bytes());
+        h.update(content.as_bytes());
+    }
+    h.finalize().to_hex()[..8].to_string()
+}
+
+/// The skills a seat gets, this seat's only: name → SKILL.md text, plus every
+/// extra file in the skill's folder (`skills/<name>/<file>`).
+pub fn seat_skills(root: &Path, spec: &crate::config::SeatSpec) -> Result<BTreeMap<String, String>> {
+    let mut out = BTreeMap::new();
+    if spec.skills.is_empty() {
+        return Ok(out);
+    }
+    let listed = crate::skills::list(root);
+    for want in &spec.skills {
+        let Some(s) = listed.iter().find(|s| &s.name == want) else {
+            continue;
+        };
+        let src = root.join(crate::skills::SOURCE).join(&s.name);
+        let base = format!("skills/{}/", s.name);
+        for f in std::iter::once("SKILL.md".to_string()).chain(s.files.iter().cloned()) {
+            let text = std::fs::read_to_string(src.join(&f))
+                .with_context(|| format!("reading skill {} file {}", s.name, f))?;
+            out.insert(format!("{base}{f}"), text);
+        }
+    }
+    Ok(out)
+}
+
+/// Layered memory.md: repo rules, then the team prompt layer, then the seat's
+/// own memory file, then its role and prompt – later layers may refine earlier
+/// ones. Everything labelled so the seat knows where a note came from.
+fn seat_memory(root: &Path, spec: &crate::config::SeatSpec) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("# Memory – {}\n\nLayers, most specific last.\n\n", spec.id()));
+    if !spec.role.is_empty() {
+        out.push_str(&format!("## Role\n\n{}\n\n", spec.role));
+    }
+    if !spec.prompt.is_empty() {
+        out.push_str("## Instructions\n\n");
+        out.push_str(&spec.prompt);
+        out.push('\n');
+        out.push('\n');
+    }
+    if !spec.memory.is_empty() {
+        if let Ok(t) = std::fs::read_to_string(root.join(&spec.memory)) {
+            let t: String = t.chars().take(16_000).collect();
+            out.push_str(&format!("## From {} (repo)\n\n{}\n\n", spec.memory, t.trim_end()));
+        }
+    }
+    out
+}
+
+fn seat_fence_toml(spec: &crate::config::SeatSpec) -> String {
+    let mut s = String::from("# Seat fences: highest wins, on top of repo and team rules.\n");
+    for (k, v) in [("lock", &spec.fence.lock), ("hide", &spec.fence.hide), ("review", &spec.fence.review)] {
+        if v.is_empty() {
+            continue;
+        }
+        let items: Vec<String> = v.iter().map(|p| format!("\"{}\"", p.replace('"', "\\\""))).collect();
+        s.push_str(&format!("\n{} = [{}]\n", k, items.join(", ")));
+    }
+    s
+}
+
+/// Render one seat under `.kula/seats/<key-with-slashes-replaced>@<hash8>/`:
+/// `skills/` (this seat's only), `mcp.json` (its servers only), `memory.md`
+/// (layered notes), `fence.toml` (seat fences), `env` (KULA_SEAT, budget).
+/// Writes once, no fsync. The seat id is the BLAKE3 hash8 of the rendered
+/// folder, so the same config renders the same folder twice to the same path.
+pub fn render_seat(root: &Path, spec: &crate::config::SeatSpec) -> Result<SeatDir> {
+    let mut files: BTreeMap<String, String> = BTreeMap::new();
+
+    // skills: only this seat's
+    for (p, text) in seat_skills(root, spec)? {
+        files.insert(p, text);
+    }
+
+    // mcp.json: its servers only, from the shared source
+    if !spec.mcp.is_empty() {
+        let src = read_mcp(root, MCP_SOURCE)?.unwrap_or_default();
+        let mut servers = serde_json::Map::new();
+        for name in &spec.mcp {
+            let Some(d) = src.get(name) else {
+                continue;
+            };
+            let v = if d.url.is_empty() {
+                serde_json::json!({ "command": d.command, "args": d.args })
+            } else {
+                serde_json::json!({ "type": "http", "url": d.url })
+            };
+            servers.insert(name.clone(), v);
+        }
+        files.insert("mcp.json".into(), format!("{}\n", serde_json::to_string_pretty(&serde_json::json!({ "mcpServers": servers }))?));
+    }
+
+    files.insert("memory.md".into(), seat_memory(root, spec));
+    files.insert("fence.toml".into(), seat_fence_toml(spec));
+    files.insert(
+        "env".into(),
+        format!(
+            "KULA_SEAT={}\nKULA_TEAM={}\nKULA_AGENT={}\nKULA_WORKFLOW={}\nKULA_BUDGET={}\nKULA_MAX_PARALLEL={}\n",
+            spec.id(),
+            spec.team,
+            spec.agent,
+            spec.workflow,
+            spec.budget,
+            spec.max_parallel,
+        ),
+    );
+
+    let hash = seat_hash(&spec.id(), &files);
+    let dir_name = format!("{}@{}", spec.key.replace('/', "-"), hash);
+    let dir = root.join(".kula/seats").join(&dir_name);
+    std::fs::create_dir_all(&dir)?;
+    for (p, text) in &files {
+        let full = dir.join(p);
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&full, text)?;
+    }
+    let rendered = std::fs::metadata(dir.join("env")).is_ok() && std::fs::metadata(dir.join("memory.md")).is_ok();
+    Ok(SeatDir { seat: spec.id(), hash, path: dir.to_string_lossy().into_owned(), files, rendered })
+}
+
+/// Drift: for every seat folder under `.kula/seats/`, compare the hash in its
+/// name with the hash a fresh render of the same seat key would produce now.
+/// Same hash → same seat, untouched; new hash → drift reported. Folders whose
+/// seat key no longer exists are reported as stale.
+pub fn drift(root: &Path, specs: &[crate::config::SeatSpec]) -> Result<Vec<DriftReport>> {
+    let mut out = vec![];
+    let seats_dir = root.join(".kula/seats");
+    let mut on_disk: BTreeMap<String, String> = BTreeMap::new(); // key before @ → hash
+    if let Ok(rd) = std::fs::read_dir(&seats_dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if let Some((key, hash)) = name.rsplit_once('@') {
+                on_disk.insert(key.to_string(), hash.to_string());
+            }
+        }
+    }
+    let mut seen: std::collections::BTreeSet<String> = Default::default();
+    for spec in specs {
+        let key = spec.key.replace('/', "-");
+        seen.insert(key.clone());
+        let fresh = render_seat(root, spec)?; // renders too, cheap: same hash → same folder
+        let disk = on_disk.get(&key).cloned().unwrap_or_default();
+        let fresh_hash = fresh.hash.clone();
+        out.push(DriftReport {
+            seat: spec.id(),
+            key,
+            disk_hash: disk.clone(),
+            fresh_hash,
+            drifted: disk.is_empty() || (disk != fresh.hash),
+        });
+    }
+    for (key, hash) in on_disk {
+        if !seen.contains(&key) {
+            out.push(DriftReport { seat: key.clone(), key, disk_hash: hash, fresh_hash: String::new(), drifted: true });
+        }
+    }
+    Ok(out)
+}
+
+/// One seat folder that no longer matches a fresh render of its seat.
+#[derive(Serialize, Debug)]
+pub struct DriftReport {
+    pub seat: String,
+    pub key: String,
+    pub disk_hash: String,
+    pub fresh_hash: String,
+    pub drifted: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::SeatSpec;
+
+    /// A repo built from the tests/fixtures/seat-lint template: a disposable
+    /// kula.toml, one skill, one MCP server, a notes file. Never the repo's
+    /// own config.
+    fn seat_repo() -> tempfile::TempDir {
+        let t = tempfile::tempdir().unwrap();
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/seat-lint");
+        copy_rec(&src, t.path());
+        t
+    }
+
+    fn copy_rec(from: &std::path::Path, to: &std::path::Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for e in std::fs::read_dir(from).unwrap() {
+            let e = e.unwrap();
+            let p = e.path();
+            let d = to.join(e.file_name());
+            if p.is_dir() {
+                copy_rec(&p, &d);
+            } else {
+                std::fs::copy(&p, &d).unwrap();
+            }
+        }
+    }
+
+    fn spec(root: &std::path::Path) -> SeatSpec {
+        let cfg = crate::config::Config::load(root).unwrap();
+        crate::config::merge_config(&cfg)[0].clone()
+    }
+
+    fn spec_alpha() -> SeatSpec {
+        SeatSpec {
+            team: "lint".into(),
+            key: "alpha".into(),
+            agent: "claude".into(),
+            model: "opus".into(),
+            workflow: "build".into(),
+            scope: vec![],
+            role: "does the work".into(),
+            prompt: "Team prompt for every seat.".into(),
+            reports_to: String::new(),
+            hands_off: vec![],
+            skills: vec!["demo-skill".into()],
+            mcp: vec!["demo".into()],
+            memory: "notes.md".into(),
+            fence: crate::config::SeatFence { lock: vec!["src/locked.rs".into()], hide: vec![], review: vec![] },
+            budget: 1000,
+            max_parallel: 1,
+            tags: vec![],
+            color: String::new(),
+        }
+    }
+
+    #[test]
+    fn render_is_deterministic_and_never_drifts_itself() {
+        let d = seat_repo();
+        let root = d.path();
+        let s = spec_alpha();
+        let a = render_seat(root, &s).unwrap();
+        let b = render_seat(root, &s).unwrap();
+        assert_eq!(a.hash, b.hash, "same config must render the same hash");
+        assert_eq!(a.path, b.path, "same config must render the same folder");
+        assert!(a.files.contains_key("skills/demo-skill/SKILL.md"), "this seat's skill is in the folder");
+        assert!(a.files.contains_key("mcp.json") && a.files.contains_key("memory.md") && a.files.contains_key("fence.toml") && a.files.contains_key("env"));
+        assert!(a.files["fence.toml"].contains("src/locked.rs"));
+        assert!(a.files["env"].contains("KULA_SEAT=lint/alpha"));
+        assert!(a.files["memory.md"].contains("notes.md"));
+        // no drift from a second render of the same seat
+        let dr = drift(root, &[s]).unwrap();
+        assert!(dr.len() == 1 && !dr[0].drifted, "same hash → same seat, no drift: {:?}", dr[0]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn changed_config_drifts() {
+        let d = seat_repo();
+        let root = d.path();
+        let s = spec_alpha();
+        render_seat(root, &s).unwrap();
+        let mut s2 = s.clone();        s2.prompt = "changed".into();
+        let dr = drift(root, &[s2]).unwrap();
+        assert!(dr[0].drifted, "new hash → drift reported");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn hash_is_order_stable() {
+        let s = spec_alpha();
+        let mut files = BTreeMap::new();
+        files.insert("a.md".to_string(), "x".into());
+        files.insert("b.md".to_string(), "y".into());
+        let h1 = seat_hash("lint/alpha", &files);
+        let mut files2 = BTreeMap::new();
+        files2.insert("b.md".to_string(), "y".into());
+        files2.insert("a.md".to_string(), "x".into());
+        let h2 = seat_hash("lint/alpha", &files2);
+        assert_eq!(h1, h2, "insertion order must not move the hash");
+    }
+
+    #[test]
+    fn seat_skills_are_this_seat_only() {
+        let d = seat_repo();
+        let root = d.path();
+        let mut s = spec_alpha();
+        s.skills = vec![];
+        assert!(seat_skills(root, &s).unwrap().is_empty(), "empty skills means every repo skill, none copied");
+        s.skills = vec!["demo-skill".into()];
+        let got = seat_skills(root, &s).unwrap();
+        assert_eq!(got.len(), 1, "only this seat's skill");
+        assert!(got.contains_key("skills/demo-skill/SKILL.md"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn render_is_under_50_ms() {
+        let d = seat_repo();
+        let root = d.path();
+        let s = spec_alpha();
+        let _ = render_seat(root, &s).unwrap(); // warm the fs
+        let t0 = std::time::Instant::now();
+        let _ = render_seat(root, &s).unwrap();
+        let ms = t0.elapsed().as_millis() as u64;
+        assert!(ms < 50, "render took {ms} ms, budget is 50");
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     /// A fixture root with one skill-shaped source MCP file, built at runtime –
     /// never a literal that looks like a credential.

@@ -1,0 +1,13 @@
+# Disposable config for the B4 seat tests. Tests copy this into a tempdir and
+# mutate it there; never the repo's own kula.toml.
+
+[[team]]
+name = "lint"
+prompt = "Team prompt for every seat."
+members = [
+  { name = "alpha", agent = "claude", workflow = "build", budget = 100000, max_parallel = 1,
+    skills = ["demo-skill"], mcp = ["demo"], memory = "notes.md",
+    fence = { lock = ["src/locked.rs"], review = ["src/reviewed.rs"] } },
+  { name = "beta", agent = "codex", workflow = "tests", budget = 50000, max_parallel = 1,
+    reports_to = "alpha" },
+]
