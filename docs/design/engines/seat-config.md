@@ -54,6 +54,10 @@ folder whose seat no longer exists is stale.
 
 ## Lint (8 checks, all before launch)
 
+`orch::run::run_plan` calls `launch::lint` at the very top – before any run
+directory, worktree, agent or launch op. A failure stops the run and names the
+seat and the field.
+
 `launch::lint(root, &cfg) -> Vec<LintError>` – every failure names the seat
 and the toml field it came from:
 
@@ -62,9 +66,12 @@ and the toml field it came from:
 2. `skills` – every skill exists in `.agents/skills/` and its `SKILL.md`
    parses (has a name and a description).
 3. `mcp` – every server is defined, and defined once, in `.agents/mcp.json`.
-4. `memory` – the path stays inside the repo and the file exists.
+4. `memory` – the path is relative (an absolute path is refused even when it
+   exists), stays inside the repo and the file exists.
 5. `fence.*` – fence levels are the known three and names are not listed twice.
-6. `reports_to` – the reports_to / hands_off graph is a DAG; a cycle is caught.
+6. `reports_to` – the reports_to / hands_off graph is a DAG; both edge kinds
+   are walked, so a hands_off-only cycle (A→B→A) is caught the same as a
+   reports_to one.
 7. *overlap* – no two seats write one symbol. Stubbed with a TODO: this is B3's
    `guard::overlap()`; the pre-B3 `guard::team_overlaps()` only sees files and
    needs a built Store. To be wired when B3 lands.

@@ -67,6 +67,28 @@ fn text(o: &Output) -> String {
 }
 
 #[test]
+fn a_bad_seat_config_stops_the_run_before_anything_starts() {
+    let t = repo();
+    let d = t.path();
+    // A member with no budget: lint must refuse the run before any worktree,
+    // agent or launch op exists.
+    std::fs::write(
+        d.join("kula.toml"),
+        "[[team]]\nname = \"ship\"\nmembers = [\n  { name = \"lead\", agent = \"fake-agent\", scope = [\"a\"] },\n]\n",
+    )
+    .unwrap();
+    write_plan(d, &["a"], "fake-agent", "true", 1);
+    let (o, _) = run(d, &[]);
+    assert!(!o.status.success(), "run must refuse a bad config");
+    let out = text(&o);
+    assert!(out.contains("seat lint failed"), "{out}");
+    assert!(out.contains("ship/lead") && out.contains("budget"), "{out}");
+    // Nothing started: no launch op, no worktree, not even a run directory.
+    assert!(!d.join(".kula/worktrees/t/a").exists(), "no worktree before lint passes");
+    assert!(!d.join(".kula/runs").exists(), "no run recorded when lint refuses");
+}
+
+#[test]
 fn passing_slice_is_committed_on_its_branch() {
     let t = repo();
     let d = t.path();
@@ -381,9 +403,16 @@ fn fence_suggestions_from_a_slice_wait_for_review_in_the_checkout() {
 fn a_run_leaves_a_ledger_with_usage_and_scores() {
     let t = repo();
     let d = t.path();
-    std::fs::write(d.join("kula.toml"), "[[team]]\nname = \"ship\"\nmembers = [\n  { name = \"lead\", agent = \"fake-agent\", memory = \"notes/lead.md\", skills = [\"review\"] },\n]\n").unwrap();
+    std::fs::write(d.join("kula.toml"), "[[team]]\nname = \"ship\"\nmembers = [\n  { name = \"lead\", agent = \"fake-agent\", memory = \"notes/lead.md\", skills = [\"review\"], budget = 100000, max_parallel = 1 },\n]\n").unwrap();
     std::fs::create_dir_all(d.join("notes")).unwrap();
     std::fs::write(d.join("notes/lead.md"), "Prefer small diffs.\n").unwrap();
+    // The skill the seat lists must exist and parse, as lint demands.
+    std::fs::create_dir_all(d.join(".agents/skills/review")).unwrap();
+    std::fs::write(
+        d.join(".agents/skills/review/SKILL.md"),
+        "---\nname: review\ndescription: Review a slice before it passes.\n---\n\nRead the diff.\n",
+    )
+    .unwrap();
     let p = write_plan(d, &["a", "b"], "fake-agent", "true", 2);
     let mut plan: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
     plan["team"] = json!("ship");
@@ -467,7 +496,7 @@ fn scheduled_repo() -> TempDir {
     let t = repo();
     let d = t.path();
     let toml = format!(
-        "[agents.commands]\nfake-agent = [{:?}, \"{{prompt}}\"]\n\n[[team]]\nname = \"core\"\nmembers = [{{ name = \"tidy\", agent = \"fake-agent\", scope = [\"a\"] }}]\n\n[[schedule]]\nname = \"often\"\nteam = \"core\"\ngoal = \"tidy up\"\ncron = \"* * * * *\"\n",
+        "[agents.commands]\nfake-agent = [{:?}, \"{{prompt}}\"]\n\n[[team]]\nname = \"core\"\nmembers = [{{ name = \"tidy\", agent = \"fake-agent\", scope = [\"a\"], budget = 100000, max_parallel = 1 }}]\n\n[[schedule]]\nname = \"often\"\nteam = \"core\"\ngoal = \"tidy up\"\ncron = \"* * * * *\"\n",
         fake()
     );
     std::fs::write(d.join("kula.toml"), toml).unwrap();

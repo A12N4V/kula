@@ -97,7 +97,7 @@ pub fn lint(root: &Path, cfg: &crate::config::Config) -> Vec<LintError> {
 
         // 4 · memory path inside the repo
         if !spec.memory.is_empty() {
-            if spec.memory.contains("..") {
+            if spec.memory.contains("..") || std::path::Path::new(&spec.memory).is_absolute() {
                 out.push(LintError {
                     seat: spec.id(),
                     field: "memory".into(),
@@ -181,31 +181,46 @@ pub fn find_on_path(name: &str) -> Option<PathBuf> {
 fn find_cycle(specs: &[crate::config::SeatSpec]) -> Option<String> {
     use std::collections::{BTreeMap, BTreeSet};
     let ids: BTreeSet<String> = specs.iter().map(|s| s.id()).collect();
-    let edges: BTreeMap<String, String> = specs
-        .iter()
-        .filter_map(|s| {
-            if s.reports_to.is_empty() {
-                return None;
+    // resolve a name within the same team first, then any team
+    let resolve = |s: &crate::config::SeatSpec, name: &str| -> Option<String> {
+        let own = format!("{}/{}", s.team, name);
+        if ids.contains(&own) {
+            Some(own)
+        } else {
+            specs.iter().find(|o| o.key == name || o.team == name).map(|o| o.id())
+        }
+    };
+    let mut edges: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for s in specs {
+        for name in std::iter::once(&s.reports_to).filter(|r| !r.is_empty()).chain(s.hands_off.iter()) {
+            if let Some(target) = resolve(s, name) {
+                edges.entry(s.id()).or_default().push(target);
             }
-            // resolve within the same team, then any team
-            let own = format!("{}/{}", s.team, s.reports_to);
-            if ids.contains(&own) {
-                Some((s.id(), own))
-            } else {
-                specs.iter().find(|o| o.key == s.reports_to || o.team == s.reports_to).map(|o| (s.id(), o.id()))
-            }
-        })
-        .collect();
+        }
+    }
+    // DFS over every edge: reports_to and hands_off are both walked, so a
+    // hands_off-only cycle (A→B→A) is caught the same as a reports_to one.
+    // A node is a cycle only when met again while still on the current path –
+    // a diamond revisits fine.
+    let mut done: BTreeSet<String> = BTreeSet::new();
     for start in specs {
-        let mut seen: BTreeSet<String> = BTreeSet::new();
-        let mut cur = start.id();
-        loop {
-            if !seen.insert(cur.clone()) {
+        let mut stack: Vec<(String, bool)> = vec![(start.id(), true)];
+        let mut on_path: BTreeSet<String> = BTreeSet::new();
+        while let Some((cur, entering)) = stack.pop() {
+            if !entering {
+                on_path.remove(&cur);
+                done.insert(cur);
+                continue;
+            }
+            if done.contains(&cur) {
+                continue;
+            }
+            if !on_path.insert(cur.clone()) {
                 return Some(cur);
             }
-            match edges.get(&cur) {
-                Some(next) => cur = next.clone(),
-                None => break,
+            stack.push((cur.clone(), false));
+            if let Some(nexts) = edges.get(&cur) {
+                stack.extend(nexts.iter().cloned().map(|n| (n, true)));
             }
         }
     }
@@ -867,6 +882,37 @@ mod tests {
             assert!(errs.iter().any(|e| e.seat.contains("alpha") && e.field == *field), "{name}: {errs:?}");
             std::fs::write(root.join("kula.toml"), &text).unwrap();
         }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn lint_catches_hands_off_cycle_and_absolute_memory_path() {
+        std::env::set_var("KULA_NO_AGENT", "1");
+        let d = seat_repo();
+        let root = d.path();
+        let text = std::fs::read_to_string(root.join("kula.toml")).unwrap();
+
+        // A hands_off-only cycle: alpha hands off to beta, beta hands off back
+        // to alpha – no reports_to anywhere, the DAG check must still fire.
+        let handoff = text
+            .replace("name = \"alpha\",", "name = \"alpha\", hands_off = [\"beta\"],")
+            .replace("reports_to = \"alpha\"", "hands_off = [\"alpha\"]");
+        std::fs::write(root.join("kula.toml"), &handoff).unwrap();
+        let errs = lint(root, &crate::config::Config::load(root).unwrap());
+        assert!(
+            errs.iter().any(|e| e.problem.contains("cycle")),
+            "hands_off-only cycle must be caught: {errs:?}"
+        );
+
+        // An absolute memory path reads outside the repo even without "..".
+        std::fs::write(root.join("kula.toml"), &text).unwrap();
+        let abs = text.replace("memory = \"notes.md\"", "memory = \"/etc/hosts\"");
+        std::fs::write(root.join("kula.toml"), &abs).unwrap();
+        let errs = lint(root, &crate::config::Config::load(root).unwrap());
+        assert!(
+            errs.iter().any(|e| e.field == "memory" && e.problem.contains("escapes")),
+            "absolute memory path must be refused: {errs:?}"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 
