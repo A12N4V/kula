@@ -6,7 +6,7 @@
 import { expect, test } from "@playwright/test";
 
 test("map view loads with header and canvas", async ({ page }) => {
-  await page.goto("/#/map");
+  await page.goto("/#map");
   await expect(page.getByTestId("map-view")).toBeVisible();
   await expect(page.getByTestId("variant-a")).toBeVisible();
   await expect(page.getByTestId("map-canvas")).toBeVisible();
@@ -17,7 +17,7 @@ test("map view loads with header and canvas", async ({ page }) => {
 });
 
 test("variant toggle changes the URL and is remembered", async ({ page }) => {
-  await page.goto("/#/map");
+  await page.goto("/#map");
   await page.getByTestId("variant-b").click();
   await expect(page).toHaveURL(/#map\/b/);
   await page.reload();
@@ -27,18 +27,20 @@ test("variant toggle changes the URL and is remembered", async ({ page }) => {
 });
 
 test("inspector opens on a stub pick", async ({ page }) => {
-  await page.goto("/#/map");
-  // wait for the model, then click the position of a real station on the canvas
-  await page.waitForFunction(() => ((window as any).__kulaMap?.layout?.stations?.length ?? 0) > 0);
-  const at = await page.evaluate(() => {
-    const m = (window as any).__kulaMap.model;
-    const lay = (window as any).__kulaMap.layout;
-    const v = { scale: 0.5, ox: 0, oy: 0 };
-    const s = lay.stations[0];
-    return { x: s.x * v.scale + v.ox, y: s.y * v.scale + v.oy, name: m.stations.find((t: any) => t.id === s.id).name };
+  await page.goto("/#map");
+  // wait for the model and the fitted view, then click a real station on the canvas
+  await page.waitForFunction(() => {
+    const k = (window as any).__kulaMap;
+    const c = document.querySelector('[data-testid="map-canvas"]');
+    return !!(k?.layout?.stations?.length && c && k?.view?.scale && k.view.w === c.clientWidth && c.clientWidth > 0);
   });
-  const box = await page.getByTestId("map-canvas").boundingBox();
-  await page.mouse.click(box!.x + at.x, box!.y + at.y);
+  const at = await page.evaluate(() => {
+    const k = (window as any).__kulaMap;
+    const s = k.layout.stations[0];
+    const v = k.view;
+    return { x: s.x * v.scale + v.ox, y: s.y * v.scale + v.oy, name: k.model.stations.find((t: any) => t.id === s.id).name };
+  });
+  await page.getByTestId("map-canvas").click({ position: { x: at.x, y: at.y } });
   const ins = page.getByTestId("map-inspector");
   await expect(ins).toBeVisible();
   await expect(ins).toContainText(at.name);
@@ -47,7 +49,7 @@ test("inspector opens on a stub pick", async ({ page }) => {
 });
 
 test("find on map flies to a station and opens the inspector", async ({ page }) => {
-  await page.goto("/#/map");
+  await page.goto("/#map");
   await page.waitForFunction(() => ((window as any).__kulaMap?.model?.stations?.length ?? 0) > 0);
   const name = await page.evaluate(() => (window as any).__kulaMap.model.stations[0].name);
   await page.getByTestId("map-find").fill(name.slice(0, 6));
@@ -57,7 +59,7 @@ test("find on map flies to a station and opens the inspector", async ({ page }) 
 });
 
 test("test drawer records one result to localStorage", async ({ page }) => {
-  await page.goto("/#/map");
+  await page.goto("/#map");
   await page.evaluate(() => localStorage.removeItem("kula.map.ab"));
   await page.getByTestId("map-test-toggle").click();
   await expect(page.getByTestId("ab-drawer")).toBeVisible();
@@ -84,12 +86,13 @@ test("test drawer records one result to localStorage", async ({ page }) => {
 });
 
 test("model: dedup, degree, layer, determinism (in page)", async ({ page }) => {
-  await page.goto("/#/map");
+  await page.goto("/#map");
+  await page.waitForFunction(() => (window as any).__kulaMap?.build);
   const r = await page.evaluate(async () => {
     const { build } = (window as any).__kulaMap;
     const [fm, graph] = await Promise.all([
-      fetch("/api/flowmap").then((x) => x.json()),
-      fetch("/api/graph").then((x) => x.json()),
+      fetch("/api/flowmap", { headers: { "x-kula-token": document.querySelector<HTMLMetaElement>('meta[name="kula-token"]')?.content ?? "dev" } }).then((x) => x.json()),
+      fetch("/api/graph", { headers: { "x-kula-token": document.querySelector<HTMLMetaElement>('meta[name="kula-token"]')?.content ?? "dev" } }).then((x) => x.json()),
     ]);
     const a = build(fm, graph);
     const b = build(fm, graph);

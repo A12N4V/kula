@@ -266,8 +266,9 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
       build: buildMapModel,
       model,
       layout: stubLayoutCached,
+      view,
     };
-  }, [model]);
+  }, [model, view]);
 
   const pick = route.pick ? parsePick(route.pick) : null;
   const setPick = useCallback((p: Pick | null) => setRoute({ ...route, pick: p ? pickCode(p) : "" }), [route, setRoute]);
