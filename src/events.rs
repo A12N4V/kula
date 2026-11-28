@@ -295,7 +295,8 @@ impl EventIndex {
         let i = v.partition_point(|(seq, _)| *seq < from);
         v.get(i).map(|(_, off)| *off)
     }
-    /// Last seq seen for a seat.
+    /// Last seq seen for a seat. B6 tails use this to seed `from`.
+    #[allow(dead_code)] // part of the index API; wired by B6's tail readers
     pub fn last_seq(&self, seat: &str) -> u64 {
         self.offsets.get(seat).and_then(|v| v.last()).map(|(s, _)| *s).unwrap_or(0)
     }
@@ -389,6 +390,7 @@ impl RunLog {
         Ok(())
     }
 
+    #[allow(dead_code)] // seq seed for a seat restart; wired by B6
     pub fn last_seq(&self, seat: &str) -> u64 {
         self.seqs.get(seat).copied().unwrap_or(0)
     }
@@ -416,6 +418,7 @@ pub fn run_ref_name(run: &str) -> String {
 }
 
 /// Drop the cached log for a run (tests and compaction use this).
+#[allow(dead_code)] // called by the run-end hook once orch/run.rs exposes one
 pub fn forget_run_log(kula_dir: &Path, run: &str) {
     let path = RunLog::path(kula_dir, run);
     let mut logs = run_logs().lock().unwrap_or_else(|p| p.into_inner());

@@ -401,6 +401,7 @@ pub fn running(runs: &[Run]) -> Vec<Current> {
 /// A session of one seat: events closer than `gap_ms` belong together, so a
 /// seat that pauses longer than the gap starts a new session. Default gap:
 /// five minutes.
+#[allow(dead_code)] // UI crew (Plan B) and B6 consume these; fixture tests pin them
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Session {
     pub seat: String,
@@ -415,6 +416,7 @@ pub struct Session {
 
 /// A span of activity: a turn contains its tool calls; a tool with no turn
 /// above it stands alone. `end` is 0 while the span is open.
+#[allow(dead_code)] // UI crew (Plan B) and B6 consume these; fixture tests pin them
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Span {
     pub kind: String,
@@ -427,11 +429,13 @@ pub struct Span {
 }
 
 /// Five minutes in milliseconds.
+#[allow(dead_code)] // UI crew (Plan B) and B6 consume these; fixture tests pin them
 pub const SESSION_GAP_MS: u64 = 5 * 60 * 1000;
 
 /// Split events into per seat sessions split on gaps over `gap_ms` (0 uses
 /// the default five minutes). Events must share one run; sessions come back
 /// seat by seat, each in seq order.
+#[allow(dead_code)] // UI crew (Plan B) and B6 consume these; fixture tests pin them
 pub fn session_split(events: &[crate::events::EventV2], gap_ms: u64) -> Vec<Session> {
     let gap = if gap_ms == 0 { SESSION_GAP_MS } else { gap_ms };
     let mut by_seat: std::collections::BTreeMap<&str, Vec<&crate::events::EventV2>> = Default::default();
@@ -468,6 +472,7 @@ pub fn session_split(events: &[crate::events::EventV2], gap_ms: u64) -> Vec<Sess
 
 /// Nest turn → tool: a `turn` event opens a span that closes at the next
 /// turn; `tool` events nest under the open turn; everything else is a leaf.
+#[allow(dead_code)] // UI crew (Plan B) and B6 consume these; fixture tests pin them
 pub fn span_nest(events: &[crate::events::EventV2]) -> Vec<Span> {
     let mut out: Vec<Span> = vec![];
     for e in events {

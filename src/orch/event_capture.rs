@@ -6,6 +6,11 @@
 //! events. No live agent is ever started here; tests use the fixtures under
 //! `tests/fixtures/streams/`.
 
+// The parsers and the capture entry points are the module's public contract:
+// fixtures pin the three CLI formats and B6 wires `capture_event` for usage
+// deltas, so unused-in-bin warnings here are expected, not dead code.
+#![allow(dead_code)]
+
 use crate::events::{EventKind, EventV2, UsageDelta};
 use std::path::Path;
 
@@ -316,7 +321,7 @@ mod tests {
         }
     }
 
-    fn fixture(fmt: StreamFormat, cli: &str) -> String {
+    fn fixture(_fmt: StreamFormat, cli: &str) -> String {
         std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/streams/{cli}/stream.jsonl"))).unwrap()
     }
 

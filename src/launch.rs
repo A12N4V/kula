@@ -979,7 +979,7 @@ mod tests {
         assert!(g.iter().any(|x| x == "demo"), "gemini allow-lists MCP server names");
 
         // unknown CLI version must fail loud, not guess flags
-        let _env = ENV_LOCK.lock().unwrap();
+        // (the ENV_LOCK is already held at the top of this test – never re-lock)
         let old = std::env::var("KULA_NO_AGENT").ok();
         std::env::remove_var("KULA_NO_AGENT");
         if crate::launch::find_on_path("claude").is_some() {
