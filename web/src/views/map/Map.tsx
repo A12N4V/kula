@@ -335,7 +335,11 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
 
   const onCanvasClick = (e: React.MouseEvent) => {
     const p = hitAt(e);
-    if (p) setPick(p);
+    if (!p) return;
+    setPick(p);
+    // a flow line is long and thin: clicking it also flies to it, so the
+    // whole route is in view (the proof's fit-to-a-flow)
+    if (p.kind === "flow") active.fit(p, view, setView);
   };
 
   // Double click zooms to the thing under the pointer; Esc clears the pick,
