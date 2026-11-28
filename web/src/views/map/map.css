@@ -260,5 +260,10 @@
 
 @media (max-width: 600px) {
   .map-inspector, .map-test { width: 100%; border-left: none; border-top: 1px solid var(--line); top: auto; height: 60%; }
-  .map-find-input { width: 120px; }
+  .map-find-input { width: 140px; }
+  /* Touch targets: every header control gets a 40px finger zone without
+     growing the glyphs. */
+  .map-header button, .map-find-input { min-height: 40px; }
+  .map-seg-btn, .map-ov { min-width: 40px; padding: 0 10px; }
+  .map-header { row-gap: 6px; }
 }

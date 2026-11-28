@@ -14,6 +14,9 @@ import { Test } from "./Test";
 import {
   parsePick, pickCode, VARIANTS, VARIANT_LABEL, type Pick, type VariantId,
 } from "./ab";
+import { metroVariantFor, layoutFor as metroLayoutFor } from "./metro";
+import { atlasVariant } from "./atlas";
+import { getAtlasLayout } from "./atlas/layout";
 import "./map.css";
 
 export type OverlayKey = "fences" | "live" | "churn" | "owners";
@@ -231,6 +234,30 @@ const STUB_LAYER: Record<string, string> = {
 
 let stubLayoutCached: StubLayout | null = null;
 
+/* ------------------------------------------------------------- variants ---- */
+
+// Layout caches keyed by model, so exposing the active variant's layout to
+// tests and the probe stays O(1) after the first build.
+const atlasLayoutCache = new WeakMap<MapModel, ReturnType<typeof getAtlasLayout>>();
+function atlasLayoutFor(model: MapModel) {
+  let l = atlasLayoutCache.get(model);
+  if (!l) { l = getAtlasLayout(model); atlasLayoutCache.set(model, l); }
+  return l;
+}
+const stubLayoutCache = new WeakMap<MapModel, StubLayout>();
+function stubLayoutFor(model: MapModel): StubLayout {
+  let l = stubLayoutCache.get(model);
+  if (!l) { l = stubLayout(model); stubLayoutCache.set(model, l); }
+  return l;
+}
+
+/** The variant wired for an id. C stays the stub until its module lands. */
+function variantFor(id: VariantId, model: MapModel | null): Variant {
+  if (model && id === "a") return metroVariantFor(model);
+  if (model && id === "b") return atlasVariant;
+  return stubVariant;
+}
+
 /* ---------------------------------------------------------------- shell ---- */
 
 export default function MapView({ route, setRoute }: { route: MapRoute; setRoute: SetRoute }) {
@@ -238,6 +265,7 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
   const [overlays, setOverlays] = useState<OverlayState>({ fences: {}, live: {}, churn: {}, owners: {} });
   const [show, setShow] = useState<ShowFlags>({ fences: false, live: false, churn: false, owners: false });
   const [view, setView] = useState<VariantView>({ w: 800, h: 600, scale: 0.5, ox: 0, oy: 0 });
+  const [view2, setView2] = useState<VariantView>({ w: 800, h: 600, scale: 0.5, ox: 0, oy: 0 });
   const [hover, setHover] = useState<{ text: string; x: number; y: number }>({ text: "", x: 0, y: 0 });
   const [find, setFind] = useState("");
   const [findOpen, setFindOpen] = useState(false);
@@ -271,38 +299,79 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
     setOverlays((o) => ({ ...o, live: buildOverlays(model, { events, now: Date.now() }).live }));
   }, [model, events]);
 
-  // Expose the pure model builder and current model for tests and the probe.
+  // What the panes show: pane 1 the route variant, pane 2 the next one around
+  // the ring (a→b, b→c, c→a). Fit functions are bound per model, so handlers
+  // can close over the active variants.
+  const other = VARIANTS[(VARIANTS.indexOf(route.variant) + 1) % VARIANTS.length];
+  const activeA = useMemo(() => variantFor(route.variant, model), [route.variant, model]);
+  const activeB = useMemo(() => variantFor(other, model), [other, model]);
+
+  // Expose the pure model builder and current state for tests and the probe.
+  // layout is the ACTIVE pane-1 variant's layout, so a spec can aim a click at
+  // a real station whatever variant is showing.
   useEffect(() => {
+    const layoutForVariant = (id: VariantId) => {
+      if (!model) return null;
+      if (id === "a") return metroLayoutFor(model);
+      if (id === "b") return atlasLayoutFor(model);
+      return stubLayoutFor(model);
+    };
     (window as unknown as Record<string, unknown>).__kulaMap = {
       build: buildMapModel,
       model,
-      layout: stubLayoutCached,
+      layout: layoutForVariant(route.variant),
+      layoutB: layoutForVariant(other),
       view,
+      view2,
+      variant: route.variant,
+      other,
+      varA: activeA,
+      varB: activeB,
+      stubA: activeA === stubVariant,
+      stubB: activeB === stubVariant,
     };
-  }, [model, view]);
+  }, [model, view, view2, route.variant, other, activeA, activeB]);
 
   const pick = route.pick ? parsePick(route.pick) : null;
   const setPick = useCallback((p: Pick | null) => setRoute({ ...route, pick: p ? pickCode(p) : "" }), [route, setRoute]);
 
-  // Fit the whole world when the canvas first has a size.
+  // Fit the whole world when a pane's canvas first has a size (and refit on
+  // resize). The observer sits on the canvas, not the stage: in compare mode
+  // the stage stays full width while each pane is half of it, and a fit must
+  // centre on the pane it is drawn in.
   useEffect(() => {
-    const el = box.current;
-    if (!el || model == null) return;
+    const cv = canvas.current;
+    if (!cv || model == null) return;
     const ro = new ResizeObserver(() => {
-      const w = el.clientWidth, h = el.clientHeight;
+      const w = cv.clientWidth, h = cv.clientHeight;
       setView((v) => {
         if (v.w === w && v.h === h) return v;
         const scale = Math.min(w / WORLD.w, h / WORLD.h);
         return { w, h, scale, ox: (w - WORLD.w * scale) / 2, oy: (h - WORLD.h * scale) / 2 };
       });
     });
-    ro.observe(el);
+    ro.observe(cv);
     return () => ro.disconnect();
   }, [model]);
 
+  useEffect(() => {
+    const cv = canvas2.current;
+    if (!cv || model == null) return;
+    const ro = new ResizeObserver(() => {
+      const w = cv.clientWidth, h = cv.clientHeight;
+      setView2((v) => {
+        if (v.w === w && v.h === h) return v;
+        const scale = Math.min(w / WORLD.w, h / WORLD.h);
+        return { w, h, scale, ox: (w - WORLD.w * scale) / 2, oy: (h - WORLD.h * scale) / 2 };
+      });
+    });
+    ro.observe(cv);
+    return () => ro.disconnect();
+  }, [model, compare]);
+
   const drawOverlays: DrawOverlays = useMemo(() => ({ ...overlays, show }), [overlays, show]);
 
-  const paint = useCallback((cv: HTMLCanvasElement | null, v: VariantView) => {
+  const paint = useCallback((cv: HTMLCanvasElement | null, v: VariantView, vr: Variant) => {
     if (!cv || !model) return;
     const dpr = devicePixelRatio || 1;
     if (cv.width !== v.w * dpr || cv.height !== v.h * dpr) {
@@ -313,51 +382,121 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
     if (!ctx) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, cv.width, cv.height);
-    stubVariant.draw(ctx, model, v, drawOverlays, pick);
+    vr.draw(ctx, model, v, drawOverlays, pick);
   }, [model, drawOverlays, pick]);
 
-  useEffect(() => { paint(canvas.current, view); }, [paint, view]);
-  useEffect(() => { paint(canvas2.current, view); }, [paint, view]);
+  useEffect(() => { paint(canvas.current, view, activeA); }, [paint, view, activeA]);
+  // compare is a dependency because canvas2 mounts when compare turns on: the
+  // ref goes from null to the element and the paint must run again.
+  useEffect(() => { paint(canvas2.current, view2, activeB); }, [paint, view2, activeB, compare]);
 
-  const hitAt = (e: React.PointerEvent | React.MouseEvent): Pick | null => {
-    const r = canvas.current?.getBoundingClientRect();
+  // Fit plumbing. beforeRef holds each pane's pre-fit view so Esc can zoom
+  // back out one level; syncingRef records the last propagated fit so a fit
+  // echoed across panes in compare mode never loops back to its source.
+  type PaneId = "a" | "b";
+  const beforeRef = useRef<{ a: VariantView | null; b: VariantView | null }>({ a: null, b: null });
+  const fittedRef = useRef(false);
+  const syncingRef = useRef<{ pick: Pick; pane: PaneId; seq: number } | null>(null);
+  const syncSeq = useRef(0);
+
+  const fitPane = useCallback((pane: PaneId, p: Pick) => {
+    const isA = pane === "a";
+    const v = isA ? view : view2;
+    const setV = isA ? setView : setView2;
+    const vr = isA ? activeA : activeB;
+    const guard = syncingRef.current;
+    if (guard && guard.pick.kind === p.kind && guard.pick.id === p.id && guard.pane === pane && guard.seq === syncSeq.current) return;
+    if (isA) beforeRef.current.a = v; else beforeRef.current.b = v;
+    fittedRef.current = true;
+    vr.fit(p, v, setV);
+  }, [view, view2, activeA, activeB]);
+
+  /** Fit in one pane; in compare mode the sibling pane follows the same target
+   * through its own fit (different geometry, same meaning). One-directional:
+   * the follower never echoes back. */
+  const fitAndSync = useCallback((pane: PaneId, p: Pick) => {
+    fitPane(pane, p);
+    if (compare) {
+      syncingRef.current = { pick: p, pane, seq: ++syncSeq.current };
+      fitPane(pane === "a" ? "b" : "a", p);
+      // The guard exists only to stop the echo from the sibling fit above, so
+      // it is dead once that fit has run; clearing it keeps a second
+      // user-initiated fit of the same pick (e.g. re-dblclick after panning
+      // away) working in the source pane.
+      syncingRef.current = null;
+    }
+  }, [fitPane, compare]);
+
+  const hitPane = (e: React.PointerEvent | React.MouseEvent, pane: PaneId): Pick | null => {
+    const cv = pane === "a" ? canvas.current : canvas2.current;
+    const r = cv?.getBoundingClientRect();
     if (!r) return null;
-    return stubVariant.hit(e.clientX - r.left, e.clientY - r.top, view);
+    const vr = pane === "a" ? activeA : activeB;
+    const v = pane === "a" ? view : view2;
+    return vr.hit(e.clientX - r.left, e.clientY - r.top, v);
   };
 
   const onCanvasClick = (e: React.MouseEvent) => {
-    const p = hitAt(e);
+    const p = hitPane(e, "a");
+    if (p) setPick(p);
+  };
+  const onCanvas2Click = (e: React.MouseEvent) => {
+    const p = hitPane(e, "b");
     if (p) setPick(p);
   };
 
-  const onCanvasMove = (e: React.MouseEvent) => {
-    const p = hitAt(e);
-    if (!p) { setHover((h) => (h.text ? { ...h, text: "" } : h)); return; }
-    const st = p.kind === "station" ? model?.stations.find((s) => s.id === p.id) : null;
-    const fl = p.kind === "flow" ? model?.flows.find((f) => f.id === p.id) : null;
-    const dm = p.kind === "domain" ? model?.domains.find((d) => String(d.id) === p.id) : null;
-    const text = st ? `${st.name} · ${st.layer} · ${st.path}` : fl ? fl.label : dm ? `${dm.label} · ${dm.flows.length} flows` : "";
-    setHover({ text, x: e.clientX - (box.current?.getBoundingClientRect().left ?? 0), y: e.clientY - (box.current?.getBoundingClientRect().top ?? 0) });
+  // Pan and zoom per pane: drag to pan, wheel to zoom. Pans and wheel zooms
+  // are local to their pane; only fits propagate across panes.
+  const drag = useRef<{ pane: PaneId; x: number; y: number; ox: number; oy: number } | null>(null);
+  const onDown = (pane: PaneId) => (e: React.PointerEvent) => {
+    const v = pane === "a" ? view : view2;
+    drag.current = { pane, x: e.clientX, y: e.clientY, ox: v.ox, oy: v.oy };
   };
-
-  // Pan and zoom on the stub: drag to pan, wheel to zoom.
-  const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
-  const onDown = (e: React.PointerEvent) => { drag.current = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy }; };
   const onMoveDrag = (e: React.PointerEvent) => {
     if (!drag.current) return;
-    setView((v) => ({ ...v, ox: drag.current!.ox + (e.clientX - drag.current!.x), oy: drag.current!.oy + (e.clientY - drag.current!.y) }));
+    const setV = drag.current.pane === "a" ? setView : setView2;
+    setV((v) => ({ ...v, ox: drag.current!.ox + (e.clientX - drag.current!.x), oy: drag.current!.oy + (e.clientY - drag.current!.y) }));
   };
   const onUp = () => { drag.current = null; };
-  const onWheel = (e: React.WheelEvent) => {
+  const onWheel = (pane: PaneId) => (e: React.WheelEvent) => {
     e.preventDefault();
-    const r = canvas.current!.getBoundingClientRect();
+    const cv = pane === "a" ? canvas.current : canvas2.current;
+    if (!cv) return;
+    const r = cv.getBoundingClientRect();
     const mx = e.clientX - r.left, my = e.clientY - r.top;
-    setView((v) => {
+    const setV = pane === "a" ? setView : setView2;
+    setV((v) => {
       const k = Math.exp(-e.deltaY * 0.0015);
       const scale = Math.max(0.1, Math.min(8, v.scale * k));
       const f = scale / v.scale;
       return { ...v, scale, ox: mx - (mx - v.ox) * f, oy: my - (my - v.oy) * f };
     });
+  };
+
+  // Double click: select and zoom to the thing, in this pane and (compare)
+  // through the sibling's fit. Brief contract 2: zoom on double click, Esc out.
+  const onCanvasDblClick = (pane: PaneId) => (e: React.MouseEvent) => {
+    const p = hitPane(e, pane);
+    if (p) { setPick(p); fitAndSync(pane, p); }
+  };
+
+  const hoverText = (p: Pick) => {
+    if (!model) return "";
+    const st = p.kind === "station" ? model.stations.find((s) => s.id === p.id) : null;
+    const fl = p.kind === "flow" ? model.flows.find((f) => f.id === p.id) : null;
+    const dm = p.kind === "domain" ? model.domains.find((d) => String(d.id) === p.id) : null;
+    return st ? `${st.name} · ${st.layer} · ${st.path}` : fl ? fl.label : dm ? `${dm.label} · ${dm.flows.length} flows` : "";
+  };
+
+  const onCanvasMove = (e: React.MouseEvent) => {
+    const p = hitPane(e, "a");
+    if (!p) { setHover((h) => (h.text ? { ...h, text: "" } : h)); return; }
+    setHover({ text: hoverText(p), x: e.clientX - (box.current?.getBoundingClientRect().left ?? 0), y: e.clientY - (box.current?.getBoundingClientRect().top ?? 0) });
+  };
+  const onCanvas2Move = (e: React.MouseEvent) => {
+    const p = hitPane(e, "b");
+    if (!p) { setHover((h) => (h.text ? { ...h, text: "" } : h)); return; }
+    setHover({ text: hoverText(p), x: e.clientX - (box.current?.getBoundingClientRect().left ?? 0), y: e.clientY - (box.current?.getBoundingClientRect().top ?? 0) });
   };
 
   // ⌘K find on map: capture phase, so the global palette does not take it.
@@ -370,12 +509,22 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
       }
       if (e.key === "Escape") {
         if (findOpen) setFindOpen(false);
-        else if (pick) setPick(null);
+        else if (pick) {
+          setPick(null);
+          // Zoom out one level: restore the view the last fit replaced, per
+          // pane, and forget it so a second Esc does not jump again.
+          if (fittedRef.current) {
+            if (beforeRef.current.a) setView(beforeRef.current.a);
+            if (compare && beforeRef.current.b) setView2(beforeRef.current.b);
+            beforeRef.current = { a: null, b: null };
+            fittedRef.current = false;
+          }
+        }
       }
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true } as EventListenerOptions);
-  }, [findOpen, pick, setPick]);
+  }, [findOpen, pick, setPick, compare]);
 
   const hits = useMemo(() => {
     if (!model || !find.trim()) return [];
@@ -401,14 +550,12 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
     setPick(p);
     setFindOpen(false);
     setFind("");
-    stubVariant.fit(p, view, setView);
+    fitAndSync("a", p);
   };
 
   if (!model) {
     return <div className="map-view" data-testid="map-view"><div className="view-loading" aria-live="polite">loading…</div></div>;
   }
-
-  const other = VARIANTS[(VARIANTS.indexOf(route.variant) + 1) % VARIANTS.length];
 
   return (
     <div className="map-view" data-testid="map-view">
@@ -471,23 +618,35 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
             ref={canvas}
             data-testid="map-canvas"
             onClick={onCanvasClick}
+            onDoubleClick={onCanvasDblClick("a")}
             onMouseMove={onCanvasMove}
-            onPointerDown={onDown}
+            onPointerDown={onDown("a")}
             onPointerMove={onMoveDrag}
             onPointerUp={onUp}
             onPointerLeave={onUp}
-            onWheel={onWheel}
+            onWheel={onWheel("a")}
           />
           {!compare && <span className="map-pane-tag">{VARIANT_LABEL[route.variant]}</span>}
         </div>
         {compare && (
           <div className="map-pane">
-            <canvas ref={canvas2} data-testid="map-canvas-2" />
+            <canvas
+              ref={canvas2}
+              data-testid="map-canvas-2"
+              onClick={onCanvas2Click}
+              onDoubleClick={onCanvasDblClick("b")}
+              onMouseMove={onCanvas2Move}
+              onPointerDown={onDown("b")}
+              onPointerMove={onMoveDrag}
+              onPointerUp={onUp}
+              onPointerLeave={onUp}
+              onWheel={onWheel("b")}
+            />
             <span className="map-pane-tag">{VARIANT_LABEL[other]}</span>
           </div>
         )}
         <HoverCard text={hover.text} x={hover.x} y={hover.y} />
-        {pick && <Inspector pick={pick} model={model} overlays={overlays} onClose={() => setPick(null)} onPick={(p) => { setPick(p); stubVariant.fit(p, view, setView); }} />}
+        {pick && <Inspector pick={pick} model={model} overlays={overlays} onClose={() => setPick(null)} onPick={(p) => { setPick(p); fitAndSync("a", p); }} />}
         {route.test && (
           <Test model={model} overlays={overlays} now={Date.now()} pick={pick} onVariant={(v) => setRoute({ ...route, variant: v })} />
         )}
