@@ -193,7 +193,7 @@ fi
 "$K" pr new "Suggest a task scope from what an agent touched" --base main --head feat/agent-scope -b "Agents start broad. This proposes the narrowest scope that covers the files they actually changed." >/dev/null
 "$K" issue new "Recall should prefer recent memories inside a tier" -b "Two fresh memories on the same symbol come back in creation order." -a src/memory.rs:recall -l memory >/dev/null
 "$K" note add symbol:Guards "One verdict per path: MCP, the hook and kula check all read this." >/dev/null
-"$K" memory add publish "Unlink, never truncate, the WAL files under open readers." --by agent:e2e >/dev/null
+"$K" memory add src/store.rs:publish "Unlink, never truncate, the WAL files under open readers." --by agent:e2e >/dev/null
 "$K" memory add file:src/kg.rs "SPARQL is read-only: updates are rejected by the parser." --by agent:e2e >/dev/null
 "$K" task start "harden the MCP server" --scope src/mcp.rs src/agent.rs --workflow fix >/dev/null
 # Claude Code is wired up; AGENTS.md carries the brief; an agent has suggested a fence.
