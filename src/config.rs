@@ -95,7 +95,9 @@ impl PriceTable {
         let mut it = day.split('-');
         let (y, m, d) = (it.next(), it.next(), it.next());
         match (y, m, d) {
-            (Some(y), Some(m), Some(d)) => y.parse::<u32>().unwrap_or(0) * 10_000 + m.parse::<u32>().unwrap_or(0) * 100 + d.parse::<u32>().unwrap_or(0),
+            (Some(y), Some(m), Some(d)) => {
+                y.parse::<u32>().unwrap_or(0) * 10_000 + m.parse::<u32>().unwrap_or(0) * 100 + d.parse::<u32>().unwrap_or(0)
+            }
             _ => 0,
         }
     }

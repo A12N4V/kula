@@ -8,10 +8,10 @@
 
 #[path = "../src/config.rs"]
 pub mod config;
-#[path = "../src/workflow.rs"]
-pub mod workflow;
 #[path = "../src/usage.rs"]
 pub mod usage;
+#[path = "../src/workflow.rs"]
+pub mod workflow;
 
 /// The pipeline's `Captured` carries the launcher's legacy aggregate. The
 /// test tree cannot compile all of launch.rs, so the same struct is
@@ -59,7 +59,7 @@ pub mod orch {
 
 use config::PriceTable;
 use std::path::Path;
-use usage::{Accumulator, RawMessage, UsageRecord};
+use usage::{Accumulator, UsageRecord};
 
 fn fixture(rel: &str) -> String {
     std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)).unwrap()
@@ -201,7 +201,7 @@ fn totals_match_ccusage_logic_on_the_same_transcripts() {
 /// A duplicated message never counts twice, whatever the arrival order.
 #[test]
 fn duplicated_message_never_counts_twice() {
-    let t = table();
+    let _t = table();
     let mk = |id: &str, input: u64| UsageRecord {
         seat: "team/one".into(),
         run: "d".into(),

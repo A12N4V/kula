@@ -145,15 +145,19 @@ fn launch(
         Ok(c) => (c.code, c.output.clone(), c),
         Err(e) => {
             let args0 = args.first().map(String::as_str).unwrap_or("?");
-            (127, format!("could not start {args0}: {e}"), crate::launch::Captured {
-                usage: Default::default(),
-                records: vec![],
-                acc: crate::usage::Accumulator::new(run.2, run.1, budget),
-                stopped: false,
-                code: 127,
-                price_errors: vec![],
-                output: String::new(),
-            })
+            (
+                127,
+                format!("could not start {args0}: {e}"),
+                crate::launch::Captured {
+                    usage: Default::default(),
+                    records: vec![],
+                    acc: crate::usage::Accumulator::new(run.2, run.1, budget),
+                    stopped: false,
+                    code: 127,
+                    price_errors: vec![],
+                    output: String::new(),
+                },
+            )
         }
     }
 }
@@ -401,7 +405,11 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                                     msg: format!(
                                         "budget stop: ${:.2} of ${seat_budget:.2} spent{}",
                                         cap.acc.spent,
-                                        if cap.price_errors.is_empty() { String::new() } else { format!("; {}", cap.price_errors.join("; ")) }
+                                        if cap.price_errors.is_empty() {
+                                            String::new()
+                                        } else {
+                                            format!("; {}", cap.price_errors.join("; "))
+                                        }
                                     ),
                                     usage: usage.clone(),
                                     ..Default::default()

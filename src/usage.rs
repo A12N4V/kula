@@ -18,8 +18,6 @@ use crate::config::PriceTable;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::path::Path;
-use std::io::Read;
-use std::process::Stdio;
 
 /// The four token classes the pipeline tracks.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -38,6 +36,7 @@ impl Tokens {
         self.cache_write = self.cache_write.saturating_add(o.cache_write);
     }
     /// Every token that went to the provider, cache reads included.
+    #[allow(dead_code)] // public API for later waves; exercised in tests
     pub fn total(&self) -> u64 {
         self.input.saturating_add(self.output).saturating_add(self.cache_read).saturating_add(self.cache_write)
     }
@@ -107,6 +106,7 @@ pub struct RawMessage {
 
 /// Estimate the token count of a string with tiktoken's cl100k_base. Used
 /// only where a CLI reports nothing; the record is flagged `estimated`.
+#[allow(dead_code)] // public API for later waves; exercised in tests
 pub fn estimate_tokens(text: &str) -> u64 {
     use tiktoken_rs::cl100k_base;
     let Ok(bpe) = cl100k_base() else { return text.len() as u64 / 4 };
@@ -143,11 +143,7 @@ fn from_value(v: &serde_json::Value) -> Option<Vec<RawMessage>> {
     if let Some(k) = v.get("kula_usage") {
         return Some(vec![RawMessage {
             model: k.get("model").and_then(|m| m.as_str()).unwrap_or("").to_string(),
-            tokens: Tokens {
-                input: u(k, "tokens_in"),
-                output: u(k, "tokens_out"),
-                ..Default::default()
-            },
+            tokens: Tokens { input: u(k, "tokens_in"), output: u(k, "tokens_out"), ..Default::default() },
             ..Default::default()
         }]);
     }
@@ -164,7 +160,7 @@ fn from_value(v: &serde_json::Value) -> Option<Vec<RawMessage>> {
         let mut msgs = vec![];
         let us = &v["usage"];
         if u(us, "input_tokens") > 0 || u(us, "output_tokens") > 0 {
-            let mut r = claude_usage(&v, us);
+            let mut r = claude_usage(v, us);
             if let Some(mu) = v.get("modelUsage").and_then(|m| m.as_object()) {
                 if let Some(name) = mu.keys().next() {
                     r.model = name.clone();
@@ -186,7 +182,12 @@ fn from_value(v: &serde_json::Value) -> Option<Vec<RawMessage>> {
         let id = MessageId::of(None, &format!("turn-{}", serde_json::to_string(us).unwrap_or_default())).0;
         return Some(vec![RawMessage {
             model: v.get("model").and_then(|m| m.as_str()).unwrap_or("").to_string(),
-            tokens: Tokens { input: input.saturating_sub(cached), cache_read: cached, output: u(us, "output_tokens"), ..Default::default() },
+            tokens: Tokens {
+                input: input.saturating_sub(cached),
+                cache_read: cached,
+                output: u(us, "output_tokens"),
+                ..Default::default()
+            },
             message_id: id,
             ..Default::default()
         }]);
@@ -202,8 +203,7 @@ fn from_value(v: &serde_json::Value) -> Option<Vec<RawMessage>> {
                     input: u(t, "prompt"),
                     output: u(t, "candidates"),
                     cache_read: u(t, "cached") + u(t, "cachedContentTokenCount"),
-                    cache_write: u(t, "thoughts") * 0, // gemini reports no cache write class
-                    ..Default::default()
+                    cache_write: 0, // gemini reports no cache write class
                 },
                 ..Default::default()
             });
@@ -286,7 +286,9 @@ pub struct Bucket {
 /// Accumulates usage per seat · run · day · model, checks the budget and
 /// computes the burn rate.
 pub struct Accumulator {
+    #[allow(dead_code)] // carried for the ledger and MCP, not read in the hot path
     pub seat: String,
+    #[allow(dead_code)]
     pub run: String,
     /// Budget in dollars; 0 means no budget (no stops).
     pub budget: f64,
@@ -392,6 +394,7 @@ impl Accumulator {
     }
 
     /// The day's bucket for a model, else a zero one.
+    #[allow(dead_code)] // public API for later waves; exercised in tests
     pub fn bucket(&self, day: &str, model: &str) -> Bucket {
         self.buckets.iter().find(|b| b.day == day && b.model == model).cloned().unwrap_or_default()
     }
@@ -407,7 +410,14 @@ impl Accumulator {
             est += b.estimated;
         }
         let cache_hit = cache_hit_rate(&total);
-        Metrics { tokens: total, cost_usd: cost, cache_hit_rate: cache_hit, estimated_messages: est, burn_rate: self.rate, eta_ms: eta(self.budget, self.spent, self.rate) }
+        Metrics {
+            tokens: total,
+            cost_usd: cost,
+            cache_hit_rate: cache_hit,
+            estimated_messages: est,
+            burn_rate: self.rate,
+            eta_ms: eta(self.budget, self.spent, self.rate),
+        }
     }
 }
 
@@ -433,6 +443,7 @@ pub fn eta(budget: f64, spent: f64, rate: f64) -> u64 {
 /// The cone around the EWMA rate: r ± one deviation, where the deviation is
 /// the last instantaneous rate's distance from the EWMA. ETA bounds ride the
 /// cone.
+#[allow(dead_code)] // public API for later waves; exercised in tests
 pub fn cone(rate: f64, last_instant: f64) -> (f64, f64) {
     let dev = (last_instant - rate).abs();
     (rate - dev, rate + dev)
@@ -442,7 +453,11 @@ pub fn cone(rate: f64, last_instant: f64) -> (f64, f64) {
 /// cache_write + input), 0 when there is nothing cached.
 pub fn cache_hit_rate(t: &Tokens) -> f64 {
     let den = t.cache_read + t.cache_write + t.input;
-    if den > 0 { t.cache_read as f64 / den as f64 } else { 0.0 }
+    if den > 0 {
+        t.cache_read as f64 / den as f64
+    } else {
+        0.0
+    }
 }
 
 /// Metrics the pipeline reports for a seat or a run.
@@ -462,6 +477,7 @@ pub struct Metrics {
 /// Cost per symbol: turn cost split by edit share. A seat's cost on a turn
 /// is attributed to the symbols it edited in proportion to the lines it
 /// changed in each. `edits` is (symbol, lines changed) for the turn.
+#[allow(dead_code)] // public API for later waves; exercised in tests
 pub fn cost_per_symbol(turn_cost: f64, edits: &[(String, u64)]) -> Vec<(String, f64)> {
     let total: u64 = edits.iter().map(|(_, n)| *n).sum();
     if total == 0 {
@@ -476,6 +492,7 @@ pub fn cost_per_symbol(turn_cost: f64, edits: &[(String, u64)]) -> Vec<(String, 
 
 /// Cost per green test: the run's cost divided by the seats that passed.
 /// 0 when nothing passed (the cost is not attributable to green tests).
+#[allow(dead_code)] // public API for later waves; exercised in tests
 pub fn cost_per_green_test(run_cost: f64, passed: usize) -> f64 {
     if passed == 0 {
         0.0
@@ -532,216 +549,12 @@ pub fn day_of(ts: u64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn table() -> PriceTable {
-        let cfg = toml::from_str::<crate::config::Config>(
-            r#"
-[[price]]
-model = "claude-opus-5-5"
-date = "2026-11-01"
-input = 5.0
-output = 25.0
-cache_read = 0.5
-cache_write = 6.25
-[[price]]
-model = "claude-opus-5-5"
-date = "2026-12-01"
-input = 6.0
-output = 30.0
-cache_read = 0.6
-cache_write = 7.5
-[[price]]
-model = "fake"
-date = "2026-01-01"
-input = 1.0
-output = 2.0
-cache_read = 0.5
-cache_write = 0.5
-"#,
-        )
-        .unwrap();
-        PriceTable::from(&cfg)
-    }
-
-    #[test]
-    fn latest_le_date_wins() {
-        let t = table();
-        assert_eq!(t.price("claude-opus-5-5", "2026-11-15").unwrap().input, 5.0);
-        assert_eq!(t.price("claude-opus-5-5", "2026-12-15").unwrap().input, 6.0);
-        // Before the first row for the model there is no price: an error, not
-        // a silent zero.
-        let e = t.price("claude-opus-5-5", "2026-10-31").unwrap_err();
-        assert!(e.to_string().contains("claude-opus-5-5"), "{e}");
-    }
-
-    #[test]
-    fn unknown_model_is_named_not_silent() {
-        let e = table().price("gpt-9", "2026-11-01").unwrap_err();
-        assert!(e.to_string().contains("gpt-9"), "{e}");
-    }
-
-    #[test]
-    fn cost_matches_the_four_fields() {
-        let t = table();
-        let tok = Tokens { input: 1_000_000, output: 1_000_000, cache_read: 1_000_000, cache_write: 1_000_000 };
-        let c = t.cost("fake", "2026-01-01", &tok).unwrap();
-        assert!((c - 4.0).abs() < 1e-9, "{c}");
-    }
-
-    fn rec(seat: &str, run: &str, model: &str, day: &str, ts: u64, toks: Tokens, cost: f64, id: &str) -> UsageRecord {
-        UsageRecord {
-            seat: seat.into(),
-            run: run.into(),
-            model: model.into(),
-            day: day.into(),
-            ts,
-            tokens: toks,
-            cost_usd: cost,
-            agent: "fake".into(),
-            message_id: id.into(),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn duplicates_never_count_twice() {
-        let mut a = Accumulator::new("team/one", "r1", 10.0);
-        let r = rec("team/one", "r1", "fake", "2026-11-01", 1_000, Tokens { input: 100, ..Default::default() }, 0.01, "m1");
-        assert!(a.add(&r));
-        assert!(!a.add(&r), "duplicate message must not count twice");
-        assert_eq!(a.spent, 0.01);
-        assert_eq!(a.buckets.len(), 1);
-        assert_eq!(a.buckets[0].messages, 1);
-    }
-
-    #[test]
-    fn duplicates_out_of_order_dedupe_covers_both_orders() {
-        // The property: a duplicate counts once whether it arrives before or
-        // after the original.
-        let a = rec("team/one", "r1", "fake", "2026-11-01", 1_000, Tokens { input: 10, ..Default::default() }, 0.001, "m1");
-        let b = rec("team/one", "r1", "fake", "2026-11-01", 2_000, Tokens { input: 20, ..Default::default() }, 0.002, "m2");
-        let mut x = Accumulator::new("team/one", "r1", 10.0);
-        x.add(&b);
-        x.add(&a);
-        x.add(&a);
-        let mut y = Accumulator::new("team/one", "r1", 10.0);
-        y.add(&a);
-        y.add(&b);
-        y.add(&b);
-        assert_eq!(x.spent, y.spent, "duplicate counts once in either order");
-        assert_eq!(x.buckets, y.buckets);
-    }
-
-    #[test]
-    fn budget_warns_once_at_80_and_stops_at_100() {
-        let mut a = Accumulator::new("team/one", "r1", 5.0);
-        let cheap = |ts: u64, id: &str| rec("team/one", "r1", "fake", "2026-11-01", ts, Tokens { input: 1, ..Default::default() }, 4.0, id);
-        a.add(&cheap(1_000, "m1"));
-        assert_eq!(a.take_action(), BudgetState::Warn);
-        assert_eq!(a.take_action(), BudgetState::Ok, "the warning is once");
-        a.add(&cheap(2_000, "m2"));
-        assert_eq!(a.take_action(), BudgetState::Stop);
-        a.add(&cheap(3_000, "m3"));
-        assert_eq!(a.take_action(), BudgetState::Stop, "stop is latched");
-        assert_eq!(a.spent, 12.0, "spend still accumulates for the ledger");
-    }
-
-    #[test]
-    fn no_budget_never_stops() {
-        let mut a = Accumulator::new("team/one", "r1", 0.0);
-        let r = rec("team/one", "r1", "fake", "2026-11-01", 1_000, Tokens { input: 1, ..Default::default() }, 100.0, "m1");
-        a.add(&r);
-        assert_eq!(a.take_action(), BudgetState::Ok);
-    }
-
-    #[test]
-    fn ewma_seeds_with_first_rate_and_cones() {
-        let mut a = Accumulator::new("team/one", "r1", 10.0);
-        a.add(&rec("team/one", "r1", "fake", "2026-11-01", 1_000, Tokens { input: 1, ..Default::default() }, 0.1, "m1"));
-        assert!((a.rate - 0.1 / 1_000.0).abs() < 1e-12, "seeded with the first observed rate, not zero: {}", a.rate);
-        a.add(&rec("team/one", "r1", "fake", "2026-11-01", 2_000, Tokens { input: 1, ..Default::default() }, 0.3, "m2"));
-        let expect = 0.3 * (0.3 / 1_000.0) + 0.7 * (0.1 / 1_000.0);
-        assert!((a.rate - expect).abs() < 1e-12, "α=0.3 EWMA: {} vs {}", a.rate, expect);
-        let (lo, hi) = cone(a.rate, 0.3 / 1_000.0);
-        assert!(lo <= a.rate && a.rate <= hi);
-    }
-
-    #[test]
-    fn eta_is_budget_minus_spent_over_rate() {
-        assert_eq!(eta(10.0, 4.0, 0.001), 6_000);
-        assert_eq!(eta(10.0, 10.0, 0.001), 0, "spent: no ETA");
-        assert_eq!(eta(10.0, 4.0, 0.0), 0, "no rate: no ETA");
-    }
-
-    #[test]
-    fn buckets_split_by_day_and_model() {
-        let mut a = Accumulator::new("team/one", "r1", 10.0);
-        a.add(&rec("team/one", "r1", "fake", "2026-11-01", 1_000, Tokens { input: 10, ..Default::default() }, 0.01, "m1"));
-        a.add(&rec("team/one", "r1", "other", "2026-11-01", 2_000, Tokens { input: 20, ..Default::default() }, 0.02, "m2"));
-        a.add(&rec("team/one", "r1", "fake", "2026-11-02", 3_000, Tokens { input: 30, ..Default::default() }, 0.03, "m3"));
-        assert_eq!(a.buckets.len(), 3);
-        assert_eq!(a.bucket("2026-11-01", "fake").tokens.input, 10);
-        assert_eq!(a.bucket("2026-11-02", "fake").tokens.input, 30);
-        assert_eq!(a.bucket("2026-11-03", "fake").tokens.input, 0);
-    }
-
-    #[test]
-    fn cache_hit_rate_and_cost_per_symbol() {
-        let m = Metrics { tokens: Tokens { input: 100, output: 10, cache_read: 300, cache_write: 100, ..Default::default() }, ..Default::default() };
-        assert!((cache_hit_rate(&m.tokens) - 300.0 / 500.0).abs() < 1e-9);
-        assert_eq!(cache_hit_rate(&Tokens::default()), 0.0);
-        let per = cost_per_symbol(0.30, &[("a".into(), 10), ("b".into(), 20)]);
-        assert!((per[0].1 - 0.10).abs() < 1e-9);
-        assert!((per[1].1 - 0.20).abs() < 1e-9);
-        assert!(cost_per_symbol(0.30, &[]).is_empty());
-        assert_eq!(cost_per_green_test(1.0, 0), 0.0);
-        assert!((cost_per_green_test(1.0, 2) - 0.5).abs() < 1e-9);
-    }
-
-    #[test]
-    fn dedupe_is_bounded_recent_first() {
-        let mut d = Dedupe::new(3);
-        for i in 0..5 {
-            assert!(d.check(&MessageId(i.to_string())));
-        }
-        assert!(!d.check(&MessageId("4".into())), "recent survives");
-        assert!(d.check(&MessageId("0".into())), "oldest was evicted");
-    }
-
-    #[test]
-    fn ledger_round_trips() {
-        let tmp = tempfile::tempdir().unwrap();
-        let kula = tmp.path().join(".kula");
-        let r = rec("team/one", "r-test", "fake", "2026-11-01", 1_000, Tokens { input: 5, ..Default::default() }, 0.005, "m1");
-        ledger_append(&kula, &r);
-        ledger_append(&kula, &r);
-        let got = ledger_read(&kula, "r-test");
-        assert_eq!(got.len(), 2, "the ledger is append only: records land, dedupe is the reader's job");
-        assert_eq!(got[0].message_id, "m1");
-    }
-
-    #[test]
-    fn day_of_matches_known_dates() {
-        assert_eq!(day_of(0), "1970-01-01");
-        // 2026-11-27 00:00:00 UTC = 1795747200 s
-        assert_eq!(day_of(1_795_747_200_000), "2026-11-27");
-    }
-
-    #[test]
-    fn estimate_tokens_counts_words_roughly() {
-        assert!(estimate_tokens("hello world") >= 2);
-        assert!(estimate_tokens("") == 0);
-    }
-}
-
 /// What capturing an agent's stream produced.
 pub struct Captured {
     /// Legacy aggregate, the shape B4's launcher already stores.
     pub usage: crate::launch::Usage,
     /// Priced, de-duplicated records, newest last.
+    #[allow(dead_code)] // read by the ledger writer in the full tree
     pub records: Vec<crate::usage::UsageRecord>,
     /// The accumulator with buckets, burn rate and budget state.
     pub acc: crate::usage::Accumulator,
@@ -776,31 +589,30 @@ pub fn capture_stream(
 ) -> anyhow::Result<Captured> {
     use std::io::{BufRead, Read};
 
-    let mut cmd = cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    let cmd = cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     let mut child = cmd.spawn()?;
     let pid = child.id();
-    let mut out = child.stdout.take().expect("stdout was piped");
+    let out = child.stdout.take().expect("stdout was piped");
     // stderr is captured on its own thread: it holds the launcher's messages
     // (and an agent that prints its stream there), kept out of the parse loop.
-    let err_handle = child
-        .stderr
-        .take()
-        .map(|mut e| std::thread::spawn(move || {
+    let err_handle = child.stderr.take().map(|mut e| {
+        std::thread::spawn(move || {
             let mut buf = Vec::new();
             let _ = e.read_to_end(&mut buf);
             String::from_utf8_lossy(&buf).into_owned()
-        }));
+        })
+    });
     let mut acc = crate::usage::Accumulator::new(seat, run, budget);
     let mut usage = crate::launch::Usage::default();
     let mut records = vec![];
     let mut price_errors = vec![];
     let mut stopped = false;
 
-    let mut record_raw = |raw: &crate::usage::RawMessage,
-                          acc: &mut crate::usage::Accumulator,
-                          usage: &mut crate::launch::Usage,
-                          records: &mut Vec<crate::usage::UsageRecord>,
-                          price_errors: &mut Vec<String>| {
+    let record_raw = |raw: &crate::usage::RawMessage,
+                      acc: &mut crate::usage::Accumulator,
+                      usage: &mut crate::launch::Usage,
+                      records: &mut Vec<crate::usage::UsageRecord>,
+                      price_errors: &mut Vec<String>| {
         let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
         let day = crate::usage::day_of(ts);
         let mut r = crate::usage::UsageRecord {
@@ -907,3 +719,208 @@ pub fn capture_stream(
     Ok(Captured { usage, records, acc, stopped, code, price_errors, output })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn table() -> PriceTable {
+        let cfg = toml::from_str::<crate::config::Config>(
+            r#"
+[[price]]
+model = "claude-opus-5-5"
+date = "2026-11-01"
+input = 5.0
+output = 25.0
+cache_read = 0.5
+cache_write = 6.25
+[[price]]
+model = "claude-opus-5-5"
+date = "2026-12-01"
+input = 6.0
+output = 30.0
+cache_read = 0.6
+cache_write = 7.5
+[[price]]
+model = "fake"
+date = "2026-01-01"
+input = 1.0
+output = 2.0
+cache_read = 0.5
+cache_write = 0.5
+"#,
+        )
+        .unwrap();
+        PriceTable::from(&cfg)
+    }
+
+    #[test]
+    fn latest_le_date_wins() {
+        let t = table();
+        assert_eq!(t.price("claude-opus-5-5", "2026-11-15").unwrap().input, 5.0);
+        assert_eq!(t.price("claude-opus-5-5", "2026-12-15").unwrap().input, 6.0);
+        // Before the first row for the model there is no price: an error, not
+        // a silent zero.
+        let e = t.price("claude-opus-5-5", "2026-10-31").unwrap_err();
+        assert!(e.to_string().contains("claude-opus-5-5"), "{e}");
+    }
+
+    #[test]
+    fn unknown_model_is_named_not_silent() {
+        let e = table().price("gpt-9", "2026-11-01").unwrap_err();
+        assert!(e.to_string().contains("gpt-9"), "{e}");
+    }
+
+    #[test]
+    fn cost_matches_the_four_fields() {
+        let t = table();
+        let tok = Tokens { input: 1_000_000, output: 1_000_000, cache_read: 1_000_000, cache_write: 1_000_000 };
+        let c = t.cost("fake", "2026-01-01", &tok).unwrap();
+        assert!((c - 4.0).abs() < 1e-9, "{c}");
+    }
+
+    #[allow(clippy::too_many_arguments)] // a test record has many dimensions
+    fn rec(seat: &str, run: &str, model: &str, day: &str, ts: u64, toks: Tokens, cost: f64, id: &str) -> UsageRecord {
+        UsageRecord {
+            seat: seat.into(),
+            run: run.into(),
+            model: model.into(),
+            day: day.into(),
+            ts,
+            tokens: toks,
+            cost_usd: cost,
+            agent: "fake".into(),
+            message_id: id.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn duplicates_never_count_twice() {
+        let mut a = Accumulator::new("team/one", "r1", 10.0);
+        let r = rec("team/one", "r1", "fake", "2026-11-01", 1_000, Tokens { input: 100, ..Default::default() }, 0.01, "m1");
+        assert!(a.add(&r));
+        assert!(!a.add(&r), "duplicate message must not count twice");
+        assert_eq!(a.spent, 0.01);
+        assert_eq!(a.buckets.len(), 1);
+        assert_eq!(a.buckets[0].messages, 1);
+    }
+
+    #[test]
+    fn duplicates_out_of_order_dedupe_covers_both_orders() {
+        // The property: a duplicate counts once whether it arrives before or
+        // after the original.
+        let a = rec("team/one", "r1", "fake", "2026-11-01", 1_000, Tokens { input: 10, ..Default::default() }, 0.001, "m1");
+        let b = rec("team/one", "r1", "fake", "2026-11-01", 2_000, Tokens { input: 20, ..Default::default() }, 0.002, "m2");
+        let mut x = Accumulator::new("team/one", "r1", 10.0);
+        x.add(&b);
+        x.add(&a);
+        x.add(&a);
+        let mut y = Accumulator::new("team/one", "r1", 10.0);
+        y.add(&a);
+        y.add(&b);
+        y.add(&b);
+        assert_eq!(x.spent, y.spent, "duplicate counts once in either order");
+        assert_eq!(x.buckets, y.buckets);
+    }
+
+    #[test]
+    fn budget_warns_once_at_80_and_stops_at_100() {
+        let mut a = Accumulator::new("team/one", "r1", 5.0);
+        let cheap = |ts: u64, id: &str| rec("team/one", "r1", "fake", "2026-11-01", ts, Tokens { input: 1, ..Default::default() }, 4.0, id);
+        a.add(&cheap(1_000, "m1"));
+        assert_eq!(a.take_action(), BudgetState::Warn);
+        assert_eq!(a.take_action(), BudgetState::Ok, "the warning is once");
+        a.add(&cheap(2_000, "m2"));
+        assert_eq!(a.take_action(), BudgetState::Stop);
+        a.add(&cheap(3_000, "m3"));
+        assert_eq!(a.take_action(), BudgetState::Stop, "stop is latched");
+        assert_eq!(a.spent, 12.0, "spend still accumulates for the ledger");
+    }
+
+    #[test]
+    fn no_budget_never_stops() {
+        let mut a = Accumulator::new("team/one", "r1", 0.0);
+        let r = rec("team/one", "r1", "fake", "2026-11-01", 1_000, Tokens { input: 1, ..Default::default() }, 100.0, "m1");
+        a.add(&r);
+        assert_eq!(a.take_action(), BudgetState::Ok);
+    }
+
+    #[test]
+    fn ewma_seeds_with_first_rate_and_cones() {
+        let mut a = Accumulator::new("team/one", "r1", 10.0);
+        a.add(&rec("team/one", "r1", "fake", "2026-11-01", 1_000, Tokens { input: 1, ..Default::default() }, 0.1, "m1"));
+        assert!((a.rate - 0.1 / 1_000.0).abs() < 1e-12, "seeded with the first observed rate, not zero: {}", a.rate);
+        a.add(&rec("team/one", "r1", "fake", "2026-11-01", 2_000, Tokens { input: 1, ..Default::default() }, 0.3, "m2"));
+        let expect = 0.3 * (0.3 / 1_000.0) + 0.7 * (0.1 / 1_000.0);
+        assert!((a.rate - expect).abs() < 1e-12, "α=0.3 EWMA: {} vs {}", a.rate, expect);
+        let (lo, hi) = cone(a.rate, 0.3 / 1_000.0);
+        assert!(lo <= a.rate && a.rate <= hi);
+    }
+
+    #[test]
+    fn eta_is_budget_minus_spent_over_rate() {
+        assert_eq!(eta(10.0, 4.0, 0.001), 6_000);
+        assert_eq!(eta(10.0, 10.0, 0.001), 0, "spent: no ETA");
+        assert_eq!(eta(10.0, 4.0, 0.0), 0, "no rate: no ETA");
+    }
+
+    #[test]
+    fn buckets_split_by_day_and_model() {
+        let mut a = Accumulator::new("team/one", "r1", 10.0);
+        a.add(&rec("team/one", "r1", "fake", "2026-11-01", 1_000, Tokens { input: 10, ..Default::default() }, 0.01, "m1"));
+        a.add(&rec("team/one", "r1", "other", "2026-11-01", 2_000, Tokens { input: 20, ..Default::default() }, 0.02, "m2"));
+        a.add(&rec("team/one", "r1", "fake", "2026-11-02", 3_000, Tokens { input: 30, ..Default::default() }, 0.03, "m3"));
+        assert_eq!(a.buckets.len(), 3);
+        assert_eq!(a.bucket("2026-11-01", "fake").tokens.input, 10);
+        assert_eq!(a.bucket("2026-11-02", "fake").tokens.input, 30);
+        assert_eq!(a.bucket("2026-11-03", "fake").tokens.input, 0);
+    }
+
+    #[test]
+    fn cache_hit_rate_and_cost_per_symbol() {
+        let m = Metrics { tokens: Tokens { input: 100, output: 10, cache_read: 300, cache_write: 100 }, ..Default::default() };
+        assert!((cache_hit_rate(&m.tokens) - 300.0 / 500.0).abs() < 1e-9);
+        assert_eq!(cache_hit_rate(&Tokens::default()), 0.0);
+        let per = cost_per_symbol(0.30, &[("a".into(), 10), ("b".into(), 20)]);
+        assert!((per[0].1 - 0.10).abs() < 1e-9);
+        assert!((per[1].1 - 0.20).abs() < 1e-9);
+        assert!(cost_per_symbol(0.30, &[]).is_empty());
+        assert_eq!(cost_per_green_test(1.0, 0), 0.0);
+        assert!((cost_per_green_test(1.0, 2) - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn dedupe_is_bounded_recent_first() {
+        let mut d = Dedupe::new(3);
+        for i in 0..5 {
+            assert!(d.check(&MessageId(i.to_string())));
+        }
+        assert!(!d.check(&MessageId("4".into())), "recent survives");
+        assert!(d.check(&MessageId("0".into())), "oldest was evicted");
+    }
+
+    #[test]
+    fn ledger_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let kula = tmp.path().join(".kula");
+        let r = rec("team/one", "r-test", "fake", "2026-11-01", 1_000, Tokens { input: 5, ..Default::default() }, 0.005, "m1");
+        ledger_append(&kula, &r);
+        ledger_append(&kula, &r);
+        let got = ledger_read(&kula, "r-test");
+        assert_eq!(got.len(), 2, "the ledger is append only: records land, dedupe is the reader's job");
+        assert_eq!(got[0].message_id, "m1");
+    }
+
+    #[test]
+    fn day_of_matches_known_dates() {
+        assert_eq!(day_of(0), "1970-01-01");
+        // 2026-11-27 00:00:00 UTC = 1795747200 s
+        assert_eq!(day_of(1_795_747_200_000), "2026-11-27");
+    }
+
+    #[test]
+    fn estimate_tokens_counts_words_roughly() {
+        assert!(estimate_tokens("hello world") >= 2);
+        assert!(estimate_tokens("") == 0);
+    }
+}
