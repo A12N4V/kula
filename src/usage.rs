@@ -178,9 +178,14 @@ fn from_value(v: &serde_json::Value) -> Option<Vec<RawMessage>> {
         let us = &v["usage"];
         let input = u(us, "input_tokens");
         let cached = u(us, "cached_input_tokens");
+        // Codex prints no message id: the fallback is a hash of the usage
+        // shape, so an identical re-report of the same turn dedupes while a
+        // turn with different tokens is a new message.
+        let id = MessageId::of(None, &format!("turn-{}", serde_json::to_string(us).unwrap_or_default())).0;
         return Some(vec![RawMessage {
             model: v.get("model").and_then(|m| m.as_str()).unwrap_or("").to_string(),
             tokens: Tokens { input: input.saturating_sub(cached), cache_read: cached, output: u(us, "output_tokens"), ..Default::default() },
+            message_id: id,
             ..Default::default()
         }]);
     }
