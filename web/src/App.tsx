@@ -13,6 +13,7 @@ const GitView = lazy(() => import("./views/git"));
 import IssueDesk from "./views/IssueDesk";
 const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
 const Flows = lazy(() => import("./views/query/Flows"));
+const MapView = lazy(() => import("./views/map/Map"));
 const Slice = lazy(() => import("./views/query/Slice"));
 const Extensions = lazy(() => import("./views/Extensions"));
 const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
@@ -28,6 +29,7 @@ const PREFETCH: Array<() => Promise<unknown>> = [
   () => import("./views/Agents"),
   () => import("./views/query/Ask"),
   () => import("./views/query/Flows"),
+  () => import("./views/map/Map"),
   () => import("./views/GitViews"),
   () => import("./views/git"),
   () => import("./views/MetaViews"),
@@ -75,6 +77,7 @@ type ViewDef = { id: View; label: string; short: string; icon: () => React.React
 /** Every view: each keeps its own hash, so old links still land. */
 const VIEWS: ViewDef[] = [
   { id: "overview", label: "Overview", short: "Overview", icon: Icon.home, key: "1" },
+  { id: "map", label: "Map", short: "Map", icon: Icon.map, key: "" },
   { id: "git", label: "Git", short: "Git", icon: Icon.branches, key: "2" },
   { id: "graph", label: "Graph", short: "Graph", icon: Icon.graph, key: "" },
   { id: "flows", label: "Flows", short: "Flows", icon: Icon.flows, key: "" },
@@ -93,7 +96,7 @@ const vdef = (id: View) => VIEWS.find((x) => x.id === id)!;
 type RailEntry = { id: string; label: string; icon: () => React.ReactElement; key: string; views: View[]; also?: View[]; inline?: boolean };
 const one = (id: View, key: string): RailEntry => { const d = vdef(id); return { id, label: d.label, icon: d.icon, key, views: [id] }; };
 const RAIL: RailEntry[][] = [
-  [one("overview", "1"), one("graph", "2"), one("flows", "3"), one("slice", "4"), one("query", "5")],
+  [one("overview", "1"), one("map", ""), one("graph", "2"), one("flows", "3"), one("slice", "4"), one("query", "5")],
   [{ ...one("git", "6"), also: ["issues"] }, one("proposals", "7"), one("notes", "8")],
   [one("agents", "9"), one("extensions", "")],
   // Pinned to the foot of the stripe, the way an IDE keeps Terminal there.
@@ -116,7 +119,15 @@ function parseHash() {
   if (view === "proposals" && Number(a)) target.proposal = Number(a);
   if (view === "git" && a) target.sha = a;
   if (view === "graph" && a === "fences") target.fences = b ?? "";
-  return { view, contrast, focus, target };
+  // Map sub-route: #map/<variant>/<pick> with pick s/<id> · f/<id> · d/<id>, or #map/test.
+  const mapRoute = view === "map"
+    ? {
+        variant: (["a", "b", "c"].includes(a ?? "") ? a : "a") as "a" | "b" | "c",
+        pick: a && a !== "test" && b ? `${b}${c ? `/${c}` : ""}` : "",
+        test: a === "test",
+      }
+    : null;
+  return { view, contrast, focus, target, mapRoute };
 }
 
 export default function App() {
@@ -125,6 +136,7 @@ export default function App() {
   const [target, setTarget] = useState<Target>(initial.target);
   const [contrast, setContrast] = useState<Contrast>(initial.contrast);
   const [focus, setFocus] = useState<number | null>(initial.focus);
+  const [mapRoute, setMapRoute] = useState<{ variant: "a" | "b" | "c"; pick: string; test: boolean } | null>(initial.mapRoute);
   // what is focused becomes a place note and memory composers autofill from
   useEffect(() => {
     if (focus == null) return;
@@ -179,16 +191,17 @@ export default function App() {
     else if (view === "issues" && target.issue) h += `/${target.issue}`;
     else if (view === "proposals" && target.proposal) h += `/${target.proposal}`;
     else if (view === "git" && target.sha) h += `/${target.sha}`;
+    else if (view === "map" && mapRoute) h += mapRoute.test ? "/test" : `/${mapRoute.variant}${mapRoute.pick ? `/${mapRoute.pick}` : ""}`;
     if (`#${h}` === location.hash) return;
     if (popping.current || !location.hash) history.replaceState(null, "", `#${h}`);
     else history.pushState(null, "", `#${h}`);
     popping.current = false;
-  }, [view, focus, contrast, target]);
+  }, [view, focus, contrast, target, mapRoute]);
   useEffect(() => {
     const onPop = () => {
       const p = parseHash();
       popping.current = true;
-      setView(p.view); setTarget(p.target); setContrast(p.contrast); setFocus(p.focus);
+      setView(p.view); setTarget(p.target); setContrast(p.contrast); setFocus(p.focus); setMapRoute(p.mapRoute);
       setFile(null);
     };
     window.addEventListener("popstate", onPop);
@@ -315,6 +328,7 @@ export default function App() {
         else if (act === "agents") go("agents");
         else if (act === "query") go("query");
         else if (act === "extensions") go("extensions");
+        else if (act === "map") go("map");
         else if (act === "settings") setPrefs((p) => (p ? null : "general"));
         else if (act === "keys") setPrefs((p) => (p === "keys" ? null : "keys"));
         return;
@@ -449,6 +463,7 @@ export default function App() {
             <div className="view-body">
             <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
               {view === "overview" && <Overview repo={repo} version={version} go={go} onChanged={onChanged} openSymbol={nav.openSymbol} />}
+              {view === "map" && <MapView route={mapRoute ?? { variant: "a", pick: "", test: false }} setRoute={setMapRoute} />}
               {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs("graph")} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
               {view === "git" && <GitView {...nav} />}
               {view === "issues" && <IssueDesk version={version} onChanged={onChanged} openSymbol={nav.openSymbol} target={target.issue ?? null} />}

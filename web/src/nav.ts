@@ -1,6 +1,6 @@
 // Cross-view navigation: any view can send the user somewhere specific.
 
-export type View = "overview" | "graph" | "git" | "changes" | "history" | "branches" | "proposals" | "issues" | "notes" | "flows" | "agents" | "query" | "impact" | "slice" | "console" | "extensions";
+export type View = "overview" | "map" | "graph" | "git" | "changes" | "history" | "branches" | "proposals" | "issues" | "notes" | "flows" | "agents" | "query" | "impact" | "slice" | "console" | "extensions";
 
 export interface Target {
   issue?: number;
