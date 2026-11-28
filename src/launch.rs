@@ -844,6 +844,11 @@ mod tests {
     /// A repo built from the tests/fixtures/seat-lint template – a disposable
     /// kula.toml, one skill, one MCP server, a notes file. Never the repo's
     /// own config.
+    // Tests that touch process env (KULA_NO_AGENT, PATH) must hold this: the
+    // env is global and tests run concurrently in one process, so a set in one
+    // test racing the remove-and-rebuild window of another flips verdicts.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn seat_repo() -> tempfile::TempDir {
         let t = tempfile::tempdir().unwrap();
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/seat-lint");
@@ -869,6 +874,7 @@ mod tests {
     fn lint_passes_a_good_config_and_fails_named_fields() {
         // fixture config has budget and max_parallel set, valid skill, mcp,
         // memory and fences: with KULA_NO_AGENT the CLI check is skipped.
+        let _env = ENV_LOCK.lock().unwrap();
         std::env::set_var("KULA_NO_AGENT", "1");
         let d = seat_repo();
         let root = d.path();
@@ -902,6 +908,7 @@ mod tests {
 
     #[test]
     fn lint_catches_hands_off_cycle_and_absolute_memory_path() {
+        let _env = ENV_LOCK.lock().unwrap();
         std::env::set_var("KULA_NO_AGENT", "1");
         let d = seat_repo();
         let root = d.path();
@@ -930,6 +937,7 @@ mod tests {
 
     #[test]
     fn lint_catches_cycle_and_missing_budget() {
+        let _env = ENV_LOCK.lock().unwrap();
         std::env::set_var("KULA_NO_AGENT", "1");
         let d = seat_repo();
         let root = d.path();
@@ -951,6 +959,7 @@ mod tests {
 
     #[test]
     fn adapters_build_pinned_argv_and_refuse_unknown_versions() {
+        let _env = ENV_LOCK.lock().unwrap();
         std::env::set_var("KULA_NO_AGENT", "1");
         let d = seat_repo();
         let root = d.path();
@@ -974,6 +983,7 @@ mod tests {
         assert!(g.iter().any(|x| x == "demo"), "gemini allow-lists MCP server names");
 
         // unknown CLI version must fail loud, not guess flags
+        // (the ENV_LOCK is already held at the top of this test – never re-lock)
         let old = std::env::var("KULA_NO_AGENT").ok();
         std::env::remove_var("KULA_NO_AGENT");
         if crate::launch::find_on_path("claude").is_some() {

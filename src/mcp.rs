@@ -40,9 +40,11 @@ fn tools() -> Value {
         { "name": "issues", "description": "Local issues and proposals tracked in git.",
           "inputSchema": s(json!({}), &[]) },
         { "name": "kula_ops", "description": "The swarm operation log on refs/kula/ops: one commit per op (launch, save, commit, handoff, gate, merge, undo), each recording a VIEW – the head of every seat in the run – plus run id and parent op. Use it to see what the team did and to undo to an earlier view.",
-          "inputSchema": s(json!({ "op": { "type": "string", "description": "one op id to read in full" }, "limit": { "type": "integer", "description": "max ops (default 20)" } }), &[]) },
+          "inputSchema": s(json!({ "op": { "type": "string", "description": "one op id to fetch instead of the list" }, "limit": { "type": "integer", "description": "max ops (default 20)" } }), &[]) },
         { "name": "kula_usage", "description": "The usage ledger of a run (args: run, seat optional): day × model buckets with the four token classes, dollars spent, cache hit rate, EWMA burn rate and ETA to the budget line. Reads .kula/runs/<run>.usage.jsonl and de-duplicates by message id at read time.",
           "inputSchema": s(json!({ "run": { "type": "string", "description": "the run id" }, "seat": { "type": "string", "description": "one seat (team/key); empty means the whole run" } }), &["run"]) },
+        { "name": "kula_events", "description": "A run's scoped activity log: events identified by (run, seat, seq), kinds read/edit/refuse/test/tool/handoff/turn, target = symbol id else path, optional op id and token deltas. The same events /api/runs/{id}/events returns. Replay seeks an offset index, so it is cheap even for long runs.",
+          "inputSchema": s(json!({ "run": { "type": "string", "description": "the run id whose events to read" }, "seat": { "type": "string", "description": "filter to one seat, e.g. team/alice" }, "from": { "type": "integer", "description": "only events with seq >= this (for tails)" }, "limit": { "type": "integer", "description": "max events (default 200)" } }), &["run"]) },
         { "name": "kula_seats", "description": "Every seat as a pure function of kula.toml: the merged spec, its rendered folder under .kula/seats/ with hash8, drift against what is on disk, and lint verdicts (8 checks). The same data /api/seats returns.",
           "inputSchema": s(json!({ "render": { "type": "boolean", "description": "render folders now (default true)" } }), &[]) },
         { "name": "context_pack", "description": "The code you need for a task, not whole files: give symbols, files or a plain-language question; get their definitions plus what they use, who uses them, containers and tests, ranked by graph distance and fitted to a token budget (big bodies shrink to signatures). Use it before reading files.",
@@ -262,6 +264,25 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             let run = str_arg("run");
             let seat = str_arg("seat");
             json!(crate::runs::usage_detail(&repo.kula_dir(), &run, &seat))
+        }
+        "kula_events" => {
+            let run = str_arg("run");
+            if run.is_empty() {
+                json!({ "error": "kula_events needs a run id (see kula_ops or /api/runs for ids)" })
+            } else {
+                let seat = str_arg("seat");
+                let from = int_arg("from", 0) as u64;
+                let limit = int_arg("limit", 500);
+                // The very body the route's poll fallback answers with, so
+                // both doors can never disagree.
+                json!(crate::server::run_events_blocking(
+                    &repo.kula_dir(),
+                    &run,
+                    if seat.is_empty() { None } else { Some(seat.as_str()) },
+                    from,
+                    limit
+                ))
+            }
         }
         "context_pack" => {
             let targets: Vec<String> = a

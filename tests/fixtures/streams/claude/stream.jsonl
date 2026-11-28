@@ -1,0 +1,7 @@
+{"type":"system","subtype":"init","session_id":"rec-claude-01","tools":["Read","Edit"]}
+{"type":"assistant","message":{"id":"msg_01","role":"assistant","content":[{"type":"text","text":"Reading the fence module first."}]}}
+{"type":"assistant","message":{"id":"msg_02","role":"assistant","content":[{"type":"tool_use","id":"tu_1","name":"Read","input":{"file_path":"src/guard.rs"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_1","content":"... file ..."}]}}
+{"type":"assistant","message":{"id":"msg_03","role":"assistant","content":[{"type":"tool_use","id":"tu_2","name":"Edit","input":{"file_path":"src/guard.rs","old_string":"a","new_string":"b"}},{"type":"tool_use","id":"tu_3","name":"Bash","input":{"command":"cargo test"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_2","content":"ok"},{"type":"tool_result","tool_use_id":"tu_3","content":"ok"}]}}
+{"type":"result","subtype":"success","is_error":false,"num_turns":3,"usage":{"input_tokens":1200,"output_tokens":340},"total_cost_usd":0.012}
