@@ -54,7 +54,7 @@ fn repo7() -> tempfile::TempDir {
     std::fs::create_dir_all(d.join(".kula").join("runs")).unwrap();
     std::fs::write(
         d.join(".kula").join("runs").join("demo.usage.jsonl"),
-        vec![rec("team/a", 3.0), rec("team/b", 1.0), rec("team/c", 2.0), String::new()].join("\n"),
+        [rec("team/a", 3.0), rec("team/b", 1.0), rec("team/c", 2.0), String::new()].join("\n"),
     )
     .unwrap();
     t

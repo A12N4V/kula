@@ -269,7 +269,7 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             if path.is_empty() {
                 json!({ "error": "kula_blame_agents needs a path (repo-relative file)" })
             } else {
-                match crate::attribution::blame_agents(&repo, &path) {
+                match crate::attribution::blame_agents(repo, &path) {
                     Ok(lines) => json!({ "path": path, "lines": lines }),
                     Err(e) => json!({ "error": format!("{e:#}") }),
                 }
@@ -280,7 +280,7 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             if run.is_empty() {
                 json!({ "error": "kula_changelog needs a run id (see kula_ops or /api/runs for ids)" })
             } else {
-                match crate::attribution::changelog(&repo, &run) {
+                match crate::attribution::changelog(repo, &run) {
                     Ok(changes) => json!({ "run": run, "changes": changes }),
                     Err(e) => json!({ "error": format!("{e:#}") }),
                 }

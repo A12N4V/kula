@@ -240,7 +240,7 @@ fn build(repo: &Repo) -> Owners {
     }
     // The denominators are read off the final state: only lines that survive
     // to the newest save carry their save's dollars.
-    for (_, (_, owners)) in &per_path {
+    for (_, owners) in per_path.values() {
         for o in owners.iter().flatten() {
             *per_op.entry(o.op.clone()).or_default() += 1;
         }
