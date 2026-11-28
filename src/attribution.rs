@@ -68,13 +68,18 @@ pub struct HunkOwner {
     pub cost_share: f64,
 }
 
-/// A change grouped by flow, as the flow changelog shows it.
+/// A change grouped by flow, as the flow changelog shows it. Field names
+/// follow `docs/design/engines/changes.md` §Surfaces.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct FlowChange {
     /// The flow id, empty when the change sits outside every mapped flow.
     pub flow: String,
     /// The path the lines live in.
     pub path: String,
+    /// How the lines entered: `move` (reappeared after a deletion, same
+    /// [`LineHash`]), `add` (brand new via an insert hunk) or `edit`
+    /// (entered via a rewrite hunk without matching a deletion).
+    pub kind: String,
     /// The seat that made the change.
     pub seat: String,
     /// The run the save belonged to.
@@ -86,15 +91,36 @@ pub struct FlowChange {
     /// Dollars of the run attributed to these lines.
     pub cost_share: f64,
     /// First line of the hunk, for the UI to jump to.
-    pub start: u64,
+    pub start_line: u64,
+    /// Last line of the hunk (inclusive).
+    pub end_line: u64,
 }
 
-/// Who owns a line: the save op that introduced it.
+/// How a line entered the tree: the changelog's `kind`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Add,
+    Edit,
+    Move,
+}
+
+impl Kind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Kind::Add => "add",
+            Kind::Edit => "edit",
+            Kind::Move => "move",
+        }
+    }
+}
+
+/// Who owns a line: the save op that introduced it, and how it entered.
 #[derive(Debug, Clone)]
 struct Owner {
     seat: String,
     run: String,
     op: String,
+    kind: Kind,
 }
 
 /// Ownership of every tracked path at the newest save, plus per-op counts of
@@ -158,7 +184,10 @@ fn apply_diff(old: &[&str], new: &[&str], old_owners: &[Option<Owner>], owner: O
                 }
                 similar::DiffTag::Insert => {
                     for j in op.new_range() {
-                        out.push(take_move(&mut pending, new[j], old_owners).unwrap_or_else(|| Some(owner.clone())));
+                        let o = take_move(&mut pending, new[j], old_owners)
+                            .map(|(own, _)| own.map(|mut o| { o.kind = Kind::Move; o }))
+                            .unwrap_or_else(|| Some(with_kind(&owner, Kind::Add)));
+                        out.push(o);
                     }
                 }
                 similar::DiffTag::Replace => {
@@ -172,7 +201,10 @@ fn apply_diff(old: &[&str], new: &[&str], old_owners: &[Option<Owner>], owner: O
                         dels.push((i, LineHash::of(old[i])));
                     }
                     for j in op.new_range() {
-                        out.push(take_move(&mut dels, new[j], old_owners).unwrap_or_else(|| Some(owner.clone())));
+                        let o = take_move(&mut dels, new[j], old_owners)
+                            .map(|(own, _)| own.map(|mut o| { o.kind = Kind::Move; o }))
+                            .unwrap_or_else(|| Some(with_kind(&owner, Kind::Edit)));
+                        out.push(o);
                     }
                     pending = dels;
                 }
@@ -184,8 +216,9 @@ fn apply_diff(old: &[&str], new: &[&str], old_owners: &[Option<Owner>], owner: O
 
 /// Find a move source for `new_line` among `pending`: same hash, non-trivial
 /// length, and unique among the pending deletes (two identical lines cannot
-/// be told apart, so neither claims the other). Consumes the match.
-fn take_move(pending: &mut Vec<(usize, LineHash)>, new_line: &str, old_owners: &[Option<Owner>]) -> Option<Option<Owner>> {
+/// be told apart, so neither claims the other). Consumes the match and
+/// returns the source line's owner with the moved kind flag.
+fn take_move(pending: &mut Vec<(usize, LineHash)>, new_line: &str, old_owners: &[Option<Owner>]) -> Option<(Option<Owner>, Kind)> {
     if new_line.trim().chars().count() < MOVE_MIN_LEN {
         return None;
     }
@@ -195,7 +228,12 @@ fn take_move(pending: &mut Vec<(usize, LineHash)>, new_line: &str, old_owners: &
         return None; // none, or ambiguous boilerplate
     }
     let (idx, _) = pending.remove(matches[0]);
-    Some(old_owners.get(idx).cloned().flatten())
+    Some((old_owners.get(idx).cloned().flatten(), Kind::Move))
+}
+
+/// A save's owner stamped with the kind the entry hunk gave the line.
+fn with_kind(owner: &Owner, kind: Kind) -> Owner {
+    Owner { seat: owner.seat.clone(), run: owner.run.clone(), op: owner.op.clone(), kind }
 }
 
 /// Walk every save and decide ownership for every tracked path.
@@ -233,7 +271,7 @@ fn build(repo: &Repo) -> Owners {
             }
             let old_lines: Vec<&str> = cur.lines().collect();
             let new_lines: Vec<&str> = new.lines().collect();
-            owners = apply_diff(&old_lines, &new_lines, &owners, Owner { seat: seat.clone(), run: run.clone(), op: id.clone() });
+            owners = apply_diff(&old_lines, &new_lines, &owners, Owner { seat: seat.clone(), run: run.clone(), op: id.clone(), kind: Kind::Add });
             cur = new;
         }
         per_path.insert(path.clone(), (cur.lines().map(|l| l.to_string()).collect(), owners));
@@ -368,29 +406,32 @@ pub fn changelog(repo: &Repo, run: &str) -> Result<Vec<FlowChange>, anyhow::Erro
                 Some(o) if o.run == run => o,
                 _ => continue,
             };
-            // Changelog reports what the saves produced; when the worktree
-            // has drifted past the last save, fall back to the snapshot's
-            // own text so the run's changes are still reported.
-            let text = snap_lines.get(i).map(|s| s.as_str()).unwrap_or("");
+            // Symbol resolution uses the store's def spans, which are indexed
+            // against the worktree, so the worktree text is the coordinates
+            // they agree with; a drifted worktree may leave the flow empty –
+            // documented in changes.md.
             let (_, _, flow) = symbol_at(store.as_ref(), flows.as_ref(), path, i as u64 + 1, &worktree);
-            let _ = text;
             let cost = per_line_cost(&costs, &owners, &o.op, &o.seat, &o.run);
+            let start = i as u64 + 1;
             if let Some(last) = out.last_mut() {
-                if last.flow == flow && last.seat == o.seat && last.op == o.op && *last.path == *path {
+                if last.flow == flow && last.seat == o.seat && last.op == o.op && last.kind == o.kind.as_str() && *last.path == *path && last.end_line + 1 == start {
                     last.lines += 1;
                     last.cost_share += cost;
+                    last.end_line = start;
                     continue;
                 }
             }
             out.push(FlowChange {
                 flow,
                 path: path.clone(),
+                kind: o.kind.as_str().to_string(),
                 seat: o.seat.clone(),
                 run: o.run.clone(),
                 op: o.op.clone(),
                 lines: 1,
                 cost_share: cost,
-                start: i as u64 + 1,
+                start_line: start,
+                end_line: start,
             });
         }
     }
@@ -445,12 +486,12 @@ mod tests {
     /// owner its first introducer gave it.
     #[test]
     fn moved_hunk_keeps_its_owner() {
-        let owned = vec![None, Some(Owner { seat: "team/a".into(), run: "r".into(), op: "op-a".into() }), None];
+        let owned = vec![None, Some(Owner { seat: "team/a".into(), run: "r".into(), op: "op-a".into(), kind: Kind::Add }), None];
         // Seat b deletes the owned line here and reinserts it elsewhere.
         let first = marker("first", 1);
         let old: Vec<&str> = vec!["fn f() {", &first, "}"];
         let new: Vec<&str> = vec!["fn f() {", "}", &first];
-        let b = Owner { seat: "team/b".into(), run: "r".into(), op: "op-b".into() };
+        let b = Owner { seat: "team/b".into(), run: "r".into(), op: "op-b".into(), kind: Kind::Add };
         let out = apply_diff(&old, &new, &owned, b);
         let texts: Vec<&str> = new.to_vec();
         let owner_of = |i: usize| out[i].as_ref().map(|o| o.seat.clone()).unwrap_or_default();
@@ -459,18 +500,39 @@ mod tests {
         assert_eq!(texts.len(), out.len(), "every line has an owner entry");
     }
 
+    /// A pure insert hunk (no pending deletion to match) gives the new
+    /// lines the saver's owner with kind `add`; a rewrite hunk gives
+    /// kind `edit`.
+    #[test]
+    fn kinds_follow_the_entry_hunk() {
+        let first = marker("first", 1);
+        let added = marker("added", 5);
+        let rewritten = marker("rewritten", 6);
+        let owned = vec![Some(Owner { seat: "team/a".into(), run: "r".into(), op: "op-a".into(), kind: Kind::Add })];
+        let old: Vec<&str> = vec!["fn f() {", &first, "}"];
+        // Insert two lines between the owned line and the brace.
+        let new: Vec<&str> = vec!["fn f() {", &first, &added, "}"];
+        let b = Owner { seat: "team/b".into(), run: "r".into(), op: "op-b".into(), kind: Kind::Add };
+        let out = apply_diff(&old, &new, &owned, b.clone());
+        assert_eq!(out[2].as_ref().unwrap().kind, Kind::Add, "an insert-hunk line is an add: {out:?}");
+        // Same shape, but the line is rewritten in place: kind edit.
+        let new2: Vec<&str> = vec!["fn f() {", &rewritten, "}"];
+        let out2 = apply_diff(&old, &new2, &owned, b);
+        assert_eq!(out2[1].as_ref().unwrap().kind, Kind::Edit, "a rewrite-hunk line is an edit: {out2:?}");
+    }
+
     /// Adversarial: duplicated non-trivial lines cannot be told apart, so a
     /// moved duplicate is not claimed as a move – it takes the mover's owner.
     #[test]
     fn duplicated_lines_do_not_transfer_ownership() {
         let line = marker("twin", 7);
         let owned = vec![
-            Some(Owner { seat: "team/a".into(), run: "r".into(), op: "op-a".into() }),
-            Some(Owner { seat: "team/a".into(), run: "r".into(), op: "op-a".into() }),
+            Some(Owner { seat: "team/a".into(), run: "r".into(), op: "op-a".into(), kind: Kind::Add }),
+            Some(Owner { seat: "team/a".into(), run: "r".into(), op: "op-a".into(), kind: Kind::Add }),
         ];
         let old: Vec<&str> = vec![&line, &line];
         let new: Vec<&str> = vec!["fn g() {", &line];
-        let b = Owner { seat: "team/b".into(), run: "r".into(), op: "op-b".into() };
+        let b = Owner { seat: "team/b".into(), run: "r".into(), op: "op-b".into(), kind: Kind::Add };
         let out = apply_diff(&old, &new, &owned, b);
         assert_eq!(out[0].as_ref().unwrap().seat, "team/b", "the mover's new line is b's: {out:?}");
         assert!(out[1].is_some(), "the surviving duplicate stays owned, never orphaned: {out:?}");
@@ -480,12 +542,12 @@ mod tests {
     /// rewriter's owner.
     #[test]
     fn rewrite_takes_the_rewriters_owner() {
-        let owned = vec![Some(Owner { seat: "team/a".into(), run: "r".into(), op: "op-a".into() })];
+        let owned = vec![Some(Owner { seat: "team/a".into(), run: "r".into(), op: "op-a".into(), kind: Kind::Add })];
         let orig = marker("original", 3);
         let rewritten = marker("rewritten", 9);
         let old: Vec<&str> = vec!["fn f() {", &orig, "}"];
         let new: Vec<&str> = vec!["fn f() {", &rewritten, "}"];
-        let c = Owner { seat: "team/c".into(), run: "r".into(), op: "op-c".into() };
+        let c = Owner { seat: "team/c".into(), run: "r".into(), op: "op-c".into(), kind: Kind::Add };
         let out = apply_diff(&old, &new, &owned, c);
         assert_eq!(out[1].as_ref().unwrap().seat, "team/c", "{out:?}");
     }
@@ -562,6 +624,15 @@ mod tests {
         let total: f64 = changes.iter().map(|c| c.cost_share).sum();
         assert!((total - 6.0).abs() < 1e-9, "changelog attributes all spend: {changes:?}");
         assert!(changes.iter().all(|c| c.run == "demo"));
+        // Kinds: b's move of marker 1 is a move, c's rewrite an edit. b's
+        // own new line lands inside a replace hunk in this diff, so it is
+        // an edit too; the pure-insert add case has its own test below –
+        // and the doc's field names hold either way.
+        assert!(changes.iter().any(|c| c.kind == "move"), "the moved hunk is a move: {changes:?}");
+        assert!(changes.iter().any(|c| c.kind == "edit"), "the rewritten hunk is an edit: {changes:?}");
+        for c in &changes {
+            assert_eq!(c.end_line, c.start_line + c.lines - 1, "end_line tracks the hunk: {c:?}");
+        }
     }
 
     /// Consecutive lines of one save group into one changelog hunk.
@@ -581,7 +652,7 @@ mod tests {
         assert!(!seat_changes.is_empty(), "{changes:?}");
         for c in seat_changes {
             assert!(c.lines >= 1, "{changes:?}");
-            assert!(c.start >= 1, "{changes:?}");
+            assert!(c.start_line >= 1, "{changes:?}");
         }
     }
 }

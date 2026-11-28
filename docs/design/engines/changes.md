@@ -52,7 +52,11 @@ Module B7. Files: `src/attribution.rs` (the whole engine), routes in
 5. **Symbols.** `symbol_at()` resolves the owning save's symbol for a line by
    asking the store for definitions covering the line span and picking the
    tightest one; the body hash is computed from the worktree slice, so a
-   symbol id matches what B1 would index today.
+   symbol id matches what B1 would index today. Def spans are indexed against
+   the worktree, so the changelog resolves symbols in worktree coordinates: a
+   worktree that has drifted past the last save can attach the wrong body (or
+   none) to a snapshot line – the flow may then be empty. Attribution itself
+   (seat, run, op, cost) never depends on the symbol join.
 
 ## Surfaces
 
@@ -60,10 +64,18 @@ Module B7. Files: `src/attribution.rs` (the whole engine), routes in
   op, cost_share, flow, symbol, symbol_name } ] }` – one entry per worktree
   line. Lines whose text drifted from the newest save (edited without a save
   op) have empty provenance: attribution is decided by save ops, not guesses.
-- `GET /api/runs/{id}/changelog` → `{ run, changes: [ { path, start_line,
-  end_line, kind, seat, run, op, cost_share, flow } ] }` – consecutive lines
-  owned by the same op are grouped into one change; `kind` is `move`, `add`
-  or `edit` (edit = lines that entered via rewrite).
+- `GET /api/runs/{id}/changelog` → `{ run, changes: [ { path, kind,
+  start_line, end_line, lines, seat, run, op, cost_share, flow } ] }` –
+  consecutive lines owned by the same op and the same `kind` are grouped into
+  one change; `kind` is `move`, `add` or `edit` (add = a line that entered
+  through an insert hunk, edit = a line that entered through a rewrite hunk
+  without matching a pending deletion, move = a line that matched one).
+- Move detection is per-file: pending deletions are carried across hunks
+  *within one file's diff*, but not across paths. A hunk moved from file A to
+  file B inside one save is an insert in B and takes the mover's owner; the
+  union of tracked paths is in hand, so a future revision can carry deletions
+  across paths, at the cost of matching boilerplate against every file at
+  once.
 - MCP: `kula_blame_agents` (params `path`) and `kula_changelog` (params `run`)
   return the same payloads as the routes; `tests/b7.rs` asserts byte-equality
   of both doors over real binaries.
