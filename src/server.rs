@@ -509,7 +509,6 @@ pub(crate) fn run_events_blocking(dir: &std::path::Path, run: &str, seat: Option
     json!({ "run": run, "events": events, "now": crate::events::now_ms() })
 }
 
-
 // B7: agent attribution – per-line provenance and the flow changelog.
 async fn blame_agents(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     let path = q.get("path").cloned().unwrap_or_default();

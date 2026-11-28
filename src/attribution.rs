@@ -135,9 +135,7 @@ fn blob_at(repo: &Repo, commit: &str, path: &str) -> Option<String> {
 fn apply_diff(old: &[&str], new: &[&str], old_owners: &[Option<Owner>], owner: Owner) -> Vec<Option<Owner>> {
     let old_text = old.join("\n");
     let new_text = new.join("\n");
-    let diff = similar::TextDiff::configure()
-        .algorithm(similar::Algorithm::Patience)
-        .diff_lines(&old_text, &new_text);
+    let diff = similar::TextDiff::configure().algorithm(similar::Algorithm::Patience).diff_lines(&old_text, &new_text);
     let mut out: Vec<Option<Owner>> = Vec::with_capacity(new.len());
     for group in diff.grouped_ops(1000) {
         // Deleted lines available as move sources within this hunk, in order.
@@ -187,11 +185,7 @@ fn apply_diff(old: &[&str], new: &[&str], old_owners: &[Option<Owner>], owner: O
 /// Find a move source for `new_line` among `pending`: same hash, non-trivial
 /// length, and unique among the pending deletes (two identical lines cannot
 /// be told apart, so neither claims the other). Consumes the match.
-fn take_move(
-    pending: &mut Vec<(usize, LineHash)>,
-    new_line: &str,
-    old_owners: &[Option<Owner>],
-) -> Option<Option<Owner>> {
+fn take_move(pending: &mut Vec<(usize, LineHash)>, new_line: &str, old_owners: &[Option<Owner>]) -> Option<Option<Owner>> {
     if new_line.trim().chars().count() < MOVE_MIN_LEN {
         return None;
     }
@@ -239,12 +233,7 @@ fn build(repo: &Repo) -> Owners {
             }
             let old_lines: Vec<&str> = cur.lines().collect();
             let new_lines: Vec<&str> = new.lines().collect();
-            owners = apply_diff(
-                &old_lines,
-                &new_lines,
-                &owners,
-                Owner { seat: seat.clone(), run: run.clone(), op: id.clone() },
-            );
+            owners = apply_diff(&old_lines, &new_lines, &owners, Owner { seat: seat.clone(), run: run.clone(), op: id.clone() });
             cur = new;
         }
         per_path.insert(path.clone(), (cur.lines().map(|l| l.to_string()).collect(), owners));
@@ -262,7 +251,7 @@ fn build(repo: &Repo) -> Owners {
 /// Seat dollars per run, from the usage ledger – the single read path is
 /// B6's `usage_detail`, the same numbers /api/usage and kula_usage answer
 /// with.
-fn seat_costs(repo: &Repo, owners: &Owners) -> HashMap<(String, String), f64> {
+fn seat_costs(repo: &Repo) -> HashMap<(String, String), f64> {
     let mut out = HashMap::new();
     for (_, seat, run, _) in save_ops(repo) {
         if out.contains_key(&(run.clone(), seat.clone())) {
@@ -277,13 +266,7 @@ fn seat_costs(repo: &Repo, owners: &Owners) -> HashMap<(String, String), f64> {
 /// Dollars per line for a line owned by save op `op`: the seat's spend for
 /// the run spread evenly over the op's lines that survive to the newest
 /// save (the plan's hunk-share formula, evaluated on the surviving hunk).
-fn per_line_cost(
-    costs: &HashMap<(String, String), f64>,
-    owners: &Owners,
-    op: &str,
-    seat: &str,
-    run: &str,
-) -> f64 {
+fn per_line_cost(costs: &HashMap<(String, String), f64>, owners: &Owners, op: &str, seat: &str, run: &str) -> f64 {
     let changed = owners.per_op.get(op).copied().unwrap_or(0).max(1) as f64;
     costs.get(&(run.to_string(), seat.to_string())).copied().unwrap_or(0.0) / changed
 }
@@ -313,12 +296,8 @@ fn flow_of(flows: &crate::graph::FlowMap, path: &str, name: &str) -> String {
 /// zero cost.
 pub fn blame_agents(repo: &Repo, path: &str) -> Result<Vec<HunkOwner>, anyhow::Error> {
     let owners = build(repo);
-    let costs = seat_costs(repo, &owners);
-    let (snap_lines, snap_owners) = owners
-        .per_path
-        .get(path)
-        .cloned()
-        .unwrap_or_else(|| (Vec::new(), Vec::new()));
+    let costs = seat_costs(repo);
+    let (snap_lines, snap_owners) = owners.per_path.get(path).cloned().unwrap_or_else(|| (Vec::new(), Vec::new()));
     let store = crate::store::Store::open(repo).ok();
     let flows = store.as_ref().and_then(|s| crate::graph::flowmap(s, 4096).ok());
     let worktree = std::fs::read_to_string(repo.root.join(path)).unwrap_or_default();
@@ -329,20 +308,12 @@ pub fn blame_agents(repo: &Repo, path: &str) -> Result<Vec<HunkOwner>, anyhow::E
         // Owners were decided at the newest save; the worktree may have
         // drifted. A line keeps its owner when it is still the same text in
         // the same position; anything else is unsaved and unattributed.
-        let owner = snap_lines
-            .get(i)
-            .zip(snap_owners.get(i))
-            .filter(|(l, _)| l.as_str() == *line_text)
-            .and_then(|(_, o)| o.clone());
+        let owner = snap_lines.get(i).zip(snap_owners.get(i)).filter(|(l, _)| l.as_str() == *line_text).and_then(|(_, o)| o.clone());
         let (seat, run, op) = match owner {
             Some(o) => (o.seat.clone(), o.run.clone(), o.op.clone()),
             None => (String::new(), String::new(), String::new()),
         };
-        let cost = if seat.is_empty() {
-            0.0
-        } else {
-            per_line_cost(&costs, &owners, &op, &seat, &run)
-        };
+        let cost = if seat.is_empty() { 0.0 } else { per_line_cost(&costs, &owners, &op, &seat, &run) };
         let (symbol, symbol_name, flow) = symbol_at(store.as_ref(), flows.as_ref(), path, n, &worktree);
         out.push(HunkOwner { line: n, seat, run, op, symbol, symbol_name, flow, cost_share: cost });
     }
@@ -372,10 +343,8 @@ fn symbol_at(
     // The body hash comes from the same text the index saw: the def's line
     // range in the worktree.
     let lines: Vec<&str> = worktree.lines().collect();
-    let body: String = lines
-        .get((def.start_line as usize).saturating_sub(1)..def.end_line as usize)
-        .map(|l| l.join("\n"))
-        .unwrap_or_default();
+    let body: String =
+        lines.get((def.start_line as usize).saturating_sub(1)..def.end_line as usize).map(|l| l.join("\n")).unwrap_or_default();
     let id = crate::index::identity::symbol_id(&def.path, &def.name, fnv64(body.as_bytes()));
     let flow = flows.map(|f| flow_of(f, &def.path, &def.name)).unwrap_or_default();
     (id, def.name.clone(), flow)
@@ -385,7 +354,7 @@ fn symbol_at(
 /// grouped by flow, with dollars spread over the changed lines.
 pub fn changelog(repo: &Repo, run: &str) -> Result<Vec<FlowChange>, anyhow::Error> {
     let owners = build(repo);
-    let costs = seat_costs(repo, &owners);
+    let costs = seat_costs(repo);
     let store = crate::store::Store::open(repo).ok();
     let flows = store.as_ref().and_then(|s| crate::graph::flowmap(s, 4096).ok());
     let mut out: Vec<FlowChange> = Vec::new();
@@ -476,11 +445,7 @@ mod tests {
     /// owner its first introducer gave it.
     #[test]
     fn moved_hunk_keeps_its_owner() {
-        let owned = vec![
-            None,
-            Some(Owner { seat: "team/a".into(), run: "r".into(), op: "op-a".into() }),
-            None,
-        ];
+        let owned = vec![None, Some(Owner { seat: "team/a".into(), run: "r".into(), op: "op-a".into() }), None];
         // Seat b deletes the owned line here and reinserts it elsewhere.
         let first = marker("first", 1);
         let old: Vec<&str> = vec!["fn f() {", &first, "}"];
@@ -546,24 +511,12 @@ mod tests {
         let op_a = autosave(&repo, &d, "team/a", "demo", "a edits").expect("save a");
 
         // Seat b moves marker 1 below marker 2 (pure move) and adds its own.
-        let after_b = format!(
-            "fn shared() {{\n{};\n{};\n}}\n{};\n{};\n",
-            base0.trim(),
-            second.trim(),
-            first.trim(),
-            third.trim(),
-        );
+        let after_b = format!("fn shared() {{\n{};\n{};\n}}\n{};\n{};\n", base0.trim(), second.trim(), first.trim(), third.trim(),);
         std::fs::write(d.join(path), &after_b).unwrap();
         let op_b = autosave(&repo, &d, "team/b", "demo", "b moves").expect("save b");
 
         // Seat c rewrites marker 2 in place.
-        let after_c = format!(
-            "fn shared() {{\n{};\n{};\n}}\n{};\n{};\n",
-            base0.trim(),
-            rewritten.trim(),
-            first.trim(),
-            third.trim(),
-        );
+        let after_c = format!("fn shared() {{\n{};\n{};\n}}\n{};\n{};\n", base0.trim(), rewritten.trim(), first.trim(), third.trim(),);
         std::fs::write(d.join(path), &after_c).unwrap();
         let _op_c = autosave(&repo, &d, "team/c", "demo", "c rewrites").expect("save c");
 
