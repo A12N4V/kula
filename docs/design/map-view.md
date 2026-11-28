@@ -2,7 +2,7 @@
 
 The Map view (`#map`) shows the codebase as a map anyone reads in five seconds:
 domains as districts, flows as routes, stations as symbols, code one peek away.
-Three drawings compete on one shared model, shared overlays and a shared
+Two variants compete on one shared model, shared overlays and a shared
 inspector; the owner A/B tests them by hand.
 
 ## Units, top down
@@ -12,100 +12,67 @@ inspector; the owner A/B tests them by hand.
 symbol on a flow) → **code** (peek). Folders and files appear only in the
 inspector and on hover.
 
+## Variants and URLs
+
+Two variants only:
+
+- **Atlas** – a district map: domains as regions, flows as routes over them.
+- **Metro** – a transit map: flows as lines, stations as stops.
+
+The header toggle reads `Atlas · Metro`, Atlas first. URLs:
+
+- `#map/atlas` · `#map/metro` – one variant.
+- `#map/<variant>/<pick>` with pick `s/<id>` · `f/<id>` · `d/<id>`.
+- Legacy `#map/a` and `#map/c` redirect to `#map/atlas`; `#map/b` to
+  `#map/metro`. The redirect happens in the view on mount.
+- A bare `#map` or `#map/test` shows the last variant the visitor chose
+  (remembered in `localStorage` under `kula.map.variant`).
+
+Compare splits the canvas `Atlas | Metro`, one pane per variant, sharing one
+selection. The test drawer counterbalances the two: half the sessions start
+with Atlas, half with Metro (a durable session counter in
+`localStorage` `kula.map.ab.sessions`, order remembered per session).
+
+## Header and canvas
+
+One row at 1440 and at 1024: title, variant toggle, Compare, overlays, search.
+Below 1200 px of viewport the four overlay toggles collapse into a single
+`Overlays` menu so the row survives 1024. The canvas fills every pixel between
+the header and the app status bar; a resize redraws in place without a reload.
+
 ## The model (`model.ts`)
 
 Built from `GET /api/flowmap` and `GET /api/graph` into
-`MapModel { domains, flows, stations, interchanges }`:
+`MapModel { domains, flows, stations, interchanges, containers }`:
 
 - Stations are deduplicated by symbol id across flows; a station exists once no
-  matter how many flows call it or how often.
-- `degree` = number of distinct flows through the station. `degree ≥ 2` makes it
-  an interchange; `interchanges` is sorted busiest first, id as tiebreak.
-- Each step keeps call order (`order`), `depth`, the `branch` flag from the
-  backend (`if` · `loop` · `match` · `try`) and a `layer`.
-- Domain size = number of distinct files. `/api/graph` node counts can refine
-  this later (`fileSize` helper is here for wave 2).
-- Flow labels are verb–object: `Serve <route>` for routed flows, else the entry
-  name in plain words (`foo_bar` → `Foo bar`).
+  matter how many flows pass it.
+- **Domains are recomputed on the client.** Rule: each flow joins the most
+  frequent module among its steps, skipping the entry step and any step under
+  `src/server` or `src/cmd`; module = path without extension, `mod.rs` → its
+  folder (`src/index/mod.rs` → `src/index`). A domain left with a single flow
+  merges into its nearest neighbour – the domain sharing the most stations
+  with it. Labels are plain words (`src/guard.rs` → `Guard`,
+  `src/index/mod.rs` → `Index`, `web/src/views/hub` → `Hub view`). On kula no
+  domain holds more than 35% of flows; the spec asserts it.
+- **Containment** comes from `/api/graph`'s `parent`: a node that some node
+  names as parent becomes a `MapContainer { id, kind: class|interface|function,
+  name, path, line, end, parent?, members }`. `MapStation.container?` points at
+  it. Members include the container's other methods that are not on any flow
+  (`onFlow: false`) so a class rectangle shows the whole class. Function
+  containers get their variables lazily from N1 through `loadInner(ids)` in
+  `model.ts`, cached per data version (stub until N1 lands).
 
-### Layer heuristic
+## Test hooks
 
-| layer   | when |
-|---------|------|
-| `test`  | the flow is a test: `kind === "test"` or the entry sits on a test path (`tests/`, `*.test.*`, `*_test.*`, …) |
-| `entry` | depth 0 – the flow's own entry point, wherever it lives |
-| `io`    | step path under `store/` or `server/`, or the name serves, writes, reads, fetches, saves, loads, inserts, sends or listens |
-| `handler` | depth 1 – a direct callee of an entry |
-| `data`  | the name mentions store, query, db, repo or persist |
-| `logic` | everything else |
+`window.__kulaMap` exposes `{ build, model, layout, layoutB, layouts: { atlas,
+metro }, view, view2, variant, other, varA, varB, hooks }`; variant test hooks
+live at `__kulaMap.hooks.atlas` and `__kulaMap.hooks.metro`. Old `#map/a`
+`#map/b` `#map/c` URLs work through the redirect and never render a legacy id.
 
-Precedence is top to bottom: a test flow is one `test` layer; the entry always
-stays `entry`; a depth-1 callee that does io is `io`, otherwise `handler`.
+## Proof
 
-## The shell (`Map.tsx`)
-
-Header: variant toggle **A · B · C**, **Compare**, the four overlay toggles
-(**Fences · Live · Churn · Owners**), find on map (⌘K, capture phase so the
-global palette does not take it on the map), **Test** (the drawer).
-
-Variants plug in through one interface:
-
-```ts
-type Variant = {
-  id;                                    // "a" | "b" | "c"
-  draw(ctx, model, view, overlays, sel); // canvas 2D
-  hit(x, y, view): Pick | null;          // must match the drawn geometry
-  fit(pick, view, set);                  // fly to a pick
-};
-```
-
-`view` is the transform `{ w, h, scale, ox, oy }`: world → screen is
-`(x·scale + ox, y·scale + oy)`. The stub variant (districts grid, flow rows of
-station dots) fills the slot until wave 2; wave 2 replaces it per variant
-folder. Layouts are deterministic: seeded by ids, never `Math.random`.
-
-`window.__kulaMap = { build, model, layout }` is exposed for tests and probes.
-
-## URL state
-
-`#map/<variant>/<pick>` with pick `s/<symbol id>` · `f/<flow id>` · `d/<domain
-id>`, and `#map/test` for the drawer. The last variant is in the URL, so a
-reload keeps it.
-
-## Overlays (`overlays.ts`)
-
-Per-station numbers, so every variant just reads them:
-
-- **Fences** – lock/review guard rules matched by symbol name or path.
-- **Live** – heat = Σ e^(−Δt / 60 s) over recent `useEvents` events, per station
-  file, window capped at 10 minutes. Drawn as a soft ring, never a CSS glow.
-- **Churn** – per-path churn counts from `/api/graph` (`graph.churn`).
-- **Owners** – the first seat whose scope covers the station's file.
-
-## Inspector and find
-
-Click any domain, flow or station → the shared inspector (`Inspector.tsx`):
-what it is, the plain sentence, layer, branch, overlays, flows through, an
-ordered step list, and a short code excerpt of the station's file. Hover gives
-a one-line card. ⌘K find flies to a symbol, flow or district and updates the
-URL pick.
-
-## A/B harness (`ab.ts`, `Test.tsx`)
-
-Six tasks generated deterministically from the repo's own flowmap, so it works
-on any repo: (1) entry that serves route X, (2) flows through symbol Y, (3) the
-busiest interchange, (4) a fenced station, (5) what domain Z does, (6) where a
-live agent works – seeded from a recorded fixture when nothing is live. The
-variant order is counterbalanced once per session (`sessionOrder`). Each task:
-timer, answer by clicking the thing on the map, then ratings 1–5 for clarity,
-speed and look, and a free note. Results live in `localStorage`
-(`kula.map.ab`); **Copy results** gives JSON; a summary table shows median time
-and mean ratings per variant.
-
-## House style
-
-Absolute black canvas, warm lines, cream ink, one orange accent for selected
-and live. No glass, no blur, radii 8/6/4. Toggles over tabs. Hover is a quiet
-background/border shift – never shadow, glow or scale. Canvas colours are hex
-twins of the `--map-*` tokens (canvas cannot read `var()`); `map.css` uses the
-tokens directly.
+`web/e2e/map-m0.spec.ts`: both URLs render; old URLs redirect; the header is
+one row at 1440 and 1024; the canvas bottom equals the status bar top; the
+largest domain share is under 35%; `from_json` attaches to `McpDef` as a
+container member.

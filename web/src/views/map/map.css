@@ -50,6 +50,35 @@
 .map-ov:hover { border-color: var(--line); background: var(--line); }
 .map-ov.on { border-color: var(--accent); color: var(--accent); }
 
+/* Below 1200 the four toggles collapse into one Overlays menu so the header
+   stays one row at 1024. */
+.map-ov-menu { position: relative; }
+.map-ov-menu summary {
+  list-style: none;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--text-2, var(--text));
+  font: inherit;
+  font-size: 11px;
+  padding: 4px 10px;
+}
+.map-ov-menu summary::-webkit-details-marker { display: none; }
+.map-ov-menu[open] summary { border-color: var(--accent); color: var(--accent); }
+.map-ov-menu .map-overlays {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  padding: 6px;
+  z-index: 30;
+  min-width: 120px;
+}
+
 .map-find { position: relative; margin-left: auto; }
 .map-find-input {
   background: var(--bg);

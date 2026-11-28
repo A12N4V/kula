@@ -7,9 +7,36 @@ import type { MapModel } from "./model";
 import type { OverlayState } from "./overlays";
 import { FIXTURE_EVENTS, seedLive } from "./overlays";
 
-export type VariantId = "a" | "b" | "c";
-export const VARIANTS: VariantId[] = ["a", "b", "c"];
-export const VARIANT_LABEL: Record<VariantId, string> = { a: "A · Metro", b: "B · Atlas", c: "C · Storyboard" };
+export type VariantId = "atlas" | "metro";
+export const VARIANTS: VariantId[] = ["atlas", "metro"];
+export const VARIANT_LABEL: Record<VariantId, string> = { atlas: "Atlas", metro: "Metro" };
+
+/** Legacy route ids map onto the two variants: a and c were atlas-like, b was metro. */
+const LEGACY: Record<string, VariantId> = { a: "atlas", c: "atlas", b: "metro" };
+
+/** A route variant token – `atlas` · `metro`, or the legacy `a` · `b` · `c` –
+ * as a VariantId. Unknown or missing falls back to atlas. */
+export function canonVariant(raw?: string): VariantId {
+  if (raw === "metro" || raw === "atlas") return raw;
+  return LEGACY[raw ?? ""] ?? "atlas";
+}
+
+export const isLegacyVariant = (raw?: string) => !!(raw && raw in LEGACY);
+
+const LAST_KEY = "kula.map.variant";
+
+/** The last variant the visitor chose, remembered across visits. */
+export function rememberedVariant(): VariantId {
+  try {
+    const v = localStorage.getItem(LAST_KEY);
+    if (v === "atlas" || v === "metro") return v;
+  } catch { /* storage may be blocked; atlas is the default */ }
+  return "atlas";
+}
+
+export function rememberVariant(v: VariantId) {
+  try { localStorage.setItem(LAST_KEY, v); } catch { /* ignore */ }
+}
 
 export type PickKind = "station" | "flow" | "domain";
 export interface Pick { kind: PickKind; id: string }
@@ -38,6 +65,7 @@ export interface ABResult { task: number; prompt: string; variant: VariantId; ms
 
 const KEY = "kula.map.ab";
 const ORDER_KEY = "kula.map.ab.order";
+const SESSION_KEY = "kula.map.ab.sessions";
 
 export const loadResults = (): ABResult[] => {
   try {
@@ -81,21 +109,21 @@ export function summary(results: ABResult[]): SummaryRow[] {
   });
 }
 
-/** Counterbalanced order: one shuffle of A B C per session, remembered. */
+/** Counterbalanced order: half the sessions start with Atlas, half with Metro.
+ * A durable session counter (localStorage `kula.map.ab.sessions`) picks the
+ * starting variant by parity, so the two are even across sessions and each
+ * session sees both variants in alternation. */
 export function sessionOrder(): VariantId[] {
   try {
     const saved = sessionStorage.getItem(ORDER_KEY);
     if (saved) {
       const v = JSON.parse(saved);
-      if (Array.isArray(v) && v.length === 3 && v.every((x: string) => VARIANTS.includes(x as VariantId))) return v;
+      if (Array.isArray(v) && v.length === 2 && v.every((x: string) => VARIANTS.includes(x as VariantId))) return v;
     }
-    const order = [...VARIANTS];
-    // Fisher–Yates with Math.random is fine here: this is session order, not
-    // layout – the map itself never uses randomness.
-    for (let i = order.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [order[i], order[j]] = [order[j], order[i]];
-    }
+    const n = Number(localStorage.getItem(SESSION_KEY) ?? "0") || 0;
+    localStorage.setItem(SESSION_KEY, String(n + 1));
+    const first = n % 2 === 0 ? "atlas" : "metro";
+    const order: VariantId[] = [first, first === "atlas" ? "metro" : "atlas"];
     sessionStorage.setItem(ORDER_KEY, JSON.stringify(order));
     return order;
   } catch {

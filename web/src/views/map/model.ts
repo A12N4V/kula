@@ -7,7 +7,7 @@
 // model. No Math.random, no Date.now, no map iteration order dependence
 // (insertion order of the input arrays is the only order used).
 
-import type { FlowMap, FlowPath, FlowStep, GraphData } from "../../api";
+import type { FlowMap, FlowPath, FlowStep, GraphData, Node } from "../../api";
 
 export const LAYERS = ["entry", "handler", "logic", "data", "io", "test"] as const;
 export type Layer = (typeof LAYERS)[number];
@@ -43,6 +43,8 @@ export interface MapStation {
   files: string[];
   /** Flow ids through this station, in flowmap order. */
   flows: string[];
+  /** Id of the containing class, interface or function, when it has one. */
+  container?: number;
 }
 
 export interface MapFlow {
@@ -72,13 +74,56 @@ export interface MapModel {
   stations: MapStation[];
   /** Stations with degree ≥ 2, busiest first, id as the tiebreak. */
   interchanges: MapStation[];
+  /** Containment rectangles, when the graph was supplied. */
+  containers: MapContainer[];
 }
 
 const TEST_FILE = /(^|\/)(tests?|spec|__tests__)\/|(\.test\.|\.spec\.|_test\.|_tests\.)/;
-
 /** Test paths: a test directory or a test file suffix, the same idea as the backend. */
 export function isTestPath(p: string): boolean {
   return TEST_FILE.test(p);
+}
+
+/** Module of a path: path minus extension; a mod.rs counts as its folder
+ * (src/index/mod.rs → src/index). */
+export function moduleOf(path: string): string {
+  let p = path.replace(/\.[^./]+$/, "");
+  if (p.endsWith("/mod")) p = p.slice(0, -4);
+  return p;
+}
+
+/** Modules never used for domains: the server and cmd binaries. */
+const DOMAIN_SKIP = /^src\/(server|cmd)(\/|$)/;
+
+/** Plain-words label for a module: src/guard.rs → Guard, src/index/mod.rs →
+ * Index, web/src/views/hub → Hub view. */
+export function plainLabel(modulePath: string): string {
+  const seg = modulePath.split("/").filter(Boolean);
+  const last = seg[seg.length - 1] ?? modulePath;
+  const name = last ? last.charAt(0).toUpperCase() + last.slice(1) : modulePath;
+  return seg.includes("views") ? `${name} view` : name;
+}
+
+/** One symbol inside a container. Non-flow members (onFlow false) are the
+ * container's own methods or variables that no flow passes through. */
+export interface MapMember {
+  id: string;
+  name: string;
+  kind: string;
+  line: number;
+  onFlow: boolean;
+}
+
+/** A class, interface or function rectangle that holds stations. */
+export interface MapContainer {
+  id: number;
+  kind: "class" | "interface" | "function";
+  name: string;
+  path: string;
+  line: number;
+  end?: number;
+  parent?: number;
+  members: MapMember[];
 }
 
 /**
@@ -167,18 +212,77 @@ export function buildMapModel(fm: FlowMap, graph?: GraphData): MapModel {
     if (br) st.branch = br;
   }
 
-  const domainById = new Map<number, MapDomain>();
-  for (const d of fm.domains) {
-    domainById.set(d.id, { id: d.id, label: d.label, flows: [], files: d.files, size: d.files.length });
-  }
+  // Domains are recomputed from the steps themselves (backend community ids
+  // are too coarse). The rule, also documented in docs/design/map-view.md:
+  //   · each flow joins the most frequent module among its steps, skipping the
+  //     entry step and any step under src/server or src/cmd
+  //   · module = path without extension, mod.rs → its folder
+  //   · a domain left with a single flow merges into its nearest neighbour,
+  //     the domain sharing the most stations with it
+  const stationBySid = stations;
+  const bestModule = new Map<string, string>();
   for (const f of flows) {
-    const d = domainById.get(f.domain);
-    if (d) {
-      d.flows.push(f.id);
-      for (const p of f.files) if (!d.files.includes(p)) d.files.push(p);
+    const tally = new Map<string, number>();
+    f.steps.forEach((st, i) => {
+      if (i === 0) return; // the entry step says nothing about where the flow lives
+      const path = stationBySid.get(st.station)?.path;
+      if (!path) return;
+      const m = moduleOf(path);
+      if (!m || DOMAIN_SKIP.test(m)) return;
+      tally.set(m, (tally.get(m) ?? 0) + 1);
+    });
+    let best = "", bestN = 0;
+    for (const m of [...tally.keys()].sort()) {
+      const n = tally.get(m)!;
+      if (n > bestN) { best = m; bestN = n; }
     }
-    d && (d.size = d.files.length);
+    if (!best) best = moduleOf(stationBySid.get(f.entry)?.path ?? "") || "misc";
+    bestModule.set(f.id, best);
   }
+
+  const groups = new Map<string, { flows: string[]; stations: Set<string> }>();
+  for (const f of flows) {
+    const m = bestModule.get(f.id)!;
+    let g = groups.get(m);
+    if (!g) { g = { flows: [], stations: new Set() }; groups.set(m, g); }
+    g.flows.push(f.id);
+    for (const st of f.steps) g.stations.add(st.station);
+  }
+
+  // Merge single-flow domains into their nearest neighbour by shared stations.
+  for (const m of [...groups.keys()]) {
+    const g = groups.get(m)!;
+    if (g.flows.length !== 1 || groups.size <= 1) continue;
+    let bestM = "", bestShared = -1, bestSize = -1;
+    for (const m2 of [...groups.keys()].sort()) {
+      if (m2 === m) continue;
+      const g2 = groups.get(m2)!;
+      let shared = 0;
+      for (const s of g.stations) if (g2.stations.has(s)) shared++;
+      if (shared > bestShared || (shared === bestShared && g2.flows.length > bestSize)) {
+        bestM = m2; bestShared = shared; bestSize = g2.flows.length;
+      }
+    }
+    const into = groups.get(bestM)!;
+    into.flows.push(...g.flows);
+    for (const s of g.stations) into.stations.add(s);
+    groups.delete(m);
+  }
+
+  const domainOfFlow = new Map<string, number>();
+  const domainById = new Map<number, MapDomain>();
+  [...groups.keys()].sort().forEach((m, i) => {
+    const id = i + 1;
+    const g = groups.get(m)!;
+    const files: string[] = [];
+    for (const fid of g.flows) {
+      domainOfFlow.set(fid, id);
+      const f = flows.find((x) => x.id === fid)!;
+      for (const p of f.files) if (!files.includes(p)) files.push(p);
+    }
+    domainById.set(id, { id, label: plainLabel(m), flows: [...g.flows], files, size: files.length });
+  });
+  for (const f of flows) f.domain = domainOfFlow.get(f.id) ?? f.domain;
 
   const interchanges = stationList
     .filter((s) => s.degree >= 2)
@@ -189,7 +293,76 @@ export function buildMapModel(fm: FlowMap, graph?: GraphData): MapModel {
     flows,
     stations: stationList.sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1))),
     interchanges,
+    containers: buildContainers(graph, stations),
   };
+}
+
+/**
+ * Containment from the graph. A node that some other node names as its
+ * `parent` is a container; its children are its members, and members that no
+ * flow passes through still appear (onFlow false) so a class rectangle shows
+ * the whole class. Function containers get their variables lazily from N1 –
+ * `loadInner` fills those in, cached per data version.
+ */
+function buildContainers(graph: GraphData | undefined, stations: Map<string, MapStation>): MapContainer[] {
+  if (!graph) return [];
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const containers: MapContainer[] = [];
+  const children = new Map<number, Node[]>();
+  for (const n of graph.nodes) {
+    if (n.parent == null) continue;
+    const list = children.get(n.parent) ?? [];
+    list.push(n);
+    children.set(n.parent, list);
+  }
+  for (const n of graph.nodes) {
+    if (!children.has(n.id)) continue;
+    const kind = n.kind === "class" ? "class" : n.kind === "interface" ? "interface" : "function";
+    const members: MapMember[] = (children.get(n.id) ?? [])
+      .sort((a, b) => a.start_line - b.start_line)
+      .map((c) => ({
+        id: stationId(c.id),
+        name: c.name,
+        kind: c.kind,
+        line: c.start_line,
+        onFlow: stations.has(stationId(c.id)),
+      }));
+    const cid = n.id;
+    containers.push({
+      id: cid,
+      kind,
+      name: n.name,
+      path: n.path,
+      line: n.start_line,
+      end: n.end_line,
+      ...(n.parent != null && byId.has(n.parent) ? { parent: n.parent } : {}),
+      members,
+    });
+    // Attach stations to their container.
+    for (const c of children.get(n.id) ?? []) {
+      const st = stations.get(stationId(c.id));
+      if (st && st.container == null) st.container = cid;
+    }
+  }
+  return containers;
+}
+
+let innerVersion = 0;
+const innerCache = new Map<number, Map<string, MapMember[]>>();
+
+/** Advance the data version so `loadInner` caches are dropped on reindex. */
+export function bumpDataVersion(): number {
+  return ++innerVersion;
+}
+
+/** Variables of a function container, lazily from N1. Stub until N1's
+ * endpoint lands: resolves an empty map, cached per data version. */
+export async function loadInner(ids: string[], version = innerVersion): Promise<Map<string, MapMember[]>> {
+  const cached = innerCache.get(version);
+  if (cached) return cached;
+  const empty = new Map<string, MapMember[]>();
+  innerCache.set(version, empty);
+  return empty;
 }
 
 /** Symbol count per file from the graph, for a finer domain size later. */
