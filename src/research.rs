@@ -94,7 +94,9 @@ fn save(repo: &Repo, s: &State) -> Result<()> {
     std::fs::write(dir(repo).join(format!("{}.json", s.workflow)), serde_json::to_string_pretty(s)?)?;
     // The run ledger gets a copy, so research has the same history, stats and
     // synopsis as a team run. The state file stays the source of truth.
-    let team = Config::load(&repo.root).ok().and_then(|c| c.teams.into_iter().find(|t| t.members.iter().any(|m| m.workflow == s.workflow)).map(|t| t.name));
+    let team = Config::load(&repo.root)
+        .ok()
+        .and_then(|c| c.teams.into_iter().find(|t| t.members.iter().any(|m| m.workflow == s.workflow)).map(|t| t.name));
     let _ = crate::launch::save(repo, &ledger(s, team.unwrap_or_default(), |c| repo.run(&["diff", "--numstat", &format!("{c}^"), c]).ok()));
     Ok(())
 }
@@ -117,7 +119,13 @@ pub fn ledger(s: &State, team: String, diff: impl Fn(&str) -> Option<String>) ->
     for e in &s.experiments {
         let at = e.at.max(0) as u64 * 1000;
         let rejected = e.note.starts_with("rejected");
-        let verdict = if e.kept { "passed" } else if rejected { "rejected" } else { "reverted" };
+        let verdict = if e.kept {
+            "passed"
+        } else if rejected {
+            "rejected"
+        } else {
+            "reverted"
+        };
         let mut x = SeatRun {
             slice: format!("#{}", e.n),
             agent: e.by.strip_prefix("agent:").unwrap_or(&e.by).to_string(),
@@ -154,7 +162,8 @@ pub fn ledger(s: &State, team: String, diff: impl Fn(&str) -> Option<String>) ->
     } else {
         "failed"
     };
-    let score = if seats.is_empty() { 0.0 } else { (seats.iter().map(|x| x.score).sum::<f64>() / seats.len() as f64 * 10.0).round() / 10.0 };
+    let score =
+        if seats.is_empty() { 0.0 } else { (seats.iter().map(|x| x.score).sum::<f64>() / seats.len() as f64 * 10.0).round() / 10.0 };
     let min = s.goal != "max";
     Run {
         schema: 1,

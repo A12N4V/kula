@@ -176,7 +176,10 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     let started = crate::events::now_ms();
     let run_id = format!("{}-{}", plan.id, started / 1000);
     let cfg = crate::config::Config::load(&repo.root).unwrap_or_default();
-    let base_sha = repo.run(&["rev-parse", if plan.base_ref.is_empty() { "HEAD" } else { &plan.base_ref }]).map(|s| s.trim().to_string()).unwrap_or_default();
+    let base_sha = repo
+        .run(&["rev-parse", if plan.base_ref.is_empty() { "HEAD" } else { &plan.base_ref }])
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
     let sh = Shared { plan: Mutex::new(plan.clone()), cv: Condvar::new(), state_path: run_dir.join("state.json") };
     // The swarm op log opens with the launch op: every seat at its base.
     record_launch(repo, &plan, &run_id);
@@ -282,7 +285,8 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                         continue;
                     }
                 };
-                let wt_base = Repo::discover(&wt).and_then(|w| w.run(&["rev-parse", "HEAD"])).map(|s| s.trim().to_string()).unwrap_or_default();
+                let wt_base =
+                    Repo::discover(&wt).and_then(|w| w.run(&["rev-parse", "HEAD"])).map(|s| s.trim().to_string()).unwrap_or_default();
                 let (sh, exe, run_dir, snap, measured, cfg, run_id) = (&sh, &exe, &run_dir, snapshot.clone(), &measured, &cfg, &run_id);
                 scope.spawn(move || {
                     let slice = snap.slice(&id).unwrap().clone();
@@ -306,14 +310,36 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                         &log_dir,
                         |n, prompt| {
                             let prompt = if pre.is_empty() { prompt.to_string() } else { format!("{pre}\n{prompt}") };
-                            let (code, out) = launch(exe, &wt, &log_dir, &id, &scope_s, &slice.agent, &cmd, &sh.state_path, n, &prompt, (&snap.id, run_id, &snap.team));
+                            let (code, out) = launch(
+                                exe,
+                                &wt,
+                                &log_dir,
+                                &id,
+                                &scope_s,
+                                &slice.agent,
+                                &cmd,
+                                &sh.state_path,
+                                n,
+                                &prompt,
+                                (&snap.id, run_id, &snap.team),
+                            );
                             let usage = crate::launch::parse(&out);
                             if let Some(u) = &usage {
                                 measured.lock().unwrap().entry(id.clone()).or_default().usage.add(u);
                             }
                             crate::events::append(
                                 &repo.kula_dir(),
-                                crate::events::Event { kind: "attempt".into(), team: snap.team.clone(), agent: slice.agent.clone(), plan: snap.id.clone(), run: run_id.clone(), slice: id.clone(), msg: format!("attempt {n} exited {code}"), usage, ..Default::default() },
+                                crate::events::Event {
+                                    kind: "attempt".into(),
+                                    team: snap.team.clone(),
+                                    agent: slice.agent.clone(),
+                                    plan: snap.id.clone(),
+                                    run: run_id.clone(),
+                                    slice: id.clone(),
+                                    msg: format!("attempt {n} exited {code}"),
+                                    usage,
+                                    ..Default::default()
+                                },
                             );
                             // Autosave the seat's worktree between attempts: a snapshot
                             // under refs/kula/saves without touching its branch.
@@ -381,12 +407,22 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     let head = repo.run(&["rev-parse", "HEAD"]).map(|s| s.trim().to_string()).unwrap_or_default();
     let refused = crate::launch::refusals(&repo.kula_dir(), &run_id);
     let trigger = std::env::var("KULA_TRIGGER").ok().filter(|t| !t.is_empty()).unwrap_or_else(|| "manual".into());
-    let mut ledger = crate::launch::build(&plan, &run_id, &trigger, started, crate::events::now_ms(), &head, measured.into_inner().unwrap(), &refused);
+    let mut ledger =
+        crate::launch::build(&plan, &run_id, &trigger, started, crate::events::now_ms(), &head, measured.into_inner().unwrap(), &refused);
     ledger.base = base_sha;
     match crate::launch::save(repo, &ledger) {
         Ok(_) => crate::events::append(
             &repo.kula_dir(),
-            crate::events::Event { kind: "run_end".into(), team: plan.team.clone(), plan: plan.id.clone(), run: run_id, verdict: ledger.state.clone(), usage: Some(ledger.usage.clone()), msg: format!("score {}", ledger.score), ..Default::default() },
+            crate::events::Event {
+                kind: "run_end".into(),
+                team: plan.team.clone(),
+                plan: plan.id.clone(),
+                run: run_id,
+                verdict: ledger.state.clone(),
+                usage: Some(ledger.usage.clone()),
+                msg: format!("score {}", ledger.score),
+                ..Default::default()
+            },
         ),
         Err(e) => eprintln!("kula: could not record run {run_id}: {e:#}"),
     }
@@ -434,7 +470,11 @@ pub fn apply_view(repo: &Repo, plan: &Plan, view: &std::collections::BTreeMap<St
 
 /// The view entry key for a slice: its team seat when it has one, else its id.
 fn seat_key(s: &super::task::Slice) -> String {
-    if s.seat.is_empty() { s.id.clone() } else { s.seat.clone() }
+    if s.seat.is_empty() {
+        s.id.clone()
+    } else {
+        s.seat.clone()
+    }
 }
 
 /// Append a launch op: the view of every seat at its base commit.
@@ -462,7 +502,9 @@ fn commit_op(repo: &Repo, plan: &Plan, run_id: &str, slice: &str, sha: &str) {
     let s = plan.slice(slice);
     let key = s.map(seat_key).unwrap_or_else(|| slice.to_string());
     view.insert(key.clone(), sha.to_string());
-    if let Err(e) = crate::ops::append_op_seat(repo, crate::ops::OpKind::Commit, run_id, &key, view, &format!("slice {slice} committed {sha}")) {
+    if let Err(e) =
+        crate::ops::append_op_seat(repo, crate::ops::OpKind::Commit, run_id, &key, view, &format!("slice {slice} committed {sha}"))
+    {
         eprintln!("kula: could not record the commit op: {e:#}");
     }
 }
@@ -498,7 +540,14 @@ mod view_tests {
         let base = git(&["rev-parse", "HEAD"]).trim().to_string();
         let slices: Vec<Slice> = ["a", "b", "c"]
             .iter()
-            .map(|s| Slice { id: s.to_string(), module: s.to_string(), scope: vec![s.to_string()], agent: "fake".into(), base_ref: base.clone(), ..Default::default() })
+            .map(|s| Slice {
+                id: s.to_string(),
+                module: s.to_string(),
+                scope: vec![s.to_string()],
+                agent: "fake".into(),
+                base_ref: base.clone(),
+                ..Default::default()
+            })
             .collect();
         let plan = Plan { id: "t3".into(), goal: "test".into(), base_ref: base, slices, ..Default::default() };
         let repo = Repo { root: d.to_path_buf() };
@@ -529,8 +578,7 @@ mod view_tests {
         let (_t, r, plan) = repo3();
         seat_worktrees(&r, &plan, "drift\n");
         let before: Vec<String> = plan.slices.iter().map(|s| drift_sha(&r, &plan, &s.id)).collect();
-        let base: std::collections::BTreeMap<String, String> =
-            plan.slices.iter().map(|s| (s.id.clone(), plan.base_ref.clone())).collect();
+        let base: std::collections::BTreeMap<String, String> = plan.slices.iter().map(|s| (s.id.clone(), plan.base_ref.clone())).collect();
         // An active seat must be refused: an in-flight agent keeps its floor.
         let mut p2 = plan.clone();
         p2.slice_mut("b").unwrap().state = SliceState::Running;
@@ -539,9 +587,18 @@ mod view_tests {
         for s in &plan.slices {
             let wt = plan.worktree(&r, &s.id);
             assert!(!wt.join(s.id.clone() + ".txt").exists(), "seat {} drift file gone after the reset", s.id);
-            assert_eq!(std::fs::read_to_string(wt.join(s.id.clone() + "/x.txt")).unwrap(), format!("{}\n", s.id), "seat {} base file restored", s.id);
+            assert_eq!(
+                std::fs::read_to_string(wt.join(s.id.clone() + "/x.txt")).unwrap(),
+                format!("{}\n", s.id),
+                "seat {} base file restored",
+                s.id
+            );
             let i = s.id.as_str();
-            assert_eq!(drift_sha(&r, &plan, i), before[plan.slices.iter().position(|x| x.id == *i).unwrap()], "branch still at its drift commit");
+            assert_eq!(
+                drift_sha(&r, &plan, i),
+                before[plan.slices.iter().position(|x| x.id == *i).unwrap()],
+                "branch still at its drift commit"
+            );
         }
         // Undo through the log: record the view, undo, and it is restored.
         let mut view = std::collections::BTreeMap::new();

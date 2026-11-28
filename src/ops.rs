@@ -314,7 +314,7 @@ pub fn restore_save(repo: &Repo, wt: &std::path::Path, seat: &str, n: u64, run: 
     crate::git::reset_worktree_to(wt, &commit)?;
     let mut view = last_full_view(repo).map(|o| o.view).unwrap_or_default();
     view.insert(seat.to_string(), commit.clone());
-    Ok(append_op(repo, OpKind::Save, run, view, &format!("restored seat {seat} to save {n}"))?)
+    append_op(repo, OpKind::Save, run, view, &format!("restored seat {seat} to save {n}"))
 }
 
 /// Fork a seat's work into a new branch from any commit (an op view entry or a
@@ -429,7 +429,8 @@ mod tests {
 /// a save ref `refs/kula/saves/<seat>/<n>`.
 pub fn undo_to(repo: &Repo, target: &str, run: &str) -> Result<Op> {
     let (view, undo_of) = if let Some(rest) = target.strip_prefix(SAVES_PREFIX).filter(|r| r.starts_with('/')) {
-        let seat = rest.trim_start_matches('/').rsplit_once('/').map(|(s, _)| s.to_string()).ok_or_else(|| anyhow::anyhow!("bad save ref"))?;
+        let seat =
+            rest.trim_start_matches('/').rsplit_once('/').map(|(s, _)| s.to_string()).ok_or_else(|| anyhow::anyhow!("bad save ref"))?;
         let commit = repo.run(&["rev-parse", "--verify", target])?.trim().to_string();
         let mut v = BTreeMap::new();
         v.insert(seat, commit);

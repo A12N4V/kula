@@ -182,7 +182,13 @@ pub struct Overlap {
 }
 
 fn seat_label(m: &crate::config::Member) -> String {
-    if !m.name.is_empty() { m.name.clone() } else if !m.agent.is_empty() { m.agent.clone() } else { "seat".into() }
+    if !m.name.is_empty() {
+        m.name.clone()
+    } else if !m.agent.is_empty() {
+        m.agent.clone()
+    } else {
+        "seat".into()
+    }
 }
 
 /// Seats in the same team whose writable sets overlap. Only seats with a
@@ -316,7 +322,10 @@ pub fn team_start(repo: &Repo, name: &str, by: &str) -> Result<ActiveTeam> {
     let a = ActiveTeam { name: name.into(), started: crate::meta::now(), by: by.into() };
     std::fs::create_dir_all(repo.kula_dir())?;
     std::fs::write(team_path(repo), serde_json::to_string_pretty(&a)?)?;
-    crate::events::append(&repo.kula_dir(), crate::events::Event { kind: "team_start".into(), team: name.into(), agent: by.into(), ..Default::default() });
+    crate::events::append(
+        &repo.kula_dir(),
+        crate::events::Event { kind: "team_start".into(), team: name.into(), agent: by.into(), ..Default::default() },
+    );
     Ok(a)
 }
 
@@ -324,7 +333,10 @@ pub fn team_stop(repo: &Repo) -> Result<Option<ActiveTeam>> {
     let t = team(repo);
     let _ = std::fs::remove_file(team_path(repo));
     if let Some(a) = &t {
-        crate::events::append(&repo.kula_dir(), crate::events::Event { kind: "team_stop".into(), team: a.name.clone(), ..Default::default() });
+        crate::events::append(
+            &repo.kula_dir(),
+            crate::events::Event { kind: "team_stop".into(), team: a.name.clone(), ..Default::default() },
+        );
     }
     Ok(t)
 }
@@ -388,9 +400,11 @@ impl Guards {
     /// A seat's own `fence` from `kula.toml`, on top of everything else. Rules
     /// only ever add restrictions, so this can never open what another rule shut.
     pub fn add_seat_fence(&mut self, team: &str, m: &crate::config::Member) -> Result<()> {
-        for (pats, level, what) in
-            [(&m.fence.lock, Level::Locked, "locks"), (&m.fence.hide, Level::Hidden, "hides"), (&m.fence.review, Level::Review, "flags for review")]
-        {
+        for (pats, level, what) in [
+            (&m.fence.lock, Level::Locked, "locks"),
+            (&m.fence.hide, Level::Hidden, "hides"),
+            (&m.fence.review, Level::Review, "flags for review"),
+        ] {
             if pats.is_empty() {
                 continue;
             }
@@ -398,7 +412,12 @@ impl Guards {
             self.rules.push(Compiled {
                 globs: globset(&paths)?,
                 level,
-                rule: GuardRule { paths, symbols, level: level.as_str().into(), reason: format!("seat {} in team {team} {what} this", m.key()) },
+                rule: GuardRule {
+                    paths,
+                    symbols,
+                    level: level.as_str().into(),
+                    reason: format!("seat {} in team {team} {what} this", m.key()),
+                },
                 source: format!("seat {}/{}", team, m.key()),
             });
         }
@@ -413,12 +432,7 @@ impl Guards {
                 bad_levels.push(format!("kula.toml guard #{}: {e}", i + 1));
                 Level::Locked
             });
-            rules.push(Compiled {
-                globs: globset(&r.paths)?,
-                level,
-                rule: r.clone(),
-                source: format!("kula.toml guard #{}", i + 1),
-            });
+            rules.push(Compiled { globs: globset(&r.paths)?, level, rule: r.clone(), source: format!("kula.toml guard #{}", i + 1) });
         }
         // The active workflow's own fences sit on top of the repository's.
         let wf = task.as_ref().filter(|t| !t.workflow.is_empty()).and_then(|t| workflow::find(cfg, &t.workflow));
@@ -859,7 +873,10 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
         // assignments and identity scrubbing
         while k < ws.len() {
             let w = &ws[k];
-            if w.contains('=') && w.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && !w.split('=').next().unwrap_or("").contains('/') {
+            if w.contains('=')
+                && w.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                && !w.split('=').next().unwrap_or("").contains('/')
+            {
                 if let Some((n, v)) = w.split_once('=') {
                     if IDENTITY_VARS.contains(&n) {
                         return (extra, refuse("an agent does not decide whether it is an agent – identity vars are not yours to set"));
@@ -1046,7 +1063,9 @@ fn git_guard(
             return refuse("`git update-ref` on a branch moves history past kula's pre-commit fence check");
         }
         if vars.keys().any(|k| k.starts_with("GIT_CONFIG") || k == "GIT_DIR" || k == "GIT_WORK_TREE" || k == "GIT_INDEX_FILE") {
-            return refuse("git's environment overrides (`GIT_CONFIG_*`, `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`) can switch the fences off");
+            return refuse(
+                "git's environment overrides (`GIT_CONFIG_*`, `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`) can switch the fences off",
+            );
         }
     }
     // update-ref on kula's own refs (memories, issues, meta)
@@ -1515,7 +1534,14 @@ mod tests {
         let globs = ["src/**", "src/pay/**", "src/pay/card.rs", "docs/**", "*.md", "vendor/**", "src/*.rs"];
         let syms = ["charge", "src/pay/card.rs:charge", "helper", "src/a.rs:main"];
         let levels = ["locked", "hidden", "review"];
-        let probes = [("src/pay/card.rs", Some("charge")), ("src/pay/card.rs", None), ("src/a.rs", Some("main")), ("docs/x.md", None), ("README.md", None), ("vendor/z.rs", Some("helper"))];
+        let probes = [
+            ("src/pay/card.rs", Some("charge")),
+            ("src/pay/card.rs", None),
+            ("src/a.rs", Some("main")),
+            ("docs/x.md", None),
+            ("README.md", None),
+            ("vendor/z.rs", Some("helper")),
+        ];
         let rule = |r: &(bool, usize, usize)| {
             if r.0 {
                 format!("[[guard]]\nsymbols = [\"{}\"]\nlevel = \"{}\"\n", syms[r.1 % syms.len()], levels[r.2])

@@ -349,7 +349,14 @@ fn apply_patch(i: &mut Issue, p: &IssuePatch) -> Result<Vec<String>> {
             if st == "open" {
                 i.reason.clear();
             }
-            log.push(if st == "open" { "reopened".into() } else { format!("closed{}", p.reason.as_ref().filter(|r| !r.is_empty()).map(|r| format!(" as {}", r.replace('_', " "))).unwrap_or_default()) });
+            log.push(if st == "open" {
+                "reopened".into()
+            } else {
+                format!(
+                    "closed{}",
+                    p.reason.as_ref().filter(|r| !r.is_empty()).map(|r| format!(" as {}", r.replace('_', " "))).unwrap_or_default()
+                )
+            });
         }
     }
     if let Some(r) = p.reason.as_ref().filter(|_| i.status == "closed") {
@@ -467,7 +474,11 @@ pub fn issue_create(repo: &Repo, d: IssueDraft) -> Result<Issue> {
         pinned: false,
         template: d.template.clone(),
         updated: t,
-        events: vec![IssueEvent { by: repo.user(), at: t, what: if d.template.is_empty() { "opened".into() } else { format!("opened from {}", d.template) } }],
+        events: vec![IssueEvent {
+            by: repo.user(),
+            at: t,
+            what: if d.template.is_empty() { "opened".into() } else { format!("opened from {}", d.template) },
+        }],
     };
     m.issues.push(issue.clone());
     save(repo, &m, &format!("open issue #{} {}", issue.id, title))?;
@@ -517,14 +528,22 @@ pub fn issue_config_save(repo: &Repo, mut cfg: IssueConfig, renames: &[(String, 
     for l in &mut cfg.labels {
         l.name = l.name.trim().into();
         anyhow::ensure!(!l.name.is_empty(), "every label needs a name");
-        anyhow::ensure!(l.color.is_empty() || (l.color.len() == 7 && l.color.starts_with('#') && l.color[1..].chars().all(|c| c.is_ascii_hexdigit())), "label colour {} is not #rrggbb", l.color);
+        anyhow::ensure!(
+            l.color.is_empty() || (l.color.len() == 7 && l.color.starts_with('#') && l.color[1..].chars().all(|c| c.is_ascii_hexdigit())),
+            "label colour {} is not #rrggbb",
+            l.color
+        );
     }
     for ms in &mut cfg.milestones {
         ms.name = ms.name.trim().into();
         anyhow::ensure!(!ms.name.is_empty(), "every milestone needs a name");
         anyhow::ensure!(ms.state == "open" || ms.state == "closed", "milestone state is open or closed");
     }
-    for (what, list) in [("template", cfg.templates.iter().map(|x| &x.name).collect::<Vec<_>>()), ("label", cfg.labels.iter().map(|x| &x.name).collect()), ("milestone", cfg.milestones.iter().map(|x| &x.name).collect())] {
+    for (what, list) in [
+        ("template", cfg.templates.iter().map(|x| &x.name).collect::<Vec<_>>()),
+        ("label", cfg.labels.iter().map(|x| &x.name).collect()),
+        ("milestone", cfg.milestones.iter().map(|x| &x.name).collect()),
+    ] {
         let mut seen = std::collections::HashSet::new();
         for n in list {
             anyhow::ensure!(seen.insert(n.to_lowercase()), "two {what}s are named {n}");
@@ -746,7 +765,13 @@ mod layout_tests {
         let i: super::Issue = serde_json::from_str(r#"{"id":1,"title":"t","status":"open","author":"a","created":1}"#).unwrap();
         assert!(i.assignees.is_empty() && i.priority.is_empty() && !i.locked);
         let mut i = i;
-        let p = super::IssuePatch { status: Some("closed".into()), reason: Some("not_planned".into()), add_labels: vec!["bug".into(), "bug".into()], priority: Some("high".into()), ..Default::default() };
+        let p = super::IssuePatch {
+            status: Some("closed".into()),
+            reason: Some("not_planned".into()),
+            add_labels: vec!["bug".into(), "bug".into()],
+            priority: Some("high".into()),
+            ..Default::default()
+        };
         let log = super::apply_patch(&mut i, &p).unwrap();
         assert_eq!(i.status, "closed");
         assert_eq!(i.reason, "not_planned");
@@ -766,5 +791,3 @@ mod layout_tests {
         assert!(!serde_json::to_string(&m).unwrap().contains("issue_config"));
     }
 }
-
-

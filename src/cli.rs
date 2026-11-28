@@ -424,7 +424,10 @@ pub(crate) enum Cmd {
     },
     /// The kulastore: agent memory, skills and config from every worktree, kept
     /// on refs/kula/store. Private until `kula store push`.
-    #[command(subcommand, after_help = "Examples:\n  kula store snapshot   ·  kula store status   ·  kula store restore memory/claude/main")]
+    #[command(
+        subcommand,
+        after_help = "Examples:\n  kula store snapshot   ·  kula store status   ·  kula store restore memory/claude/main"
+    )]
     Store(StoreCmd),
     /// Agent extensions: skills, prompts and MCP servers from open catalogs.
     #[command(subcommand, after_help = "Examples:\n  kula ext search pdf   ·  kula ext add mcp weather   ·  kula ext list")]
@@ -554,7 +557,9 @@ pub(crate) enum GuardCmd {
         staged: bool,
     },
     /// Why a file or symbol is fenced: every rule that applies and the one that decides.
-    #[command(after_help = "Examples:\n  kula guard explain src/billing.rs  ·  kula guard explain src/billing.rs --symbol charge --agent claude")]
+    #[command(
+        after_help = "Examples:\n  kula guard explain src/billing.rs  ·  kula guard explain src/billing.rs --symbol charge --agent claude"
+    )]
     Explain {
         path: String,
         /// A symbol in the file.

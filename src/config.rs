@@ -717,7 +717,8 @@ mod tests {
         assert!(text.contains("# hand written"), "{text}");
         assert_eq!(Config::load(&dir).unwrap().teams, teams);
         // a seat with none of them writes none of them
-        let plain = vec![Team { name: "bare".into(), members: vec![Member { name: "Q".into(), ..Default::default() }], ..Default::default() }];
+        let plain =
+            vec![Team { name: "bare".into(), members: vec![Member { name: "Q".into(), ..Default::default() }], ..Default::default() }];
         let (_, after) = preview_teams(&dir, &plain).unwrap();
         for k in ["color", "tags", "skills", "mcp", "memory", "fence", "category"] {
             assert!(!after.contains(k), "{k} written for an empty seat:\n{after}");

@@ -90,11 +90,7 @@ fn three_seat_run_records_a_chained_view_log() {
         assert_eq!(sha.len(), 40, "the launch view names every seat's base: {launch_view}");
     }
     // Each passing slice appended a commit op naming its seat.
-    let commit_seats: Vec<&str> = ops
-        .iter()
-        .filter(|o| o["kind"] == "commit")
-        .map(|o| o["seat"].as_str().unwrap_or(""))
-        .collect();
+    let commit_seats: Vec<&str> = ops.iter().filter(|o| o["kind"] == "commit").map(|o| o["seat"].as_str().unwrap_or("")).collect();
     for s in ["team/a", "team/b", "team/c"] {
         assert!(commit_seats.contains(&s), "seat {s} never committed: {commit_seats:?}");
     }

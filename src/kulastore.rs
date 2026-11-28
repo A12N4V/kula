@@ -48,7 +48,8 @@ const CONFIG_FILES: &[&str] = &[
 ];
 /// Folders under `config/`, by repo path.
 const CONFIG_DIRS: &[&str] = &[".claude/agents", ".claude/commands", ".claude/rules", ".agents/prompts"];
-const SKILL_DIRS: &[(&str, &str)] = &[("agents", ".agents/skills"), ("claude", ".claude/skills"), ("gemini", ".gemini/skills"), ("cursor", ".cursor/rules")];
+const SKILL_DIRS: &[(&str, &str)] =
+    &[("agents", ".agents/skills"), ("claude", ".claude/skills"), ("gemini", ".gemini/skills"), ("cursor", ".cursor/rules")];
 const LOCAL_FILES: &[&str] = &["CLAUDE.local.md", "AGENTS.local.md"];
 
 /// One place on disk the store mirrors.
@@ -77,7 +78,11 @@ pub fn worktree_id(repo: &Repo) -> String {
 fn safe(s: &str) -> String {
     let t: String = s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '-' }).collect();
     let t = t.trim_matches('.').to_string();
-    if t.is_empty() { "x".into() } else { t }
+    if t.is_empty() {
+        "x".into()
+    } else {
+        t
+    }
 }
 
 /// Claude Code keeps project memory in `~/.claude/projects/<slug>/memory`, the
@@ -91,7 +96,13 @@ pub fn claude_memory_dir(root: &Path) -> Option<PathBuf> {
 pub fn sources(repo: &Repo) -> Vec<Source> {
     let root = &repo.root;
     let wt = worktree_id(repo);
-    let mut v = vec![Source { section: "memory", prefix: "memory/kula.json".into(), live: repo.kula_dir().join("memory.json"), dir: false, generated: true }];
+    let mut v = vec![Source {
+        section: "memory",
+        prefix: "memory/kula.json".into(),
+        live: repo.kula_dir().join("memory.json"),
+        dir: false,
+        generated: true,
+    }];
     if let Some(d) = claude_memory_dir(root) {
         v.push(Source { section: "memory", prefix: format!("memory/claude/{wt}"), live: d, dir: true, generated: false });
     }
@@ -107,7 +118,13 @@ pub fn sources(repo: &Repo) -> Vec<Source> {
     for d in CONFIG_DIRS {
         v.push(Source { section: "config", prefix: format!("config/{d}"), live: root.join(d), dir: true, generated: false });
     }
-    v.push(Source { section: "extensions", prefix: "extensions".into(), live: repo.kula_dir().join("extensions"), dir: true, generated: false });
+    v.push(Source {
+        section: "extensions",
+        prefix: "extensions".into(),
+        live: repo.kula_dir().join("extensions"),
+        dir: true,
+        generated: false,
+    });
     v
 }
 
@@ -298,7 +315,8 @@ pub fn snapshot(repo: &Repo, only: &[String], msg: Option<&str>) -> Result<Snaps
             files.insert(path, (mode.into(), sha));
         }
     }
-    let changed = files.iter().filter(|(k, v)| before.get(*k) != Some(v)).count() + before.keys().filter(|k| !files.contains_key(*k)).count();
+    let changed =
+        files.iter().filter(|(k, v)| before.get(*k) != Some(v)).count() + before.keys().filter(|k| !files.contains_key(*k)).count();
     if changed == 0 && parent.is_some() {
         return Ok(Snapshot { commit: parent, changed: 0, files: files.len() });
     }
@@ -373,11 +391,23 @@ pub fn status(repo: &Repo) -> Result<Vec<Entry>> {
             None => "new",
         };
         seen.insert(path.clone());
-        out.push(Entry { section: section_of(&path), restorable: live_of(&srcs, &path).is_some(), path, state, live: Some(abs.display().to_string()) });
+        out.push(Entry {
+            section: section_of(&path),
+            restorable: live_of(&srcs, &path).is_some(),
+            path,
+            state,
+            live: Some(abs.display().to_string()),
+        });
     }
     for path in stored.keys().filter(|p| !seen.contains(*p)) {
         let l = live_of(&srcs, path);
-        out.push(Entry { section: section_of(path), state: "stored", restorable: l.is_some(), live: l.map(|p| p.display().to_string()), path: path.clone() });
+        out.push(Entry {
+            section: section_of(path),
+            state: "stored",
+            restorable: l.is_some(),
+            live: l.map(|p| p.display().to_string()),
+            path: path.clone(),
+        });
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(out)
@@ -417,7 +447,12 @@ pub fn log(repo: &Repo, limit: usize) -> Result<Vec<LogEntry>> {
             if f.len() < 3 {
                 return None;
             }
-            Some(LogEntry { sha: f[0].into(), time: f[1].parse().unwrap_or(0), subject: f[2].trim_start_matches("kula store: ").into(), files: lines.filter(|l| !l.trim().is_empty()).count() })
+            Some(LogEntry {
+                sha: f[0].into(),
+                time: f[1].parse().unwrap_or(0),
+                subject: f[2].trim_start_matches("kula store: ").into(),
+                files: lines.filter(|l| !l.trim().is_empty()).count(),
+            })
         })
         .collect())
 }
@@ -540,7 +575,13 @@ pub fn summary(repo: &Repo) -> Result<Summary> {
         *sections.entry(e.section.clone()).or_insert(0) += 1;
     }
     let commits = head(repo).and_then(|_| repo.run(&["rev-list", "--count", REF]).ok()).and_then(|s| s.trim().parse().ok()).unwrap_or(0);
-    Ok(Summary { head: head(repo), worktree: worktree_id(repo), sections, changed: st.iter().filter(|e| e.state == "changed" || e.state == "new").count(), commits })
+    Ok(Summary {
+        head: head(repo),
+        worktree: worktree_id(repo),
+        sections,
+        changed: st.iter().filter(|e| e.state == "changed" || e.state == "new").count(),
+        commits,
+    })
 }
 
 #[cfg(test)]
