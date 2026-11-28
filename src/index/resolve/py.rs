@@ -112,7 +112,7 @@ fn enclosing_class(pf: &ParsedFile, byte: usize) -> Option<String> {
 fn enclosing_function(pf: &ParsedFile, byte: usize) -> Option<usize> {
     pf.defs
         .iter()
-        .filter(|d| d.start_byte <= byte && byte < d.end_byte && matches!(d.kind, "function" | "method"))
+        .filter(|d| d.start_byte <= byte && byte < d.end_byte && matches!(d.kind.as_str(), "function" | "method"))
         .min_by_key(|d| d.end_byte - d.start_byte)
         .map(|d| d.start_byte)
 }

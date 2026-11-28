@@ -4,6 +4,14 @@ pub mod langs;
 pub mod packs;
 pub mod resolve;
 
+pub mod identity;
+pub mod scip;
+
+/// Symbol identity for callers outside the index (B3 uses these to make
+/// fences follow moves): stable id from (path, name, bodyhash) and the
+/// old→new relink map.
+pub use identity::{relink, symbol_id};
+
 use crate::git::Repo;
 use crate::store::{Edge, Node, Store};
 use anyhow::Result;
@@ -216,10 +224,10 @@ const COMMON: &[&str] = &[
     "len",
 ];
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Def {
     pub(crate) name: String,
-    pub(crate) kind: &'static str,
+    pub(crate) kind: String,
     pub(crate) start_line: u32,
     pub(crate) end_line: u32,
     pub(crate) start_byte: usize,
@@ -414,7 +422,7 @@ fn parse_source(rel: &str, src: &str, lang: &langs::Lang, parser: &mut Parser) -
                     }
                     pf.defs.push(Def {
                         name: text,
-                        kind,
+                        kind: kind.into(),
                         start_line: def_node.start_position().row as u32 + 1,
                         end_line: def_node.end_position().row as u32 + 1,
                         start_byte: def_node.start_byte(),
@@ -814,10 +822,100 @@ fn parse_one(path: &str, lid: &'static str, read: Reader, parser: &mut Parser) -
 }
 
 pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
-    build_with(files, read, None)
+    build_with(files, read, None, None)
 }
 
-fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: Option<&'static Progress>) -> Built {
+/// Cached-parse bridge: `ParsedFile` ⇄ `CachedParse`. `lang` is a `&'static str`
+/// in `ParsedFile`, recovered from the registry on the way back, so the round
+/// trip is lossless and a warm build is byte-identical to a cold one.
+fn to_cached(pf: &ParsedFile) -> crate::cache::CachedParse {
+    crate::cache::CachedParse {
+        path: pf.path.clone(),
+        lang: pf.lang.to_string(),
+        loc: pf.loc,
+        defs: pf
+            .defs
+            .iter()
+            .map(|d| crate::cache::CachedDef {
+                name: d.name.clone(),
+                kind: d.kind.clone(),
+                start_line: d.start_line,
+                end_line: d.end_line,
+                start_byte: d.start_byte,
+                end_byte: d.end_byte,
+                parent_name: d.parent_name.clone(),
+                hash: d.hash,
+            })
+            .collect(),
+        calls: pf.calls.clone(),
+        self_calls: pf.self_calls.clone(),
+        imports: pf.imports.clone(),
+        import_bindings: pf.import_bindings.clone(),
+        receivers: pf.receivers.clone(),
+        var_types: pf.var_types.clone(),
+        interfaces: pf.interfaces.clone(),
+    }
+}
+
+fn from_cached(c: crate::cache::CachedParse) -> Option<ParsedFile> {
+    let lang = crate::index::langs::spec(&c.lang)?.id;
+    Some(ParsedFile {
+        path: c.path,
+        lang,
+        loc: c.loc,
+        defs: c
+            .defs
+            .into_iter()
+            .map(|d| Def {
+                name: d.name,
+                kind: d.kind,
+                start_line: d.start_line,
+                end_line: d.end_line,
+                start_byte: d.start_byte,
+                end_byte: d.end_byte,
+                parent_name: d.parent_name,
+                hash: d.hash,
+            })
+            .collect(),
+        calls: c.calls,
+        self_calls: c.self_calls,
+        imports: c.imports,
+        import_bindings: c.import_bindings,
+        receivers: c.receivers,
+        var_types: c.var_types,
+        interfaces: c.interfaces,
+    })
+}
+
+/// Parse one file, answering from the parse cache on a (blob oid, grammar
+/// version) hit. `oids` maps path → git blob oid from the index; untracked
+/// files fall back to a content FNV.
+fn parse_one_cached(
+    path: &str,
+    lid: &'static str,
+    read: Reader,
+    parser: &mut Parser,
+    oids: Option<&HashMap<String, String>>,
+    cache: Option<&crate::cache::ParseCache>,
+) -> Option<ParsedFile> {
+    let Some(cache) = cache else { return parse_one(path, lid, read, parser) };
+    let src = read(path)?;
+    let lang = langs::get(langs::refine(lid, &src))?;
+    let oid = oids.and_then(|m| m.get(path).cloned()).unwrap_or_else(|| crate::cache::content_oid(&src));
+    if let Some(c) = cache.get(&oid, lang.id) {
+        return from_cached(c);
+    }
+    let pf = parse_source(path, &langs::prepare(lang.id, &src), lang, parser)?;
+    cache.put(&oid, lang.id, &to_cached(&pf));
+    Some(pf)
+}
+
+fn build_with(
+    files: &[(String, Option<&'static str>)],
+    read: Reader,
+    progress: Option<&'static Progress>,
+    cache: Option<(&std::path::Path, Option<&HashMap<String, String>>)>,
+) -> Built {
     let source: Vec<(String, &'static str)> = files.iter().filter_map(|(p, l)| l.map(|l| (p.clone(), l))).collect();
 
     if let Some(p) = progress {
@@ -825,6 +923,14 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
     }
     langs::warm(source.iter().map(|(_, l)| *l));
     trace("grammars");
+    let (_cache_root, oids, pc): (Option<&std::path::Path>, Option<&HashMap<String, String>>, Option<crate::cache::ParseCache>) = match cache {
+        Some((root, oids)) => {
+            let pc = crate::cache::ParseCache::open(root);
+            (Some(root), oids, Some(pc))
+        }
+        None => (None, None, None),
+    };
+    let cache_ref = pc.as_ref();
     // Parse in parallel: threads take the next file from a shared counter, so a
     // few large files never leave one thread working while the rest sit idle.
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(16);
@@ -838,7 +944,7 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                     loop {
                         let i = next.fetch_add(1, Relaxed);
                         let Some((path, lid)) = source.get(i) else { break out };
-                        if let Some(pf) = parse_one(path, lid, read, &mut parser) {
+                        if let Some(pf) = parse_one_cached(path, lid, read, &mut parser, oids, cache_ref) {
                             out.push((i, pf));
                         }
                         if let Some(p) = progress {
@@ -902,7 +1008,7 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
             let id = nodes.len();
             nodes.push(Node {
                 id: id as i64,
-                kind: d.kind.into(),
+                kind: d.kind.clone(),
                 name: d.name.clone(),
                 path: pf.path.clone(),
                 lang: pf.lang.into(),
@@ -918,7 +1024,7 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
         // Owner links (class → method), else file → symbol.
         for (i, d) in pf.defs.iter().enumerate() {
             let owner =
-                d.parent_name.as_ref().and_then(|pn| pf.defs.iter().position(|o| &o.name == pn && matches!(o.kind, "class" | "interface")));
+                d.parent_name.as_ref().and_then(|pn| pf.defs.iter().position(|o| &o.name == pn && matches!(o.kind.as_str(), "class" | "interface")));
             match owner {
                 Some(o) if o != i => {
                     nodes[ids[i]].parent = Some(ids[o] as i64);
@@ -1104,7 +1210,7 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
             }
             for t in targets {
                 if t != caller && call_set.insert((caller, t)) {
-                    edges.push(Edge::new(caller as i64, t as i64, "CALLS", w).with(conf));
+                    edges.push(Edge::new(caller as i64, t as i64, "CALLS", w).with(conf).from("name"));
                 }
             }
         }
@@ -1144,7 +1250,21 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         }
     }
     let read = |p: &str| std::fs::read_to_string(root.join(p)).ok();
-    let Built { nodes, edges, communities, files: nfiles, parsed, .. } = build_with(&files, &read, Some(&PROGRESS));
+    let oids = crate::cache::blob_oids(&root);
+    let built = build_with(&files, &read, Some(&PROGRESS), Some((root.as_path(), Some(&oids))));
+    // SCIP edges (when `index.scip` exists) outrank the resolver ladder and
+    // the name guesses; the best source wins per edge, disagreements counted.
+    let (edges, conflicts) = match crate::index::scip::load(&root) {
+        Some(idx) => {
+            let (edges, conflicts) = crate::index::scip::apply(idx, &built.nodes, built.edges);
+            if conflicts > 0 && !quiet {
+                eprintln!("kula: {conflicts} edges came from index.scip over weaker sources");
+            }
+            (edges, conflicts)
+        }
+        None => (built.edges, 0),
+    };
+    let Built { nodes, communities, files: nfiles, parsed, .. } = built;
 
     PROGRESS.phase(5, 0);
     let store = Store::create(repo)?;
@@ -1152,6 +1272,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     trace("rows");
     store.set_meta("schema", crate::store::SCHEMA_VERSION)?;
     store.set_meta("indexer", env!("CARGO_PKG_VERSION"))?;
+    store.set_meta("edge_disagreements", &conflicts.to_string())?;
     store.set_meta("indexed_head", &repo.head().unwrap_or_default())?;
     store.set_meta(
         "indexed_at",

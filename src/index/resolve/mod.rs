@@ -19,7 +19,7 @@ pub mod rs;
 pub mod ts;
 
 /// How an imported (or re-exported) name reaches this file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ImportKind {
     /// `import {a as b}` – local `b`, the source file's `a`.
     Named,
@@ -32,7 +32,7 @@ pub enum ImportKind {
 }
 
 /// One binding an import (or re-export) statement introduces.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ImportBinding {
     /// The name visible in this file. `"*"` for `export * from`.
     pub local: String,

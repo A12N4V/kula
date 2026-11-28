@@ -28,14 +28,22 @@ pub struct Edge {
     /// `inferred` (a unique name match in the same file or an imported file) or
     /// `guessed` (one of several name matches, weighted 1/n).
     pub confidence: String,
+    /// Where the edge came from: `scip` (a precise index), `resolver`
+    /// (language resolvers, owner/import links) or `name` (the name ladder
+    /// and its 1/k guesses). Best source wins when several agree on an edge.
+    pub source: String,
 }
 
 impl Edge {
     pub fn new(src: i64, dst: i64, kind: &str, weight: f64) -> Edge {
-        Edge { src, dst, kind: kind.into(), weight, confidence: "resolved".into() }
+        Edge { src, dst, kind: kind.into(), weight, confidence: "resolved".into(), source: "resolver".into() }
     }
     pub fn with(mut self, confidence: &str) -> Edge {
         self.confidence = confidence.into();
+        self
+    }
+    pub fn from(mut self, source: &str) -> Edge {
+        self.source = source.into();
         self
     }
 }
@@ -59,7 +67,8 @@ pub struct Store {
 /// 3: runtime layers added `dependency` and `env` nodes (`used_by`, `reads_env` edges).
 /// 4: `route` nodes and `HANDLES` edges (HTTP endpoints).
 /// 5: scope-aware resolvers, tiered IMPORTS edges, `indexer` version in meta.
-pub const SCHEMA_VERSION: &str = "5";
+/// 6: `source` column on edges (scip / resolver / name).
+pub const SCHEMA_VERSION: &str = "6";
 
 const SCHEMA: &str = r#"
 PRAGMA journal_mode = DELETE;
@@ -67,7 +76,7 @@ CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, path TEXT NOT NULL,
   lang TEXT, start_line INTEGER, end_line INTEGER, parent INTEGER, community INTEGER
 );
-CREATE TABLE IF NOT EXISTS edges (src INTEGER, dst INTEGER, kind TEXT, weight REAL, confidence TEXT NOT NULL DEFAULT 'resolved');
+CREATE TABLE IF NOT EXISTS edges (src INTEGER, dst INTEGER, kind TEXT, weight REAL, confidence TEXT NOT NULL DEFAULT 'resolved', source TEXT NOT NULL DEFAULT 'resolver');
 CREATE TABLE IF NOT EXISTS communities (id INTEGER PRIMARY KEY, label TEXT, size INTEGER);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(name, path, tokenize = 'unicode61 remove_diacritics 2');
@@ -190,6 +199,10 @@ impl Store {
         if !has_conf {
             let _ = conn.execute("ALTER TABLE edges ADD COLUMN confidence TEXT NOT NULL DEFAULT 'inferred'", []);
         }
+        let has_source = conn.prepare("SELECT source FROM edges LIMIT 0").is_ok();
+        if !has_source {
+            let _ = conn.execute("ALTER TABLE edges ADD COLUMN source TEXT NOT NULL DEFAULT 'resolver'", []);
+        }
         Ok(Store { conn, root: repo.root.clone(), staged: None })
     }
 
@@ -227,9 +240,9 @@ impl Store {
                 // Split camelCase / snake_case so partial words match.
                 f.execute(params![x.id, format!("{} {}", x.name, split_ident(&x.name)), x.path.replace('/', " ")])?;
             }
-            let mut e = tx.prepare("INSERT INTO edges (src, dst, kind, weight, confidence) VALUES (?1,?2,?3,?4,?5)")?;
+            let mut e = tx.prepare("INSERT INTO edges (src, dst, kind, weight, confidence, source) VALUES (?1,?2,?3,?4,?5,?6)")?;
             for x in edges {
-                e.execute(params![x.src, x.dst, x.kind, x.weight, x.confidence])?;
+                e.execute(params![x.src, x.dst, x.kind, x.weight, x.confidence, x.source])?;
             }
             let mut c = tx.prepare("INSERT INTO communities VALUES (?1,?2,?3)")?;
             for x in communities {
@@ -260,9 +273,9 @@ impl Store {
     }
 
     pub fn all_edges(&self) -> Result<Vec<Edge>> {
-        let mut st = self.conn.prepare("SELECT src, dst, kind, weight, confidence FROM edges")?;
+        let mut st = self.conn.prepare("SELECT src, dst, kind, weight, confidence, source FROM edges")?;
         let rows = st
-            .query_map([], |r| Ok(Edge { src: r.get(0)?, dst: r.get(1)?, kind: r.get(2)?, weight: r.get(3)?, confidence: r.get(4)? }))?
+            .query_map([], |r| Ok(Edge { src: r.get(0)?, dst: r.get(1)?, kind: r.get(2)?, weight: r.get(3)?, confidence: r.get(4)?, source: r.get(5)? }))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
