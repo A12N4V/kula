@@ -261,6 +261,7 @@ pub(crate) struct ParsedFile {
 pub struct IndexStats {
     pub files: usize,
     pub parsed: usize,
+    pub cached: usize,
     pub symbols: usize,
     pub edges: usize,
     pub communities: usize,
@@ -783,6 +784,8 @@ pub struct Built {
     pub hashes: Vec<u64>,
     pub files: usize,
     pub parsed: usize,
+    /// Files answered from the parse cache instead of re-parsed.
+    pub cached: usize,
 }
 
 pub type Reader<'a> = &'a (dyn Fn(&str) -> Option<String> + Sync);
@@ -1233,7 +1236,8 @@ fn build_with(
     }
     let communities = crate::graph::detect_communities(&mut nodes, &edges);
     trace("cluster");
-    Built { nodes, edges, communities, hashes, files: files.len(), parsed: parsed.len() }
+    let cached = pc.as_ref().map_or(0, |c| c.hits.load(std::sync::atomic::Ordering::Relaxed) as usize);
+    Built { nodes, edges, communities, hashes, files: files.len(), parsed: parsed.len(), cached }
 }
 
 pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
@@ -1268,7 +1272,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         }
         None => (built.edges, 0),
     };
-    let Built { nodes, communities, files: nfiles, parsed, .. } = built;
+    let Built { nodes, communities, files: nfiles, parsed, cached, .. } = built;
 
     PROGRESS.phase(5, 0);
     let store = Store::create(repo)?;
@@ -1286,6 +1290,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     let stats = IndexStats {
         files: nfiles,
         parsed,
+        cached,
         symbols: nodes.iter().filter(|n| n.kind != "file" && n.kind != "package").count(),
         edges: edges.len(),
         communities: communities.len(),

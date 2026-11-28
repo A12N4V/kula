@@ -218,8 +218,8 @@ pub fn apply(mut scip: ScipIndex, nodes: &[crate::store::Node], mut edges: Vec<E
 
 /// Minimal SCIP writer for tests and fixtures: enough of the format to round
 /// trip a set of (file, def-line, symbol, call-line) facts.
-#[cfg(test)]
-pub(crate) fn encode(doc_path: &str, occs: &[(u32, &str, bool)]) -> Vec<u8> {
+/// Minimal SCIP writer, exposed for fixtures and tests.
+pub fn encode(doc_path: &str, occs: &[(u32, &str, bool)]) -> Vec<u8> {
     fn tag(field: u32, wire: u32) -> Vec<u8> {
         let mut t = field << 3 | wire;
         let mut out = Vec::new();
