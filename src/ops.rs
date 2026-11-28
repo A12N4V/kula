@@ -7,7 +7,7 @@
 //! the ref log), so it survives reflog trims like any other commit.
 
 use crate::git::Repo;
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -83,6 +83,8 @@ pub struct Op {
 }
 
 impl Op {
+    // Wave-2 surface: gate/merge modules parse kinds back out of the log.
+    #[allow(dead_code)]
     pub fn kind(&self) -> Result<OpKind> {
         match self.kind.as_str() {
             "launch" => Ok(OpKind::Launch),
@@ -117,32 +119,56 @@ pub fn append_op(repo: &Repo, kind: OpKind, run: &str, view: BTreeMap<String, St
 }
 
 /// Like `append_op`, for ops that concern one seat.
+///
+/// The append is compare-and-swap: `update-ref` only moves the ref if it still
+/// holds the parent we built on. Two slices finishing at once otherwise read
+/// the same parent and the loser's op commit is orphaned – its id vanishes
+/// from the log. On a lost race the whole append is rebuilt on the new head
+/// and retried; op commits are content addressed, so nothing is wasted.
 pub fn append_op_seat(repo: &Repo, kind: OpKind, run: &str, seat: &str, view: BTreeMap<String, String>, message: &str) -> Result<Op> {
-    let parent = head(repo);
-    let op = Op {
-        id: String::new(),
-        kind: kind.as_str().into(),
-        run: run.into(),
-        seat: seat.into(),
-        parent: parent.clone().unwrap_or_default(),
-        view,
-        message: message.into(),
-        time: crate::meta::now(),
-        ..Default::default()
-    };
-    let json = serde_json::to_vec_pretty(&op)?;
-    let blob = repo.run_stdin(&["hash-object", "-w", "--stdin"], &json)?.trim().to_string();
-    let tree = repo.run_stdin(&["mktree"], format!("100644 blob {blob}\t{OP_FILE}\n").as_bytes())?.trim().to_string();
-    let parents: Vec<&str> = parent.iter().map(String::as_str).collect();
-    let msg = format!("kula op: {} {message}", kind.as_str());
-    let id = commit_tree(repo, &tree, &parents, &msg)?;
-    repo.run(&["update-ref", OPS_REF, &id])?;
-    Ok(Op { id, ..op })
+    const NO_REF: &str = "0000000000000000000000000000000000000000"; // must not exist
+    let mut lost = None;
+    for _ in 0..16 {
+        let parent = head(repo);
+        let old = parent.clone().unwrap_or_else(|| NO_REF.to_string());
+        let op = Op {
+            id: String::new(),
+            kind: kind.as_str().into(),
+            run: run.into(),
+            seat: seat.into(),
+            parent: parent.clone().unwrap_or_default(),
+            view: view.clone(),
+            message: message.into(),
+            time: crate::meta::now(),
+            ..Default::default()
+        };
+        let json = serde_json::to_vec_pretty(&op)?;
+        let blob = repo.run_stdin(&["hash-object", "-w", "--stdin"], &json)?.trim().to_string();
+        let tree = repo.run_stdin(&["mktree"], format!("100644 blob {blob}\t{OP_FILE}\n").as_bytes())?.trim().to_string();
+        let parents: Vec<&str> = parent.iter().map(String::as_str).collect();
+        let msg = format!("kula op: {} {message}", kind.as_str());
+        let id = commit_tree(repo, &tree, &parents, &msg)?;
+        match repo.run(&["update-ref", OPS_REF, &id, &old]) {
+            Ok(_) => return Ok(Op { id, ..op }),
+            Err(e) => lost = Some(e), // someone appended first; retry on their head
+        }
+    }
+    Err(lost.unwrap_or_else(|| anyhow::anyhow!("the op log head kept moving – gave up after 16 races")))
 }
 
 /// The current head op id, if the log exists.
 pub fn head(repo: &Repo) -> Option<String> {
     repo.run(&["rev-parse", "--verify", "--quiet", OPS_REF]).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+/// Kinds whose op records the full seat view: the head of every seat in the run.
+/// Single-seat ops (save, restore) seed from the newest of these.
+pub const FULL_VIEW_KINDS: [&str; 3] = ["launch", "commit", "undo"];
+
+/// The newest op that carries a full seat view, so a following op can extend
+/// it instead of losing every other seat's entry.
+pub fn last_full_view(repo: &Repo) -> Option<Op> {
+    ops(repo, 200).ok()?.into_iter().find(|o| FULL_VIEW_KINDS.contains(&o.kind.as_str()))
 }
 
 /// Read one op document out of its commit.
@@ -183,7 +209,8 @@ pub fn op(repo: &Repo, id: &str) -> Result<Op> {
     read_op(repo, &oid)
 }
 
-/// The view recorded at op `id`.
+/// The view recorded at op `id`. Wave-2 surface (UI timeline, forks).
+#[allow(dead_code)]
 pub fn view_at(repo: &Repo, id: &str) -> Result<BTreeMap<String, String>> {
     Ok(op(repo, id)?.view)
 }
@@ -229,15 +256,13 @@ fn next_save_n(repo: &Repo, seat: &str) -> u64 {
     saves(repo, seat, 1).first().map(|(r, _, _, _)| save_n(r) + 1).unwrap_or(1)
 }
 
-/// Seconds since a seat's last save op (0 if it never saved).
+/// Seconds since a seat's last save, taken from the save ref's commit time
+/// (`for-each-ref --count=1`), so a busy op log cannot bypass the throttle.
 fn secs_since_last_save(repo: &Repo, seat: &str) -> u64 {
-    if let Ok(list) = ops_from(repo, OPS_REF, 200) {
-        if let Some(t) = list.iter().find(|o| o.kind == "save" && o.seat == seat).map(|o| o.time) {
-            let now = crate::meta::now();
-            return now.saturating_sub(t) as u64;
-        }
+    match saves(repo, seat, 1).first() {
+        Some((_, _, _, t)) => crate::meta::now().saturating_sub(*t) as u64,
+        None => u64::MAX, // the seat never saved
     }
-    u64::MAX
 }
 
 /// Snapshot one seat's worktree without touching its branch or HEAD: a
@@ -273,23 +298,29 @@ pub fn autosave_with(repo: &Repo, wt: &std::path::Path, seat: &str, run: &str, m
     let commit = crate::git::save_commit(repo, &tree, &msg)?;
     let r = format!("{SAVES_PREFIX}/{seat}/{n}");
     repo.run(&["update-ref", &r, &commit])?;
-    let mut view = BTreeMap::new();
+    // The op still carries a full view: every seat's head, with this seat's
+    // entry pointing at the new save.
+    let mut view = last_full_view(repo).map(|o| o.view).unwrap_or_default();
     view.insert(seat.to_string(), commit.clone());
     Ok(Some(append_op_seat(repo, OpKind::Save, run, seat, view, &msg)?))
 }
 
 /// Restore a seat's worktree to a save's commit (branch untouched).
+/// Wave-2 surface: the single-seat restore route lands with the seats UI.
+#[allow(dead_code)]
 pub fn restore_save(repo: &Repo, wt: &std::path::Path, seat: &str, n: u64, run: &str) -> Result<Op> {
     let r = format!("{SAVES_PREFIX}/{seat}/{n}");
     let commit = repo.run(&["rev-parse", "--verify", &r])?.trim().to_string();
     crate::git::reset_worktree_to(wt, &commit)?;
-    let mut view = BTreeMap::new();
+    let mut view = last_full_view(repo).map(|o| o.view).unwrap_or_default();
     view.insert(seat.to_string(), commit.clone());
     Ok(append_op(repo, OpKind::Save, run, view, &format!("restored seat {seat} to save {n}"))?)
 }
 
 /// Fork a seat's work into a new branch from any commit (an op view entry or a
 /// save). The original branch is never touched; a new worktree is created.
+/// Wave-2 surface: fork a seat's work from an earlier op or save.
+#[allow(dead_code)]
 pub fn fork_from(repo: &Repo, commit: &str, seat: &str, name: &str) -> Result<(String, std::path::PathBuf)> {
     crate::git::validate_rev(commit)?;
     let c = repo.run(&["rev-parse", "--verify", &format!("{commit}^{{commit}}")])?.trim().to_string();
@@ -444,7 +475,7 @@ mod property_tests {
     /// ordered no matter how the undo/save/commit churn interleaves.
     #[test]
     fn undo_of_undo_restores_the_view() {
-        let (t, r): (TempDir, crate::git::Repo) = repo();
+        let (_t, r): (TempDir, crate::git::Repo) = repo();
         let wt = r.root.clone();
         let mut rng = Lcg(0xC0FFEE);
         let mut seen_ids = std::collections::HashSet::new();

@@ -1712,12 +1712,7 @@ async fn ops_list(State(s): State<AppState>, axum::extract::Query(q): axum::extr
     blocking(move || {
         let limit = q.limit.unwrap_or(50);
         let mut head = crate::ops::head(&s.repo);
-        let mut list = crate::ops::ops(&s.repo, limit)?;
-        for o in &mut list {
-            if o.kind == "undo" && o.undo_of.is_empty() {
-                o.undo_of = String::new();
-            }
-        }
+        let list = crate::ops::ops(&s.repo, limit)?;
         if head.is_none() {
             head = list.first().map(|o| o.id.clone());
         }

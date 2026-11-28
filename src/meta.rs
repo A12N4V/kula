@@ -767,14 +767,4 @@ mod layout_tests {
     }
 }
 
-// –– Ops views (B2): the metadata side of the swarm op log ––
 
-/// The op log as the UI reads it: recent ops with their kinds, and the count.
-pub fn ops_view(repo: &Repo, limit: usize) -> Result<serde_json::Value> {
-    let list = crate::ops::ops(repo, limit)?;
-    Ok(serde_json::json!({
-        "head": crate::ops::head(repo),
-        "count": crate::ops::ops(repo, usize::MAX).map(|l| l.len()).unwrap_or(0),
-        "ops": list,
-    }))
-}

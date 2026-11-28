@@ -1,6 +1,6 @@
 //! B2: the swarm op log around a real 3-seat run with the fake agent – the
 //! launch op records the view of every seat, each kept slice appends a commit
-//! op, and the log stays unique and ordered. See docs/design/swarm-saves.md.
+//! op, and the log stays unique and ordered. See docs/design/engines/swarm-saves.md.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

@@ -453,10 +453,12 @@ fn launch_op(repo: &Repo, plan: &Plan, run_id: &str) {
     }
 }
 
-/// Append a commit op after a slice's branch advanced.
+/// Append a commit op after a slice's branch advanced. The view is seeded
+/// from the newest op that carries a full seat view (launch, commit or undo) –
+/// never from the immediately previous op, which may be a single-seat save
+/// that knows nothing about the other seats.
 fn commit_op(repo: &Repo, plan: &Plan, run_id: &str, slice: &str, sha: &str) {
-    let last = crate::ops::ops(repo, 1).ok().and_then(|l| l.into_iter().next());
-    let mut view = last.map(|o| o.view).unwrap_or_default();
+    let mut view = crate::ops::last_full_view(repo).map(|o| o.view).unwrap_or_default();
     let s = plan.slice(slice);
     let key = s.map(seat_key).unwrap_or_else(|| slice.to_string());
     view.insert(key.clone(), sha.to_string());

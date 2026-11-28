@@ -545,7 +545,7 @@ pub fn commit_tree_temp_index(_repo: &Repo, wt: &Path) -> Result<String> {
         std::process::id(),
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
     ));
-    let mut step = |args: &[&str]| -> Result<String> {
+    let step = |args: &[&str]| -> Result<String> {
         let mut c = Command::new("git");
         c.arg("-C").arg(wt).env("GIT_INDEX_FILE", &tmp).env("GIT_TERMINAL_PROMPT", "0");
         let out = c.args(args).output().context("failed to run git")?;
