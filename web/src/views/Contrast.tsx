@@ -15,7 +15,6 @@ import { groupDirs } from "../colors";
 import { useSettings } from "../settings";
 
 import { Grip } from "../resize";
-import AsciiMark from "../AsciiMark";
 
 type Props = {
   base: string;
@@ -282,7 +281,7 @@ export default function Contrast({ base, head, onChange, onExit, openInMap, mode
           </div>
         </div>
       )}
-      {!diff && !err && <div className="loading"><div className="mini-loader"><div className="ml-field"><AsciiMark period={3.2} /></div><span>Building both graphs from git…</span></div></div>}
+      {!diff && !err && <div className="loading"><span className="mono muted">Building both graphs from git</span></div>}
       {err && <div className="loading"><Empty title="Couldn't contrast these revisions">{err}</Empty></div>}
 
       <div className="graph-overlay hud contrast-hud">

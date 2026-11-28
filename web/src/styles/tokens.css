@@ -1,15 +1,15 @@
 :root {
-  --bg: #050505;
-  --bg-2: #0a0a0a;
+  --bg: #000;
+  --bg-2: #050505;
   --edge: rgba(181, 172, 159, 0.13);
   --node-faded: #1a1715;
-  --panel: #0c0b0a;
-  --panel-2: #141210;
+  --panel: #050505;
+  --panel-2: #0a0a0a;
   --line: #24201d;
   --line-2: #332d28;
-  --text: #f0ebe3;
-  --text-2: #c2b9ac;
-  --text-3: #867d73;
+  --text: #e8e2d9;
+  --text-2: #b5ac9f;
+  --text-3: #8d8378;
   --accent: #f97f3a;
   --accent-ink: #1a0f07;
   --accent-soft: rgba(249, 127, 58, 0.08);
@@ -53,9 +53,28 @@
      face so a stray font-family var(--font) still resolves to Jost. */
   --font: "Jost Variable", ui-sans-serif, system-ui, sans-serif;
   --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
-  --display: var(--font);
-  --serif: var(--font);
   --ui: var(--font);
+  --display: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  --read: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --serif: var(--read);
+  /* Six sizes, three weights. Nothing else is allowed in the kit. */
+  --fs-display: 28px;
+  --fs-title: 17px;
+  --fs-body: 13px;
+  --fs-label: 12px;
+  --fs-caption: 10px;
+  --fs-code: 11.5px;
+  --fw-1: 400; --fw-2: 500; --fw-3: 600;
+  /* workbench surface (was glass.css) */
+  --line-soft: #1a1715;
+  --glass: #050505; --glass-2: #090807; --glass-hi: transparent;
+  --glass-line: #24201d; --glass-line-2: #332d28;
+  --blur: none; --sheen: none; --lift: none; --ground: none;
+  --sweep: linear-gradient(90deg, transparent, rgba(249, 127, 58, 0.055));
+  --sweep-on: linear-gradient(90deg, rgba(249, 127, 58, 0.1), rgba(249, 127, 58, 0.04));
+  --flow: 0.16s ease;
+  /* aliases older rules still use */
+  --muted: var(--text-3); --line2: var(--line-2); --gap: 8px;
   --module: 8px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: dark;
@@ -68,6 +87,9 @@
     --accent-soft: rgba(212, 100, 44, 0.1); --green: #2f8a44; --red: #c2453b; --yellow: #a67c00; --blue: #2f6fcf; --violet: #8a4fb0; --cyan: #0f8a86; --pink: #b8407a;
     --map-orange: #e8520a; --map-blue: #1565e0; --map-green: #0f9a45; --map-violet: #7b2fd6; --map-yellow: #c99400; --map-cyan: #008f99; --map-pink: #d61a6b; --map-red: #d8261a;
     --add-bg: rgba(47, 138, 68, 0.08); --del-bg: rgba(194, 69, 59, 0.08);
+    --glass: #f4f2ee; --glass-2: #faf6f0; --glass-line: #e2ddd4; --glass-line-2: #d3cdc2; --line-soft: #e8e2d9;
+    --sweep: linear-gradient(90deg, transparent, rgba(240, 82, 1, 0.06));
+    --sweep-on: linear-gradient(90deg, rgba(240, 82, 1, 0.1), rgba(240, 82, 1, 0.03));
     --hover-bg: var(--panel-2);
     --active-bg: #ddd5c8;
     color-scheme: light;
@@ -78,6 +100,9 @@
   --text: #231d18; --text-2: #5d5850; --text-3: #938c81; --accent: #F05201; --accent-ink: #fff;
   --accent-soft: rgba(212, 100, 44, 0.1); --green: #2f8a44; --red: #c2453b; --yellow: #a67c00; --blue: #2f6fcf; --violet: #8a4fb0; --cyan: #0f8a86; --pink: #b8407a;
   --add-bg: rgba(47, 138, 68, 0.08); --del-bg: rgba(194, 69, 59, 0.08);
+  --glass: #f4f2ee; --glass-2: #faf6f0; --glass-line: #e2ddd4; --glass-line-2: #d3cdc2; --line-soft: #e8e2d9;
+  --sweep: linear-gradient(90deg, transparent, rgba(240, 82, 1, 0.06));
+  --sweep-on: linear-gradient(90deg, rgba(240, 82, 1, 0.1), rgba(240, 82, 1, 0.03));
   --hover-bg: var(--panel-2);
   --active-bg: #ddd5c8;
   color-scheme: light;
@@ -85,7 +110,7 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--text); font: 13px/1.5 var(--ui); -webkit-font-smoothing: antialiased; }
+body { background: var(--bg); color: var(--text); font: var(--fs-body)/1.5 var(--ui); -webkit-font-smoothing: antialiased; }
 button, input, textarea, select { font: inherit; color: inherit; }
 code, pre, .mono { font-family: var(--mono); font-size: 12px; }
 ::selection { background: var(--accent-soft); }

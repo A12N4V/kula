@@ -33,7 +33,6 @@
   .commits-grid { grid-template-columns: 1fr; }
 }
 
-.btn svg:not([width]) { width: 15px; height: 15px; flex: none; }
 
 .inspector { background: var(--panel); }
 

@@ -1,39 +1,44 @@
 /* ================================================================ type
-   Developer voice, in Homonin's design kit: JetBrains Mono and nothing else –
-   heavy tight titles, tracked uppercase labels, tabular figures. Square corners. */
-code, pre, .mono { font-size: 11.5px; }
-.section-title, .eyebrow, .kpi-label, .set-sec, .legend-head, .cp-group, .palette .grp, .help-sep, .hot-headrow, .split-tag .muted, .inspector header .kind {
-  font-family: var(--mono); font-weight: 500; font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+   Four families by role (house kit): Cormorant Garamond names things
+   (view titles, headlines, entity names), Newsreader reads (long prose,
+   synopses), Jost runs the interface (buttons, inputs, rows), JetBrains Mono
+   carries data (uppercase tracked labels, numbers, paths, code).
+   Six sizes: display 28, title 17, body 13, label 12, caption 10, code 11.5. */
+code, pre, .mono { font-family: var(--mono); font-size: var(--fs-code); }
+
+/* data labels: mono, uppercase, tracked */
+.section-title, .eyebrow, .kpi-label, .set-sec, .legend-head, .cp-group, .palette .grp, .help-sep, .hot-headrow, .split-tag .muted, .inspector header .kind, .label {
+  font-family: var(--mono); font-weight: var(--fw-2); font-size: var(--fs-caption); letter-spacing: .14em; text-transform: uppercase; color: var(--text-3);
 }
-.ov-title h1, .detail h1, .list-head h2, .card-head h2, .settings header h2, .help-head h2, .empty h3 {
-  font-family: var(--mono); font-weight: 700; letter-spacing: -.02em;
-}
-.ov-title h1 { font-size: 28px; line-height: 1; letter-spacing: -.03em; }
-.ov-title h1::before { content: "~/"; color: var(--accent); font-weight: 500; }
-.detail h1 { font-size: 24px; line-height: 1.05; }
-.card-head h2, .list-head h2 { font-size: 16px; }
-.settings header h2, .help-head h2 { font-size: 16px; }
-.kpi-cell b, .stat b, .cp-stat b { font-family: var(--mono); font-weight: 600; font-size: 24px; line-height: 1; letter-spacing: -.03em; }
-.stat b, .cp-stat b { font-size: 26px; }
 .eyebrow { color: var(--accent); }
-.inspector header h2 { font-size: 16px; letter-spacing: -.01em; }
-.brand span { font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase; }
-.hud-stats b, .hc-stats b, .insp-facts b { font-family: var(--mono); font-weight: 600; font-size: 11px; }
 
-/* Code shows the characters that are in the file: no ligatures anywhere mono is used. */
-code, pre, kbd, .mono, .diff, .console, .code, input.mono, .kind-badge { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+/* names of things: Cormorant */
+.ov-title h1, .detail h1, .list-head h2, .card-head h2, .settings header h2, .help-head h2, .empty h3, .inspector header h2, .vh-title, .display {
+  font-family: var(--display); font-weight: var(--fw-2); letter-spacing: 0; line-height: 1.1;
+}
+.ov-title h1 { font-size: var(--fs-display); }
+.detail h1 { font-size: 24px; }
+.card-head h2, .list-head h2, .settings header h2, .help-head h2, .inspector header h2 { font-size: 19px; }
+.empty h3 { font-size: 20px; color: var(--text); }
 
-.kpi-cell b, .stat b, .cp-stat b, .op-word, .ch-title, .ov-title h1 { font-variant-numeric: tabular-nums; }
+/* long form reading: Newsreader */
+.prose, .synopsis, .note-body, .about { font-family: var(--read); font-size: 14px; line-height: 1.6; }
 
+/* figures: mono, tabular */
+.kpi-cell b, .stat b, .cp-stat b { font-family: var(--mono); font-weight: var(--fw-2); font-size: 24px; line-height: 1; letter-spacing: -.02em; }
+.hud-stats b, .hc-stats b, .insp-facts b { font-family: var(--mono); font-weight: var(--fw-3); font-size: 11px; }
+.kpi-cell b, .stat b, .cp-stat b, .ch-title, .ov-title h1, .num, td.num { font-variant-numeric: tabular-nums; }
+.brand span { font-family: var(--display); font-size: 19px; font-weight: var(--fw-3); letter-spacing: .02em; }
 
-.cp-code, .code, pre, code { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+/* code shows the characters in the file: no ligatures wherever mono is used */
+code, pre, kbd, .mono, .diff, .console, .code, input.mono, .kind-badge, .cp-code { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
 
-/* Stat table: one figure per row – the name left, the number right */
-.stat-table { width: 100%; border-collapse: collapse; border: 1px solid var(--line); background: var(--panel); font-size: 12px; margin: 10px 0; }
+/* stat table: one figure per row, the name left, the number right */
+.stat-table { width: 100%; border-collapse: collapse; border: 1px solid var(--line); background: var(--panel); font-size: var(--fs-label); margin: 10px 0; }
 .stat-table tr + tr { border-top: 1px solid var(--line); }
-.stat-table th { padding: 7px 12px; text-align: left; font-weight: 500; color: var(--text-2); }
+.stat-table th { padding: 7px 12px; text-align: left; font-weight: var(--fw-1); color: var(--text-2); }
 .stat-table .st-note { margin-left: 10px; font-size: 11px; color: var(--text-3); }
-.stat-table td { padding: 7px 12px; text-align: right; white-space: nowrap; font: 600 13px var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+.stat-table td { padding: 7px 12px; text-align: right; white-space: nowrap; font: var(--fw-2) 13px var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
 .stat-table td b { font: inherit; }
 .stat-table tr.go { cursor: pointer; }
 .stat-table tr.go:hover { background: var(--panel-2); }

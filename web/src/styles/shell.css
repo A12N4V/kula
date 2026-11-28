@@ -1,6 +1,5 @@
 /* ---------- shell ---------- */
 .shell { display: grid; grid-template-columns: 56px 1fr; grid-template-rows: 48px 1fr 26px; height: 100%; }
-.topbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 10px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: 0.02em; }
 .brand svg { width: 26px; height: 26px; }
 .crumb { color: var(--text-3); }
@@ -16,13 +15,6 @@
 kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radius: var(--r-sm); border: 1px solid var(--line-2); color: var(--text-2); background: var(--bg-2); }
 .search-trigger kbd { margin-left: auto; }
 
-.rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; border-right: 1px solid var(--line); background: var(--bg-2); }
-.rail button { position: relative; width: 38px; height: 38px; display: grid; place-items: center; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; transition: color 0.15s, background 0.15s; }
-.rail button:hover { color: var(--text); background: var(--panel-2); }
-.rail button.on { color: var(--accent); background: var(--accent-soft); }
-.rail .badge { position: absolute; bottom: -1px; left: 50%; transform: translateX(-50%); min-width: 14px; height: 11px; padding: 0 3px; border-radius: 6px; border: 1px solid var(--accent); background: var(--bg-2); color: var(--accent); font: 600 8px/9px var(--mono); text-align: center; pointer-events: none; }
-.rail svg { width: 19px; height: 19px; }
-.rail [data-tip]:hover::after { content: attr(data-tip); position: absolute; left: 48px; top: 50%; transform: translateY(-50%); padding: 4px 8px; border-radius: var(--r-sm); background: var(--panel-2); border: 1px solid var(--line-2); color: var(--text); font-size: 12px; white-space: nowrap; z-index: 50; pointer-events: none; }
 
 .main { position: relative; overflow: hidden; min-width: 0; }
 .statusbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 0 12px; border-top: 1px solid var(--line); background: var(--bg-2); color: var(--text-3); font-size: 11.5px; }
@@ -72,10 +64,6 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .brand:hover { background: var(--panel-2); }
 .crumb-repo { font-weight: 500; }
 .crumb-view { color: var(--text-2); }
-.rail { gap: 0; }
-.rail-group { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
-.rail-group + .rail-group { border-top: 1px solid var(--line); }
-.rail-group:last-child { margin-top: auto; }
 .dot.pulse { animation: dotpulse 1.2s ease-in-out infinite; }
 @keyframes dotpulse { 50% { opacity: .35; } }
 .sb-help { border: 0; background: none; color: var(--text-3); font: inherit; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
@@ -104,43 +92,10 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .help-row kbd { min-width: 64px; text-align: center; }
 .help-sep { grid-column: 1 / -1; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); margin-top: 10px; }
 
-/* ================================================================ opening */
-.dither { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-.opening { position: fixed; inset: 0; z-index: 300; background: var(--bg); overflow: hidden; cursor: pointer; animation: op-in .3s ease-out both;
-  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
-  background-size: calc(100% / 8) calc(100% / 6); background-position: -1px -1px; }
-.opening::before { content: ""; position: absolute; inset: 0; background: color-mix(in oklab, var(--bg) 78%, transparent); }
-.opening.leaving { animation: op-out .42s var(--ease) both; }
-@keyframes op-in { from { opacity: 0; } }
-@keyframes op-out { to { opacity: 0; transform: scale(1.015); } }
-.op-dither { position: absolute; left: 10%; top: 5%; width: 80% !important; height: 66% !important; }
-.op-ruler { position: absolute; top: 14px; left: 36px; right: 36px; display: grid; grid-template-columns: repeat(8, 1fr); border-bottom: 1px solid var(--line-2); font: 500 10px var(--mono); letter-spacing: .1em; color: var(--text-3); }
-.op-ruler span { padding: 0 0 4px 6px; border-left: 1px solid var(--line-2); }
-.op-corner { position: absolute; width: 18px; height: 18px; border-color: var(--text-3); border-style: solid; border-width: 0; }
-.op-corner.tl { top: 10px; left: 10px; border-top-width: 1px; border-left-width: 1px; }
-.op-corner.tr { top: 10px; right: 10px; border-top-width: 1px; border-right-width: 1px; }
-.op-corner.bl { bottom: 10px; left: 10px; border-bottom-width: 1px; border-left-width: 1px; }
-.op-corner.br { bottom: 10px; right: 10px; border-bottom-width: 1px; border-right-width: 1px; }
-.op-foot { position: absolute; left: 36px; right: 36px; bottom: 34px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
-.op-word { font: 600 clamp(72px, 14vw, 190px)/.92 var(--display); letter-spacing: -.01em; color: var(--text); animation: op-word .9s var(--ease) .15s both; }
-@keyframes op-word { from { opacity: 0; transform: translateY(18px); letter-spacing: .12em; } }
-.op-tag { margin-top: 20px; font: 500 11px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--text-3); }
-.op-facts { margin: 0; display: grid; grid-template-columns: auto auto; gap: 4px 18px; font: 500 11.5px var(--mono); min-width: 260px; }
-.op-facts div { display: contents; }
-.op-facts dt { color: var(--text-3); text-transform: uppercase; letter-spacing: .14em; font-size: 10px; align-self: center; animation: rise .25s ease-out both; }
-.op-facts dd { margin: 0; color: var(--text); text-align: right; animation: rise .25s ease-out both; }
-.op-skip { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); font: 500 10px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--text-3); }
-
 /* Homonin type: one-line search hint in mono, lining figures in the serif */
 .search-trigger .st-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* top bar at tablet widths: search gives way first, then a long branch name truncates – settings never leaves the screen */
-.topbar > * { flex-shrink: 0; }
-.topbar .search-trigger { flex: 0 1 420px; width: auto; min-width: 120px; }
-.topbar .chip { flex-shrink: 1; min-width: 0; max-width: 240px; }
-.topbar .chip b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.topbar .crumb-repo, .topbar .crumb-view { white-space: nowrap; }
-@media (max-width: 900px) { .topbar .crumb:nth-of-type(2), .topbar .crumb-view { display: none; } .topbar .chip { max-width: 170px; } .topbar .search-trigger { min-width: 96px; } }
 /* status bar: the stats line truncates before anything is pushed off the edge */
 .statusbar { min-width: 0; overflow: hidden; }
 .statusbar > * { flex-shrink: 0; white-space: nowrap; }
@@ -148,23 +103,16 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .statusbar > .sb-stats { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* icons without their own size take the text's */
 .chip svg, .btn svg, .tag svg { width: 14px; height: 14px; flex: none; }
-.rail button svg { width: 18px; height: 18px; }
 
 /* ================================================================ phones: logo and the sidebar toggle on the left, search and settings on the right;
    the sidebar is a drawer with labels, summoned and dismissed from the top bar */
-.rail-toggle, .rail-label, .rail-scrim { display: none; }
 
 /* ---------- topbar actions: back, search, settings ---------- */
-.top-actions { display: flex; align-items: center; gap: 2px; }
-.top-search { gap: 8px; padding: 0 8px; }
-.top-search kbd { font-size: 10px; }
-.btn.icon-only.sm { width: 28px; }
 
 /* D1: hover/focus system – decoration shadows go, 1px borders replace them;
    rail tooltips get the shared delay and border language.
    (dot glow, palette/toast shadows and the box-shadow transition were folded
    into the original declarations above.) */
-.rail [data-tip]:hover::after { box-shadow: none; border: 1px solid var(--line-2); }
 .item, .sym, .ov-row, .kpi, .cp-stat, .hot-row { transition: background var(--dur), border-color var(--dur), color var(--dur), opacity var(--dur); }
 .chip { height: 28px; }
 .sb-help { height: 28px; padding: 0 6px; }
@@ -204,4 +152,3 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .view-body { position: absolute; inset: 0; }
 .help { max-height: calc(100vh - 64px); overflow: auto; }
 @media (max-width: 1100px) { .help-grid { grid-template-columns: 1fr; } }
-.top-actions .btn.on { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 45%, transparent); }

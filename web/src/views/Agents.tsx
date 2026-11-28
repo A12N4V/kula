@@ -9,11 +9,11 @@ import { Empty, useToast } from "../ui";
 import type { Nav } from "./hub/data";
 import { LEVEL_TEXT, LEVEL_MEANS, GuardTag } from "./hub/levels";
 import Hub from "./hub/Hub";
-import AsciiMark from "../AsciiMark";
+import type { Mode } from "./hub/Hub";
 
 export { LEVEL_TEXT, LEVEL_MEANS, GuardTag };
 
-export default function Agents({ version, onChanged }: Nav) {
+export default function Agents({ version, onChanged, mode, setMode }: Nav & { mode?: Mode; setMode?: (m: Mode) => void }) {
   const [info, setInfo] = useState<AgentsInfo | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const toast = useToast();
@@ -26,10 +26,10 @@ export default function Agents({ version, onChanged }: Nav) {
   };
 
   if (err) return <div className="page"><Empty title="Agent state unavailable">{err}</Empty></div>;
-  if (!info) return <div className="loading"><div className="mini-loader"><div className="ml-field"><AsciiMark period={3.2} /></div><span>Reading teams and fences</span></div></div>;
+  if (!info) return <div className="loading"><span className="mono muted">Reading teams and fences</span></div>;
   return (
     <div className="page agents hub">
-      <Hub info={info} act={act} />
+      <Hub info={info} act={act} mode={mode} setMode={setMode} />
     </div>
   );
 }

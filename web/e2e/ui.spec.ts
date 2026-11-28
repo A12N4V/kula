@@ -84,28 +84,25 @@ test.describe("shell", () => {
     await expect(page.locator(".stat-table.ov-stats")).toBeVisible();
   });
 
-  test("top bar carries only navigation, search and settings", async ({ page }) => {
+  test("one header row: the destination, its modes, the view's tools and search", async ({ page }) => {
     await open(page);
-    const bar = page.locator(".topbar");
+    const bar = page.locator(".k-head");
     await expect(bar.getByText(/graph current|no graph/i)).toHaveCount(0);
     await expect(bar.getByRole("button", { name: /Reindex/ })).toHaveCount(0);
-    await expect(bar.getByRole("button", { name: "Keyboard shortcuts" })).toHaveCount(0);
-    await expect(bar.getByRole("button", { name: "Settings" })).toBeVisible();
+    await expect(bar.getByRole("button", { name: "Search" })).toBeVisible();
+    await expect(page.locator(".k-nav").getByRole("button", { name: "Settings" })).toBeVisible();
+    const h = await bar.boundingBox();
+    expect(h!.height).toBe(44);
   });
 
-  test("search is an icon beside settings, and back/forward walk through views", async ({ page }) => {
+  test("search opens the palette, and back/forward walk through destinations", async ({ page }) => {
     await open(page);
-    const actions = page.locator(".topbar .top-actions");
-    const search = actions.getByRole("button", { name: "Search" });
-    const gear = actions.getByRole("button", { name: "Settings" });
-    const [s, g] = [await search.boundingBox(), await gear.boundingBox()];
-    expect(g!.x - (s!.x + s!.width)).toBeLessThan(12);
-    await search.click();
+    await page.locator(".k-head").getByRole("button", { name: "Search" }).click();
     await expect(page.locator(".palette")).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.locator(".k-nav").getByRole("button", { name: "Agents" }).click();
     await expect(page).toHaveURL(/#agents$/);
-    await expect(page.locator(".hub-top")).toBeVisible();
+    await expect(page.locator(".k-head .k-hub-tools")).toBeVisible();
     await page.goBack();
     await expect(page.locator(".ov-title h1")).toBeVisible();
     await page.keyboard.press("Alt+ArrowRight");
@@ -114,9 +111,9 @@ test.describe("shell", () => {
 
   test("mark is the kula ring drawn with kula rings, everywhere", async ({ page, request }) => {
     await open(page);
-    const mark = page.locator(".brand svg.logo");
+    const mark = page.locator(".k-logo svg.logo");
     await expect(mark).toHaveAttribute("shape-rendering", "crispEdges");
-    // One level in the top bar (a 7×7 ring and its centre: 17 cells)…
+    // One level in the nav (a 7×7 ring and its centre: 17 cells)…
     expect((await mark.locator("path").getAttribute("d"))?.match(/M\d+ \d+h1v1h-1z/g)?.length).toBe(17);
     // …two levels in the tab icon: every cell is the ring again (17 × 17).
     const fav = await (await request.get("/favicon.svg")).text();
@@ -126,46 +123,30 @@ test.describe("shell", () => {
 
   test("simple icons: one round-capped stroke, and settings is a gear", async ({ page }) => {
     await open(page);
-    for (const svg of await page.locator(".rail button svg").all()) {
+    for (const svg of await page.locator(".k-nav .k-dest svg").all()) {
       expect(await svg.getAttribute("stroke-linecap")).toBe("round");
       expect(await svg.getAttribute("stroke-width")).toBe("1.5");
     }
-    const gear = page.locator(".topbar").getByRole("button", { name: "Settings" }).locator("svg");
+    const gear = page.locator(".k-nav").getByRole("button", { name: "Settings" }).locator("svg");
     await expect(gear.locator("circle")).toHaveCount(1);
     expect(((await gear.locator("path").getAttribute("d")) ?? "").split("L").length).toBeGreaterThan(30); // eight teeth
     // No icon balloons to its container: every icon in the chrome stays at text size.
-    const big = await page.evaluate(() => [...document.querySelectorAll(".topbar svg, .rail svg, .statusbar svg, .btn svg, .chip svg")]
+    const big = await page.evaluate(() => [...document.querySelectorAll(".k-head svg, .k-nav .btn svg, .statusbar svg, .btn svg, .chip svg")]
       .filter((el) => el.getBoundingClientRect().height > 26).length);
     expect(big).toBe(0);
   });
 
-  test("editor tabs keep several views open and close any of them", async ({ page }) => {
-    await open(page);
-    const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
-    // Going somewhere changes the current tab, as a browser does; + opens a new one on the overview.
-    await page.evaluate(() => { location.hash = "#graph"; });
-    await expect(tabs).toHaveText(["Graph"]);
-    await page.getByRole("button", { name: "New tab" }).click();
-    await expect(tabs).toHaveText(["Graph", "Overview"]);
-    await expect(page).toHaveURL(/#overview\b/);
-    await tabs.first().click();
-    await expect(page).toHaveURL(/#graph\b/);
-    await tabs.nth(1).click();
-    await page.evaluate(() => { location.hash = "#graph"; });
-    await expect(tabs).toHaveText(["Graph", "Overview"]);
-    await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
-    await page.getByRole("button", { name: "Close Overview" }).click();
-    await expect(tabs).toHaveText(["Graph"]);
-    await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("button", { name: "Close Graph" })).toHaveCount(0);
-    // Double click on a project file opens it in a tab of its own.
+  test("a project file opens in place and Back returns to the view", async ({ page }) => {
+    await open(page, "graph");
     if (!(await page.locator(".pt-row").first().isVisible())) await page.keyboard.press("Alt+1");
     const row = page.locator(".pt-row.file").first();
     const name = ((await row.getAttribute("title")) ?? "").split("/").pop()!;
     await row.dblclick();
-    await expect(tabs).toHaveCount(2);
-    await expect(tabs.nth(1)).toHaveText(name);
     await expect(page.getByTestId("file-editor")).toBeVisible();
+    await expect(page.locator(".k-head .k-title h1")).toHaveText(name);
+    await page.locator(".k-head").getByRole("button", { name: "Back" }).click();
+    await expect(page.getByTestId("file-editor")).toHaveCount(0);
+    await expect(page).toHaveURL(/#graph\b/);
   });
 
   test("⌘K opens the palette and it can reindex", async ({ page }) => {
@@ -183,8 +164,9 @@ test.describe("design language", () => {
   test("type by role: Jost for the interface, JetBrains Mono for data", async ({ page }) => {
     await open(page);
     const ff = (sel: string) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).fontFamily);
-    for (const sel of ["body", ".btn", ".top-search"]) expect(await ff(sel), sel).toMatch(/^"?Jost/);
-    for (const sel of [".stat-table td", ".card-head h2"]) expect(await ff(sel), sel).toMatch(/^"?JetBrains Mono/);
+    for (const sel of ["body", ".btn", ".k-search"]) expect(await ff(sel), sel).toMatch(/^"?Jost/);
+    for (const sel of [".stat-table td"]) expect(await ff(sel), sel).toMatch(/^"?JetBrains Mono/);
+    for (const sel of [".card-head h2", ".k-title h1"]) expect(await ff(sel), sel).toMatch(/^"?Cormorant/);
     const faces = await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].map((f) => f.family); });
     expect(faces.join(",")).not.toMatch(/Antonio|Geist|Simulacra/);
   });
@@ -201,8 +183,8 @@ test.describe("design language", () => {
   test("flat: framed surfaces 6, controls 4, and nothing is frosted", async ({ page }) => {
     await open(page);
     for (const sel of [".card", ".stat-table.ov-stats"]) expect(await radius(page, sel), sel).toBe("6px");
-    for (const sel of [".btn", ".top-search", ".chip"]) expect(await radius(page, sel), sel).toBe("4px");
-    for (const sel of [".topbar", ".card"]) {
+    for (const sel of [".btn", ".k-search", ".chip"]) expect(await radius(page, sel), sel).toBe("4px");
+    for (const sel of [".k-head", ".card"]) {
       const bf = await page.locator(sel).first().evaluate((el) => { const s = getComputedStyle(el); return s.backdropFilter || (s as any).webkitBackdropFilter; });
       expect(bf, sel).not.toMatch(/blur/);
     }
@@ -326,19 +308,6 @@ test.describe("api", () => {
 });
 
 test.describe("animation", () => {
-  test("the opening plays once and any key dismisses it", async ({ page }) => {
-    await page.addInitScript(() => { try { localStorage.setItem("kula.settings.v1", JSON.stringify({ opening: true })); } catch { /* */ } });
-    await page.goto("/#overview");
-    const op = page.locator(".opening");
-    await expect(op).toBeVisible();
-    await expect(op.locator(".op-facts > div").first()).toBeVisible({ timeout: 3000 });
-    await page.keyboard.press("Space");
-    await expect(op).toHaveCount(0, { timeout: 3000 });
-    await page.reload();
-    await expect(page.locator(".ov-title h1")).toBeVisible();
-    await expect(op).toHaveCount(0); // once per session
-  });
-
   test("panels resize by their edge and remember it", async ({ page }) => {
     await open(page, "notes");
     const list = page.locator(".split > .list");
@@ -369,8 +338,8 @@ test.describe("animation", () => {
 // Every view at every size: nothing scrolls sideways and the view's own content shows.
 const VIEWS: [string, string][] = [
   ["overview", ".ov-title h1"], ["graph", ".graph-wrap"], ["git", "[data-testid=w-tree]"],
-  ["issues", "[data-testid=issue-desk]"], ["notes", ".list-head"], ["console", ".console"],
-  ["agents", ".hub-top"], ["query", ".kq-text"], ["flows", ".qv-head"], ["impact", ".qv-head"], ["slice", ".qv-head"],
+  ["issues", "[data-testid=issue-desk]"], ["notes", ".list-head"], ["console", ".k-drawer .console"],
+  ["agents", ".k-hub-tools"], ["query", ".kq-text"], ["flows", ".qv-head"], ["impact", ".qv-head"], ["slice", ".qv-head"],
 ];
 for (const [view, sel] of VIEWS) {
   test(`@responsive ${view} fits without sideways scroll`, async ({ page }, info) => {
@@ -381,7 +350,7 @@ if (view === "graph") { test.setTimeout(60_000); await expect(page.locator(".gra
     const over = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
     expect(over).toBeLessThanOrEqual(0);
     // Nothing important is pushed off the right edge.
-    const clipped = await page.evaluate(() => [...document.querySelectorAll(".topbar button, .rail button, .kpi-cell, .card-head h2, .list-head h2, .graph-head button, .zoom button")]
+    const clipped = await page.evaluate(() => [...document.querySelectorAll(".k-head button, .k-nav button, .kpi-cell, .card-head h2, .list-head h2, .graph-head button, .zoom button")]
       .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > window.innerWidth + 1; }).map((el) => el.textContent?.trim().slice(0, 30)));
     expect(clipped).toEqual([]);
     await page.screenshot({ path: `test-results/${info.project.name}-${view}.png` });
@@ -407,8 +376,7 @@ test.describe("console", () => {
   test("a terminal that runs kula: tabs to add and close, help, kula's own commands and git's", async ({ page }) => {
     await open(page, "console");
     const c = page.locator(".console");
-    await expect(c.locator(".ch-title")).toHaveText("Console");
-    await expect(c.locator(".ch-text p")).toHaveCount(0);
+    await expect(page.locator(".k-drawer.open .k-drawer-head")).toContainText("Console");
     const input = page.getByRole("textbox", { name: "kula command" });
     await input.fill("help");
     await input.press("Enter");
@@ -551,7 +519,7 @@ test.describe("agent hub (H.4)", () => {
     desktopOnly(info);
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, "agents");
-    await expect(page.locator(".hub-top")).toBeVisible();
+    await expect(page.locator(".k-head")).toBeVisible();
     // the canvas fills the pane; the palette and inspector only float up when asked
     const cv = await page.locator(".hub-canvas, .hub-body > .react-flow").first().boundingBox();
     const body = await page.locator(".hub-body").boundingBox();
@@ -567,7 +535,7 @@ test.describe("agent hub (H.4)", () => {
     });
     expect(fits).toEqual({ hub: 0, doc: 0, x: 0 });
     // an agent's suggestion waits in the overview until a person decides
-    await page.locator(".hub-top").getByRole("button", { name: /^Overview/ }).click();
+    await page.locator(".k-head").getByRole("button", { name: /^Overview/ }).click();
     await expect(page.getByRole("region", { name: "Suggested" })).toContainText("generated by the web build");
     await page.screenshot({ path: "test-results/hub-build.png", scale: "css" });
   });
@@ -631,7 +599,7 @@ test.describe("agent hub (H.4)", () => {
   test("H.4: an agent's suggestion is accepted into kula.toml from the hub", async ({ page, request }, info) => {
     desktopOnly(info);
     await open(page, "agents");
-    await page.locator(".hub-top").getByRole("button", { name: /^Overview/ }).click();
+    await page.locator(".k-head").getByRole("button", { name: /^Overview/ }).click();
     const sugg = page.getByRole("region", { name: "Suggested" });
     await sugg.locator(".hub-sugg").filter({ hasText: "generated by the web build" }).getByRole("button", { name: "Accept" }).click();
     await expect(sugg).toHaveCount(0);
@@ -643,7 +611,7 @@ test.describe("agent hub (H.4)", () => {
     desktopOnly(info);
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, "agents");
-    await page.locator(".hub-top").getByRole("button", { name: /^Overview/ }).click();
+    await page.locator(".k-head").getByRole("button", { name: /^Overview/ }).click();
     // the fixture seeds a task; keep its file and put it back after
     const task = path.join(path.dirname(tomlOf(fx)), ".kula/task.json");
     const taskBefore = fs.existsSync(task) ? fs.readFileSync(task, "utf8") : null;
@@ -722,7 +690,7 @@ test.describe("agent hub runs (H.6)", () => {
     desktopOnly(info);
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, "agents");
-    await page.getByRole("group", { name: "Mode" }).getByRole("button", { name: "Runs" }).click();
+    await page.getByRole("radio", { name: "Runs" }).click();
     const board = page.getByLabel("Runs", { exact: true });
     await expect(board.locator(".runs-row")).toHaveCount(2, { timeout: 10_000 });
     // newest first, and the newest is opened
@@ -751,7 +719,7 @@ test.describe("agent hub runs (H.6)", () => {
     await page.screenshot({ path: "test-results/hub-runs.png", scale: "css" });
     // Replay opens Live on that run
     await detail.getByRole("button", { name: "Replay" }).click();
-    await expect(page.getByRole("group", { name: "Mode" }).getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("radio", { name: "Live" })).toHaveAttribute("aria-checked", "true");
   });
 });
 
@@ -834,7 +802,7 @@ members = [
     await expect(chart).toContainText("base 10");
     await expect(chart).toContainText("best 8");
     // Runs: the research run, its synopsis, chart and hypotheses
-    await page.getByRole("group", { name: "Mode" }).getByRole("button", { name: "Runs" }).click();
+    await page.getByRole("radio", { name: "Runs" }).click();
     const row = page.locator(`.runs-row[data-run="${ledger.id}"]`);
     await expect(row).toContainText("e2e-speed research, lower speed", { timeout: 10_000 });
     await row.click();
@@ -901,7 +869,7 @@ budget = 1
     test.setTimeout(90_000);
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, "agents");
-    const deploy = page.locator(".hub-top").getByRole("button", { name: "Deploy" });
+    const deploy = page.locator(".k-head").getByRole("button", { name: "Deploy" });
     await expect(deploy).toBeDisabled();
     await page.locator('.hub-team[data-team="e2e-ship"] .hub-team-head').click();
     await expect(deploy).toBeEnabled();
@@ -920,7 +888,7 @@ budget = 1
     await page.screenshot({ path: "test-results/hub-deploy.png", scale: "css" });
     await dlg.getByRole("button", { name: "Deploy", exact: true }).click();
     await expect(dlg).toBeHidden({ timeout: 10_000 });
-    await expect(page.getByRole("group", { name: "Mode" }).getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("radio", { name: "Live" })).toHaveAttribute("aria-checked", "true");
     // the ledger gets the run, tagged manual, and Runs lists it
     const ledgers = () => (fs.existsSync(runsDir(fx)) ? fs.readdirSync(runsDir(fx)).filter((f) => f.endsWith(".json") && !runsBefore.has(f)) : []);
     await expect.poll(() => ledgers().length, { timeout: 30_000 }).toBeGreaterThan(0);
@@ -929,7 +897,7 @@ budget = 1
     expect(rec.team).toBe("e2e-ship");
     expect(rec.trigger).toBe("manual");
     expect(rec.goal).toBe("tighten the error copy");
-    await page.getByRole("group", { name: "Mode" }).getByRole("button", { name: "Runs" }).click();
+    await page.getByRole("radio", { name: "Runs" }).click();
     await expect(page.locator(`.runs-row[data-run="${rec.id}"]`)).toContainText("tighten the error copy", { timeout: 10_000 });
     // the schedule: next fire, then pause from the card
     const card = page.getByRole("region", { name: "Schedules" });
@@ -951,7 +919,7 @@ test.describe("git board", () => {
       await open(page, "git");
       await expect(page.getByTestId("w-tree")).toBeVisible();
       await expect(page.getByTestId("w-det")).toBeVisible();
-      const panels = page.getByRole("toolbar", { name: "Options" });
+      const panels = page.getByRole("toolbar", { name: "Panels" });
       for (const [m, a] of [["History", "hist"], ["Branches", "br"], ["Sync", "sync"], ["Stashes", "stash"], ["Issues", "iss"], ["Review", "rev"]]) {
         const b = panels.getByRole("button", { name: new RegExp(`^${m}`) });
         if ((await b.getAttribute("aria-pressed")) !== "true") await b.click();
@@ -1146,19 +1114,20 @@ test.describe("g1 – git by keyboard", () => {
 
 test.describe("N1 · shell: palette, shortcuts, states", () => {
   const VIEWS: [string, string][] = [
-    ["Overview", "overview"], ["Graph", "graph"], ["Flows", "flows"], ["Git", "git"], ["Proposals", "proposals"],
-    ["Issues", "issues"], ["Notes", "notes"], ["Agents", "agents"], ["Ask", "query"], ["Slice", "slice"], ["Console", "console"],
+    ["Go to Home", "overview"], ["Go to Agents", "agents"], ["Go to Code", "map"], ["Go to Changes", "git"], ["Go to Review", "proposals"],
+    ["Open Graph", "graph"], ["Open Flows", "flows"], ["Open Issues", "issues"], ["Open Notes", "notes"], ["Open Query", "query"], ["Open Slice", "slice"], ["Open Console", "console"],
   ];
 
   test("N1.1: every view is reachable from the palette", async ({ page }) => {
     await open(page);
     for (const [label, id] of VIEWS) {
       await page.keyboard.press("ControlOrMeta+k");
-      await page.keyboard.type(`>goto ${label}`);
+      await page.keyboard.type(`>${label}`);
       const first = page.locator(".palette .res").first();
       await expect(first).toContainText(label);
       await first.click();
-      await expect(page).toHaveURL(new RegExp(`#${id}\\b`));
+      if (id === "console") await expect(page.locator(".k-drawer.open .console")).toBeVisible();
+      else await expect(page).toHaveURL(new RegExp(`#${id}\\b`));
     }
   });
 
@@ -1168,12 +1137,12 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
     const sheet = page.getByTestId("settings-keys");
     await expect(sheet).toBeVisible();
     // The list is generated from the same registry the shell acts on.
-    const ACTIONS = [["palette", "Command palette"], ["back", "Go back"], ["forward", "Go forward"], ["project", "Toggle Project tree"], ["right", "Toggle option panel"], ["settings", "Open settings"], ["keys", "Open keybindings"], ["console", "Console"], ["agents", "Agents"], ["query", "Ask"], ["extensions", "Extensions"]];
+    const ACTIONS = [["palette", "Command palette"], ["back", "Go back"], ["forward", "Go forward"], ["project", "Toggle Project tree"], ["right", "Toggle option panel"], ["settings", "Open settings"], ["keys", "Open keybindings"], ["console", "Console"], ["agents", "Agents"], ["query", "Query"], ["extensions", "Extensions"]];
     for (const [id, label] of ACTIONS) await expect(sheet.locator(`.key-row[data-action="${id}"]`)).toContainText(label);
     await page.keyboard.press("Escape");
     await expect(sheet).toHaveCount(0);
-    // ⇧1 goes to the overview…
-    await page.keyboard.press("Shift+Digit1");
+    // 1 goes home…
+    await page.keyboard.press("Digit1");
     await expect(page).toHaveURL(/#overview\b/);
     // ⌘K opens the palette, Escape closes it…
     await page.keyboard.press("ControlOrMeta+k");
@@ -1201,12 +1170,12 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
     await expect(page).toHaveURL(/#agents\b/);
     await page.keyboard.press("q");
     await expect(page).toHaveURL(/#query\b/);
-    // Ask sits under Graph, whose toggle switches modes and 3 remembers the last one.
-    await expect(page.locator("nav.rail").getByRole("button", { name: "Graph" })).toHaveAttribute("aria-current", "page");
+    // Query sits under Code, whose toggle switches modes and 3 remembers the last one.
+    await expect(page.locator(".k-nav [data-dest=code]")).toHaveAttribute("aria-current", "page");
     await page.getByRole("radio", { name: "Flows" }).click();
     await expect(page).toHaveURL(/#flows\b/);
-    await page.keyboard.press("Shift+Digit1");
-    await page.keyboard.press("Shift+Digit3");
+    await page.keyboard.press("Digit1");
+    await page.keyboard.press("Digit3");
     await expect(page).toHaveURL(/#flows\b/);
     await page.getByRole("radio", { name: "Graph" }).click();
     await expect(page.locator("main canvas.ct-canvas")).toBeVisible({ timeout: 30_000 });
@@ -1225,14 +1194,14 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
       await page.locator(".palette .res").first().click();
       await expect(page).toHaveURL(hash);
     };
-    // Run Flows, then Console. The palette remembers, most recent first.
-    await run("Flows", /#flows\b/);
-    await run("Console", /#console\b/);
+    // Go to Review, then Agents. The palette remembers, most recent first.
+    await run("Review", /#proposals\b/);
+    await run("Agents", /#agents\b/);
     await page.keyboard.press("ControlOrMeta+k");
     await page.keyboard.type(">go to");
     const results = page.locator(".palette .res");
-    await expect(results.first()).toContainText("Go to Console");
-    await expect(results.nth(1)).toContainText("Go to Flows");
+    await expect(results.first()).toContainText("Go to Agents");
+    await expect(results.nth(1)).toContainText("Go to Review");
   });
 
   test("N1.3: a dead server is an error state with retry, not a blank page", async ({ page }) => {
@@ -1243,7 +1212,7 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
     const err = page.getByTestId("server-error");
     await expect(err).toBeVisible();
     await expect(err).toContainText("Retry now");
-    await expect(page.locator(".topbar")).toBeVisible();
+    await expect(page.locator(".k-head")).toBeVisible();
     // Retrying while it is still down keeps the message up…
     await page.getByRole("button", { name: "Retry now" }).click();
     await expect(err).toBeVisible();
@@ -1352,23 +1321,25 @@ test.describe("isolate from the map", () => {
   });
 });
 
-test.describe("P3.11 · view rail", () => {
-  test("one entry per view, Issues under Git, shift digits and the stripe", async ({ page }) => {
+test.describe("five destinations", () => {
+  test("Home, Agents, Code, Changes, Review on 1 to 5, old hashes land, console is a drawer", async ({ page }) => {
     await open(page, "overview");
-    const names = await page.locator("nav.rail .rail-group:not(.rail-tools) button").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
-    expect(names).toEqual(["Overview", "Graph", "Flows", "Slice", "Ask", "Git", "Proposals", "Notes", "Agents", "Extensions", "Console"]);
-    await page.keyboard.press("Shift+Digit7");
+    const names = await page.locator(".k-nav .k-dest").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
+    expect(names).toEqual(["Home", "Agents", "Code", "Changes", "Review"]);
+    await page.keyboard.press("Digit5");
     await expect(page).toHaveURL(/#proposals\b/);
-    await page.keyboard.press("Shift+Digit2");
-    await expect(page).toHaveURL(/#graph\b/);
+    await page.keyboard.press("Digit3");
+    await expect(page).toHaveURL(/#map\b/);
     await page.goto("/#issues");
-    await expect(page.locator("nav.rail").getByRole("button", { name: "Git" })).toHaveAttribute("aria-current", "page");
-    await open(page, "git");
-    const panels = page.getByRole("toolbar", { name: "Options" });
-    await panels.getByRole("button", { name: /^Issues/ }).click();
-    await expect(page.getByTestId("w-iss")).toBeVisible();
+    await expect(page.locator(".k-nav [data-dest=review]")).toHaveAttribute("aria-current", "page");
+    await page.goto("/#history");
+    await expect(page.locator(".k-nav [data-dest=changes]")).toHaveAttribute("aria-current", "page");
+    await page.goto("/#extensions");
+    await expect(page.locator(".k-nav [data-dest=agents]")).toHaveAttribute("aria-current", "page");
     await page.keyboard.press("Control+Backquote");
-    await expect(page).toHaveURL(/#console\b/);
+    await expect(page.locator(".k-drawer.open .console")).toBeVisible();
+    await page.keyboard.press("Control+Backquote");
+    await expect(page.locator(".k-drawer.open")).toHaveCount(0);
   });
 });
 
@@ -1379,13 +1350,13 @@ test.describe("code canvas", () => {
     const stage = page.locator(".ct-stage canvas");
     await expect(stage).toBeVisible({ timeout: 30_000 });
     // The canvas's panel opens as a sheet from the options row.
-    await page.getByRole("toolbar", { name: "Options" }).getByRole("button", { name: /^Selected/ }).click();
+    await page.getByRole("toolbar", { name: "Panels" }).getByRole("button", { name: /^Selected/ }).click();
     const side = page.getByRole("complementary", { name: "Selected" });
     await expect(side.locator(".ct-sub")).toHaveText("Nothing picked");
 
     // Picking a file in the shell's Project tree picks it on the canvas, no tree of its own.
     const tree = page.getByRole("complementary", { name: "Project" });
-    if (!(await tree.isVisible())) await page.locator("button.tool[aria-label=\"Project\"]").click();
+    if (!(await tree.isVisible())) await page.locator(".k-tools").getByRole("button", { name: "Project", exact: true }).click();
     await tree.getByRole("textbox", { name: "Filter files" }).fill("server.rs");
     await tree.getByRole("button", { name: /^(src\/)?server\.rs$/ }).first().click();
     await expect(side.locator(".ct-sub")).toHaveText("src/server.rs");
@@ -1418,7 +1389,7 @@ test.describe("code canvas", () => {
     // Escape clears the pick and closes the sheet.
     await page.keyboard.press("Escape");
     await expect(side).toHaveCount(0);
-    await page.getByRole("toolbar", { name: "Options" }).getByRole("button", { name: /^Selected/ }).click();
+    await page.getByRole("toolbar", { name: "Panels" }).getByRole("button", { name: /^Selected/ }).click();
     await expect(side.locator(".ct-sub")).toHaveText("Nothing picked");
 
     // The canvas is the only layout: no toggle to the force map.
@@ -1447,7 +1418,7 @@ test.describe("Issue desk", () => {
     if (await saveBtn.isEnabled()) await saveBtn.click();
     await expect(saveBtn).toBeDisabled();
     await page.keyboard.press("Escape");
-    const tool = page.getByRole("toolbar", { name: "Options" }).getByRole("button", { name: /^Issues/ });
+    const tool = page.getByRole("toolbar", { name: "Panels" }).getByRole("button", { name: /^Issues/ });
     if ((await tool.getAttribute("aria-pressed")) !== "true") await tool.click();
     const side = page.getByTestId("issue-filters");
     // New from the Bug template: title prefix, labels and priority carry over.

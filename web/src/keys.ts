@@ -21,7 +21,7 @@ export const ACTIONS: KeyAction[] = [
   { id: "keys", label: "Open keybindings", group: "Panels", def: "⇧/" },
   { id: "console", label: "Console", group: "Views", def: "⌃`" },
   { id: "agents", label: "Agents", group: "Views", def: "A" },
-  { id: "query", label: "Ask", group: "Views", def: "Q" },
+  { id: "query", label: "Query", group: "Views", def: "Q" },
   { id: "extensions", label: "Extensions", group: "Views", def: "X" },
   { id: "map", label: "Map", group: "Views", def: "M" },
 ];
@@ -29,8 +29,7 @@ export const ACTIONS: KeyAction[] = [
 /** Fixed chords, listed so the sheet is complete but not rebindable. */
 export const FIXED: { keys: string; label: string }[] = [
   { keys: "⇧ ⇧", label: "Search everywhere" },
-  { keys: "1 to 9", label: "Options row" },
-  { keys: "⇧1 to ⇧0", label: "Left rail" },
+  { keys: "1 to 5", label: "Home, Agents, Code, Changes, Review" },
   { keys: "esc", label: "Close what is open" },
   { keys: "⌘↵", label: "Commit, save or run" },
   { keys: "j k s u", label: "Walk and stage git files" },

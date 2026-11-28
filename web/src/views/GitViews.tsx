@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Picker from "../studio/Picker";
-import { api, relTime, type Branch, type Commit, type Compare, type FileStatus, type GraphData, type RepoInfo } from "../api";
-import Dither from "../Dither";
-import Life from "../Life";
+import { api, relTime, type Branch, type Commit, type Compare, type FileStatus, type RepoInfo } from "../api";
 import type { Go, Target } from "../nav";
 import { Diff, Empty, Icon, ShowOutput, StatTable, Sym, useToast } from "../ui";
 import { Grip, listWidth } from "../resize";
@@ -384,9 +382,8 @@ export function Console({ onChanged }: Nav) {
   const [cursor, setCursor] = useState(-1);
   const end = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  const [graph, setGraph] = useState<GraphData | null>(null);
   const [repo, setRepo] = useState<RepoInfo | null>(null);
-  useEffect(() => { api.graph("symbol").then(setGraph).catch(() => {}); api.repo().then(setRepo).catch(() => {}); }, []);
+  useEffect(() => { api.repo().then(setRepo).catch(() => {}); }, []);
   useEffect(() => { saved = { ...saved, terms, on }; }, [terms, on]);
   const term = terms.find((t) => t.id === on) ?? terms[0];
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [term?.hist.length, on]);
@@ -441,15 +438,7 @@ export function Console({ onChanged }: Nav) {
         <button className="term-btn" onClick={() => patch(term.id, (t) => ({ ...t, hist: [] }))} title="Clear (ctrl+L)">clear</button>
       </div>
       <div className="out" onClick={() => { if (!window.getSelection()?.toString()) input.current?.focus(); }}>
-        <section className="console-hero">
-          <Dither data={graph} pixel={3} speed={0.6} className="ch-dither" />
-          <div className="ch-text">
-            <div className="ch-eyebrow">{repo ? `${repo.name} · ${repo.branch} @ ${repo.head?.slice(0, 7) ?? ""}` : "…"}</div>
-            <h1 className="ch-title">Console</h1>
-            <button className="btn sm mono" onClick={() => exec("help")}>kula help</button>
-          </div>
-          <Life className="ch-life" />
-        </section>
+        {!term.hist.length && <div className="console-hint mono muted">Type <button className="btn quiet" onClick={() => exec("help")}>help</button> for every kula command</div>}
         {term.hist.map((h, i) => (
           <div key={i} className="entry">
             <div className="cmd">{ps} <span className="ps-sym">$</span> {h.cmd && <>kula {h.cmd}</>} {h.code !== 0 && <span className="exit">exit {h.code}</span>}</div>

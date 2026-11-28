@@ -1,5 +1,6 @@
-/* ================================================================ agent hub (views/hub): one canvas, floating sub panes
-   The canvas fills the pane. A header, node picker, inspector and changes dock float over it.
+/* ================================================================ agent hub (views/hub): one canvas, docked panes
+   The canvas fills the pane. The shell header carries the modes and actions; the node picker
+   docks on the left edge, the inspector on the right edge, flush, drawn by one warm line.
    Flat near black panels on absolute black, warm lines, radii 8/6/4, no glass. */
 .page.hub { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 .page.hub > * { max-width: none; }
@@ -8,25 +9,24 @@
 .hub-canvas { background: #000; overflow: hidden; }
 
 /* floating sub panes */
-.hub-top, .hub-palette, .hub-inspector, .hub-dock .hub-changes { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); }
-.hub-top { position: absolute; z-index: 6; top: 10px; left: 10px; right: 10px; height: 40px; padding: 0 8px 0 12px; display: flex; align-items: center; gap: 8px; }
-.hub-top .spacer { flex: 1; }
-.hub-title { flex: 0 1 auto; min-width: 0; font: 600 13px/1 var(--mono); color: var(--text); max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-palette, .hub-inspector { border: 0; border-radius: 0; background: var(--bg); }
+.hub-dock .hub-changes { border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--glass-2); }
+.hub-title { flex: 0 1 auto; min-width: 0; font: 500 12px/1 var(--mono); color: var(--text); max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-dirty { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
 .hub-add { width: 28px; padding: 0; font-size: 16px; line-height: 1; }
 .hub-add.on { border-color: var(--accent); color: var(--accent); }
-.hub-palette { position: absolute; z-index: 7; top: 58px; right: 10px; bottom: 10px; width: 260px; display: flex; flex-direction: column; min-height: 0; }
+.hub-palette { position: absolute; z-index: 7; top: 0; left: 0; bottom: 0; width: 264px; border-right: 1px solid var(--glass-line); display: flex; flex-direction: column; min-height: 0; }
 .hub-pal-top { display: flex; align-items: center; gap: 4px; padding: 8px 8px 0; }
 .hub-pal-top .input { flex: 1; min-width: 0; }
 .hub-pal-q { margin: 8px; width: calc(100% - 16px); }
-.hub-inspector { position: absolute; z-index: 5; top: 58px; left: 10px; bottom: 10px; width: 320px; display: flex; flex-direction: column; min-height: 0; }
-.hub-insp-head { flex: none; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--line); }
+.hub-inspector { position: absolute; z-index: 5; top: 0; right: 0; bottom: 0; width: 340px; border-left: 1px solid var(--glass-line); display: flex; flex-direction: column; min-height: 0; }
+.hub-insp-head { flex: none; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--line); }
 .hub-insp-head .hub-insp-title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-2); }
 .hub-insp-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; }
-.hub-dock { position: absolute; z-index: 5; left: 50%; bottom: 10px; transform: translateX(-50%); width: min(560px, calc(100% - 700px)); min-width: 320px; }
+.hub-dock { position: absolute; z-index: 5; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(560px, calc(100% - 720px)); min-width: 320px; }
 .hub-dock:empty { display: none; }
 .hub-dock .hub-changes { max-height: 50vh; overflow: auto; }
-.hub-runs { position: absolute; inset: 58px 10px 10px; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 10px; min-height: 0; }
+.hub-runs { position: absolute; inset: 12px; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 10px; min-height: 0; }
 .hub-runs-side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 
 /* palette list */
@@ -354,13 +354,9 @@
 .hub-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
 
 /* type by role: names in the serif, controls in the interface face, data stays mono */
-.page.hub .btn, .page.hub .seg button, .page.hub .input:not(.mono), .page.hub .hub-toggle, .hub-deploy .btn { font-family: var(--mono); }
-.page.hub .seg button { border-radius: var(--r-sm); }
-.page.hub .seg button.on { color: var(--text); background: transparent; border-color: transparent; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 60%, transparent); }
 
 
 .runs-empty-in { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.runs-empty-in .btn { letter-spacing: 0; text-transform: none; }
 .hub-deploy-hint { margin-right: auto; font-size: 12px; }
 
 /* the picked seat's name, set like the task title */
@@ -490,13 +486,12 @@
 .cv-idle li .mono { color: var(--text-2); flex: none; }
 .cv-idle li span:last-child { min-width: 0; white-space: normal; }
 .hub-chip.more { color: var(--text-3); }
-.page.hub .hub-top .seg button.on, .page.hub .hub-inspector .seg button.on { color: var(--text); background: transparent; border-color: transparent; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 60%, transparent); }
 .hub-inspector .hub-insp-scroll { padding: 12px; }
 .hub-insp-scroll .mono, .hub-diff, .cv-diff { font-family: var(--mono); }
 .hub-badge { margin-left: 6px; color: var(--accent); font-size: 10px; }
 .hub-overview.on { color: var(--text); border-color: var(--line-2); }
-.hub-top .btn, .hub-top .seg { flex: none; }
+
 @media (max-width: 900px) {
-  .hub-top { gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .k-hub-tools { gap: 6px; }
   .hub-title, .hub-dirty { display: none; }
 }

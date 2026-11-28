@@ -42,4 +42,3 @@
 
 /* icons without their own size take the text's */
 .chip svg, .btn svg, .tag svg { width: 14px; height: 14px; flex: none; }
-.rail button svg { width: 18px; height: 18px; }

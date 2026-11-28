@@ -4,7 +4,6 @@ import { Empty, Icon, StatTable } from "../ui";
 import type { Go } from "../nav";
 import Coupling from "../Coupling";
 import { useCode } from "../CodePanel";
-import AsciiMark from "../AsciiMark";
 import IssueDesk from "./IssueDesk";
 
 type Props = { repo: RepoInfo | null; version: number; go: Go; onChanged: () => void; openSymbol: (id: number) => void };
@@ -17,7 +16,7 @@ export default function Overview({ repo, version, go, onChanged, openSymbol }: P
   useEffect(() => { api.overview().then(setO).catch((e) => setErr(e.message)); }, [version]);
 
   if (err) return <Empty title="Overview unavailable">{err}</Empty>;
-  if (!o) return <div className="loading"><div className="mini-loader"><div className="ml-field"><AsciiMark period={3.2} /></div><span>Checking the repository…</span></div></div>;
+  if (!o) return <div className="loading"><span className="mono muted">Checking the repository</span></div>;
 
   const maxScore = Math.max(1, ...o.hotspots.map((h) => h.score));
   const s = repo?.stats;

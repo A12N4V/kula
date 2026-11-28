@@ -5,16 +5,12 @@
   radial-gradient(var(--line) 1px, transparent 1px) 0 0 / 22px 22px; }
 .graph-overlay { position: absolute; z-index: 5; }
 .hud { top: 14px; left: 14px; display: flex; gap: 6px; }
-.seg { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); }
-.seg button { height: 26px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2); cursor: pointer; }
-.seg button.on { color: var(--text); background: transparent; border-color: var(--accent); box-shadow: none; }
 .legend { left: 14px; bottom: 14px; width: 250px; max-height: 45%; overflow: auto; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); }
 .legend .li { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: var(--r-sm); cursor: pointer; color: var(--text-2); }
 .legend .li:hover, .legend .li.on { background: var(--panel-2); color: var(--text); }
 .legend .sw { width: 9px; height: 9px; border-radius: var(--r-sm); flex: none; }
 .legend .li .n { margin-left: auto; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .zoom { right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
-.zoom .btn { width: 30px; padding: 0; }
 .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); z-index: 4; }
 @keyframes logo-flicker { 0%, 100% { opacity: 1; } 40% { opacity: .55; } 45% { opacity: 1; } 70% { opacity: .8; } }
 @keyframes draw-k { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
@@ -54,11 +50,9 @@
   background: var(--panel); border-color: var(--line);
 }
 .hud-btn { height: 30px; }
-.btn.icon-only { width: 30px; padding: 0; }
 .hud-stats { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--text-3); font-size: 11.5px; white-space: nowrap; }
 .hud-stats b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .hud-stats i { width: 1px; height: 12px; margin: 0 4px; background: var(--line-2); }
-.zoom .btn { width: 30px; height: 30px; }
 .graph-wrap.inspecting .zoom { right: 404px; }
 
 .hover-card { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 7; display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 8px;
@@ -113,9 +107,6 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 /* ================================================================ loader: the mark assembling */
 .ascii-mark { position: absolute; inset: 0; margin: 0; font: 400 9px/9px var(--mono); letter-spacing: 0; color: var(--accent); white-space: pre; overflow: hidden;
   user-select: none; font-variant-ligatures: none; }
-.mini-loader { display: grid; justify-items: center; gap: 14px; color: var(--text-3); font: 500 11px var(--mono); }
-.ml-field { position: relative; width: 220px; height: 130px; overflow: hidden; }
-.ml-field .ascii-mark { font-size: 6px; line-height: 6px; }
 
 /* graph HUD: wraps instead of running off a narrow screen */
 .graph-overlay.hud { right: 14px; flex-wrap: wrap; align-content: flex-start; pointer-events: none; }
@@ -151,17 +142,12 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 .fk-means { font-size: 10.5px; }
 
 /* D1: hover/focus system – quiet borders instead of decoration shadows. */
-.seg button { border: 1px solid transparent; }
-.seg button.on { color: var(--text); background: transparent; border-color: var(--accent); box-shadow: none; }
 .inspector { box-shadow: none; border-left: 1px solid var(--line-2); border-top: 1px solid var(--line-2); }
 .hover-card { box-shadow: none; border: 1px solid var(--line-2); }
 .node-menu { box-shadow: none; }
-.seg button { height: 28px; }
 
 /* g1: inspector reach-for actions – keyboard reachable, dense, copyable. */
 .insp-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
-.insp-actions .btn { font-size: 11px; }
-.insp-actions .btn svg { width: 13px; height: 13px; }
 .insp-actions .btn.on { border-color: var(--accent); color: var(--text); }
 .fence-wrap { position: relative; }
 .fence-pick { position: absolute; top: calc(100% + 4px); right: 0; z-index: 9; display: flex; gap: 4px; padding: 4px; width: max-content; border: 1px solid var(--line-2); background: var(--panel); }

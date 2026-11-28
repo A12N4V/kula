@@ -4,66 +4,13 @@
    tool windows, editor tabs over the view, a status bar with breadcrumbs. */
 
 
-  .shell.studio { grid-template-columns: 40px auto minmax(0, 1fr); grid-template-rows: 40px 32px minmax(0, 1fr) 24px; }
-  .studio > .topbar { grid-column: 1 / -1; grid-row: 1; }
-  .studio > .rb-opts { grid-column: 2 / -1; grid-row: 2; }
-  .studio > .rail { grid-column: 1; grid-row: 2 / 4; }
-  .studio > .tw-left { grid-column: 2; grid-row: 3; }
-  .studio > .editor { grid-column: 3; grid-row: 3; }
-  .studio > .statusbar { grid-column: 1 / -1; grid-row: 4; }
-  .code-panel { top: 73px; bottom: 25px; }
-
-
-/* main toolbar */
-.studio .topbar { gap: 4px; padding: 0 8px 0 0; }
-.studio .topbar .brand { width: 40px; height: 40px; margin: 0; padding: 0; justify-content: center; border-radius: 0; border-right: 1px solid var(--line); }
-.studio .topbar .brand:hover { background: none; }
-.studio .topbar .brand svg { width: 22px; height: 22px; }
-
-/* ribbon: tabs are the options, the row under them their suboptions (Office simplified ribbon) */
-.rb-tabs { display: flex; align-items: stretch; align-self: stretch; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.rb-tabs::-webkit-scrollbar { display: none; }
-.rb-tab { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 12px; color: var(--text-3); font-size: 12.5px; white-space: nowrap; cursor: pointer; flex: none; transition: color var(--dur); }
-.rb-tab > svg { width: 14px; height: 14px; }
-.rb-tab:hover { color: var(--text); }
-.rb-tab.on { color: var(--text); }
-.rb-tab.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px 2px 0 0; background: var(--accent); }
-.rb-tab.ctx { color: color-mix(in srgb, var(--accent) 60%, transparent); }
-.rb-tab.ctx:hover, .rb-tab.ctx.on { color: var(--accent); }
-.rb-x { width: 18px; height: 18px; display: grid; place-items: center; border: 0; border-radius: var(--r-sm); background: none; color: inherit; cursor: pointer; visibility: hidden; }
-.rb-x svg { width: 10px; height: 10px; }
-.rb-tab:hover .rb-x, .rb-tab.on .rb-x { visibility: visible; }
-.rb-x:hover { color: var(--text); }
-.rb-new { flex: none; align-self: center; width: 22px; height: 22px; margin: 0 4px; display: grid; place-items: center; border: 1px solid transparent; border-radius: var(--r-sm); background: none; color: var(--text-3); cursor: pointer; transition: color var(--dur), border-color var(--dur); }
-.rb-new svg { width: 13px; height: 13px; }
-.rb-new:hover { color: var(--text); border-color: var(--accent); }
-.rb-sep { flex: none; align-self: center; width: 1px; height: 16px; margin: 0 4px; background: var(--line); }
-.rb-sep:last-child { display: none; }
-.rb-opts { display: flex; align-items: center; gap: 2px; min-width: 0; padding: 0 8px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); background: var(--bg-2); }
-.rb-opts::-webkit-scrollbar { display: none; }
-.rb-opt { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; flex: none; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-3); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; transition: color var(--dur); }
-.rb-opt svg { width: 14px; height: 14px; }
-.rb-opt:hover { color: var(--text); }
-.rb-opt.on { color: var(--accent); }
-.rb-opt em { font: 600 10px var(--mono); font-style: normal; color: var(--accent); }
 .editor { position: relative; }
 .rb-sheet { position: absolute; top: 6px; z-index: 30; display: flex; flex-direction: column; width: min(380px, calc(100% - 16px)); max-height: calc(100% - 12px); overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg, 8px); background: var(--bg-2); }
 .rb-sheet > .tw-dock { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow: auto; }
 .tb-widget { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 1px solid transparent; background: none; color: var(--text); font: inherit; font-size: 12.5px; cursor: pointer; }
 .tb-widget:hover { background: var(--hover-bg); border-color: var(--line); }
-.studio .topbar .chip.tb-widget { border-color: transparent; background: none; }
-.studio .topbar .chip.tb-widget:hover { border-color: var(--line); background: var(--hover-bg); }
 .tb-caret { display: inline-grid; color: var(--text-3); transform: rotate(90deg); }
 .tb-caret svg { width: 10px; height: 10px; }
-
-/* left stripe */
-.studio .rail { padding: 4px 0; }
-.studio .rail-group { gap: 2px; padding: 4px 0; }
-/* Both stripes: state is the icon colour only, never a fill or a border. */
-.shell.studio .rail button, .shell.studio .rail button:hover, .shell.studio .rail button.on, .shell.studio .rail .rail-tools button.on { background: none; border-color: transparent; }
-.shell.studio .rail button:hover:not(.on) { color: var(--text); }
-.shell.studio .rail button.on, .shell.studio .rail .rail-tools button.on { color: var(--accent); }
-
 
 /* tool windows */
 .tw { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-2); }
@@ -158,9 +105,6 @@ body.resizing { cursor: col-resize; user-select: none; }
 .menu-item.on { color: var(--accent); }
 .menu-item.on svg { color: var(--accent); }
 .menu-none { margin: 0; padding: 8px; font: 11px var(--mono); color: var(--text-3); }
-.menu-foot { margin: 0; border-top: 1px solid var(--line); border-radius: 0 0 var(--r-md) var(--r-md); height: 32px; padding: 0 12px; font-family: var(--ui); font-size: 12px; }
-.studio > .topbar { position: relative; z-index: 40; }
-
 /* ---------- commit detail */
 .show-head { display: flex; flex-direction: column; gap: 4px; }
 .show-msg { margin: 0; white-space: pre-wrap; font-size: 13px; line-height: 1.5; color: var(--text); }

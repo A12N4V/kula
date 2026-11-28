@@ -17,15 +17,15 @@ test.describe("s1 agent hub", () => {
   test("the hub composes canvas, palette and modes", async ({ page }) => {
     test.skip(test.info().project.name !== "desktop");
     await open(page);
-    await page.locator(".rail").getByRole("button", { name: "Agents" }).click();
+    await page.locator(".k-nav").getByRole("button", { name: "Agents" }).click();
     await expect(page.locator(".hub-canvas")).toBeVisible();
     await page.getByRole("button", { name: "Add node" }).click();
     const palette = page.getByRole("complementary", { name: "Palette" });
     await expect(palette).toBeVisible();
     for (const g of ["agent", "template", "skill", "mcp", "memory"]) await expect(palette.locator(`.hub-pal-group[data-kind="${g}"]`)).toBeVisible();
     await expect(page.locator(".hub-canvas")).toBeVisible();
-    const mode = page.getByRole("group", { name: "Mode" });
-    for (const m of ["Build", "Live", "Runs"]) await expect(mode.getByRole("button", { name: m })).toBeVisible();
+    const mode = page.getByRole("radiogroup", { name: "Agents mode" });
+    for (const m of ["Build", "Live", "Runs"]) await expect(mode.getByRole("radio", { name: m })).toBeVisible();
     await expect(page.getByRole("button", { name: "Flow map" })).toBeVisible();
     await expect(page.locator(".ag-tabs")).toHaveCount(0);
   });

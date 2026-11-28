@@ -94,9 +94,6 @@ function useLoad<T>(f: () => Promise<T>, deps: unknown[] = []): [T | null, () =>
 function General({ q }: { q: string }) {
   return (
     <>
-      <Group title="Startup">
-        <Toggle k="opening" label="Opening sequence" hint="Your repo's graph, dithered, once per session" q={q} />
-      </Group>
       <Group title="Layout">
         <Row label="Panel sizes" hint="Drag any panel edge; double click an edge to reset it" q={q}>
           <button className="btn sm" disabled={!hasCustomSizes()} onClick={() => { resetSizes(); settings.set({}); }}>Reset all</button>

@@ -5,7 +5,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { api, type AgentsInfo, type FlowMap } from "../../api";
-import { useToast } from "../../ui";
+import { Icon, useToast } from "../../ui";
+import { HeadBar } from "../../studio/Head";
 import type { Act } from "./data";
 import { useDraft, type Pick } from "./draft";
 import { HubCanvas, type Item } from "./HubCanvas";
@@ -17,14 +18,16 @@ import { Palette } from "./Palette";
 import { RunsBoard, RunsTrends, useRuns } from "./Runs";
 import { TEAM_TEMPLATES, teamFrom } from "./templates";
 
-type Mode = "build" | "live" | "runs";
-const MODES: { id: Mode; label: string }[] = [{ id: "build", label: "Build" }, { id: "live", label: "Live" }, { id: "runs", label: "Runs" }];
+export type Mode = "build" | "live" | "runs";
 
-export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
+/** The shell owns the mode toggle (Build · Live · Runs) and the header row; Hub puts its actions there. */
+export default function Hub({ info, act, mode: outer, setMode: setOuter }: { info: AgentsInfo; act: Act; mode?: Mode; setMode?: (m: Mode) => void }) {
   const toast = useToast();
   const [pick, setPick] = useState<Pick>(null);
   const [flow, setFlow] = useState<string | null>(null);
-  const [mode, setMode] = useState<Mode>("build");
+  const [own, setOwn] = useState<Mode>("build");
+  const mode = outer ?? own;
+  const setMode = setOuter ?? setOwn;
   const [showMap, setShowMap] = useState(false);
   const [adding, setAdding] = useState(false);
   const [overview, setOverview] = useState(false);
@@ -114,19 +117,18 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
             <HubCanvas info={info} d={d} pick={pick} setPick={setPick} flow={flow} setFlow={setFlow} map={showMap && mode === "build" ? map : null} paint={paint} onItem={onItem} onAfter={openAfter} onEmpty={() => setAdding(true)} />
           </ReactFlowProvider>
         )}
-      <header className="hub-top">
+      <HeadBar>
         <span className="hub-title">{title}</span>
         {d.dirty && <span className="hub-dirty mono">unsaved</span>}
-        <div className="seg" role="group" aria-label="Mode">
-          {MODES.map((m) => <button key={m.id} className={mode === m.id ? "on" : ""} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>{m.label}</button>)}
-        </div>
         <span className="spacer" />
-        {mode === "build" && <button className={`btn sm${showMap ? " primary" : ""}${showMap && !map ? " loading" : ""}`} aria-pressed={showMap} onClick={() => setShowMap(!showMap)} title="Draw the codebase's execution flows behind the teams">Flow map</button>}
-        {mode !== "runs" && <button className="btn sm primary hub-deploy-btn" disabled={!saved || d.dirty} onClick={() => saved && setDeploying(saved.name)}
-          title={d.dirty ? "Save first" : saved ? `Deploy ${saved.name}` : "Pick a team"}>Deploy</button>}
-        {mode === "build" && <button className={`btn sm hub-overview${overview ? " on" : ""}`} aria-pressed={overview} onClick={() => { setOverview(!overview); if (!overview) { setPick(null); setFlow(null); } }} title="Task, suggestions and fence warnings">Overview{inbox > 0 && <span className="hub-badge mono">{inbox}</span>}</button>}
-        {mode === "build" && <button className={`btn sm hub-add${adding ? " on" : ""}`} aria-label="Add node" aria-expanded={adding} onClick={() => { setAdding(!adding); setAfter(null); }}>+</button>}
-      </header>
+        <div className="k-hub-tools row">
+          {mode === "build" && <button className={`btn${showMap ? " on" : ""}${showMap && !map ? " loading" : ""}`} aria-pressed={showMap} onClick={() => setShowMap(!showMap)} data-tip="Draw the execution flows behind the teams"><Icon.flows />Flow map</button>}
+          {mode === "build" && <button className={`btn hub-overview${overview ? " on" : ""}`} aria-pressed={overview} onClick={() => { setOverview(!overview); if (!overview) { setPick(null); setFlow(null); } }} data-tip="Task, suggestions and fence warnings">Overview{inbox > 0 && <span className="hub-badge mono">{inbox}</span>}</button>}
+          {mode === "build" && <button className={`btn icon hub-add${adding ? " on" : ""}`} aria-label="Add node" data-tip="Add a seat, skill or template" aria-expanded={adding} onClick={() => { setAdding(!adding); setAfter(null); }}><Icon.plus /></button>}
+          {mode !== "runs" && <button className="btn primary hub-deploy-btn" disabled={!saved || d.dirty} onClick={() => saved && setDeploying(saved.name)}
+            data-tip={d.dirty ? "Save first" : saved ? `Deploy ${saved.name}` : "Pick a team"}>Deploy</button>}
+        </div>
+      </HeadBar>
       {mode === "build" && adding && <Palette info={info} servers={servers} after={after?.key} onClose={() => { setAdding(false); setAfter(null); }} onUse={(it) => onItem(it, pick)} />}
       {mode === "live" && (
         <aside className="hub-inspector" aria-label="Live">
@@ -135,7 +137,7 @@ export default function Hub({ info, act }: { info: AgentsInfo; act: Act }) {
       )}
       {showInsp && (
         <aside className="hub-inspector" aria-label="Inspector">
-          <div className="hub-insp-head"><span className="hub-insp-title mono">{pick?.key ? `${pick.team} / ${pick.key}` : pick?.team ?? (flow ? "Flow" : "Overview")}</span><button className="btn sm ghost" aria-label="Close inspector" onClick={() => { setPick(null); setFlow(null); setOverview(false); }}>×</button></div>
+          <div className="hub-insp-head"><span className="hub-insp-title mono">{pick?.key ? `${pick.team} / ${pick.key}` : pick?.team ?? (flow ? "Flow" : "Overview")}</span><button className="btn sm ghost" aria-label="Close inspector" data-tip="Close" onClick={() => { setPick(null); setFlow(null); setOverview(false); }}><Icon.close /></button></div>
           <div className="hub-insp-scroll"><Inspector info={info} d={d} pick={pick} flow={flow} setFlow={setFlow} map={map} act={act} /></div>
         </aside>
       )}
