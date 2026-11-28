@@ -224,6 +224,12 @@ pub struct Member {
     /// Fences for this seat only.
     #[serde(skip_serializing_if = "SeatFence::is_empty")]
     pub fence: SeatFence,
+    /// Token budget for this seat per run; 0 means unset (lint flags it).
+    #[serde(skip_serializing_if = "is_zero_usize")]
+    pub budget: usize,
+    /// How many of this seat may run in parallel; 0 means unset.
+    #[serde(skip_serializing_if = "is_zero_usize")]
+    pub max_parallel: usize,
 }
 
 impl Member {
@@ -644,6 +650,111 @@ pub fn risk_rank(r: &str) -> u8 {
         "high" => 3,
         _ => 4,
     }
+}
+
+/// One seat, fully resolved: what a launcher or renderer needs. A pure
+/// function of the config – same toml, same spec.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct SeatSpec {
+    /// Team it belongs to.
+    pub team: String,
+    /// The seat's key: its name, else its agent ("team/seat").
+    pub key: String,
+    /// What runs it: claude · codex · gemini · cursor · any.
+    pub agent: String,
+    /// Model override, empty for the CLI's own default.
+    #[serde(default)]
+    pub model: String,
+    /// The workflow it works in.
+    #[serde(default)]
+    pub workflow: String,
+    /// Scope entries narrowed for this seat.
+    #[serde(default)]
+    pub scope: Vec<String>,
+    /// What it is for.
+    #[serde(default)]
+    pub role: String,
+    /// Team prompt first, then the member's – last wins, appended in order.
+    #[serde(default)]
+    pub prompt: String,
+    /// Its lead (an agent key); none for the team's lead.
+    #[serde(default)]
+    pub reports_to: String,
+    /// Who receives its work when done.
+    #[serde(default)]
+    pub hands_off: Vec<String>,
+    /// Skills linked for this seat only; empty means every repo skill.
+    #[serde(default)]
+    pub skills: Vec<String>,
+    /// MCP servers this seat gets; empty means the agent's own set.
+    #[serde(default)]
+    pub mcp: Vec<String>,
+    /// Memory file (repo relative) layered into memory.md.
+    #[serde(default)]
+    pub memory: String,
+    /// Seat fences (lock · hide · review).
+    #[serde(default)]
+    pub fence: SeatFence,
+    /// Token budget per run; 0 means unset.
+    #[serde(default)]
+    pub budget: usize,
+    /// Parallel copies allowed; 0 means unset.
+    #[serde(default)]
+    pub max_parallel: usize,
+    /// Tags and colour ride through to the UI.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub color: String,
+}
+
+impl SeatSpec {
+    /// The id used everywhere: `<team>/<key>`.
+    pub fn id(&self) -> String {
+        format!("{}/{}", self.team, self.key)
+    }
+}
+
+/// Merge every team's members into resolved seats: defaults → `[[team]]` →
+/// member, last wins. Deterministic: teams and members in file order.
+pub fn merge_config(cfg: &Config) -> Vec<SeatSpec> {
+    let mut out = vec![];
+    for t in &cfg.teams {
+        for m in &t.members {
+            out.push(SeatSpec {
+                team: t.name.clone(),
+                key: m.key().to_string(),
+                agent: m.runner().to_string(),
+                model: m.model.clone(),
+                workflow: m.workflow.clone(),
+                scope: m.scope.clone(),
+                role: m.role.clone(),
+                prompt: {
+                    let mut p = String::new();
+                    if !t.prompt.trim().is_empty() {
+                        p.push_str(t.prompt.trim());
+                        p.push('\n');
+                    }
+                    if !m.prompt.trim().is_empty() {
+                        p.push_str(m.prompt.trim());
+                        p.push('\n');
+                    }
+                    p.trim().to_string()
+                },
+                reports_to: m.reports_to.clone(),
+                hands_off: m.hands_off.clone(),
+                skills: m.skills.clone(),
+                mcp: m.mcp.clone(),
+                memory: m.memory.clone(),
+                fence: m.fence.clone(),
+                budget: m.budget,
+                max_parallel: m.max_parallel,
+                tags: m.tags.clone(),
+                color: m.color.clone(),
+            });
+        }
+    }
+    out
 }
 
 #[cfg(test)]

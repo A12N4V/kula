@@ -158,6 +158,14 @@ fn mem_ok(cmd: &str, root: &Path) -> std::result::Result<(), String> {
 
 pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     let plan = Plan::load(plan_path)?;
+    let cfg = crate::config::Config::load(&repo.root).unwrap_or_default();
+    // Seat lint runs before anything is created: no run dir, no worktree, no
+    // agent, no launch op. A failure names the seat and the field.
+    let lint_errors = crate::launch::lint(&repo.root, &cfg);
+    if !lint_errors.is_empty() {
+        let first = &lint_errors[0];
+        bail!("seat lint failed for {} – field {}: {} ({} error(s) total)", first.seat, first.field, first.problem, lint_errors.len());
+    }
     if std::env::var_os("KULA_NO_AGENT").is_some() {
         for s in &plan.slices {
             if is_real_agent(&agent_cmd(&plan, &s.agent)) {
@@ -175,7 +183,13 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     std::fs::create_dir_all(&run_dir)?;
     let started = crate::events::now_ms();
     let run_id = format!("{}-{}", plan.id, started / 1000);
-    let cfg = crate::config::Config::load(&repo.root).unwrap_or_default();
+    // Seat lint runs before anything is started: no worktree, no agent, no
+    // launch op. A failure names the seat and the field.
+    let lint_errors = crate::launch::lint(&repo.root, &cfg);
+    if !lint_errors.is_empty() {
+        let first = &lint_errors[0];
+        bail!("seat lint failed for {} – field {}: {} ({} error(s) total)", first.seat, first.field, first.problem, lint_errors.len());
+    }
     let base_sha = repo
         .run(&["rev-parse", if plan.base_ref.is_empty() { "HEAD" } else { &plan.base_ref }])
         .map(|s| s.trim().to_string())

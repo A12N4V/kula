@@ -16,6 +16,361 @@ use std::path::{Path, PathBuf};
 /// Runs kept in `refs/kula/meta`; the files in `.kula/runs/` are not cut back.
 pub const KEEP_IN_META: usize = 200;
 
+// –– Seat lint: eight checks, all before launch –––––––––––––––––––––––––––
+
+/// One lint failure. Always names the field and the seat it belongs to.
+#[derive(Debug, Clone, Serialize)]
+pub struct LintError {
+    /// Seat id (`team/key`), empty for a config-wide failure.
+    pub seat: String,
+    /// The toml field the failure is about (`skills`, `mcp`, `memory`, `fence`,
+    /// `reports_to`, `budget`, `agent`, …).
+    pub field: String,
+    pub problem: String,
+}
+
+/// Run all eight lint checks. `KULA_NO_AGENT=1` skips the CLI probe (no real
+/// agent is ever started by lint; the probe only reads `--version`).
+pub fn lint(root: &Path, cfg: &crate::config::Config) -> Vec<LintError> {
+    let specs = crate::config::merge_config(cfg);
+    let mut out = vec![];
+    let no_agent = std::env::var_os("KULA_NO_AGENT").is_some();
+
+    for spec in &specs {
+        // 1 · CLI on PATH with a version
+        if !no_agent && !spec.agent.is_empty() && spec.agent != "any" {
+            match cli_version(&spec.agent) {
+                Ok(v) if v.is_empty() => {
+                    out.push(LintError { seat: spec.id(), field: "agent".into(), problem: format!("{} printed no version", spec.agent) })
+                }
+                Err(e) => out.push(LintError { seat: spec.id(), field: "agent".into(), problem: e }),
+                _ => {}
+            }
+        }
+
+        // 2 · every skill exists and parses
+        if !spec.skills.is_empty() {
+            let listed = crate::skills::list(root);
+            for s in &spec.skills {
+                match listed.iter().find(|l| &l.name == s) {
+                    None => out.push(LintError {
+                        seat: spec.id(),
+                        field: "skills".into(),
+                        problem: format!("skill {s:?} does not exist in .agents/skills/"),
+                    }),
+                    Some(sk) if sk.description.is_empty() => out.push(LintError {
+                        seat: spec.id(),
+                        field: "skills".into(),
+                        problem: format!("skill {s:?} has no description in its SKILL.md"),
+                    }),
+                    _ => {}
+                }
+            }
+        }
+
+        // 3 · every MCP server defined once
+        if !spec.mcp.is_empty() {
+            let src = crate::agent_config::read_mcp(root, crate::agent_config::MCP_SOURCE).ok().flatten().unwrap_or_default();
+            let dupes: Vec<&String> = spec.mcp.iter().filter(|n| spec.mcp.iter().filter(|m| *m == *n).count() > 1).collect();
+            if !dupes.is_empty() {
+                out.push(LintError {
+                    seat: spec.id(),
+                    field: "mcp".into(),
+                    problem: format!("servers listed more than once: {}", dupes.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")),
+                });
+            }
+            for name in &spec.mcp {
+                if !src.contains_key(name) {
+                    out.push(LintError {
+                        seat: spec.id(),
+                        field: "mcp".into(),
+                        problem: format!("server {name:?} is not defined in {}", crate::agent_config::MCP_SOURCE),
+                    });
+                }
+            }
+        }
+
+        // 4 · memory path inside the repo
+        if !spec.memory.is_empty() {
+            if spec.memory.contains("..") || std::path::Path::new(&spec.memory).is_absolute() {
+                out.push(LintError {
+                    seat: spec.id(),
+                    field: "memory".into(),
+                    problem: format!("path {:?} escapes the repository", spec.memory),
+                });
+            } else if !root.join(&spec.memory).is_file() {
+                out.push(LintError {
+                    seat: spec.id(),
+                    field: "memory".into(),
+                    problem: format!("memory file {:?} does not exist", spec.memory),
+                });
+            }
+        }
+
+        // 8 · budget and max_parallel set
+        if spec.budget == 0 {
+            out.push(LintError { seat: spec.id(), field: "budget".into(), problem: "budget is not set (tokens per run)".into() });
+        }
+        if spec.max_parallel == 0 {
+            out.push(LintError { seat: spec.id(), field: "max_parallel".into(), problem: "max_parallel is not set".into() });
+        }
+    }
+
+    // 6 · reports_to / hands_off is a DAG
+    if let Some(cycle) = find_cycle(&specs) {
+        out.push(LintError {
+            seat: cycle.clone(),
+            field: "reports_to".into(),
+            problem: format!("{cycle} is part of a reports_to / hands_off cycle – a team must be a DAG"),
+        });
+    }
+
+    // 5 · fence levels known and names unique
+    for spec in &specs {
+        let mut seen = std::collections::BTreeSet::new();
+        for (level, pats) in [("lock", &spec.fence.lock), ("hide", &spec.fence.hide), ("review", &spec.fence.review)] {
+            for p in pats {
+                if !seen.insert(format!("{level}:{p}")) {
+                    out.push(LintError { seat: spec.id(), field: format!("fence.{level}"), problem: format!("{p:?} is listed twice") });
+                }
+            }
+        }
+    }
+
+    // 7 · no two seats write one symbol – B3's overlap check. TODO: switch to
+    // guard::overlap() when B3 lands; team_overlaps is the pre-B3 stand-in and
+    // only sees files, never symbols.
+    // Skipped for now: needs a built Store; the B3 call replaces this stub.
+    out
+}
+
+/// `--version` output of a CLI on PATH, or the reason it is not usable.
+fn cli_version(agent: &str) -> Result<String, String> {
+    let bin = match agent {
+        "claude" | "codex" | "gemini" => agent,
+        other => return Err(format!("agent {other:?} has no CLI adapter yet")),
+    };
+    let exe = find_on_path(bin).ok_or_else(|| format!("{} is not on PATH", bin))?;
+    let out = std::process::Command::new(&exe).arg("--version").output().map_err(|e| format!("{bin} --version failed: {e}"))?;
+    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    Ok(text.lines().next().unwrap_or("").trim().to_string())
+}
+
+/// Find `name` on PATH, POSIX-style, without any extra crate.
+pub fn find_on_path(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        let p = dir.join(name);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Walk `reports_to` edges; returns the first seat caught in a cycle.
+fn find_cycle(specs: &[crate::config::SeatSpec]) -> Option<String> {
+    use std::collections::{BTreeMap, BTreeSet};
+    let ids: BTreeSet<String> = specs.iter().map(|s| s.id()).collect();
+    // resolve a name within the same team first, then any team
+    let resolve = |s: &crate::config::SeatSpec, name: &str| -> Option<String> {
+        let own = format!("{}/{}", s.team, name);
+        if ids.contains(&own) {
+            Some(own)
+        } else {
+            specs.iter().find(|o| o.key == name || o.team == name).map(|o| o.id())
+        }
+    };
+    let mut edges: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for s in specs {
+        for name in std::iter::once(&s.reports_to).filter(|r| !r.is_empty()).chain(s.hands_off.iter()) {
+            if let Some(target) = resolve(s, name) {
+                edges.entry(s.id()).or_default().push(target);
+            }
+        }
+    }
+    // DFS over every edge: reports_to and hands_off are both walked, so a
+    // hands_off-only cycle (A→B→A) is caught the same as a reports_to one.
+    // A node is a cycle only when met again while still on the current path –
+    // a diamond revisits fine.
+    let mut done: BTreeSet<String> = BTreeSet::new();
+    for start in specs {
+        let mut stack: Vec<(String, bool)> = vec![(start.id(), true)];
+        let mut on_path: BTreeSet<String> = BTreeSet::new();
+        while let Some((cur, entering)) = stack.pop() {
+            if !entering {
+                on_path.remove(&cur);
+                done.insert(cur);
+                continue;
+            }
+            if done.contains(&cur) {
+                continue;
+            }
+            if !on_path.insert(cur.clone()) {
+                return Some(cur);
+            }
+            stack.push((cur.clone(), false));
+            if let Some(nexts) = edges.get(&cur) {
+                stack.extend(nexts.iter().cloned().map(|n| (n, true)));
+            }
+        }
+    }
+    None
+}
+
+// –– Adapters: seat spec → argv for claude · codex · gemini –––––––––––––––
+
+/// One CLI's flags, pinned by version. Built from each CLI's `--help`; a CLI
+/// whose version is not in the table refuses loudly rather than guessing flags.
+#[derive(Debug, Clone)]
+pub struct FlagTable {
+    pub cli: &'static str,
+    /// Version prefixes this table is true for (`"2."` matches 2.3.1).
+    pub versions: &'static [&'static str],
+    /// Flag that introduces the prompt (`None` = prompt is positional).
+    pub prompt_flag: Option<&'static str>,
+    /// Flags that turn on stream JSON output.
+    pub json_flags: &'static [&'static str],
+    /// `--cd`-style flag for the worktree, if the CLI has one.
+    pub cd_flag: Option<&'static str>,
+    pub model_flag: Option<&'static str>,
+    /// Flag that takes the tool allow list as one comma separated value.
+    pub allow_tools_flag: Option<&'static str>,
+    /// Flag that takes the per-seat MCP config file, if any.
+    pub mcp_config_flag: Option<&'static str>,
+}
+
+#[allow(dead_code)] // the launcher (B2's orch) wires these in when seats launch
+pub const TABLES: &[FlagTable] = &[
+    FlagTable {
+        cli: "claude",
+        versions: &["2.", "1."],
+        prompt_flag: Some("-p"),
+        json_flags: &["--output-format", "stream-json", "--verbose"],
+        cd_flag: None,
+        model_flag: Some("--model"),
+        allow_tools_flag: Some("--allowedTools"),
+        mcp_config_flag: Some("--mcp-config"),
+    },
+    FlagTable {
+        cli: "codex",
+        versions: &["0."],
+        prompt_flag: None, // codex exec takes the prompt as the positional
+        json_flags: &["--json"],
+        cd_flag: Some("--cd"),
+        model_flag: Some("-m"),
+        allow_tools_flag: None, // codex has no allow-list flag; fence is the wall
+        mcp_config_flag: None,  // servers ride as -c mcp_servers.* overrides
+    },
+    FlagTable {
+        cli: "gemini",
+        versions: &["0."],
+        prompt_flag: Some("-p"),
+        json_flags: &["--output-format", "json"],
+        cd_flag: None,
+        model_flag: Some("--model"),
+        allow_tools_flag: None,
+        mcp_config_flag: None, // servers ride as --allowed-mcp-server-names
+    },
+];
+
+/// Build the argv for one seat run with the right adapter. `KULA_NO_AGENT=1`
+/// short-circuits the version probe and still returns the would-be argv –
+/// nothing spawns, tests stay hermetic. `seat_dir` is the rendered seat
+/// folder; `prompt` the task text; `wt` the worktree.
+#[allow(dead_code)] // the launcher (B2's orch) wires this in when seats launch
+pub fn build_argv(
+    spec: &crate::config::SeatSpec,
+    seat_dir: &crate::agent_config::SeatDir,
+    prompt: &str,
+    wt: &Path,
+) -> anyhow::Result<Vec<String>> {
+    let table = TABLES.iter().find(|t| t.cli == spec.agent).ok_or_else(|| anyhow::anyhow!("no adapter for agent {:?}", spec.agent))?;
+    let no_agent = std::env::var_os("KULA_NO_AGENT").is_some();
+    if !no_agent {
+        let v = cli_version(&spec.agent).map_err(anyhow::Error::msg)?;
+        if !table.versions.iter().any(|p| v.starts_with(p)) {
+            anyhow::bail!(
+                "{} is version {v:?}, not pinned in kula's flag table (wants {}…) – refusing to guess flags",
+                spec.agent,
+                table.versions.join("/")
+            );
+        }
+    }
+
+    let mut argv: Vec<String> = vec![spec.agent.clone()];
+    if let Some(cd) = table.cd_flag {
+        argv.push(cd.into());
+        argv.push(wt.to_string_lossy().into_owned());
+    }
+    for f in table.json_flags {
+        argv.push((*f).into());
+    }
+    if let (Some(mf), false) = (table.model_flag, spec.model.is_empty()) {
+        argv.push(mf.into());
+        argv.push(spec.model.clone());
+    }
+    if let (Some(mcf), true) = (table.mcp_config_flag, !spec.mcp.is_empty()) {
+        argv.push(mcf.into());
+        argv.push(format!("{}/mcp.json", seat_dir.path));
+        argv.push("--strict-mcp-config".into());
+    }
+    if spec.agent == "gemini" && !spec.mcp.is_empty() {
+        argv.push("--allowed-mcp-server-names".into());
+        argv.push(spec.mcp.join(","));
+    }
+    if let (Some(atf), true) = (table.allow_tools_flag, !spec.mcp.is_empty()) {
+        let tools: Vec<String> = spec.mcp.iter().map(|m| format!("mcp__{m}")).collect();
+        argv.push(atf.into());
+        argv.push(tools.join(","));
+    }
+    if spec.agent == "claude" {
+        // -p is non-interactive; it needs the permission gate off.
+        argv.push("--dangerously-skip-permissions".into());
+    }
+    if let Some(pf) = table.prompt_flag {
+        argv.push(pf.into());
+    }
+    argv.push(prompt.to_string());
+    Ok(argv)
+}
+
+/// Public aliases the plan names; all three go through `build_argv`.
+/// Test-only for now – the launcher (B2's orch) wires them in when seats launch.
+#[allow(dead_code)]
+pub mod adapters {
+    use super::*;
+    pub fn claude_argv(
+        spec: &crate::config::SeatSpec,
+        seat_dir: &crate::agent_config::SeatDir,
+        prompt: &str,
+        wt: &Path,
+    ) -> anyhow::Result<Vec<String>> {
+        build_argv(&spec_with_agent(spec, "claude"), seat_dir, prompt, wt)
+    }
+    pub fn codex_argv(
+        spec: &crate::config::SeatSpec,
+        seat_dir: &crate::agent_config::SeatDir,
+        prompt: &str,
+        wt: &Path,
+    ) -> anyhow::Result<Vec<String>> {
+        build_argv(&spec_with_agent(spec, "codex"), seat_dir, prompt, wt)
+    }
+    pub fn gemini_argv(
+        spec: &crate::config::SeatSpec,
+        seat_dir: &crate::agent_config::SeatDir,
+        prompt: &str,
+        wt: &Path,
+    ) -> anyhow::Result<Vec<String>> {
+        build_argv(&spec_with_agent(spec, "gemini"), seat_dir, prompt, wt)
+    }
+    fn spec_with_agent(spec: &crate::config::SeatSpec, agent: &str) -> crate::config::SeatSpec {
+        let mut s = spec.clone();
+        s.agent = agent.into();
+        s
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Usage {
     #[serde(default)]
@@ -480,6 +835,190 @@ pub fn list(repo: &Repo) -> Vec<Run> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::SeatSpec;
+
+    /// A repo built from the tests/fixtures/seat-lint template – a disposable
+    /// kula.toml, one skill, one MCP server, a notes file. Never the repo's
+    /// own config.
+    fn seat_repo() -> tempfile::TempDir {
+        let t = tempfile::tempdir().unwrap();
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/seat-lint");
+        copy_rec(&src, t.path());
+        t
+    }
+
+    fn copy_rec(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for e in std::fs::read_dir(from).unwrap() {
+            let e = e.unwrap();
+            let p = e.path();
+            let d = to.join(e.file_name());
+            if p.is_dir() {
+                copy_rec(&p, &d);
+            } else {
+                std::fs::copy(&p, &d).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn lint_passes_a_good_config_and_fails_named_fields() {
+        // fixture config has budget and max_parallel set, valid skill, mcp,
+        // memory and fences: with KULA_NO_AGENT the CLI check is skipped.
+        std::env::set_var("KULA_NO_AGENT", "1");
+        let d = seat_repo();
+        let root = d.path();
+        assert!(lint(root, &crate::config::Config::load(root).unwrap()).is_empty(), "fixture must lint clean");
+
+        let cases: &[(&str, &str, &str)] = &[
+            ("memory escapes the repo", "memory = \"../x.md\"", "memory"),
+            ("unknown mcp server", "mcp = [\"nope\"]", "mcp"),
+            ("missing skill", "skills = [\"nope\"]", "skills"),
+            ("budget unset", "budget = 100000, max_parallel = 1,", "budget"),
+        ];
+        let text = std::fs::read_to_string(root.join("kula.toml")).unwrap();
+        for (name, from, field) in cases {
+            let mut bad = if *field == "budget" { text.replace("budget = 100000,", "") } else { text.replace(*from, "") };
+            let _ = name;
+            bad = if *field == "memory" { text.replace("memory = \"notes.md\"", "memory = \"../x.md\"") } else { bad };
+            if *field == "mcp" {
+                bad = text.replace("mcp = [\"demo\"]", "mcp = [\"nope\"]");
+            }
+            if *field == "skills" {
+                bad = text.replace("skills = [\"demo-skill\"]", "skills = [\"nope\"]");
+            }
+            std::fs::write(root.join("kula.toml"), &bad).unwrap();
+            let cfg = crate::config::Config::load(root).unwrap();
+            let errs = lint(root, &cfg);
+            assert!(errs.iter().any(|e| e.seat.contains("alpha") && e.field == *field), "{name}: {errs:?}");
+            std::fs::write(root.join("kula.toml"), &text).unwrap();
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn lint_catches_hands_off_cycle_and_absolute_memory_path() {
+        std::env::set_var("KULA_NO_AGENT", "1");
+        let d = seat_repo();
+        let root = d.path();
+        let text = std::fs::read_to_string(root.join("kula.toml")).unwrap();
+
+        // A hands_off-only cycle: alpha hands off to beta, beta hands off back
+        // to alpha – no reports_to anywhere, the DAG check must still fire.
+        let handoff = text
+            .replace("name = \"alpha\",", "name = \"alpha\", hands_off = [\"beta\"],")
+            .replace("reports_to = \"alpha\"", "hands_off = [\"alpha\"]");
+        std::fs::write(root.join("kula.toml"), &handoff).unwrap();
+        let errs = lint(root, &crate::config::Config::load(root).unwrap());
+        assert!(errs.iter().any(|e| e.problem.contains("cycle")), "hands_off-only cycle must be caught: {errs:?}");
+
+        // An absolute memory path reads outside the repo even without "..".
+        std::fs::write(root.join("kula.toml"), &text).unwrap();
+        let abs = text.replace("memory = \"notes.md\"", "memory = \"/etc/hosts\"");
+        std::fs::write(root.join("kula.toml"), &abs).unwrap();
+        let errs = lint(root, &crate::config::Config::load(root).unwrap());
+        assert!(
+            errs.iter().any(|e| e.field == "memory" && e.problem.contains("escapes")),
+            "absolute memory path must be refused: {errs:?}"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn lint_catches_cycle_and_missing_budget() {
+        std::env::set_var("KULA_NO_AGENT", "1");
+        let d = seat_repo();
+        let root = d.path();
+        let text = std::fs::read_to_string(root.join("kula.toml")).unwrap();
+        // alpha reports to beta while beta reports to alpha → cycle
+        let cyc = text.replace("name = \"alpha\",", "name = \"alpha\", reports_to = \"beta\",");
+        std::fs::write(root.join("kula.toml"), &cyc).unwrap();
+        let cfg = crate::config::Config::load(root).unwrap();
+        let errs = lint(root, &cfg);
+        assert!(errs.iter().any(|e| e.field == "reports_to" && e.problem.contains("cycle")), "cycle must be caught: {errs:?}");
+
+        let nobud = text.replace("budget = 100000,", "").replace("budget = 50000,", "");
+        std::fs::write(root.join("kula.toml"), &nobud).unwrap();
+        let errs = lint(root, &crate::config::Config::load(root).unwrap());
+        assert!(errs.iter().any(|e| e.field == "budget"), "budget unset must be caught");
+        assert!(errs.iter().any(|e| e.field == "max_parallel" || e.field == "budget"), "{errs:?}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn adapters_build_pinned_argv_and_refuse_unknown_versions() {
+        std::env::set_var("KULA_NO_AGENT", "1");
+        let d = seat_repo();
+        let root = d.path();
+        let s = spec_alpha();
+        let dir = crate::agent_config::render_seat(root, &s).unwrap();
+        let wt = root.join(".worktrees/alpha");
+
+        let a = crate::launch::adapters::claude_argv(&s, &dir, "do it", &wt).unwrap();
+        let (p, j) = (a.iter().position(|x| x == "-p").unwrap(), a.iter().position(|x| x == "--output-format").unwrap());
+        assert_eq!(a[j + 1], "stream-json", "claude streams JSON");
+        assert!(a.iter().any(|x| x == "--mcp-config") && a.iter().any(|x| x.ends_with("/mcp.json")), "per-seat mcp.json passed");
+        assert!(a.iter().any(|x| x == "mcp__demo"), "allow list carries the server as a tool");
+        assert_eq!(a[p + 1], "do it", "prompt flag takes the prompt");
+
+        let c = crate::launch::adapters::codex_argv(&s, &dir, "do it", &wt).unwrap();
+        let cd = c.iter().position(|x| x == "--cd").unwrap();
+        assert_eq!(c[cd + 1], wt.to_string_lossy(), "codex gets the worktree via --cd");
+        assert!(c.iter().any(|x| x == "--json"), "codex streams JSON");
+
+        let g = crate::launch::adapters::gemini_argv(&s, &dir, "do it", &wt).unwrap();
+        assert!(g.iter().any(|x| x == "demo"), "gemini allow-lists MCP server names");
+
+        // unknown CLI version must fail loud, not guess flags
+        let old = std::env::var("KULA_NO_AGENT").ok();
+        std::env::remove_var("KULA_NO_AGENT");
+        if crate::launch::find_on_path("claude").is_some() {
+            let mut fake = spec_alpha();
+            fake.agent = "claude".into();
+            // simulate an unpinned version by pointing at a fake CLI via PATH
+            let fakedir = tempfile::tempdir().unwrap();
+            let bin = fakedir.path().join("claude");
+            std::fs::write(&bin, "#!/bin/sh\necho 9.9.9\n").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            let old_path = std::env::var("PATH").unwrap();
+            std::env::set_var("PATH", format!("{}:{}", fakedir.path().display(), old_path));
+            let err = crate::launch::build_argv(&fake, &dir, "p", &wt);
+            assert!(err.is_err(), "version 9.9.9 is not pinned – must refuse: {a:?}");
+            std::env::set_var("PATH", old_path);
+        }
+        match old {
+            Some(v) => std::env::set_var("KULA_NO_AGENT", v),
+            None => std::env::remove_var("KULA_NO_AGENT"),
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    fn spec_alpha() -> SeatSpec {
+        SeatSpec {
+            team: "lint".into(),
+            key: "alpha".into(),
+            agent: "claude".into(),
+            model: "opus".into(),
+            workflow: "build".into(),
+            scope: vec![],
+            role: String::new(),
+            prompt: "p".into(),
+            reports_to: String::new(),
+            hands_off: vec![],
+            skills: vec!["demo-skill".into()],
+            mcp: vec!["demo".into()],
+            memory: "notes.md".into(),
+            fence: crate::config::SeatFence { lock: vec![], hide: vec![], review: vec![] },
+            budget: 1000,
+            max_parallel: 1,
+            tags: vec![],
+            color: String::new(),
+        }
+    }
 
     #[test]
     fn reads_claude_codex_gemini_and_kula_usage() {

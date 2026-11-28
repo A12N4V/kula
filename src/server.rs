@@ -330,6 +330,46 @@ async fn fence_explain(State(s): State<AppState>, Query(q): Query<HashMap<String
     .await
 }
 
+/// B4: every seat as a pure function of the config – merged spec, rendered
+/// folder (or `drift`), lint verdicts. Same data the MCP tool `kula_seats`
+/// returns. `?render=0` skips re-rendering folders.
+async fn seats(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let cfg = crate::config::Config::load(&s.repo.root)?;
+        let specs = crate::config::merge_config(&cfg);
+        let lint = crate::launch::lint(&s.repo.root, &cfg);
+        let mut rows = vec![];
+        for spec in &specs {
+            let (hash, path, drift) = if q.get("render").map(|v| v == "0").unwrap_or(false) {
+                (String::new(), String::new(), false)
+            } else {
+                match crate::agent_config::render_seat(&s.repo.root, spec) {
+                    Ok(d) => (d.hash, d.path, false),
+                    Err(_) => (String::new(), String::new(), true),
+                }
+            };
+            let errs: Vec<&crate::launch::LintError> = lint.iter().filter(|e| e.seat == spec.id()).collect();
+            rows.push(json!({
+                "seat": spec.id(), "team": spec.team, "key": spec.key, "agent": spec.agent,
+                "model": spec.model, "workflow": spec.workflow, "budget": spec.budget,
+                "max_parallel": spec.max_parallel, "hash": hash, "dir": path, "drift": drift,
+                "lint": errs.iter().map(|e| json!({ "field": e.field, "problem": e.problem })).collect::<Vec<_>>(),
+                "ok": errs.is_empty(),
+            }));
+        }
+        let mut drifts = vec![];
+        if !q.get("render").map(|v| v == "0").unwrap_or(false) {
+            drifts = crate::agent_config::drift(&s.repo.root, &specs)?
+                .into_iter()
+                .filter(|d| d.drifted)
+                .map(|d| json!({ "seat": d.seat, "disk_hash": d.disk_hash, "fresh_hash": d.fresh_hash }))
+                .collect::<Vec<_>>();
+        }
+        Ok(json!({ "seats": rows, "drift": drifts }))
+    })
+    .await
+}
+
 /// H.6: the run ledger, read back.
 fn find_run(repo: &Repo, id: &str) -> anyhow::Result<crate::launch::Run> {
     crate::launch::list(repo).into_iter().find(|r| r.id == id).ok_or_else(|| anyhow!("no run {id}"))
@@ -1442,6 +1482,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/flows", get(flows))
         .route("/api/flowmap", get(flowmap))
         .route("/api/fence/explain", get(fence_explain))
+        .route("/api/seats", get(seats))
         .route("/api/runs", get(runs_list))
         .route("/api/runs/{id}", get(run_detail))
         .route("/api/runs/{id}/synopsis", get(run_synopsis))
