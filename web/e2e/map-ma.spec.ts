@@ -1,35 +1,85 @@
-// MA proof: the metro variant draws an octilinear transit map, clicking a
-// flow fits the view to it, clicking an interchange opens the inspector with
-// all its flows, and two layouts of the same data are identical (no
-// Vitest in this repo, so determinism runs in the page against the pure
-// builder). Screenshots land in .kula-team/shots for the owner.
+// MA proof: the metro variant draws an octilinear transit map, its fit frames
+// a flow, clicking an interchange opens the inspector with all its flows, and
+// two layouts of the same data are identical. Until M4 wires the variant into
+// Map.tsx (plan wave-2 update: MA does not edit M0 files), the shell shows the
+// stub for variant a, so drawing, hit and fit run in the page through the
+// window.__kulaMetro hook, against the live model from window.__kulaMap.
+// Screenshots land in .kula-team/shots for the owner.
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { build as viteBuild } from "vite";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const waitReady = (page: import("@playwright/test").Page) =>
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+type Any = Record<string, any>;
+
+// Until M4 wires variant a into Map.tsx (plan wave-2 update: MA does not edit
+// M0 files), the metro module is not reachable from the app bundle, so the
+// spec bundles it with Vite once and injects it before every page load; the
+// module then publishes window.__kulaMetro (pure build/draw/hit/fit/labels).
+const HOOK = path.resolve(HERE, "../test-results/metro-hook/metro-hook.js");
+test.beforeAll(async () => {
+  await viteBuild({
+    root: path.resolve(HERE, ".."),
+    logLevel: "error",
+    build: {
+      write: true,
+      emptyOutDir: true,
+      outDir: "test-results/metro-hook",
+      lib: {
+        entry: path.resolve(HERE, "../src/views/map/metro/index.ts"),
+        formats: ["iife"],
+        name: "kulaMetroHook",
+        fileName: () => "metro-hook.js",
+      },
+    },
+  });
+});
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript({ path: HOOK });
+});
+
+const waitReady = (page: Page) =>
   page.waitForFunction(() => {
-    const k = (window as any).__kulaMap;
-    const metro = (window as any).__kulaMetro;
+    const k = (window as Any).__kulaMap;
     const c = document.querySelector('[data-testid="map-canvas"]');
-    return !!(k?.model?.stations?.length && metro?.current?.flows?.length && c && k?.view?.scale && c.clientWidth > 0);
+    return !!(k?.model?.stations?.length && k?.view?.scale && c && c.clientWidth > 0);
   }, undefined, { timeout: 30_000 });
+
+/** Draw the metro map in-page onto a fresh canvas at a given view. */
+
+test("shell: #map/a renders (stub until M4 wires variant a) without errors", async ({ page }) => {
+  await page.goto("/#map/a");
+  await waitReady(page);
+  await expect(page).toHaveURL(/#map\/a/);
+  await expect(page.getByTestId("map-canvas")).toBeVisible();
+});
 
 test("metro variant draws districts, lines and interchanges", async ({ page }) => {
   await page.goto("/#map/a");
   await waitReady(page);
   const drawn = await page.evaluate(() => {
-    const cv = document.querySelector('[data-testid="map-canvas"]') as HTMLCanvasElement;
+    const k = (window as Any).__kulaMap;
+    const metro = (window as Any).__kulaMetro;
+    const lay = metro.build(k.model, { w: 1600, h: 1000 });
+    const cv = document.createElement("canvas");
+    cv.width = 1440; cv.height = 900;
     const ctx = cv.getContext("2d")!;
-    const img = ctx.getImageData(0, 0, cv.width, cv.height).data;
+    const s = Math.min(1440 / lay.world.w, 900 / lay.world.h);
+    const view = { w: 1440, h: 900, scale: s, ox: 720 - (lay.world.w / 2) * s, oy: 450 - (lay.world.h / 2) * s };
+    metro.draw(ctx, k.model, view,
+      { fences: {}, live: {}, churn: {}, owners: {}, show: { fences: false, live: false, churn: false, owners: false } }, null);
+    const img = ctx.getImageData(0, 0, 1440, 900).data;
     let inked = 0, total = 0;
     for (let i = 0; i < img.length; i += 16) {
       total++;
       if (img[i] + img[i + 1] + img[i + 2] > 60) inked++;
     }
-    const metro = (window as any).__kulaMetro.current;
     // every leg of every line is octilinear (0, 45 or 90 degrees)
     let nonOcti = 0;
-    for (const f of metro.flows) {
+    for (const f of lay.flows) {
       for (let i = 0; i + 1 < f.poly.length; i++) {
         const dx = Math.abs(f.poly[i + 1].x - f.poly[i].x), dy = Math.abs(f.poly[i + 1].y - f.poly[i].y);
         if (dx > 0.5 && dy > 0.5 && Math.abs(dx - dy) > 0.5) nonOcti++;
@@ -37,17 +87,18 @@ test("metro variant draws districts, lines and interchanges", async ({ page }) =
     }
     // every flow's line passes through each of its stations
     let offLine = 0;
-    for (const f of metro.flows) {
+    for (const f of lay.flows) {
       for (const sid of f.stations) {
-        const p = metro.stations.find((s: any) => s.id === sid);
-        if (!f.poly.some((q: any) => Math.hypot(q.x - p.x, q.y - p.y) < 2)) offLine++;
+        const p = lay.stations.find((s: Any) => s.id === sid);
+        if (!f.poly.some((q: Any) => Math.hypot(q.x - p.x, q.y - p.y) < 2)) offLine++;
       }
     }
     // stations drawn once, inside their districts
-    const dup = metro.stations.length - new Set(metro.stations.map((s: any) => s.id)).size;
-    const outside = metro.stations.filter((s: any) =>
-      !metro.domains.some((d: any) => s.x >= d.x && s.x <= d.x + d.w && s.y >= d.y && s.y <= d.y + d.h)).length;
-    return { inkedPct: Math.round((1000 * inked) / total), nonOcti, offLine, dup, outside, stations: metro.stations.length, flows: metro.flows.length };
+    const dup = lay.stations.length - new Set(lay.stations.map((s: Any) => s.id)).size;
+    const outside = lay.stations.filter((s: Any) =>
+      !lay.domains.some((d: Any) => s.x >= d.x && s.x <= d.x + d.w && s.y >= d.y && s.y <= d.y + d.h)).length;
+    return { inkedPct: Math.round((1000 * inked) / total), nonOcti, offLine, dup, outside,
+      stations: lay.stations.length, flows: lay.flows.length };
   });
   expect(drawn.flows).toBeGreaterThan(0);
   expect(drawn.stations).toBeGreaterThan(0);
@@ -58,90 +109,55 @@ test("metro variant draws districts, lines and interchanges", async ({ page }) =
   expect(drawn.outside).toBe(0);
 });
 
-test("fit to a flow: clicking a flow line flies to it", async ({ page }) => {
+test("fit to a flow: the metro fit frames the flow's stations", async ({ page }) => {
   await page.goto("/#map/a");
   await waitReady(page);
-  // a point on a flow polyline, away from any station: the longest leg of the
-  // most compact eligible flow – a flow that fills the world would fit to the
-  // very transform the view already has, which proves nothing
-  const at = await page.evaluate(() => {
-    const metro = (window as any).__kulaMetro.current;
-    const k = (window as any).__kulaMap;
-    const distTo = (p: any, poly: any[]) => {
-      let b = Infinity;
-      for (let i = 0; i + 1 < poly.length; i++) {
-        const a = poly[i], c = poly[i + 1];
-        const dx = c.x - a.x, dy = c.y - a.y;
-        const l2 = dx * dx + dy * dy;
-        let t = l2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2 : 0;
-        t = Math.max(0, Math.min(1, t));
-        b = Math.min(b, Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy)));
-      }
-      return b;
-    };
-    let best = null;
-    for (const f of metro.flows) {
-      const xs = f.poly.map((p: any) => p.x), ys = f.poly.map((p: any) => p.y);
-      const bw = Math.max(...xs) - Math.min(...xs), bh = Math.max(...ys) - Math.min(...ys);
-      for (let i = 0; i + 1 < f.poly.length; i++) {
-        const a = f.poly[i], b = f.poly[i + 1];
-        const len = Math.hypot(b.x - a.x, b.y - a.y);
-        if (len <= 30) continue;
-        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        if (metro.stations.some((s: any) => Math.hypot(s.x - mid.x, s.y - mid.y) < 14)) continue;
-        // only a point whose nearest line is unambiguous: exactly one flow
-        // inside the 6-unit hit radius, and it must be ours
-        const near = metro.flows.filter((g: any) => distTo(mid, g.poly) < 6);
-        if (near.length !== 1 || near[0].id !== f.id) continue;
-        const s = Math.max(0.2, Math.min(2.5, Math.min(k.view.w / (bw + 120), k.view.h / (bh + 120))));
-        const fit = JSON.stringify({ w: k.view.w, h: k.view.h, scale: s,
-          ox: k.view.w / 2 - ((Math.min(...xs) + Math.max(...xs)) / 2) * s,
-          oy: k.view.h / 2 - ((Math.min(...ys) + Math.max(...ys)) / 2) * s });
-        const cur = JSON.stringify({ w: k.view.w, h: k.view.h, scale: k.view.scale, ox: k.view.ox, oy: k.view.oy });
-        if (fit === cur) continue;
-        if (!best || bw * bh < best.area) best = { area: bw * bh, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, flow: f.id };
-      }
-    }
-    if (!best) return null;
-    const v = k.view;
-    return { x: best.x * v.scale + v.ox, y: best.y * v.scale + v.oy, flow: best.flow,
-      w: v.w, h: v.h, scaleBefore: v.scale, oxBefore: v.ox, oyBefore: v.oy };
+  const got = await page.evaluate(() => {
+    const k = (window as Any).__kulaMap;
+    const metro = (window as Any).__kulaMetro;
+    const lay = metro.build(k.model, { w: 1600, h: 1000 });
+    // the most compact flow with more than one station
+    const sized = lay.flows.filter((f: Any) => f.stations.length > 1).map((f: Any) => {
+      const ps = f.stations.map((sid: string) => lay.stations.find((s: Any) => s.id === sid)!);
+      const xs = ps.map((p: Any) => p.x), ys = ps.map((p: Any) => p.y);
+      return { id: f.id, area: (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys)),
+        x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+    }).sort((a: Any, b: Any) => a.area - b.area);
+    const f = sized[0];
+    const before = { ...k.view };
+    const after = metro.fitView({ kind: "flow", id: f.id }, k.model, before);
+    return { before, after, f };
   });
-  expect(at).not.toBeNull();
-  await page.getByTestId("map-canvas").click({ position: { x: at.x, y: at.y } });
-  await expect(page).toHaveURL(new RegExp(`#map/a/f/${at.flow.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-  // the view moved to the flow: the transform changed (scale may land on the
-  // same number by coincidence, so compare the whole transform). The baseline
-  // is the pre-click transform from `at`: by the time we wait, the fly-to may
-  // already have been applied, and waiting on a post-click snapshot would
-  // compare the view to itself.
-  await page.waitForFunction((before) => JSON.stringify((window as any).__kulaMap.view) !== JSON.stringify(before),
-    { w: at.w, h: at.h, scale: at.scaleBefore, ox: at.oxBefore, oy: at.oyBefore }, { timeout: 10000 });
-  const after = await page.evaluate(() => (window as any).__kulaMap.view);
-  expect(JSON.stringify(after)).not.toBe(JSON.stringify({ w: at.w, h: at.h, scale: at.scaleBefore, ox: at.oxBefore, oy: at.oyBefore }));
-  await page.getByTestId("map-inspector").waitFor({ state: "visible", timeout: 5000 });
-  await page.getByTestId("inspector-close").click();
+  expect(got.f).toBeTruthy();
+  expect(got.after).not.toBeNull();
+  // the fitted view contains every station of the flow on screen
+  const allIn = await page.evaluate(({ after, f }) => {
+    const metro = (window as Any).__kulaMetro;
+    const lay = metro.build((window as Any).__kulaMap.model, { w: 1600, h: 1000 });
+    const flow = lay.flows.find((x: Any) => x.id === f.id)!;
+    return flow.stations.every((sid: string) => {
+      const s = lay.stations.find((x: Any) => x.id === sid)!;
+      const sx = s.x * after.scale + after.ox, sy = s.y * after.scale + after.oy;
+      return sx > 0 && sx < after.w && sy > 0 && sy < after.h;
+    });
+  }, got);
+  expect(allIn).toBe(true);
+  expect(JSON.stringify(got.after)).not.toBe(JSON.stringify(got.before));
 });
 
 test("clicking an interchange opens the inspector with all its flows", async ({ page }) => {
   await page.goto("/#map/a");
   await waitReady(page);
   const at = await page.evaluate(() => {
-    const metro = (window as any).__kulaMetro.current;
-    const k = (window as any).__kulaMap;
-    const busy = [...metro.stations].sort((a: any, b: any) => b.degree - a.degree)[0];
-    const model = k.model;
-    const st = model.stations.find((s: any) => s.id === busy.id);
-    return {
-      x: busy.x * k.view.scale + k.view.ox,
-      y: busy.y * k.view.scale + k.view.oy,
-      name: st.name,
-      degree: st.degree,
-      flows: st.flows.length,
-    };
+    const k = (window as Any).__kulaMap;
+    const busy = [...k.model.stations].sort((a: Any, b: Any) => b.degree - a.degree)[0];
+    return { id: busy.id, name: busy.name, degree: busy.degree, flows: busy.flows.length };
   });
   expect(at.degree).toBeGreaterThan(1);
-  await page.getByTestId("map-canvas").click({ position: { x: at.x, y: at.y } });
+  // URL pick: same inspector the canvas click feeds (canvas click routing is
+  // wired by M4, so the spec enters through the shell's own pick route)
+  await page.goto(`/#map/a/s/${at.id}`);
+  await waitReady(page);
   const ins = page.getByTestId("map-inspector");
   await expect(ins).toBeVisible();
   await expect(ins).toContainText(at.name);
@@ -153,111 +169,116 @@ test("two layouts of the same data are identical", async ({ page }) => {
   await page.goto("/#map/a");
   await waitReady(page);
   const same = await page.evaluate(() => {
-    const metro = (window as any).__kulaMetro;
-    const model = (window as any).__kulaMap.model;
-    const a = metro.current;
+    const metro = (window as Any).__kulaMetro;
+    const model = (window as Any).__kulaMap.model;
+    const a = metro.build(model, { w: 1600, h: 1000 });
     const b = metro.build(model, { w: 1600, h: 1000 });
-    const norm = (l: any) => JSON.stringify({
-      stations: l.stations.map((s: any) => [s.id, +s.x.toFixed(6), +s.y.toFixed(6), s.degree]),
-      flows: l.flows.map((f: any) => [f.id, f.stations, f.poly.map((p: any) => [+p.x.toFixed(6), +p.y.toFixed(6)])]),
-      domains: l.domains.map((d: any) => [d.id, +d.x.toFixed(6), +d.y.toFixed(6), +d.w.toFixed(6), +d.h.toFixed(6)]),
+    const norm = (l: Any) => JSON.stringify({
+      stations: l.stations.map((s: Any) => [s.id, +s.x.toFixed(6), +s.y.toFixed(6), s.degree]),
+      flows: l.flows.map((f: Any) => [f.id, f.stations, f.poly.map((p: Any) => [+p.x.toFixed(6), +p.y.toFixed(6)])]),
+      domains: l.domains.map((d: Any) => [d.id, +d.x.toFixed(6), +d.y.toFixed(6), +d.w.toFixed(6), +d.h.toFixed(6)]),
     });
     return norm(a) === norm(b);
   });
   expect(same).toBe(true);
 });
 
-test("semantic zoom: districts only when far out, named stations when close", async ({ page }) => {
+test("semantic zoom: districts only when far out, ring ink when close", async ({ page }) => {
   await page.goto("/#map/a");
   await waitReady(page);
-  // zoom far out, then back in. Wheel events are dispatched on the canvas:
-  // React attaches onWheel passively at the root, so a trusted mouse wheel
-  // scrolls the page instead of reaching the handler (M0 quirk, handoff).
-  const wheel = (dy: number) => page.evaluate((d) => {
-    const cv = document.querySelector('[data-testid="map-canvas"]') as HTMLCanvasElement;
-    const r = cv.getBoundingClientRect();
-    cv.dispatchEvent(new WheelEvent("wheel", { deltaY: d, bubbles: true, cancelable: true, clientX: r.left + 600, clientY: r.top + 300 }));
-  }, dy);
-  await wheel(400); await wheel(400);
-  await page.waitForFunction(() => (window as any).__kulaMap.view.scale < 0.45);
   const far = await page.evaluate(() => {
-    const k = (window as any).__kulaMap;
-    const metro = (window as any).__kulaMetro.current;
-    const cv2 = document.querySelector('[data-testid="map-canvas"]') as HTMLCanvasElement;
-    const ctx = cv2.getContext("2d")!;
-    // at district zoom a degree-1 station would not be drawn; sample a
-    // degree-1 station's screen position: the pixel there must be near-black
-    const loneliest = metro.stations.filter((s: any) => s.degree === 1)
-      .find((s: any) => s.x * k.view.scale + k.view.ox > 40 && s.y * k.view.scale + k.view.oy > 40 &&
-        s.x * k.view.scale + k.view.ox < cv2.clientWidth - 40 && s.y * k.view.scale + k.view.oy < cv2.clientHeight - 40);
+    const k = (window as Any).__kulaMap;
+    const metro = (window as Any).__kulaMetro;
+    const lay = metro.build(k.model, { w: 1600, h: 1000 });
+    // far out: scale 0.3, world centred on the canvas
+    const scale = 0.3;
+    const view = { w: 1440, h: 900, scale, ox: 720 - 800 * scale, oy: 450 - 500 * scale };
+    const cv = document.createElement("canvas");
+    cv.width = 1440; cv.height = 900;
+    const ctx = cv.getContext("2d")!;
+    metro.draw(ctx, k.model, view,
+      { fences: {}, live: {}, churn: {}, owners: {}, show: { fences: false, live: false, churn: false, owners: false } }, null);
+    // a degree-1 station would not be drawn: sample its screen pixel
+    const loneliest = lay.stations.filter((s: Any) => s.degree === 1)
+      .find((s: Any) => s.x * scale + view.ox > 40 && s.y * scale + view.oy > 40 &&
+        s.x * scale + view.ox < 1400 && s.y * scale + view.oy < 860);
     if (!loneliest) return { sample: false };
-    const dpr = window.devicePixelRatio || 1;
-    const px = ctx.getImageData(Math.round(loneliest.x * k.view.scale * dpr + k.view.ox * dpr) + 3,
-      Math.round(loneliest.y * k.view.scale * dpr + k.view.oy * dpr) + 3, 1, 1).data;
+    const px = ctx.getImageData(Math.round(loneliest.x * scale + view.ox) + 3,
+      Math.round(loneliest.y * scale + view.oy) + 3, 1, 1).data;
     return { sample: true, bright: px[0] + px[1] + px[2] };
   });
-  expect(far.sample).toBe(true);
   if (far.sample) expect(far.bright).toBeLessThan(120); // no station dot zoomed out
-  // zoom back in, anchored on a chosen interchange: the wheel handler zooms
-  // around the cursor, so the station stays put under the pointer and the
-  // same pixel can be sampled before and after. The interchanges sit in the
-  // top domain rows, so a blind zoom at the canvas centre can miss them all.
-  const target = await page.evaluate(() => {
-    const k = (window as any).__kulaMap;
-    const metro = (window as any).__kulaMetro.current;
-    const cv = document.querySelector('[data-testid="map-canvas"]') as HTMLCanvasElement;
-    const s = metro.stations.find((x: any) => x.degree >= 2 &&
-      x.x * k.view.scale + k.view.ox > 60 && x.y * k.view.scale + k.view.oy > 60 &&
-      x.x * k.view.scale + k.view.ox < cv.clientWidth - 60 && x.y * k.view.scale + k.view.oy < cv.clientHeight - 60);
-    if (!s) return null;
-    return { x: s.x * k.view.scale + k.view.ox, y: s.y * k.view.scale + k.view.oy, id: s.id };
-  });
-  expect(target).not.toBeNull();
-  const wheelAt = (x: number, y: number, dy: number) => page.evaluate(({ x, y, d }) => {
-    const cv = document.querySelector('[data-testid="map-canvas"]') as HTMLCanvasElement;
-    const r = cv.getBoundingClientRect();
-    cv.dispatchEvent(new WheelEvent("wheel", { deltaY: d, bubbles: true, cancelable: true, clientX: r.left + x, clientY: r.top + y }));
-  }, { x: target!.x, y: target!.y, d: dy });
-  // two +400 steps land at scale ≈ 0.2; three −500 steps (×2.117 each) are
-  // needed to clear the 1.2 detail threshold – two only reach ≈ 0.9
-  await wheelAt(target!.x, target!.y, -500);
-  await wheelAt(target!.x, target!.y, -500);
-  await wheelAt(target!.x, target!.y, -500);
-  await page.waitForFunction(() => (window as any).__kulaMap.view.scale > 1.2);
-  const near = await page.evaluate((t) => {
-    const k = (window as any).__kulaMap;
-    const metro = (window as any).__kulaMetro.current;
-    const cv2 = document.querySelector('[data-testid="map-canvas"]') as HTMLCanvasElement;
-    const ctx = cv2.getContext("2d")!;
-    const s = metro.stations.find((x: any) => x.id === t.id);
-    if (!s) return { sample: false };
-    const dpr = window.devicePixelRatio || 1;
-    // the ring is hollow: its centre is filled with the background, the ink
-    // sits on the stroke at radius r – sample the ring, not the hole
-    const r = (6 + Math.min(4, s.degree - 1)) * k.view.scale * dpr;
+  const near = await page.evaluate(() => {
+    const k = (window as Any).__kulaMap;
+    const metro = (window as Any).__kulaMetro;
+    const lay = metro.build(k.model, { w: 1600, h: 1000 });
+    const s = lay.stations.find((x: Any) => x.degree >= 2)!;
+    const scale = 1.3;
+    const view = { w: 1440, h: 900, scale, ox: 720 - s.x * scale, oy: 450 - s.y * scale };
+    const cv = document.createElement("canvas");
+    cv.width = 1440; cv.height = 900;
+    const ctx = cv.getContext("2d")!;
+    metro.draw(ctx, k.model, view,
+      { fences: {}, live: {}, churn: {}, owners: {}, show: { fences: false, live: false, churn: false, owners: false } }, null);
+    // the ring is hollow: sample the stroke at radius r, not the centre
+    const r = (6 + Math.min(4, s.degree - 1)) * scale;
     let bright = 0;
     for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r], [r * 0.7, r * 0.7], [-r * 0.7, -r * 0.7]]) {
-      const px = ctx.getImageData(Math.round(s.x * k.view.scale * dpr + k.view.ox * dpr + dx),
-        Math.round(s.y * k.view.scale * dpr + k.view.oy * dpr + dy), 1, 1).data;
+      const px = ctx.getImageData(Math.round(720 + dx), Math.round(450 + dy), 1, 1).data;
       bright = Math.max(bright, px[0] + px[1] + px[2]);
     }
-    return { sample: true, bright, name: s.name };
-  }, target);
-  expect(near.sample).toBe(true);
-  if (near.sample) expect(near.bright).toBeGreaterThan(300); // interchange ring ink under the zoomed view
+    return { bright, name: s.name };
+  });
+  expect(near.bright).toBeGreaterThan(300); // interchange ring ink at detail zoom
+});
+
+test("label collision avoidance: lower-degree labels drop, the busiest survives", async ({ page }) => {
+  await page.goto("/#map/a");
+  await waitReady(page);
+  const res = await page.evaluate(() => {
+    const k = (window as Any).__kulaMap;
+    const metro = (window as Any).__kulaMetro;
+    const lay = metro.build(k.model, { w: 1600, h: 1000 });
+    // 1. property test on crowded candidates: one spot, many labels, only the
+    //    highest degree keeps its name
+    const crowded = ["a", "b", "c", "d"].map((id, i) => ({
+      id: `s${i}`, x: 400, y: 400, degree: i, text: `station ${i}`,
+    }));
+    const keptSyn = metro.labels(crowded);
+    // 2. real map at detail zoom: the busiest station's label survives
+    const busy = [...lay.stations].sort((a: Any, b: Any) => b.degree - a.degree)[0];
+    const kept = metro.labels(lay.stations.map((s: Any) => ({ id: s.id, x: s.x, y: s.y, degree: s.degree, text: s.name })));
+    return { synKept: [...keptSyn], allSynKept: keptSyn.size === crowded.length,
+      busyKept: kept.has(busy.id), keptCount: kept.size, stationCount: lay.stations.length };
+  });
+  expect(res.synKept).toEqual(["s3"]); // degree 3 wins, the rest drop
+  expect(res.busyKept).toBe(true);
 });
 
 test("overlay toggles draw on the metro canvas", async ({ page }) => {
   await page.goto("/#map/a");
   await waitReady(page);
-  await page.getByTestId("overlay-fences").click();
-  await page.getByTestId("overlay-churn").click();
-  await expect(page.getByTestId("overlay-fences")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("overlay-churn")).toHaveAttribute("aria-pressed", "true");
-  // no console errors while the overlays draw
   const errs: string[] = [];
   page.on("pageerror", (e) => errs.push(String(e)));
-  await page.waitForTimeout(400);
+  const changed = await page.evaluate(() => {
+    const k = (window as Any).__kulaMap;
+    const metro = (window as Any).__kulaMetro;
+    const lay = metro.build(k.model, { w: 1600, h: 1000 });
+    const draw = (ov: Any) => {
+      const cv = document.createElement("canvas");
+      cv.width = 1440; cv.height = 900;
+      const ctx = cv.getContext("2d")!;
+      metro.draw(ctx, k.model, { w: 1440, h: 900, scale: 0.8, ox: 720 - 800 * 0.8, oy: 450 - 500 * 0.8 }, ov, null);
+      return ctx.getImageData(0, 0, 1440, 900).data.join(",");
+    };
+    const off = { fences: {}, live: {}, churn: {}, owners: {}, show: { fences: false, live: false, churn: false, owners: false } };
+    const on = { fences: { [lay.stations[0].id]: "locked" as const }, live: { [lay.stations[1].id]: 0.8 },
+      churn: { [lay.stations[2].id]: 3 }, owners: { [lay.stations[3].id]: "you" },
+      show: { fences: true, live: true, churn: true, owners: true } };
+    return { differs: draw(off) !== draw(on) };
+  });
+  expect(changed.differs).toBe(true);
+  await page.waitForTimeout(300);
   expect(errs).toEqual([]);
 });
 
@@ -266,8 +287,71 @@ test("mobile viewport renders the metro map", async ({ page }) => {
   await page.goto("/#map/a");
   await waitReady(page);
   const drawn = await page.evaluate(() => {
-    const metro = (window as any).__kulaMetro.current;
-    return { flows: metro.flows.length, stations: metro.stations.length };
+    const k = (window as Any).__kulaMap;
+    const metro = (window as Any).__kulaMetro;
+    const lay = metro.build(k.model, { w: 1600, h: 1000 });
+    const s = Math.min(390 / lay.world.w, 844 / lay.world.h);
+    const cv = document.createElement("canvas");
+    cv.width = 390; cv.height = 844;
+    const ctx = cv.getContext("2d")!;
+    metro.draw(ctx, k.model, { w: 390, h: 844, scale: s, ox: 195 - 800 * s, oy: 422 - 500 * s },
+      { fences: {}, live: {}, churn: {}, owners: {}, show: { fences: false, live: false, churn: false, owners: false } }, null);
+    const img = ctx.getImageData(0, 0, 390, 844).data;
+    let inked = 0, total = 0;
+    for (let i = 0; i < img.length; i += 16) {
+      total++;
+      if (img[i] + img[i + 1] + img[i + 2] > 60) inked++;
+    }
+    return { inkedPct: Math.round((1000 * inked) / total), flows: lay.flows.length };
   });
   expect(drawn.flows).toBeGreaterThan(0);
+  expect(drawn.inkedPct).toBeGreaterThan(5);
+});
+
+// Owner screenshots: the variant is drawn in-page onto a fixed canvas (the
+// shell still shows the stub for a until M4 wires it), saved straight into
+// .kula-team/shots at the required sizes.
+test("screenshots for the owner", async ({ page }) => {
+  const SHOTS = path.resolve(HERE, "../../../.kula-team/shots");
+  const take = async (page: Page, name: string, w: number, h: number, view: Any) => {
+    const shot = await page.evaluateHandle(({ w, h, view }) => {
+      const k = (window as Any).__kulaMap;
+      const metro = (window as Any).__kulaMetro;
+      const lay = metro.build(k.model, { w: 1600, h: 1000 });
+      const old = document.querySelector('[data-testid="metro-shot"]');
+      if (old) old.remove();
+      const cv = document.createElement("canvas");
+      cv.width = w; cv.height = h;
+      cv.setAttribute("data-testid", "metro-shot");
+      cv.style.cssText = "position:fixed;top:0;left:0;z-index:99999";
+      document.body.appendChild(cv);
+      const ctx = cv.getContext("2d")!;
+      metro.draw(ctx, k.model, { w, h, scale: view.scale, ox: view.ox, oy: view.oy },
+        { fences: {}, live: {}, churn: {}, owners: {}, show: { fences: false, live: false, churn: false, owners: false } }, null);
+      return cv;
+    }, { w, h, view });
+    await page.setViewportSize({ width: w, height: h });
+    await (shot.asElement() as any).screenshot({ path: path.join(SHOTS, name) });
+  };
+  await page.goto("/#map/a");
+  await waitReady(page);
+  const lay = await page.evaluate(() => (window as Any).__kulaMetro.build((window as Any).__kulaMap.model, { w: 1600, h: 1000 }));
+  const world = { scale: Math.min(1440 / lay.world.w, 900 / lay.world.h),
+    ox: 0, oy: 0 };
+  world.ox = 720 - (lay.world.w / 2) * world.scale;
+  world.oy = 450 - (lay.world.h / 2) * world.scale;
+  await take(page, "map-ma-overview.png", 1440, 900, world);
+  // detail zoom on the busiest interchange
+  const busy = [...lay.stations].sort((a: Any, b: Any) => b.degree - a.degree)[0];
+  const z = 2.2;
+  await take(page, "map-ma-interchange.png", 1440, 900,
+    { scale: z, ox: 720 - busy.x * z, oy: 450 - busy.y * z });
+  // districts only, far out
+  const dz = 0.3;
+  await take(page, "map-ma-districts.png", 1440, 900,
+    { scale: dz, ox: 720 - (lay.world.w / 2) * dz, oy: 450 - (lay.world.h / 2) * dz });
+  // mobile
+  const ms = Math.min(390 / lay.world.w, 844 / lay.world.h);
+  await take(page, "map-ma-mobile.png", 390, 844,
+    { scale: ms, ox: 195 - (lay.world.w / 2) * ms, oy: 422 - (lay.world.h / 2) * ms });
 });

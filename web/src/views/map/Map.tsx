@@ -11,7 +11,6 @@ import { useEvents } from "../hub/live";
 import { domainGrid, flowColor, inks, roundRect, withAlpha, LAYER_COLORS } from "./layout-common";
 import { Inspector, HoverCard } from "./Inspector";
 import { Test } from "./Test";
-import { metroVariantFor } from "./metro";
 import {
   parsePick, pickCode, VARIANTS, VARIANT_LABEL, type Pick, type VariantId,
 } from "./ab";
@@ -303,13 +302,6 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
 
   const drawOverlays: DrawOverlays = useMemo(() => ({ ...overlays, show }), [overlays, show]);
 
-  // Variant dispatch: a is the metro variant, b and c stay on the stub until
-  // their modules land. Wired by MA (map-ma hand-off); M4 owns this file.
-  const active = useMemo(
-    () => (route.variant === "a" && model ? metroVariantFor(model) : stubVariant),
-    [route.variant, model],
-  );
-
   const paint = useCallback((cv: HTMLCanvasElement | null, v: VariantView) => {
     if (!cv || !model) return;
     const dpr = devicePixelRatio || 1;
@@ -321,8 +313,8 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
     if (!ctx) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, cv.width, cv.height);
-    active.draw(ctx, model, v, drawOverlays, pick);
-  }, [model, drawOverlays, pick, active]);
+    stubVariant.draw(ctx, model, v, drawOverlays, pick);
+  }, [model, drawOverlays, pick]);
 
   useEffect(() => { paint(canvas.current, view); }, [paint, view]);
   useEffect(() => { paint(canvas2.current, view); }, [paint, view]);
@@ -330,23 +322,12 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
   const hitAt = (e: React.PointerEvent | React.MouseEvent): Pick | null => {
     const r = canvas.current?.getBoundingClientRect();
     if (!r) return null;
-    return active.hit(e.clientX - r.left, e.clientY - r.top, view);
+    return stubVariant.hit(e.clientX - r.left, e.clientY - r.top, view);
   };
 
   const onCanvasClick = (e: React.MouseEvent) => {
     const p = hitAt(e);
-    if (!p) return;
-    setPick(p);
-    // a flow line is long and thin: clicking it also flies to it, so the
-    // whole route is in view (the proof's fit-to-a-flow)
-    if (p.kind === "flow") active.fit(p, view, setView);
-  };
-
-  // Double click zooms to the thing under the pointer; Esc clears the pick,
-  // which the shell treats as zooming back out.
-  const onCanvasDoubleClick = (e: React.MouseEvent) => {
-    const p = hitAt(e);
-    if (p) active.fit(p, view, setView);
+    if (p) setPick(p);
   };
 
   const onCanvasMove = (e: React.MouseEvent) => {
@@ -420,7 +401,7 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
     setPick(p);
     setFindOpen(false);
     setFind("");
-    active.fit(p, view, setView);
+    stubVariant.fit(p, view, setView);
   };
 
   if (!model) {
@@ -490,7 +471,6 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
             ref={canvas}
             data-testid="map-canvas"
             onClick={onCanvasClick}
-            onDoubleClick={onCanvasDoubleClick}
             onMouseMove={onCanvasMove}
             onPointerDown={onDown}
             onPointerMove={onMoveDrag}
@@ -507,7 +487,7 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
           </div>
         )}
         <HoverCard text={hover.text} x={hover.x} y={hover.y} />
-        {pick && <Inspector pick={pick} model={model} overlays={overlays} onClose={() => setPick(null)} onPick={(p) => { setPick(p); active.fit(p, view, setView); }} />}
+        {pick && <Inspector pick={pick} model={model} overlays={overlays} onClose={() => setPick(null)} onPick={(p) => { setPick(p); stubVariant.fit(p, view, setView); }} />}
         {route.test && (
           <Test model={model} overlays={overlays} now={Date.now()} pick={pick} onVariant={(v) => setRoute({ ...route, variant: v })} />
         )}

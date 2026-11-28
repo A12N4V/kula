@@ -13,8 +13,12 @@ import type { MapModel } from "../model";
 import { hashSeed, roundRect, withAlpha } from "../layout-common";
 import { metroLayout, type MetroLayout } from "./layout";
 
-/** Canvas twin of the map palette (canvas cannot read var() colours). */
+// Canvas twin of the map palette: canvas 2D cannot read var() colours, so the
+// hues are hardcoded here. Keep in sync by hand with layout-common.ts
+// (FLOW_COLORS :8, LAYER_COLORS :15) and tokens.css :64-69, where the light
+// mode overrides live – a palette change there must be mirrored here.
 const FLOW_HEX = ["#ff6a14", "#00d2dc", "#1fd66a", "#ffc414", "#a45bff", "#2e8bff", "#ff3d8e", "#ff463a"];
+// LAYER_HEX shares its hues with FLOW_HEX on purpose: one palette, two roles.
 const LAYER_HEX: Record<string, string> = {
   entry: "#ff6a14", handler: "#00d2dc", logic: "#1fd66a", data: "#ffc414", io: "#2e8bff", test: "#a45bff",
 };
@@ -69,8 +73,6 @@ function placeLabels(cands: { id: string; x: number; y: number; degree: number; 
 
 function drawMetro(ctx: CanvasRenderingContext2D, model: MapModel, view: VariantView, overlays: DrawOverlays, sel: MapPick | null) {
   const lay = layoutFor(model);
-  const hook = (window as unknown as Record<string, unknown>).__kulaMetro as { current: MetroLayout | null } | undefined;
-  if (hook) hook.current = lay;
   const px = view.scale * (devicePixelRatio || 1);
   const text = getComputedStyle(document.documentElement).getPropertyValue("--text").trim() || "#f0ebe3";
   const line2 = getComputedStyle(document.documentElement).getPropertyValue("--line-2").trim() || "#332d28";
@@ -253,6 +255,13 @@ function fitMetro(pick: MapPick, view: VariantView, set: (v: VariantView) => voi
   set({ w: view.w, h: view.h, scale: s, ox: view.w / 2 - st.x * s, oy: view.h / 2 - st.y * s });
 }
 
+/** Pure view fit for tests: the view fitMetro would set for pick, or null. */
+function fitView(pick: MapPick, model: MapModel | null, view: VariantView): VariantView | null {
+  let out: VariantView | null = null;
+  fitMetro(pick, view, (v) => { out = v; }, model);
+  return out;
+}
+
 export const metroVariant: Variant = {
   id: "a",
   draw: drawMetro,
@@ -275,13 +284,17 @@ export function metroVariantFor(model: MapModel): Variant {
   };
 }
 
-// Test and probe hook: the current layout plus the pure builder, so the
-// determinism spec can build twice and compare coordinates in the page.
+// Test and probe hook: pure functions only, assigned once at module load.
+// The spec draws and hit-tests in the page through these; nothing here is
+// written per frame (critic: prod code must not carry a per-frame global).
 if (typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).__kulaMetro = {
     build: metroLayout,
-    current: null as MetroLayout | null,
+    draw: drawMetro,
+    hit: hitMetro,
+    fitView,
+    labels: placeLabels,
   };
 }
 
-export { layoutFor };
+export { layoutFor, placeLabels };
