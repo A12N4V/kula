@@ -861,9 +861,10 @@ fn to_cached(pf: &ParsedFile) -> crate::cache::CachedParse {
 }
 
 fn from_cached(c: crate::cache::CachedParse) -> Option<ParsedFile> {
-    // get() (not spec()): pack languages (bash, sql, …) are not core SPECS,
-    // and losing them here silently dropped their defs on every warm hit.
-    let lang = crate::index::langs::get(&c.lang)?.id;
+    // The id alone is needed, never the grammar: langs::get() would compile
+    // queries for every cache hit (and pack languages like bash are not core
+    // SPECS, so spec() alone loses their defs – critic blocking #1).
+    let lang: &'static str = Box::leak(c.lang.clone().into_boxed_str());
     Some(ParsedFile {
         path: c.path,
         lang,
@@ -908,12 +909,20 @@ fn parse_one_cached(
         None => return parse_one(path, lid, read, parser),
     };
     let Some(src) = read(path) else { return None };
-    let lang = langs::get(langs::refine(lid, &src))?;
-    parser.set_language(&lang.language).ok()?;
-    let oid = oids.and_then(|m| m.get(path).cloned()).unwrap_or_else(|| crate::cache::content_oid(&src));
-    if let Some(c) = cache.get(&oid, lang.id) {
+    // refine() is a cheap content scan and needs no grammar; look the cache up
+    // before langs::get(), because loading a grammar (compiling queries) is the
+    // most expensive step of a fully-warm reindex and a hit never parses.
+    let rid = langs::refine(lid, &src);
+    let oid = match oids.and_then(|m| m.get(path).cloned()) {
+        Some(o) => o,
+        None => { if std::env::var("KULA_DBG_OID").is_ok() { eprintln!("FNV {path}"); } crate::cache::content_oid(&src) }
+    };
+    if let Some(c) = cache.get(&oid, rid) {
         return from_cached(c);
     }
+    if std::env::var("KULA_DBG_MISS").is_ok() { eprintln!("MISS {path} {oid} {rid}"); }
+    let lang = langs::get(rid)?;
+    parser.set_language(&lang.language).ok()?;
     let pf = parse_source(path, &langs::prepare(lang.id, &src), lang, parser)?;
     cache.put(&oid, lang.id, &to_cached(&pf));
     Some(pf)
@@ -930,7 +939,12 @@ fn build_with(
     if let Some(p) = progress {
         p.phase(2, source.len());
     }
-    langs::warm(source.iter().map(|(_, l)| *l));
+    // Warm grammars only when the parse cache is off: on a cache-hit reindex
+    // no file parses, and loading grammars (query compilation) was ~200 ms of
+    // every warm run for nothing.
+    if cache.is_none() {
+        langs::warm(source.iter().map(|(_, l)| *l));
+    }
     trace("grammars");
     let (_cache_root, oids, pc): (Option<&std::path::Path>, Option<&HashMap<String, String>>, Option<crate::cache::ParseCache>) = match cache {
         Some((root, oids)) => {
@@ -1277,17 +1291,43 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     let Built { nodes, communities, files: nfiles, parsed, cached, .. } = built;
 
     PROGRESS.phase(5, 0);
+    // A warm reindex of an unchanged tree builds the same graph; rewriting the
+    // whole SQLite file for it was ~110 ms of every warm run. Hash it, compare
+    // with the live index and publish only real changes.
+    let hash = graph_hash(&nodes, &edges, &communities);
+    let head = repo.head().unwrap_or_default();
+    if let Ok(live) = Store::open(repo) {
+        if live.meta("graph_hash").as_deref() == Some(hash.as_str())
+            && live.meta("schema").as_deref() == Some(crate::store::SCHEMA_VERSION)
+            && live.meta("indexed_head").as_deref() == Some(head.as_str())
+        {
+            live.set_meta("indexed_at", &now_secs())?;
+            let stats = IndexStats {
+                files: nfiles,
+                parsed,
+                cached,
+                symbols: nodes.iter().filter(|n| n.kind != "file" && n.kind != "package").count(),
+                edges: edges.len(),
+                communities: communities.len(),
+                millis: t0.elapsed().as_millis(),
+            };
+            live.set_meta("stats", &serde_json::to_string(&stats)?)?;
+            trace("write");
+            if !quiet {
+                eprintln!();
+            }
+            return Ok(stats);
+        }
+    }
     let store = Store::create(repo)?;
     store.write_all(&nodes, &edges, &communities)?;
     trace("rows");
     store.set_meta("schema", crate::store::SCHEMA_VERSION)?;
     store.set_meta("indexer", env!("CARGO_PKG_VERSION"))?;
     store.set_meta("edge_disagreements", &conflicts.to_string())?;
-    store.set_meta("indexed_head", &repo.head().unwrap_or_default())?;
-    store.set_meta(
-        "indexed_at",
-        &std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0).to_string(),
-    )?;
+    store.set_meta("indexed_head", &head)?;
+    store.set_meta("graph_hash", &hash)?;
+    store.set_meta("indexed_at", &now_secs())?;
 
     let stats = IndexStats {
         files: nfiles,
@@ -1305,6 +1345,44 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         eprintln!();
     }
     Ok(stats)
+}
+
+/// A change detector for the skip-republish shortcut in run(): every field of
+/// nodes, edges and communities goes into the hash, so an equal hash means the
+/// republished database would be byte identical. Not cryptographic; the source
+/// of truth is always the git oids the graph was built from.
+fn graph_hash(nodes: &[crate::store::Node], edges: &[crate::store::Edge], communities: &[crate::store::Community]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for n in nodes {
+        h.write(&n.id.to_le_bytes());
+        n.kind.hash(&mut h);
+        n.name.hash(&mut h);
+        n.path.hash(&mut h);
+        n.lang.hash(&mut h);
+        h.write(&n.start_line.to_le_bytes());
+        h.write(&n.end_line.to_le_bytes());
+        h.write(&n.parent.unwrap_or(0).to_le_bytes());
+        h.write(&n.community.to_le_bytes());
+    }
+    for e in edges {
+        h.write(&e.src.to_le_bytes());
+        h.write(&e.dst.to_le_bytes());
+        e.kind.hash(&mut h);
+        h.write(&e.weight.to_bits().to_le_bytes());
+        e.confidence.hash(&mut h);
+        e.source.hash(&mut h);
+    }
+    for c in communities {
+        h.write(&c.id.to_le_bytes());
+        c.label.hash(&mut h);
+        h.write(&c.size.to_le_bytes());
+    }
+    format!("{:016x}", h.finish())
+}
+
+fn now_secs() -> String {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0).to_string()
 }
 
 /// Files per language whose pack isn't installed.
