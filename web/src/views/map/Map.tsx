@@ -12,11 +12,11 @@ import { domainGrid, flowColor, inks, roundRect, withAlpha, LAYER_COLORS } from 
 import { Inspector, HoverCard } from "./Inspector";
 import { Test } from "./Test";
 import {
-  parsePick, pickCode, VARIANTS, VARIANT_LABEL, type Pick, type VariantId,
+  canonVariant, parsePick, pickCode, rememberVariant, rememberedVariant, sessionOrder,
+  VARIANTS, VARIANT_LABEL, type Pick, type VariantId,
 } from "./ab";
 import { metroVariantFor, layoutFor as metroLayoutFor } from "./metro";
 import { atlasVariant } from "./atlas";
-import { storyVariant, __layoutForTest as storyLayoutFor } from "./story";
 import { getAtlasLayout } from "./atlas/layout";
 import "./map.css";
 
@@ -28,9 +28,10 @@ export type DrawOverlays = OverlayState & { show: ShowFlags };
 export interface VariantView { w: number; h: number; scale: number; ox: number; oy: number }
 export type MapPick = Pick;
 
-/** One drawing of the map. A and B are canvas; C may be a React component. */
+/** One drawing of the map. Atlas and Metro are canvas variants. `id` stays a
+ * plain string so variant modules can keep their own id literals. */
 export interface Variant {
-  id: VariantId;
+  id: string;
   draw(ctx: CanvasRenderingContext2D, model: MapModel, view: VariantView, overlays: DrawOverlays, sel: MapPick | null): void;
   hit(x: number, y: number, view: VariantView): MapPick | null;
   fit(pick: MapPick, view: VariantView, set: (v: VariantView) => void): void;
@@ -40,6 +41,12 @@ export interface MapRoute { variant: VariantId; /** pick code `s/<id>` · `f/<id
 export type SetRoute = (r: MapRoute) => void;
 
 const WORLD = { w: 1600, h: 1000 };
+
+/** The four overlay toggles, in header order. */
+const OVERLAY_KEYS: OverlayKey[] = ["fences", "live", "churn", "owners"];
+
+/** Below this viewport width the overlay toggles collapse into one menu. */
+const NARROW_QUERY = "(max-width: 1199px)";
 
 /* ---------------------------------------------------------------- stub ---- */
 
@@ -245,18 +252,10 @@ function atlasLayoutFor(model: MapModel) {
   if (!l) { l = getAtlasLayout(model); atlasLayoutCache.set(model, l); }
   return l;
 }
-const stubLayoutCache = new WeakMap<MapModel, StubLayout>();
-function stubLayoutFor(model: MapModel): StubLayout {
-  let l = stubLayoutCache.get(model);
-  if (!l) { l = stubLayout(model); stubLayoutCache.set(model, l); }
-  return l;
-}
-
 /** The variant wired for an id. The stub only shows before data arrives. */
 function variantFor(id: VariantId, model: MapModel | null): Variant {
-  if (model && id === "a") return metroVariantFor(model);
-  if (model && id === "b") return atlasVariant;
-  if (model && id === "c") return storyVariant;
+  if (model && id === "atlas") return atlasVariant;
+  if (model && id === "metro") return metroVariantFor(model);
   return stubVariant;
 }
 
@@ -272,6 +271,15 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
   const [find, setFind] = useState("");
   const [findOpen, setFindOpen] = useState(false);
   const [compare, setCompare] = useState(false);
+  // The header keeps one row down to 1024: the overlay toggles collapse into
+  // one Overlays menu below 1200 px of viewport.
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW_QUERY);
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
   const baseRef = useRef<{ graph: import("../../api").GraphData | null; info: import("../../api").AgentsInfo | null }>({ graph: null, info: null });
   const { events } = useEvents(show.live);
   const box = useRef<HTMLDivElement>(null);
@@ -314,18 +322,16 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
   useEffect(() => {
     const layoutForVariant = (id: VariantId) => {
       if (!model) return null;
-      if (id === "a") return metroLayoutFor(model);
-      if (id === "b") return atlasLayoutFor(model);
-      if (id === "c") return storyLayoutFor(model);
-      return stubLayoutFor(model);
+      if (id === "atlas") return atlasLayoutFor(model);
+      return metroLayoutFor(model);
     };
     (window as unknown as Record<string, unknown>).__atlas = { atlasVariant, getAtlasLayout };
-    (window as unknown as Record<string, unknown>).__story = { storyVariant, __layoutForTest: storyLayoutFor };
     (window as unknown as Record<string, unknown>).__kulaMap = {
       build: buildMapModel,
       model,
       layout: layoutForVariant(route.variant),
       layoutB: layoutForVariant(other),
+      layouts: { atlas: layoutForVariant("atlas"), metro: layoutForVariant("metro") },
       view,
       view2,
       variant: route.variant,
@@ -334,8 +340,26 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
       varB: activeB,
       stubA: activeA === stubVariant,
       stubB: activeB === stubVariant,
+      hooks: {
+        atlas: { variant: atlasVariant, layout: () => (model ? atlasLayoutFor(model) : null) },
+        metro: { variant: model ? metroVariantFor(model) : null, layout: () => (model ? metroLayoutFor(model) : null) },
+      },
+      sessionOrder,
     };
   }, [model, view, view2, route.variant, other, activeA, activeB]);
+
+  // Canonical URLs: legacy tokens redirect (a · c → atlas, b → metro) and a
+  // bare #map or #map/test shows the remembered variant. Every choice is
+  // remembered for the next visit.
+  useEffect(() => {
+    rememberVariant(route.variant);
+    const m = location.hash.match(/^#map\/(a|b|c)(\/|$)/);
+    if (m) setRoute({ ...route, variant: canonVariant(m[1]) });
+    else if (/^#map(\/test)?$/.test(location.hash) && route.variant !== rememberedVariant()) {
+      setRoute({ ...route, variant: rememberedVariant() });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.variant]);
 
   const pick = route.pick ? parsePick(route.pick) : null;
   const setPick = useCallback((p: Pick | null) => setRoute({ ...route, pick: p ? pickCode(p) : "" }), [route, setRoute]);
@@ -575,21 +599,38 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
               className={`map-seg-btn${route.variant === v ? " on" : ""}`}
               data-testid={`variant-${v}`}
               onClick={() => setRoute({ ...route, variant: v })}
-            >{v.toUpperCase()}</button>
+            >{VARIANT_LABEL[v]}</button>
           ))}
         </div>
         <button className={`btn sm${compare ? " on" : ""}`} data-testid="map-compare" onClick={() => setCompare((c) => !c)}>Compare</button>
-        <div className="map-overlays" role="group" aria-label="Overlays">
-          {(["fences", "live", "churn", "owners"] as OverlayKey[]).map((k) => (
-            <button
-              key={k}
-              className={`map-ov${show[k] ? " on" : ""}`}
-              data-testid={`overlay-${k}`}
-              aria-pressed={show[k]}
-              onClick={() => setShow((s) => ({ ...s, [k]: !s[k] }))}
-            >{k}</button>
-          ))}
-        </div>
+        {narrow ? (
+          <details className="map-ov-menu" data-testid="overlays-menu">
+            <summary>Overlays</summary>
+            <div className="map-overlays" role="group" aria-label="Overlays">
+              {OVERLAY_KEYS.map((k) => (
+                <button
+                  key={k}
+                  className={`map-ov${show[k] ? " on" : ""}`}
+                  data-testid={`overlay-${k}`}
+                  aria-pressed={show[k]}
+                  onClick={() => setShow((s) => ({ ...s, [k]: !s[k] }))}
+                >{k}</button>
+              ))}
+            </div>
+          </details>
+        ) : (
+          <div className="map-overlays" role="group" aria-label="Overlays">
+            {OVERLAY_KEYS.map((k) => (
+              <button
+                key={k}
+                className={`map-ov${show[k] ? " on" : ""}`}
+                data-testid={`overlay-${k}`}
+                aria-pressed={show[k]}
+                onClick={() => setShow((s) => ({ ...s, [k]: !s[k] }))}
+              >{k}</button>
+            ))}
+          </div>
+        )}
         <div className="map-find">
           <input
             className="map-find-input"

@@ -14,6 +14,7 @@ import IssueDesk from "./views/IssueDesk";
 const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
 const Flows = lazy(() => import("./views/query/Flows"));
 const MapView = lazy(() => import("./views/map/Map"));
+import { canonVariant, rememberedVariant, type VariantId } from "./views/map/ab";
 const Slice = lazy(() => import("./views/query/Slice"));
 const Extensions = lazy(() => import("./views/Extensions"));
 const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
@@ -122,7 +123,9 @@ function parseHash() {
   // Map sub-route: #map/<variant>/<pick> with pick s/<id> · f/<id> · d/<id>, or #map/test.
   const mapRoute = view === "map"
     ? {
-        variant: (["a", "b", "c"].includes(a ?? "") ? a : "a") as "a" | "b" | "c",
+        variant: (["atlas", "metro", "a", "b", "c"].includes(a ?? "")
+          ? canonVariant(a)
+          : rememberedVariant()) as VariantId,
         pick: a && a !== "test" && b ? `${b}${c ? `/${c}` : ""}` : "",
         test: a === "test",
       }
@@ -136,7 +139,7 @@ export default function App() {
   const [target, setTarget] = useState<Target>(initial.target);
   const [contrast, setContrast] = useState<Contrast>(initial.contrast);
   const [focus, setFocus] = useState<number | null>(initial.focus);
-  const [mapRoute, setMapRoute] = useState<{ variant: "a" | "b" | "c"; pick: string; test: boolean } | null>(initial.mapRoute);
+  const [mapRoute, setMapRoute] = useState<{ variant: VariantId; pick: string; test: boolean } | null>(initial.mapRoute);
   // what is focused becomes a place note and memory composers autofill from
   useEffect(() => {
     if (focus == null) return;
@@ -463,7 +466,7 @@ export default function App() {
             <div className="view-body">
             <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
               {view === "overview" && <Overview repo={repo} version={version} go={go} onChanged={onChanged} openSymbol={nav.openSymbol} />}
-              {view === "map" && <MapView route={mapRoute ?? { variant: "a", pick: "", test: false }} setRoute={setMapRoute} />}
+              {view === "map" && <MapView route={mapRoute ?? { variant: rememberedVariant(), pick: "", test: false }} setRoute={setMapRoute} />}
               {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs("graph")} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
               {view === "git" && <GitView {...nav} />}
               {view === "issues" && <IssueDesk version={version} onChanged={onChanged} openSymbol={nav.openSymbol} target={target.issue ?? null} />}
