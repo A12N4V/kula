@@ -861,7 +861,9 @@ fn to_cached(pf: &ParsedFile) -> crate::cache::CachedParse {
 }
 
 fn from_cached(c: crate::cache::CachedParse) -> Option<ParsedFile> {
-    let lang = crate::index::langs::spec(&c.lang)?.id;
+    // get() (not spec()): pack languages (bash, sql, …) are not core SPECS,
+    // and losing them here silently dropped their defs on every warm hit.
+    let lang = crate::index::langs::get(&c.lang)?.id;
     Some(ParsedFile {
         path: c.path,
         lang,

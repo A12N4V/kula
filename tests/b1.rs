@@ -36,6 +36,16 @@ fn index(dir: &Path) {
 fn fixture() -> tempfile::TempDir {
     let t = tempfile::tempdir().unwrap();
     let d = t.path();
+    // Bash and SQL exercise langs whose queries were the ones warm parsing
+    // silently skipped (critic blocking #1), so they ride along in every test.
+    for (rel, src) in [
+        ("scripts/test.sh", concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/test.sh")),
+        ("bash.sh", concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/langs/bash.sh")),
+        ("sql.sql", concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/langs/sql.sql")),
+    ] {
+        let body = std::fs::read_to_string(src).unwrap();
+        write(d, rel, &body);
+    }
     for rel in [
         "app/Cargo.toml",
         "app/src/main.rs",
