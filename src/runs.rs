@@ -396,6 +396,33 @@ pub fn running(runs: &[Run]) -> Vec<Current> {
         .collect()
 }
 
+/// T7: the usage detail of one run (or one seat of it), read from the run's
+/// usage ledger at `.kula/runs/<run>.usage.jsonl`. Dedupe happens here, at
+/// read time: the ledger is append only, so a reader collapses duplicates.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct UsageDetail {
+    /// The seat asked for, empty for the whole run.
+    pub seat: String,
+    /// Day × model buckets with the four token classes.
+    pub buckets: Vec<crate::usage::Bucket>,
+    /// Dollars spent, summed over the buckets.
+    pub spent: f64,
+    /// Totals: cache hit rate, burn rate, ETA, estimated messages.
+    pub metrics: crate::usage::Metrics,
+}
+
+pub fn usage_detail(kula_dir: &std::path::Path, run: &str, seat: &str) -> UsageDetail {
+    let mut acc = crate::usage::Accumulator::new(seat, run, 0.0);
+    for r in crate::usage::ledger_read(kula_dir, run) {
+        if !seat.is_empty() && r.seat != seat {
+            continue;
+        }
+        acc.add(&r);
+    }
+    let m = acc.metrics();
+    UsageDetail { seat: seat.into(), buckets: acc.buckets.clone(), spent: m.cost_usd, metrics: m }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -827,6 +827,48 @@ async fn agents_events(State(s): State<AppState>, Query(q): Query<EventsQ>, head
     Sse::new(stream).keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(15))).into_response()
 }
 
+/// T7: the usage detail of a run (and optionally one seat), read from the
+/// run's usage ledger.
+async fn usage_get(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    let dir = s.repo.kula_dir();
+    let run = q.get("run").cloned().unwrap_or_default();
+    let seat = q.get("seat").cloned().unwrap_or_default();
+    blocking(move || Ok(json!(crate::runs::usage_detail(&dir, &run, &seat)))).await
+}
+
+/// T7: the same usage detail as a server sent stream – one event whenever the
+/// run's ledger grows (polled four times a second), then an empty keep.
+async fn usage_live(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> Response {
+    use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
+    let dir = s.repo.kula_dir();
+    let run = q.get("run").cloned().unwrap_or_default();
+    let seat = q.get("seat").cloned().unwrap_or_default();
+    type St = (std::path::PathBuf, String, String, u64, bool);
+    let start: St = (dir, run, seat, u64::MAX, true);
+    let stream = futures_util::stream::unfold(start, |(dir, run, seat, mut len, mut first)| async move {
+        loop {
+            if !first {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+            first = false;
+            let now = std::fs::metadata(crate::usage::ledger_path(&dir, &run)).map(|m| m.len()).unwrap_or(0);
+            if now == len {
+                continue;
+            }
+            len = now;
+            let d = dir.clone();
+            let run2 = run.clone();
+            let seat2 = seat.clone();
+            let detail = tokio::task::spawn_blocking(move || crate::runs::usage_detail(&d, &run2, &seat2)).await;
+            if let Ok(detail) = detail {
+                let ev = SseEvent::default().event("usage").json_data(&detail).unwrap_or_default();
+                return Some((Ok::<_, std::convert::Infallible>(ev), (dir, run, seat, len, first)));
+            }
+        }
+    });
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(15))).into_response()
+}
+
 async fn agents_info(State(s): State<AppState>) -> ApiResult {
     // P1: mtime-keyed cache – skills, research json, kula.toml, connections and
     // memories are only rescanned when one of the files behind them moves.
@@ -1468,6 +1510,8 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/index", post(reindex))
         .route("/api/index/progress", get(index_progress))
         .route("/api/agent/pre_edit/{id}", get(agent_pre_edit))
+        .route("/api/usage", get(usage_get))
+        .route("/api/usage/live", get(usage_live))
         // A1: fence-path verdict endpoint (see the A1 block above).
         .route("/api/agent/guard_path", get(agent_path_verdict))
         .route("/api/agent/verify", get(agent_verify))

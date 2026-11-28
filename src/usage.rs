@@ -439,7 +439,7 @@ pub fn cache_hit_rate(t: &Tokens) -> f64 {
 }
 
 /// Metrics the pipeline reports for a seat or a run.
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Metrics {
     pub tokens: Tokens,
     pub cost_usd: f64,
