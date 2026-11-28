@@ -457,9 +457,10 @@ fn launch_op(repo: &Repo, plan: &Plan, run_id: &str) {
 fn commit_op(repo: &Repo, plan: &Plan, run_id: &str, slice: &str, sha: &str) {
     let last = crate::ops::ops(repo, 1).ok().and_then(|l| l.into_iter().next());
     let mut view = last.map(|o| o.view).unwrap_or_default();
-    let key = plan.slice(slice).map(seat_key).unwrap_or_else(|| slice.to_string());
-    view.insert(key, sha.to_string());
-    if let Err(e) = crate::ops::append_op(repo, crate::ops::OpKind::Commit, run_id, view, &format!("slice {slice} committed {sha}")) {
+    let s = plan.slice(slice);
+    let key = s.map(seat_key).unwrap_or_else(|| slice.to_string());
+    view.insert(key.clone(), sha.to_string());
+    if let Err(e) = crate::ops::append_op_seat(repo, crate::ops::OpKind::Commit, run_id, &key, view, &format!("slice {slice} committed {sha}")) {
         eprintln!("kula: could not record the commit op: {e:#}");
     }
 }
@@ -467,4 +468,87 @@ fn commit_op(repo: &Repo, plan: &Plan, run_id: &str, slice: &str, sha: &str) {
 /// Record the run's launch op before the slices start.
 pub fn record_launch(repo: &Repo, plan: &Plan, run_id: &str) {
     launch_op(repo, plan, run_id);
+}
+
+#[cfg(test)]
+mod view_tests {
+    use super::*;
+    use crate::orch::task::{Plan, Slice, SliceState};
+    use tempfile::TempDir;
+
+    fn repo3() -> (TempDir, Repo, Plan) {
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
+        let git = |args: &[&str]| {
+            let o = std::process::Command::new("git").arg("-C").arg(d).args(args).output().unwrap();
+            assert!(o.status.success(), "git {args:?}");
+            String::from_utf8_lossy(&o.stdout).into_owned()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.name", "T"]);
+        git(&["config", "user.email", "t@t"]);
+        for s in ["a", "b", "c"] {
+            std::fs::create_dir_all(d.join(s)).unwrap();
+            std::fs::write(d.join(s).join("x.txt"), format!("{s}\n")).unwrap();
+        }
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "init"]);
+        let base = git(&["rev-parse", "HEAD"]).trim().to_string();
+        let slices: Vec<Slice> = ["a", "b", "c"]
+            .iter()
+            .map(|s| Slice { id: s.to_string(), module: s.to_string(), scope: vec![s.to_string()], agent: "fake".into(), base_ref: base.clone(), ..Default::default() })
+            .collect();
+        let plan = Plan { id: "t3".into(), goal: "test".into(), base_ref: base, slices, ..Default::default() };
+        let repo = Repo { root: d.to_path_buf() };
+        (t, repo, plan)
+    }
+
+    /// Each seat gets a worktree on its branch with one diverging commit.
+    fn seat_worktrees(repo: &Repo, plan: &Plan, drift: &str) {
+        for s in &plan.slices {
+            let branch = plan.branch(&s.id);
+            repo.run(&["branch", &branch, &plan.base_ref]).unwrap();
+            let wt = plan.worktree(repo, &s.id);
+            std::fs::create_dir_all(wt.parent().unwrap()).unwrap();
+            repo.run(&["worktree", "add", "-q", &wt.to_string_lossy(), &branch]).unwrap();
+            std::fs::write(wt.join(s.id.clone() + ".txt"), drift).unwrap();
+            let w = Repo::discover(&wt).unwrap();
+            w.run(&["add", "-A"]).unwrap();
+            w.run(&["-c", "user.name=T", "-c", "user.email=t@t", "commit", "-qm", "drift"]).unwrap();
+        }
+    }
+
+    fn drift_sha(repo: &Repo, plan: &Plan, slice: &str) -> String {
+        repo.run(&["rev-parse", &plan.branch(slice)]).unwrap().trim().to_string()
+    }
+
+    #[test]
+    fn apply_view_resets_worktrees_but_never_branches() {
+        let (_t, r, plan) = repo3();
+        seat_worktrees(&r, &plan, "drift\n");
+        let before: Vec<String> = plan.slices.iter().map(|s| drift_sha(&r, &plan, &s.id)).collect();
+        let base: std::collections::BTreeMap<String, String> =
+            plan.slices.iter().map(|s| (s.id.clone(), plan.base_ref.clone())).collect();
+        // An active seat must be refused: an in-flight agent keeps its floor.
+        let mut p2 = plan.clone();
+        p2.slice_mut("b").unwrap().state = SliceState::Running;
+        assert!(apply_view(&r, &p2, &base).is_err(), "refuse to reset under a running agent");
+        assert_eq!(apply_view(&r, &plan, &base).unwrap(), 3, "all three seats reset");
+        for s in &plan.slices {
+            let wt = plan.worktree(&r, &s.id);
+            assert!(!wt.join(s.id.clone() + ".txt").exists(), "seat {} drift file gone after the reset", s.id);
+            assert_eq!(std::fs::read_to_string(wt.join(s.id.clone() + "/x.txt")).unwrap(), format!("{}\n", s.id), "seat {} base file restored", s.id);
+            let i = s.id.as_str();
+            assert_eq!(drift_sha(&r, &plan, i), before[plan.slices.iter().position(|x| x.id == *i).unwrap()], "branch still at its drift commit");
+        }
+        // Undo through the log: record the view, undo, and it is restored.
+        let mut view = std::collections::BTreeMap::new();
+        for s in &plan.slices {
+            view.insert(s.id.clone(), plan.base_ref.clone());
+        }
+        let launch = crate::ops::append_op(&r, crate::ops::OpKind::Launch, "run-1", view, "launch").unwrap();
+        let undo = crate::ops::undo_to(&r, &launch.id, "run-1").unwrap();
+        assert_eq!(undo.kind().unwrap(), crate::ops::OpKind::Undo);
+        assert_eq!(apply_view(&r, &plan, &undo.view).unwrap(), 3);
+    }
 }

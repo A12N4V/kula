@@ -113,11 +113,17 @@ fn commit_tree(repo: &Repo, tree: &str, parents: &[&str], message: &str) -> Resu
 /// Append an op: one commit on `refs/kula/ops`, ref updated in one atomic
 /// `git update-ref` so concurrent readers never see a torn log.
 pub fn append_op(repo: &Repo, kind: OpKind, run: &str, view: BTreeMap<String, String>, message: &str) -> Result<Op> {
+    append_op_seat(repo, kind, run, "", view, message)
+}
+
+/// Like `append_op`, for ops that concern one seat.
+pub fn append_op_seat(repo: &Repo, kind: OpKind, run: &str, seat: &str, view: BTreeMap<String, String>, message: &str) -> Result<Op> {
     let parent = head(repo);
     let op = Op {
         id: String::new(),
         kind: kind.as_str().into(),
         run: run.into(),
+        seat: seat.into(),
         parent: parent.clone().unwrap_or_default(),
         view,
         message: message.into(),
@@ -263,14 +269,7 @@ pub fn autosave(repo: &Repo, wt: &std::path::Path, seat: &str, run: &str, messag
     repo.run(&["update-ref", &r, &commit])?;
     let mut view = BTreeMap::new();
     view.insert(seat.to_string(), commit.clone());
-    Ok(Some(append_op(repo, OpKind::Save, run, view, &msg)?.with_seat(seat)))
-}
-
-impl Op {
-    fn with_seat(mut self, seat: &str) -> Op {
-        self.seat = seat.into();
-        self
-    }
+    Ok(Some(append_op_seat(repo, OpKind::Save, run, seat, view, &msg)?))
 }
 
 /// Restore a seat's worktree to a save's commit (branch untouched).
@@ -304,7 +303,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn repo() -> (TempDir, Repo) {
+    pub(super) fn repo() -> (TempDir, Repo) {
         let t = tempfile::tempdir().unwrap();
         let d = t.path();
         let git = |args: &[&str]| {
@@ -322,7 +321,7 @@ mod tests {
         (t, repo)
     }
 
-    fn view_of(repo: &Repo) -> BTreeMap<String, String> {
+    pub(super) fn view_of(repo: &Repo) -> BTreeMap<String, String> {
         BTreeMap::from([("seat/a".into(), repo.run(&["rev-parse", "HEAD"]).unwrap().trim().to_string())])
     }
 
@@ -422,4 +421,73 @@ pub fn undo_to(repo: &Repo, target: &str, run: &str) -> Result<Op> {
     let mut o = append_op(repo, OpKind::Undo, run, view, &msg)?;
     o.undo_of = undo_of;
     Ok(o)
+}
+
+#[cfg(test)]
+mod property_tests {
+    use super::tests::*;
+    use super::*;
+    use tempfile::TempDir;
+
+    /// Deterministic LCG so the "property" is reproducible without a dep.
+    struct Lcg(u64);
+    impl Lcg {
+        fn next(&mut self) -> u64 {
+            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0 >> 33
+        }
+    }
+
+    /// Property: undo of undo restores the earlier view; op ids stay unique and
+    /// ordered no matter how the undo/save/commit churn interleaves.
+    #[test]
+    fn undo_of_undo_restores_the_view() {
+        std::env::set_var("KULA_SAVE_MIN_SECS", "0");
+        let (t, r): (TempDir, crate::git::Repo) = repo();
+        let wt = r.root.clone();
+        let mut rng = Lcg(0xC0FFEE);
+        let mut seen_ids = std::collections::HashSet::new();
+        let mut last_parent = String::new();
+        let mut marker_at_view: Vec<(usize, String)> = vec![]; // (marker, undo target)
+
+        for i in 0..24u64 {
+            // Evolve the worktree with a pseudo-random change.
+            let marker = format!("change-{i}-{}", rng.next() % 1000);
+            std::fs::write(wt.join("f.txt"), format!("{marker}\n")).unwrap();
+            let op = match rng.next() % 3 {
+                0 => autosave(&r, &wt, "a", "run-1", &marker).unwrap().expect("new tree must save"),
+                1 => append_op(&r, OpKind::Commit, "run-1", view_of(&r), &marker).unwrap(),
+                _ => append_op(&r, OpKind::Gate, "run-1", view_of(&r), &marker).unwrap(),
+            };
+            assert!(!seen_ids.contains(&op.id), "op ids must be unique");
+            assert_eq!(op.parent, last_parent, "each op chains to the previous");
+            seen_ids.insert(op.id.clone());
+            last_parent = op.id.clone();
+            if rng.next() % 4 == 0 {
+                marker_at_view.push((marker.len(), op.id.clone()));
+            }
+            // Every few ops, undo to an earlier view and undo the undo.
+            if i % 7 == 6 && !marker_at_view.is_empty() {
+                let (_, target) = marker_at_view[(i as usize) % marker_at_view.len()].clone();
+                let u1 = undo_to(&r, &target, "run-1").unwrap();
+                assert_eq!(u1.view, op_at(&r, &target).view, "undo op records the target's view");
+                let u2 = undo_to(&r, &u1.id, "run-1").unwrap();
+                assert_eq!(u2.view, u1.view, "undo of undo restores the same view");
+                seen_ids.insert(u1.id.clone());
+                seen_ids.insert(u2.id.clone());
+                last_parent = u2.id.clone();
+            }
+        }
+        let log = ops(&r, 100).unwrap();
+        let ids: Vec<&String> = log.iter().map(|o| &o.id).collect();
+        assert_eq!(ids.len(), std::collections::HashSet::<&String>::from_iter(ids.iter().copied()).len(), "final log has unique ids");
+        for w in log.windows(2) {
+            assert_eq!(w[1].id, w[0].parent, "the log chain is intact, newest first");
+        }
+        std::env::set_var("KULA_SAVE_MIN_SECS", "30");
+    }
+
+    fn op_at(r: &crate::git::Repo, id: &str) -> Op {
+        op(r, id).unwrap()
+    }
 }
