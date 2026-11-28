@@ -38,10 +38,10 @@ test("variant b draws parcels (not stub dots) on the shell canvas", async ({ pag
     const off = document.createElement("canvas");
     off.width = c.width; off.height = c.height;
     const ctx = off.getContext("2d")!;
-    // The stub still exists for variant c; drawing it from the page proves the
-    // live canvas is not it.
-    const stub = (window as any).__kulaMap.varA; // metro, for contrast
-    stub.draw(ctx, k.model, k.view, { fences: {}, live: {}, churn: {}, owners: {}, show: { fences: false, live: false, churn: false, owners: false } }, null);
+    // Contrast draw: the metro layout, which cannot equal the parcel map
+    // pixel for pixel. (The stub is carried by the stubA flag below.)
+    const contrast = (window as any).__kulaMap.varA; // metro, for contrast
+    contrast.draw(ctx, k.model, k.view, { fences: {}, live: {}, churn: {}, owners: {}, show: { fences: false, live: false, churn: false, owners: false } }, null);
     const a = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
     const b = ctx.getImageData(0, 0, off.width, off.height).data;
     let diff = 0;
@@ -106,10 +106,48 @@ test("compare shows two panes, the second shows the next variant, and a fit sync
     return {
       d1: Math.hypot(p1.x - r1.width / 2, p1.y - r1.height / 2),
       d2: Math.hypot(p2.x - r2.width / 2, p2.y - r2.height / 2),
+      ox: k.view.ox,
     };
   });
   expect(panes.d1, "pane 1 centres the fitted station").toBeLessThan(80);
   expect(panes.d2, "pane 2 centres the same target through its own fit").toBeLessThan(80);
+  // Re-fit the same pick in the source pane after panning away: the sync guard
+  // must not eat the second fit (the sibling still follows, and the source
+  // pane actually re-centres).
+  const box = (await page.getByTestId("map-canvas").boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 200, box.y + box.height / 2 - 80, { steps: 3 });
+  await page.mouse.up();
+  const db2 = await page.evaluate(() => {
+    const k = (window as any).__kulaMap;
+    const pid = location.hash.split("/s/")[1]?.split(/[?&]/)[0] ?? "";
+    const s1 = k.layout.stations.find((x: any) => x.id === pid);
+    const c1 = document.querySelector('[data-testid="map-canvas"]') as HTMLCanvasElement;
+    const r1 = c1.getBoundingClientRect();
+    return { x: r1.left + s1.x * k.view.scale + k.view.ox, y: r1.top + s1.y * k.view.scale + k.view.oy, ox: k.view.ox };
+  });
+  await page.mouse.dblclick(db2.x, db2.y);
+  // The fit may land back on the exact pre-pan ox, so watch for the change
+  // from the panned position, not from the first fit.
+  await page.waitForFunction((prev) => (window as any).__kulaMap.view.ox !== prev, db2.ox);
+  const refit = await page.evaluate(() => {
+    const k = (window as any).__kulaMap;
+    const pid = location.hash.split("/s/")[1]?.split(/[?&]/)[0] ?? "";
+    const s1 = k.layout.stations.find((x: any) => x.id === pid);
+    const s2 = k.layoutB?.stations?.find((x: any) => x.id === pid);
+    const c1 = document.querySelector('[data-testid="map-canvas"]') as HTMLCanvasElement;
+    const c2 = document.querySelector('[data-testid="map-canvas-2"]') as HTMLCanvasElement;
+    const r1 = c1.getBoundingClientRect(), r2 = c2.getBoundingClientRect();
+    const p1 = { x: s1.x * k.view.scale + k.view.ox, y: s1.y * k.view.scale + k.view.oy };
+    const p2 = { x: s2.x * k.view2.scale + k.view2.ox, y: s2.y * k.view2.scale + k.view2.oy };
+    return {
+      d1: Math.hypot(p1.x - r1.width / 2, p1.y - r1.height / 2),
+      d2: Math.hypot(p2.x - r2.width / 2, p2.y - r2.height / 2),
+    };
+  });
+  expect(refit.d1, "second fit of the same pick re-centres pane 1").toBeLessThan(80);
+  expect(refit.d2, "sibling still follows the re-fit").toBeLessThan(80);
   // A click in pane 2 selects into the shared route, so one selection drives both.
   const p2 = await page.evaluate(() => {
     const k = (window as any).__kulaMap;
@@ -151,10 +189,32 @@ for (const v of ["a", "b"] as const) {
       (window as any).__frames = [];
       const raf = window.requestAnimationFrame.bind(window);
       window.requestAnimationFrame = ((cb: FrameRequestCallback) => raf((t) => { (window as any).__frames.push(t); cb(t); })) as any;
+      // Time from the model first appearing to the first painted canvas frame
+      // (first non-uniform pixels). This is the "after data" paint the brief
+      // asks for, unlike the navigation-inclusive firstPaint below.
+      const t0 = performance.now();
+      let modelAt = 0;
+      const poll = () => {
+        const k = (window as any).__kulaMap;
+        if (k?.model) {
+          if (!modelAt) modelAt = performance.now();
+          const c = document.querySelector('[data-testid="map-canvas"]') as HTMLCanvasElement | null;
+          if (c && c.width > 0) {
+            const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+            let uniform = true;
+            for (let i = 4; i < d.length; i += 4) if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2]) { uniform = false; break; }
+            if (!uniform) { (window as any).__paintMs = performance.now() - modelAt; return; }
+          }
+        }
+        requestAnimationFrame(poll);
+      };
+      requestAnimationFrame(poll);
+      void t0;
     });
     const t0 = Date.now();
     await ready(page, `/#map/${v}`);
     const firstPaint = Date.now() - t0;
+    const paintMs = await page.evaluate(() => (window as any).__paintMs ?? -1);
     const stub = await page.evaluate(() => (window as any).__kulaMap.stubA);
     expect(stub, `variant ${v} must be wired`).toBe(false);
     // Pan for ~600 ms and measure the frame deltas.
@@ -173,7 +233,9 @@ for (const v of ["a", "b"] as const) {
       const mid = Math.floor(deltas.length / 2);
       return { median: deltas[mid] ?? 999, n: deltas.length, worst: deltas[deltas.length - 1] ?? 0 };
     });
-    console.log(`PERF variant ${v}: firstPaint=${firstPaint}ms medianFrame=${stats.median}ms worst=${stats.worst}ms frames=${stats.n}`);
+    console.log(`PERF variant ${v}: firstPaint=${firstPaint}ms afterData=${paintMs}ms medianFrame=${stats.median}ms worst=${stats.worst}ms frames=${stats.n}`);
     expect(stats.median, `variant ${v} median pan frame must be under 60 ms`).toBeLessThan(60);
+    expect(paintMs, `variant ${v} first paint after data must be under 300 ms`).toBeGreaterThanOrEqual(0);
+    expect(paintMs, `variant ${v} first paint after data must be under 300 ms`).toBeLessThan(300);
   });
 }

@@ -257,7 +257,6 @@ function variantFor(id: VariantId, model: MapModel | null): Variant {
   if (model && id === "b") return atlasVariant;
   return stubVariant;
 }
-function isStub(id: VariantId) { return id === "c"; }
 
 /* ---------------------------------------------------------------- shell ---- */
 
@@ -420,6 +419,11 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
     if (compare) {
       syncingRef.current = { pick: p, pane, seq: ++syncSeq.current };
       fitPane(pane === "a" ? "b" : "a", p);
+      // The guard exists only to stop the echo from the sibling fit above, so
+      // it is dead once that fit has run; clearing it keeps a second
+      // user-initiated fit of the same pick (e.g. re-dblclick after panning
+      // away) working in the source pane.
+      syncingRef.current = null;
     }
   }, [fitPane, compare]);
 
