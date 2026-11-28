@@ -486,6 +486,155 @@ pub fn parse(output: &str) -> Option<Usage> {
     found.then_some(total)
 }
 
+/// What capturing an agent's stream produced.
+pub struct Captured {
+    /// Legacy aggregate, the shape B4's launcher already stores.
+    pub usage: Usage,
+    /// Priced, de-duplicated records, newest last.
+    pub records: Vec<crate::usage::UsageRecord>,
+    /// The accumulator with buckets, burn rate and budget state.
+    pub acc: crate::usage::Accumulator,
+    /// True when the budget stop fired (SIGINT then SIGTERM).
+    pub stopped: bool,
+    /// Price errors keyed by model: an unknown model is an error, never a
+    /// silent zero.
+    pub price_errors: Vec<String>,
+}
+
+/// Run a command while capturing its stdout as a usage stream: every line is
+/// parsed, de-duplicated by message id, priced and accumulated; the budget
+/// ladder runs as records land – 80% emits one warning (through `on_event`),
+/// 100% stops the seat with SIGINT, then SIGTERM 5 s later. Each record is
+/// appended to the run's ledger.
+#[allow(clippy::too_many_arguments)]
+pub fn capture_stream(
+    cmd: &mut std::process::Command,
+    seat: &str,
+    run: &str,
+    slice: &str,
+    agent: &str,
+    table: &crate::config::PriceTable,
+    budget: f64,
+    kula_dir: &Path,
+    mut on_event: impl FnMut(crate::usage::BudgetState, f64, f64),
+) -> anyhow::Result<Captured> {
+    use std::io::Read;
+
+    let mut cmd = cmd.stdout(std::process::Stdio::piped());
+    let mut child = cmd.spawn()?;
+    let pid = child.id();
+    let mut out = child.stdout.take().expect("stdout was piped");
+    let mut acc = crate::usage::Accumulator::new(seat, run, budget);
+    let mut usage = Usage::default();
+    let mut records = vec![];
+    let mut price_errors = vec![];
+    let mut stopped = false;
+
+    let mut record_raw = |raw: &crate::usage::RawMessage,
+                          acc: &mut crate::usage::Accumulator,
+                          usage: &mut Usage,
+                          records: &mut Vec<crate::usage::UsageRecord>,
+                          price_errors: &mut Vec<String>| {
+        let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        let day = crate::usage::day_of(ts);
+        let mut r = crate::usage::UsageRecord {
+            seat: seat.into(),
+            run: run.into(),
+            slice: slice.into(),
+            model: raw.model.clone(),
+            day: day.clone(),
+            ts,
+            tokens: raw.tokens,
+            cost_usd: 0.0,
+            estimated: raw.estimated.clone(),
+            agent: agent.into(),
+            message_id: raw.message_id.clone(),
+        };
+        match crate::usage::price(table, raw, &day) {
+            Ok(c) => r.cost_usd = c,
+            Err(e) => {
+                if !price_errors.iter().any(|x| x.contains(&raw.model)) {
+                    price_errors.push(e.to_string());
+                }
+            }
+        }
+        if acc.add(&r) {
+            usage.tokens_in += raw.tokens.input + raw.tokens.cache_read + raw.tokens.cache_write;
+            usage.tokens_out += raw.tokens.output;
+            usage.turns += 1;
+            usage.cost_usd += r.cost_usd;
+            if usage.model.is_empty() {
+                usage.model = raw.model.clone();
+            }
+            records.push(r.clone());
+            crate::usage::ledger_append(kula_dir, &r);
+        }
+    };
+
+    // Read the stream with plain byte reads and split on newlines: no
+    // BufRead, which some toolchains resolve oddly on ChildStdout.
+    let mut byte = [0u8; 1];
+    let mut pending = String::new();
+    loop {
+        let mut got_line = false;
+        loop {
+            match out.read(&mut byte) {
+                Ok(0) => break,
+                Ok(_) => {
+                    if byte[0] == b'\n' {
+                        got_line = true;
+                        break;
+                    }
+                    pending.push(byte[0] as char);
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+        if pending.is_empty() && !got_line {
+            break;
+        }
+        let line = std::mem::take(&mut pending);
+        for raw in crate::usage::parse_stream(&line, agent) {
+            record_raw(&raw, &mut acc, &mut usage, &mut records, &mut price_errors);
+        }
+        match acc.take_action() {
+            crate::usage::BudgetState::Warn => on_event(crate::usage::BudgetState::Warn, acc.spent, acc.budget),
+            crate::usage::BudgetState::Stop => {
+                // Stop the seat: SIGINT, then SIGTERM after 5 s if it lives.
+                stopped = true;
+                let _ = std::process::Command::new("kill").args(["-INT", &pid.to_string()]).status();
+                for _ in 0..50 {
+                    if matches!(child.try_wait(), Ok(Some(_))) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                if !matches!(child.try_wait(), Ok(Some(_))) {
+                    let _ = std::process::Command::new("kill").args(["-TERM", &pid.to_string()]).status();
+                }
+                let _ = child.wait();
+                // Drain what the agent printed while it was shutting down.
+                let mut rest = Vec::new();
+                let _ = out.read_to_end(&mut rest);
+                let text = String::from_utf8_lossy(&rest).to_string();
+                for line in text.lines() {
+                    for raw in crate::usage::parse_stream(line, agent) {
+                        record_raw(&raw, &mut acc, &mut usage, &mut records, &mut price_errors);
+                    }
+                }
+                break;
+            }
+            crate::usage::BudgetState::Ok => {}
+        }
+    }
+    let status = child.wait()?;
+    if !stopped && !status.success() {
+        // The agent failed on its own; usage captured so far still counts.
+    }
+    on_event(crate::usage::BudgetState::Ok, acc.spent, acc.budget);
+    Ok(Captured { usage, records, acc, stopped, price_errors })
+}
+
 /// The seat a slice runs as, from `kula.toml`: `team/key`.
 pub fn seat_of<'a>(cfg: &'a crate::config::Config, seat: &str) -> Option<&'a crate::config::Member> {
     let (team, key) = seat.split_once('/')?;
