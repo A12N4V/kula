@@ -167,6 +167,7 @@ Gate G2: CLI audit has no blockers; release published.
 | H.7 | ✓ Autoresearch nodes: experiments in the ledger, metric chart | MAIN | H.5 | Research run shows kept and reverted experiments |
 | H.8 | ✓ Deploy dialog and `[[schedule]]` (cron, push, pr) run inside `kula serve` | MAIN | H.5 | Due schedule fires once; one scheduled run at a time |
 | H.9 | ✓ ui-critic loop, then kula-critic over fences and launcher; prune the removed tabs' CSS; a place for the task loop overview | UICRITIC, CRITIC | H.1–H.8 | Score target met; no open high findings |
+| H.10 | ✓ Tokens (wave 3, B6): usage pipeline (stream → parse → dedupe → dated price table → day × model buckets → budget ladder → ledger + event), 80% one warning, 100% SIGINT then SIGTERM after 5 s, EWMA burn rate α = 0.3 with cone, ETA, cache hit rate, cost per symbol and per green test, `/api/usage`, `/api/usage/live` (SSE), MCP `kula_usage` | B6 | H.5 | Recorded streams for 3 CLIs replay to exact totals; a duplicated message never counts twice; a fake agent over budget is stopped within one turn; totals match `kula-refs/ccusage` logic (`tests/b6.rs`) |
 
 ---
 
