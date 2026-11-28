@@ -89,17 +89,23 @@ test("compare shows two panes, the second shows the next variant, and a fit sync
   await page.waitForFunction(() => (window as any).__kulaMap.view2.scale > 1);
   const panes = await page.evaluate(() => {
     const k = (window as any).__kulaMap;
-    const s = k.layout.stations[0];
+    // The pick in the hash is the truth: fuzzy find may land on any station.
+    const pid = location.hash.split("/s/")[1]?.split(/[?&]/)[0] ?? "";
+    const s1 = k.layout.stations.find((x: any) => x.id === pid);
+    if (!s1) throw new Error(`pick ${pid} not in pane-1 layout`);
+    // Pane 2 is a different variant: the same station sits at its own world
+    // point there, so measure it against pane 2's layout.
+    const s2 = k.layoutB?.stations?.find((x: any) => x.id === pid);
+    if (!s2) throw new Error(`pick ${pid} not in pane-2 layout`);
     const c1 = document.querySelector('[data-testid="map-canvas"]') as HTMLCanvasElement;
     const c2 = document.querySelector('[data-testid="map-canvas-2"]') as HTMLCanvasElement;
     const r1 = c1.getBoundingClientRect(), r2 = c2.getBoundingClientRect();
-    // Same world point, each pane's own view: both must be near their centre.
-    const p1 = { x: s.x * k.view.scale + k.view.ox, y: s.y * k.view.scale + k.view.oy };
-    const p2 = { x: s.x * k.view2.scale + k.view2.ox, y: s.y * k.view2.scale + k.view2.oy };
+    // Each pane centred the pick through its own fit.
+    const p1 = { x: s1.x * k.view.scale + k.view.ox, y: s1.y * k.view.scale + k.view.oy };
+    const p2 = { x: s2.x * k.view2.scale + k.view2.ox, y: s2.y * k.view2.scale + k.view2.oy };
     return {
       d1: Math.hypot(p1.x - r1.width / 2, p1.y - r1.height / 2),
       d2: Math.hypot(p2.x - r2.width / 2, p2.y - r2.height / 2),
-      sel: true,
     };
   });
   expect(panes.d1, "pane 1 centres the fitted station").toBeLessThan(80);

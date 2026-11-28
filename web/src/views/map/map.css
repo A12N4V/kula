@@ -26,7 +26,8 @@
   background: none;
   border: none;
   color: var(--text);
-  padding: 4px 10px;
+  padding: 6px 12px;
+  min-height: 30px;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -44,7 +45,8 @@
   color: var(--text-2, var(--text));
   font: inherit;
   font-size: 11px;
-  padding: 4px 8px;
+  padding: 6px 8px;
+  min-height: 30px;
   cursor: pointer;
 }
 .map-ov:hover { border-color: var(--line); background: var(--line); }

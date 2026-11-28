@@ -311,15 +311,17 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
   // layout is the ACTIVE pane-1 variant's layout, so a spec can aim a click at
   // a real station whatever variant is showing.
   useEffect(() => {
-    const layout = model
-      ? (route.variant === "a" ? metroLayoutFor(model)
-        : route.variant === "b" ? atlasLayoutFor(model)
-        : stubLayoutFor(model))
-      : null;
+    const layoutForVariant = (id: VariantId) => {
+      if (!model) return null;
+      if (id === "a") return metroLayoutFor(model);
+      if (id === "b") return atlasLayoutFor(model);
+      return stubLayoutFor(model);
+    };
     (window as unknown as Record<string, unknown>).__kulaMap = {
       build: buildMapModel,
       model,
-      layout,
+      layout: layoutForVariant(route.variant),
+      layoutB: layoutForVariant(other),
       view,
       view2,
       variant: route.variant,
@@ -334,21 +336,39 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
   const pick = route.pick ? parsePick(route.pick) : null;
   const setPick = useCallback((p: Pick | null) => setRoute({ ...route, pick: p ? pickCode(p) : "" }), [route, setRoute]);
 
-  // Fit the whole world when the canvas first has a size.
+  // Fit the whole world when a pane's canvas first has a size (and refit on
+  // resize). The observer sits on the canvas, not the stage: in compare mode
+  // the stage stays full width while each pane is half of it, and a fit must
+  // centre on the pane it is drawn in.
   useEffect(() => {
-    const el = box.current;
-    if (!el || model == null) return;
+    const cv = canvas.current;
+    if (!cv || model == null) return;
     const ro = new ResizeObserver(() => {
-      const w = el.clientWidth, h = el.clientHeight;
+      const w = cv.clientWidth, h = cv.clientHeight;
       setView((v) => {
         if (v.w === w && v.h === h) return v;
         const scale = Math.min(w / WORLD.w, h / WORLD.h);
         return { w, h, scale, ox: (w - WORLD.w * scale) / 2, oy: (h - WORLD.h * scale) / 2 };
       });
     });
-    ro.observe(el);
+    ro.observe(cv);
     return () => ro.disconnect();
   }, [model]);
+
+  useEffect(() => {
+    const cv = canvas2.current;
+    if (!cv || model == null) return;
+    const ro = new ResizeObserver(() => {
+      const w = cv.clientWidth, h = cv.clientHeight;
+      setView2((v) => {
+        if (v.w === w && v.h === h) return v;
+        const scale = Math.min(w / WORLD.w, h / WORLD.h);
+        return { w, h, scale, ox: (w - WORLD.w * scale) / 2, oy: (h - WORLD.h * scale) / 2 };
+      });
+    });
+    ro.observe(cv);
+    return () => ro.disconnect();
+  }, [model, compare]);
 
   const drawOverlays: DrawOverlays = useMemo(() => ({ ...overlays, show }), [overlays, show]);
 
@@ -367,7 +387,9 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
   }, [model, drawOverlays, pick]);
 
   useEffect(() => { paint(canvas.current, view, activeA); }, [paint, view, activeA]);
-  useEffect(() => { paint(canvas2.current, view2, activeB); }, [paint, view2, activeB]);
+  // compare is a dependency because canvas2 mounts when compare turns on: the
+  // ref goes from null to the element and the paint must run again.
+  useEffect(() => { paint(canvas2.current, view2, activeB); }, [paint, view2, activeB, compare]);
 
   // Fit plumbing. beforeRef holds each pane's pre-fit view so Esc can zoom
   // back out one level; syncingRef records the last propagated fit so a fit
