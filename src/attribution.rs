@@ -185,7 +185,12 @@ fn apply_diff(old: &[&str], new: &[&str], old_owners: &[Option<Owner>], owner: O
                 similar::DiffTag::Insert => {
                     for j in op.new_range() {
                         let o = take_move(&mut pending, new[j], old_owners)
-                            .map(|(own, _)| own.map(|mut o| { o.kind = Kind::Move; o }))
+                            .map(|(own, _)| {
+                                own.map(|mut o| {
+                                    o.kind = Kind::Move;
+                                    o
+                                })
+                            })
                             .unwrap_or_else(|| Some(with_kind(&owner, Kind::Add)));
                         out.push(o);
                     }
@@ -202,7 +207,12 @@ fn apply_diff(old: &[&str], new: &[&str], old_owners: &[Option<Owner>], owner: O
                     }
                     for j in op.new_range() {
                         let o = take_move(&mut dels, new[j], old_owners)
-                            .map(|(own, _)| own.map(|mut o| { o.kind = Kind::Move; o }))
+                            .map(|(own, _)| {
+                                own.map(|mut o| {
+                                    o.kind = Kind::Move;
+                                    o
+                                })
+                            })
                             .unwrap_or_else(|| Some(with_kind(&owner, Kind::Edit)));
                         out.push(o);
                     }
@@ -271,7 +281,12 @@ fn build(repo: &Repo) -> Owners {
             }
             let old_lines: Vec<&str> = cur.lines().collect();
             let new_lines: Vec<&str> = new.lines().collect();
-            owners = apply_diff(&old_lines, &new_lines, &owners, Owner { seat: seat.clone(), run: run.clone(), op: id.clone(), kind: Kind::Add });
+            owners = apply_diff(
+                &old_lines,
+                &new_lines,
+                &owners,
+                Owner { seat: seat.clone(), run: run.clone(), op: id.clone(), kind: Kind::Add },
+            );
             cur = new;
         }
         per_path.insert(path.clone(), (cur.lines().map(|l| l.to_string()).collect(), owners));
@@ -399,7 +414,7 @@ pub fn changelog(repo: &Repo, run: &str) -> Result<Vec<FlowChange>, anyhow::Erro
     let mut paths: Vec<&String> = owners.per_path.keys().collect();
     paths.sort();
     for path in paths {
-        let (snap_lines, snap_owners) = &owners.per_path[path];
+        let (_snap_lines, snap_owners) = &owners.per_path[path];
         let worktree = std::fs::read_to_string(repo.root.join(path)).unwrap_or_default();
         for (i, owner) in snap_owners.iter().enumerate() {
             let o = match owner {
@@ -414,7 +429,13 @@ pub fn changelog(repo: &Repo, run: &str) -> Result<Vec<FlowChange>, anyhow::Erro
             let cost = per_line_cost(&costs, &owners, &o.op, &o.seat, &o.run);
             let start = i as u64 + 1;
             if let Some(last) = out.last_mut() {
-                if last.flow == flow && last.seat == o.seat && last.op == o.op && last.kind == o.kind.as_str() && *last.path == *path && last.end_line + 1 == start {
+                if last.flow == flow
+                    && last.seat == o.seat
+                    && last.op == o.op
+                    && last.kind == o.kind.as_str()
+                    && *last.path == *path
+                    && last.end_line + 1 == start
+                {
                     last.lines += 1;
                     last.cost_share += cost;
                     last.end_line = start;
