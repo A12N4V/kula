@@ -407,6 +407,109 @@ async fn run_synopsis(State(s): State<AppState>, Path(id): Path<String>) -> ApiR
     blocking(move || Ok(json!(crate::runs::synopsis(&find_run(&s.repo, &id)?)))).await
 }
 
+/// B5: a run's scoped activity log. `?poll=1&since=` answers once as JSON
+/// (the poll fallback, same pattern as `/api/agents/events`); otherwise it is
+/// a server sent stream that first replays the run's JSONL from `from` and
+/// then tails it. `?seat=` narrows to one seat. Same data `kula_events` reads.
+#[derive(serde::Deserialize)]
+struct RunEventsQ {
+    seat: Option<String>,
+    from: Option<u64>,
+    since: Option<u64>,
+    poll: Option<u8>,
+    limit: Option<usize>,
+}
+
+async fn run_events(State(s): State<AppState>, Path(id): Path<String>, Query(q): Query<RunEventsQ>) -> Response {
+    use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
+    let dir = s.repo.kula_dir();
+    let run = id;
+    let limit = q.limit.unwrap_or(500).min(5000);
+    if q.poll == Some(1) {
+        let since = q.since.or(q.from).unwrap_or(0);
+        let ev = tokio::task::spawn_blocking(move || run_events_blocking(&dir, &run, q.seat.as_deref(), since, limit))
+            .await
+            .unwrap_or_else(|e| json!({ "error": e.to_string() }));
+        return Json(ev).into_response();
+    }
+    // SSE: start from `from` (first seq wanted, 0 = all), then tail the file.
+    let seat = q.seat.unwrap_or_default();
+    let from = q.from.unwrap_or(0);
+    type St = (std::path::PathBuf, String, String, u64, u64, bool);
+    let start: St = (dir, run, seat, from, u64::MAX, true);
+    let stream = futures_util::stream::unfold(start, |(dir, run, seat, mut from, mut len, mut first)| async move {
+        loop {
+            let (got, now) = tokio::task::spawn_blocking({
+                let dir = dir.clone();
+                let run = run.clone();
+                let seat = seat.clone();
+                move || {
+                    if seat.is_empty() {
+                        crate::events::read_after(&dir, &run, if len == u64::MAX { 0 } else { len })
+                    } else {
+                        match crate::events::replay(&dir, &run, &seat, from, 500) {
+                            Ok(v) => (v, std::fs::metadata(crate::events::RunLog::path(&dir, &run)).map(|m| m.len()).unwrap_or(0)),
+                            Err(_) => (vec![], 0),
+                        }
+                    }
+                }
+            })
+            .await
+            .unwrap_or((vec![], 0));
+            if now == len && got.is_empty() {
+                if !first {
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                }
+                first = false;
+                continue;
+            }
+            first = false;
+            len = now;
+            let mut next = from;
+            let mut out: Vec<SseEvent> = vec![];
+            for e in got {
+                if !seat.is_empty() && e.seat != seat {
+                    continue;
+                }
+                next = next.max(e.seq + 1);
+                out.push(SseEvent::default().id(format!("{}-{}", e.seat, e.seq)).event("kula").json_data(&e).unwrap_or_default());
+            }
+            from = next;
+            if out.is_empty() {
+                continue;
+            }
+            let mut iter = out.into_iter();
+            let head = (iter.next().unwrap_or_default(), (dir, run, seat, from, len, first));
+            let _ = iter; // one event per poll tick keeps the loop simple
+            return Some((Ok::<_, std::convert::Infallible>(head.0), head.1));
+        }
+    });
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(15))).into_response()
+}
+
+/// The poll fallback body, shared with the MCP tool `kula_events`: replay a
+/// seat when one is named, else every seat's events in file order. A run that
+/// has ended gets its log compacted into the ledger on `refs/kula/runs` here
+/// – lazily, and idempotent (the marker makes a repeat a no-op).
+pub(crate) fn run_events_blocking(dir: &std::path::Path, run: &str, seat: Option<&str>, since: u64, limit: usize) -> serde_json::Value {
+    if let Ok(s) = std::fs::read_to_string(std::path::Path::new(dir).join("runs").join(format!("{run}.json"))) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
+            if v.get("state").and_then(|x| x.as_str()).map(|x| x != "running").unwrap_or(false) {
+                if let Ok(repo) = crate::Repo::discover(&dir.parent().unwrap_or(dir).to_path_buf()) {
+                    let _ = crate::events::compaction(&repo, dir, run);
+                }
+            }
+        }
+    }
+    let events = match seat.filter(|s| !s.is_empty()) {
+        Some(seat) => crate::events::replay(dir, run, seat, since, limit).unwrap_or_default(),
+        None => crate::events::read_after(dir, run, 0).0.into_iter().filter(|e| e.seq >= since).collect(),
+    };
+    let events = if events.len() > limit { events[events.len() - limit..].to_vec() } else { events };
+    json!({ "run": run, "events": events, "now": crate::events::now_ms() })
+}
+
+
 async fn runs_changelog(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let since = q.get("since").and_then(|v| v.parse().ok()).unwrap_or(0u64);
@@ -1486,6 +1589,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/runs", get(runs_list))
         .route("/api/runs/{id}", get(run_detail))
         .route("/api/runs/{id}/synopsis", get(run_synopsis))
+        .route("/api/runs/{id}/events", get(run_events))
         .route("/api/changelog", get(runs_changelog))
         .route("/api/deploy", post(deploy))
         .route("/api/schedules", get(schedules))

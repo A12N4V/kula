@@ -396,6 +396,122 @@ pub fn running(runs: &[Run]) -> Vec<Current> {
         .collect()
 }
 
+// ----- B5: sessions and replay over run scoped events -----
+
+/// A session of one seat: events closer than `gap_ms` belong together, so a
+/// seat that pauses longer than the gap starts a new session. Default gap:
+/// five minutes.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Session {
+    pub seat: String,
+    /// Monotonic ms of the first event.
+    pub start: u64,
+    /// Monotonic ms of the last event.
+    pub end: u64,
+    pub events: Vec<crate::events::EventV2>,
+    /// turn → tool spans over this session's events.
+    pub spans: Vec<Span>,
+}
+
+/// A span of activity: a turn contains its tool calls; a tool with no turn
+/// above it stands alone. `end` is 0 while the span is open.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Span {
+    pub kind: String,
+    pub seq: u64,
+    pub start: u64,
+    pub end: u64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub msg: String,
+    pub children: Vec<Span>,
+}
+
+/// Five minutes in milliseconds.
+pub const SESSION_GAP_MS: u64 = 5 * 60 * 1000;
+
+/// Split events into per seat sessions split on gaps over `gap_ms` (0 uses
+/// the default five minutes). Events must share one run; sessions come back
+/// seat by seat, each in seq order.
+pub fn session_split(events: &[crate::events::EventV2], gap_ms: u64) -> Vec<Session> {
+    let gap = if gap_ms == 0 { SESSION_GAP_MS } else { gap_ms };
+    let mut by_seat: std::collections::BTreeMap<&str, Vec<&crate::events::EventV2>> = Default::default();
+    for e in events {
+        by_seat.entry(e.seat.as_str()).or_default().push(e);
+    }
+    let mut out = vec![];
+    for (seat, mut evs) in by_seat {
+        evs.sort_by_key(|e| e.seq);
+        let mut sessions: Vec<Session> = vec![];
+        for e in evs {
+            match sessions.last_mut() {
+                Some(s) if e.ts <= s.end.saturating_add(gap) => {
+                    s.end = s.end.max(e.ts);
+                    s.events.push(e.clone());
+                }
+                _ => sessions.push(Session {
+                    seat: seat.to_string(),
+                    start: e.ts,
+                    end: e.ts,
+                    events: vec![e.clone()],
+                    spans: vec![],
+                }),
+            }
+        }
+        for s in &mut sessions {
+            s.spans = span_nest(&s.events);
+        }
+        out.extend(sessions);
+    }
+    out.sort_by(|a, b| a.start.cmp(&b.start).then(a.seat.cmp(&b.seat)));
+    out
+}
+
+/// Nest turn → tool: a `turn` event opens a span that closes at the next
+/// turn; `tool` events nest under the open turn; everything else is a leaf.
+pub fn span_nest(events: &[crate::events::EventV2]) -> Vec<Span> {
+    let mut out: Vec<Span> = vec![];
+    for e in events {
+        let leaf = |e: &crate::events::EventV2| Span {
+            kind: e.kind.as_str().to_string(),
+            seq: e.seq,
+            start: e.ts,
+            end: e.ts,
+            msg: e.msg.clone(),
+            children: vec![],
+        };
+        match e.kind.as_str() {
+            "turn" => {
+                if let Some(last) = out.last_mut() {
+                    last.end = last.end.max(e.ts);
+                }
+                out.push(leaf(e));
+            }
+            "tool" => match out.last_mut() {
+                Some(turn) => {
+                    let t = leaf(e);
+                    turn.end = turn.end.max(e.ts);
+                    turn.children.push(t);
+                }
+                None => out.push(leaf(e)),
+            },
+            _ => match out.last_mut() {
+                // A plain leaf under an open turn just stretches it; only a
+                // leaf with no turn above stands on its own.
+                Some(turn) => turn.end = turn.end.max(e.ts),
+                None => out.push(leaf(e)),
+            },
+        }
+    }
+    out
+}
+
+/// Replay a seat of a finished or live run from its run scoped log. This is
+/// the function the `/api/runs/{id}/events` route and `kula_events` both call;
+/// it seeks through the offset index, never a scan from byte 0.
+pub fn replay(kula_dir: &std::path::Path, run: &str, seat: &str, from: u64, limit: usize) -> anyhow::Result<Vec<crate::events::EventV2>> {
+    crate::events::replay(kula_dir, run, seat, from, limit)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -530,5 +646,51 @@ mod tests {
             (c[0].id.as_str(), c[0].slices, c[0].passed, c[0].attempts, c[0].usage.tokens_in, c[0].started, c[0].last),
             ("p-1", 2, 1, 1, 10, 100, 400)
         );
+    }
+
+    // ----- B5: sessions split on gaps; spans nest turn → tool -----
+
+    fn v2(seat: &str, seq: u64, ts: u64, kind: crate::events::EventKind, msg: &str) -> crate::events::EventV2 {
+        crate::events::EventV2 { run: "r".into(), seat: seat.into(), seq, ts, kind, msg: msg.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn sessions_split_on_gaps_over_five_minutes() {
+        let evs = vec![
+            v2("team/a", 1, 0, crate::events::EventKind::Turn, "t1"),
+            v2("team/a", 2, 1_000, crate::events::EventKind::Tool, "sed"),
+            // 5 min + 1 ms later: a gap over five minutes, so a new session.
+            v2("team/a", 3, 5 * 60 * 1000 + 1_001, crate::events::EventKind::Turn, "t2"),
+            v2("team/b", 1, 100, crate::events::EventKind::Turn, "b1"),
+        ];
+        let ss = session_split(&evs, 0);
+        assert_eq!(ss.len(), 3, "a, b, a-new: {ss:?}");
+        assert_eq!(ss[0].events.len(), 2);
+        assert_eq!(ss[0].seat, "team/a");
+        assert_eq!(ss[1].seat, "team/b");
+        assert_eq!(ss[2].seat, "team/a", "the new session sorts after team/b's");
+        assert_eq!(ss[2].start, 5 * 60 * 1000 + 1_001);
+        // An explicit smaller gap splits earlier.
+        assert_eq!(session_split(&evs, 500).len(), 4);
+    }
+
+    #[test]
+    fn spans_nest_turn_then_tool() {
+        let evs = vec![
+            v2("a", 1, 0, crate::events::EventKind::Turn, "turn 1"),
+            v2("a", 2, 10, crate::events::EventKind::Tool, "sed"),
+            v2("a", 3, 20, crate::events::EventKind::Tool, "cargo"),
+            v2("a", 4, 30, crate::events::EventKind::Turn, "turn 2"),
+            v2("a", 5, 40, crate::events::EventKind::Edit, "main.rs"),
+        ];
+        let spans = span_nest(&evs);
+        assert_eq!(spans.len(), 2, "two turns");
+        assert_eq!(spans[0].children.len(), 2, "both tools nest under turn 1");
+        assert_eq!(spans[0].children[0].kind, "tool");
+        assert_eq!(spans[0].end, 30, "turn 1 closes when turn 2 opens");
+        assert_eq!(spans[1].children.len(), 0, "turn 2 has no tools");
+        // A tool with no turn above stands alone.
+        let lone = vec![v2("a", 1, 0, crate::events::EventKind::Tool, "sed")];
+        assert_eq!(span_nest(&lone).len(), 1);
     }
 }

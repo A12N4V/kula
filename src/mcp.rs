@@ -40,6 +40,8 @@ fn tools() -> Value {
         { "name": "issues", "description": "Local issues and proposals tracked in git.",
           "inputSchema": s(json!({}), &[]) },
         { "name": "kula_ops", "description": "The swarm operation log on refs/kula/ops: one commit per op (launch, save, commit, handoff, gate, merge, undo), each recording a VIEW – the head of every seat in the run – plus run id and parent op. Use it to see what the team did and to undo to an earlier view.",
+          "input_schema": { "type": "object", "properties": { "limit": { "type": "integer", "description": "How many ops, newest first (default 20)." }, "op": { "type": "string", "description": "One op id to fetch instead of the list." } } } },
+        { "name": "kula_events", "description": "A run's scoped activity log: events identified by (run, seat, seq), kinds read/edit/refuse/test/tool/handoff/turn, target = symbol id else path, optional op id and token deltas. The same events /api/runs/{id}/events returns. Replay seeks an offset index, so it is cheap even for long runs.",
           "inputSchema": s(json!({ "op": { "type": "string", "description": "one op id to read in full" }, "limit": { "type": "integer", "description": "max ops (default 20)" } }), &[]) },
         { "name": "kula_seats", "description": "Every seat as a pure function of kula.toml: the merged spec, its rendered folder under .kula/seats/ with hash8, drift against what is on disk, and lint verdicts (8 checks). The same data /api/seats returns.",
           "inputSchema": s(json!({ "render": { "type": "boolean", "description": "render folders now (default true)" } }), &[]) },
@@ -254,6 +256,25 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             match str_arg("op").as_str() {
                 "" => json!({ "head": crate::ops::head(repo), "ops": crate::ops::ops(repo, limit)? }),
                 id => json!(crate::ops::op(repo, id)?),
+            }
+        }
+        "kula_events" => {
+            let run = str_arg("run");
+            if run.is_empty() {
+                json!({ "error": "kula_events needs a run id (see kula_ops or /api/runs for ids)" })
+            } else {
+                let seat = str_arg("seat");
+                let from = int_arg("from", 0) as u64;
+                let limit = int_arg("limit", 500) as usize;
+                // The very body the route's poll fallback answers with, so
+                // both doors can never disagree.
+                json!(crate::server::run_events_blocking(
+                    &repo.kula_dir(),
+                    &run,
+                    if seat.is_empty() { None } else { Some(seat.as_str()) },
+                    from,
+                    limit
+                ))
             }
         }
         "context_pack" => {

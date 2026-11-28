@@ -4,6 +4,7 @@
 
 pub mod blast;
 pub mod deploy;
+pub mod event_capture;
 pub mod gate;
 pub mod learn;
 pub mod plan;
