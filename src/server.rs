@@ -509,6 +509,27 @@ pub(crate) fn run_events_blocking(dir: &std::path::Path, run: &str, seat: Option
     json!({ "run": run, "events": events, "now": crate::events::now_ms() })
 }
 
+// B7: agent attribution – per-line provenance and the flow changelog.
+async fn blame_agents(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    let path = q.get("path").cloned().unwrap_or_default();
+    if path.is_empty() {
+        return Err(anyhow::anyhow!("blame needs a path (?path=repo-relative file)").into());
+    }
+    blocking(move || {
+        let lines = crate::attribution::blame_agents(&s.repo, &path)?;
+        Ok(json!({ "path": path, "lines": lines }))
+    })
+    .await
+}
+
+async fn run_changelog(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || {
+        let changes = crate::attribution::changelog(&s.repo, &id)?;
+        Ok(json!({ "run": id, "changes": changes }))
+    })
+    .await
+}
+
 async fn runs_changelog(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let since = q.get("since").and_then(|v| v.parse().ok()).unwrap_or(0u64);
@@ -1634,6 +1655,9 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/runs/{id}/synopsis", get(run_synopsis))
         .route("/api/runs/{id}/events", get(run_events))
         .route("/api/changelog", get(runs_changelog))
+        // B7: agent attribution (see the B7 block above).
+        .route("/api/blame/agents", get(blame_agents))
+        .route("/api/runs/{id}/changelog", get(run_changelog))
         .route("/api/deploy", post(deploy))
         .route("/api/schedules", get(schedules))
         .route("/api/schedules/{key}/pause", post(schedule_pause))

@@ -45,6 +45,10 @@ fn tools() -> Value {
           "inputSchema": s(json!({ "run": { "type": "string", "description": "the run id" }, "seat": { "type": "string", "description": "one seat (team/key); empty means the whole run" } }), &["run"]) },
         { "name": "kula_events", "description": "A run's scoped activity log: events identified by (run, seat, seq), kinds read/edit/refuse/test/tool/handoff/turn, target = symbol id else path, optional op id and token deltas. The same events /api/runs/{id}/events returns. Replay seeks an offset index, so it is cheap even for long runs.",
           "inputSchema": s(json!({ "run": { "type": "string", "description": "the run id whose events to read" }, "seat": { "type": "string", "description": "filter to one seat, e.g. team/alice" }, "from": { "type": "integer", "description": "only events with seq >= this (for tails)" }, "limit": { "type": "integer", "description": "max events (default 200)" } }), &["run"]) },
+        { "name": "kula_blame_agents", "description": "Agent attribution for one file (args: path): per line – the symbol it falls in (B1 id), the seat/run/save op that first introduced it (moved lines keep their original owner), the flow containing the symbol, and the dollars of the run attributed to the line (B6 usage). The same data /api/blame/agents returns.",
+          "inputSchema": s(json!({ "path": { "type": "string", "description": "repo-relative file path to blame" } }), &["path"]) },
+        { "name": "kula_changelog", "description": "One run's changes grouped by flow (args: run): each hunk a save introduced – flow, path, seat, op, consecutive line count and the dollars attributed to it. The same data /api/runs/{id}/changelog returns. See kula_ops for run ids.",
+          "inputSchema": s(json!({ "run": { "type": "string", "description": "the run id" } }), &["run"]) },
         { "name": "kula_seats", "description": "Every seat as a pure function of kula.toml: the merged spec, its rendered folder under .kula/seats/ with hash8, drift against what is on disk, and lint verdicts (8 checks). The same data /api/seats returns.",
           "inputSchema": s(json!({ "render": { "type": "boolean", "description": "render folders now (default true)" } }), &[]) },
         { "name": "context_pack", "description": "The code you need for a task, not whole files: give symbols, files or a plain-language question; get their definitions plus what they use, who uses them, containers and tests, ranked by graph distance and fitted to a token budget (big bodies shrink to signatures). Use it before reading files.",
@@ -258,6 +262,28 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             match str_arg("op").as_str() {
                 "" => json!({ "head": crate::ops::head(repo), "ops": crate::ops::ops(repo, limit)? }),
                 id => json!(crate::ops::op(repo, id)?),
+            }
+        }
+        "kula_blame_agents" => {
+            let path = str_arg("path");
+            if path.is_empty() {
+                json!({ "error": "kula_blame_agents needs a path (repo-relative file)" })
+            } else {
+                match crate::attribution::blame_agents(repo, &path) {
+                    Ok(lines) => json!({ "path": path, "lines": lines }),
+                    Err(e) => json!({ "error": format!("{e:#}") }),
+                }
+            }
+        }
+        "kula_changelog" => {
+            let run = str_arg("run");
+            if run.is_empty() {
+                json!({ "error": "kula_changelog needs a run id (see kula_ops or /api/runs for ids)" })
+            } else {
+                match crate::attribution::changelog(repo, &run) {
+                    Ok(changes) => json!({ "run": run, "changes": changes }),
+                    Err(e) => json!({ "error": format!("{e:#}") }),
+                }
             }
         }
         "kula_usage" => {

@@ -5,6 +5,7 @@
 mod agent;
 mod agent_config;
 mod agents;
+mod attribution;
 mod cache;
 mod clean;
 mod cli;
