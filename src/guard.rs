@@ -768,10 +768,8 @@ impl Guards {
             }
             let v = self.decide(path, Some(&old[i].0), holds);
             if !v.level.editable() && v.level >= best.level {
-                best = Verdict {
-                    reason: format!("{} – locked {} was renamed to {} and stays locked", v.reason, old[i].0, new[*j].0),
-                    ..v
-                };
+                best =
+                    Verdict { reason: format!("{} – locked {} was renamed to {} and stays locked", v.reason, old[i].0, new[*j].0), ..v };
             }
         }
         // The rename fallback: every fenced old def that is gone under its
@@ -790,10 +788,7 @@ impl Guards {
                 let new_sig = n.3.lines().next().unwrap_or_default();
                 if o.3.lines().count() == n.3.lines().count() && old_sig.replace(&o.0, &n.0) == new_sig {
                     if v.level >= best.level {
-                        best = Verdict {
-                            reason: format!("{} – locked {} was renamed to {} and stays locked", v.reason, o.0, n.0),
-                            ..v
-                        };
+                        best = Verdict { reason: format!("{} – locked {} was renamed to {} and stays locked", v.reason, o.0, n.0), ..v };
                     }
                     break;
                 }
@@ -880,10 +875,13 @@ pub fn explain(repo: &Repo, target: &str, seat: Option<&str>) -> Option<ExplainC
         Some(p) => p,
         None => {
             let st = store.as_ref()?;
-            st.nodes_where("name = ?1 AND kind != 'file' AND kind != 'package' ORDER BY path", rusqlite::params![symbol.clone().unwrap_or_default()])
-                .ok()?
-                .first()
-                .map(|n| n.path.clone())?
+            st.nodes_where(
+                "name = ?1 AND kind != 'file' AND kind != 'package' ORDER BY path",
+                rusqlite::params![symbol.clone().unwrap_or_default()],
+            )
+            .ok()?
+            .first()
+            .map(|n| n.path.clone())?
         }
     };
     Some(g.explain_chain(&path, symbol.as_deref()))
@@ -911,11 +909,7 @@ pub fn sandbox_profile(repo_root: &std::path::Path, locked: &[String], hidden: &
     // silently skipped.
     let abs = |p: &String| -> String {
         let p = p.trim_start_matches("./");
-        let joined = if std::path::Path::new(p).is_absolute() {
-            std::path::PathBuf::from(p)
-        } else {
-            repo_root.join(p)
-        };
+        let joined = if std::path::Path::new(p).is_absolute() { std::path::PathBuf::from(p) } else { repo_root.join(p) };
         joined.canonicalize().map(|c| c.to_string_lossy().into_owned()).unwrap_or_else(|_| joined.to_string_lossy().into_owned())
     };
     let mut out = String::from("(version 1)\n(allow default)\n");
@@ -1015,12 +1009,7 @@ impl SpanIndex {
 }
 
 fn span_of(path: &str, d: &(String, u32, u32, String)) -> Span {
-    Span {
-        start: d.1,
-        end: d.2,
-        name: d.0.clone(),
-        id: crate::index::identity::symbol_id(path, &d.0, fnv64(d.3.as_bytes())),
-    }
+    Span { start: d.1, end: d.2, name: d.0.clone(), id: crate::index::identity::symbol_id(path, &d.0, fnv64(d.3.as_bytes())) }
 }
 
 /// The changed ranges of an edit: old-side and new-side, each merged.
@@ -1995,8 +1984,8 @@ mod shell_guard_tests {
         assert!(shell_guard("cat tests/login.test.ts | grep -n salt", "", &fenced, &[]).1.is_none());
     }
 
-    use std::process::Command;
     use crate::index::defs_now;
+    use std::process::Command;
 
     fn guards3(toml: &str, task: Option<Task>) -> Guards {
         Guards::new(&toml::from_str::<Config>(toml).unwrap(), task).unwrap()
@@ -2094,10 +2083,9 @@ mod shell_guard_tests {
         let l2 = guards3(&format!("{base}{more}"), None).edit(None, "src/vault.rs").level;
         assert!(l2 >= l1, "adding a rule lowered the verdict: {l1:?} → {l2:?}");
         // and the seat fence can only add too
-        let cfg: Config = toml::from_str(&format!(
-            "{base}\n[[team]]\nname = \"t\"\nmembers = [{{ name = \"A\", fence = {{ lock = [\"src/**\"] }} }}]\n"
-        ))
-        .unwrap();
+        let cfg: Config =
+            toml::from_str(&format!("{base}\n[[team]]\nname = \"t\"\nmembers = [{{ name = \"A\", fence = {{ lock = [\"src/**\"] }} }}]\n"))
+                .unwrap();
         let mut g = guards3(base, None);
         g.add_seat_fence("t", &cfg.teams[0].members[0]).unwrap();
         assert!(g.edit(None, "src/vault.rs").level >= l1);
@@ -2125,9 +2113,8 @@ mod shell_guard_tests {
 
     #[test]
     fn span_index_hits_log_plus_k() {
-        let spans: Vec<Span> = (0..1000u32)
-            .map(|i| Span { start: i * 3, end: i * 3 + 2, name: format!("s{i}"), id: format!("id{i}") })
-            .collect();
+        let spans: Vec<Span> =
+            (0..1000u32).map(|i| Span { start: i * 3, end: i * 3 + 2, name: format!("s{i}"), id: format!("id{i}") }).collect();
         let ix = SpanIndex::build(spans);
         assert_eq!(ix.len(), 1000);
         assert!(!ix.is_empty());
@@ -2263,9 +2250,7 @@ mod shell_guard_tests {
         let profile = sandbox_profile(d.path(), &["certs/**".into()], &[]);
         let pf = std::env::temp_dir().join(format!("kula-b3-profile-{}", std::process::id()));
         std::fs::write(&pf, &profile).unwrap();
-        let run = |code: String| {
-            Command::new(exec).arg("-f").arg(&pf).arg("/bin/sh").arg("-c").arg(code).output().unwrap()
-        };
+        let run = |code: String| Command::new(exec).arg("-f").arg(&pf).arg("/bin/sh").arg("-c").arg(code).output().unwrap();
         let locked = d.path().join("certs/key.txt");
         let free = d.path().join("src/free.txt");
         let denied = run(format!("echo x >> {}", locked.display()));
