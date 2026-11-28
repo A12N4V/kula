@@ -241,9 +241,22 @@ pub fn list(repo: &Repo, cfg: &Config) -> Vec<Info> {
         .iter()
         .map(|s| {
             let seen = st.schedules.get(&s.key()).cloned().unwrap_or_default();
-            let next = Cron::parse(&s.cron).ok().and_then(|c| next_due(&c, seen.last.or(Some(now - 60)).map(|l| l.max(now - 60)), now, off));
-            let error = if s.cron.is_empty() && s.on.is_empty() { "needs cron or on".into() } else { Cron::parse(&s.cron).err().filter(|_| !s.cron.is_empty()).map(|e| e.to_string()).unwrap_or(seen.error) };
-            Info { key: s.key(), schedule: s.clone(), paused: seen.paused, last: seen.last.map(|l| l * 1000), next: next.map(|n| n * 1000), run: seen.run, error }
+            let next =
+                Cron::parse(&s.cron).ok().and_then(|c| next_due(&c, seen.last.or(Some(now - 60)).map(|l| l.max(now - 60)), now, off));
+            let error = if s.cron.is_empty() && s.on.is_empty() {
+                "needs cron or on".into()
+            } else {
+                Cron::parse(&s.cron).err().filter(|_| !s.cron.is_empty()).map(|e| e.to_string()).unwrap_or(seen.error)
+            };
+            Info {
+                key: s.key(),
+                schedule: s.clone(),
+                paused: seen.paused,
+                last: seen.last.map(|l| l * 1000),
+                next: next.map(|n| n * 1000),
+                run: seen.run,
+                error,
+            }
         })
         .collect()
 }

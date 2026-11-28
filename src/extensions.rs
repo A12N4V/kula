@@ -108,7 +108,13 @@ pub struct Installed {
 // ------------------------------------------------------------------ sources
 
 pub fn builtin_sources() -> Vec<Source> {
-    let s = |id: &str, kind: &str, url: &str, label: &str| Source { id: id.into(), kind: kind.into(), url: url.into(), label: label.into(), builtin: true };
+    let s = |id: &str, kind: &str, url: &str, label: &str| Source {
+        id: id.into(),
+        kind: kind.into(),
+        url: url.into(),
+        label: label.into(),
+        builtin: true,
+    };
     vec![
         s("store", "store", "", "This repo"),
         s("mcp", "mcp", "https://registry.modelcontextprotocol.io", "MCP Registry"),
@@ -174,7 +180,9 @@ fn save_sources(repo: &Repo, all: &[Source]) -> Result<()> {
 fn github_repo(s: &str) -> Option<String> {
     let s = s.trim().trim_end_matches('/').trim_end_matches(".git");
     let s = s.strip_prefix("https://github.com/").unwrap_or(s);
-    let ok = |p: &str| !p.is_empty() && p != "." && p != ".." && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.');
+    let ok = |p: &str| {
+        !p.is_empty() && p != "." && p != ".." && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    };
     let mut it = s.split('/');
     let (o, r) = (it.next()?, it.next()?);
     (it.next().is_none() && ok(o) && ok(r)).then(|| format!("{o}/{r}"))
@@ -192,7 +200,11 @@ pub fn slug(s: &str) -> String {
     }
     let t = out.trim_matches('-');
     let t: String = t.chars().take(64).collect();
-    if t.is_empty() { "ext".into() } else { t.trim_end_matches('-').to_string() }
+    if t.is_empty() {
+        "ext".into()
+    } else {
+        t.trim_end_matches('-').to_string()
+    }
 }
 
 // ------------------------------------------------------------------ fetching
@@ -267,7 +279,11 @@ pub fn browse(repo: &Repo, source: &str, query: &str, kind: Option<&str>, cursor
 
 fn mcp_registry(src: &Source, query: &str, cursor: Option<&str>) -> Result<Page> {
     let mut url = format!("{}/v0/servers?limit=40", src.url.trim_end_matches('/'));
-    let enc = |s: &str| s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>();
+    let enc = |s: &str| {
+        s.bytes()
+            .map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+            .collect::<String>()
+    };
     if !query.trim().is_empty() {
         url.push_str(&format!("&search={}", enc(query.trim())));
     }
@@ -290,7 +306,8 @@ pub fn parse_mcp_registry(source: &str, v: &Value) -> Page {
         }
         let Some(install) = mcp_install(srv) else { continue };
         let short = full.rsplit('/').next().unwrap_or(&full);
-        let homepage = srv.get("repository").map(|r| s(r, "url")).filter(|u| u.starts_with("https://")).unwrap_or_else(|| s(srv, "websiteUrl"));
+        let homepage =
+            srv.get("repository").map(|r| s(r, "url")).filter(|u| u.starts_with("https://")).unwrap_or_else(|| s(srv, "websiteUrl"));
         entries.push(Entry {
             id: format!("{source}:{full}"),
             kind: "mcp".into(),
@@ -303,7 +320,8 @@ pub fn parse_mcp_registry(source: &str, v: &Value) -> Page {
             install,
         });
     }
-    let next = v.get("metadata").and_then(|m| m.get("nextCursor").or_else(|| m.get("next_cursor"))).and_then(|x| x.as_str()).map(String::from);
+    let next =
+        v.get("metadata").and_then(|m| m.get("nextCursor").or_else(|| m.get("next_cursor"))).and_then(|x| x.as_str()).map(String::from);
     Page { entries, next, total: None }
 }
 
@@ -350,7 +368,12 @@ fn mcp_install(srv: &Value) -> Option<Install> {
 /// Every SKILL.md folder in a GitHub repo, described by its frontmatter.
 fn github_skills(repo: &Repo, src: &Source, refresh: bool) -> Result<Vec<Entry>> {
     let r = github_repo(&src.url).context("bad repo")?;
-    let tree: Value = serde_json::from_slice(&cached(repo, &format!("{}-tree", src.id), &format!("https://api.github.com/repos/{r}/git/trees/HEAD?recursive=1"), refresh)?)?;
+    let tree: Value = serde_json::from_slice(&cached(
+        repo,
+        &format!("{}-tree", src.id),
+        &format!("https://api.github.com/repos/{r}/git/trees/HEAD?recursive=1"),
+        refresh,
+    )?)?;
     let dirs: Vec<String> = tree
         .get("tree")
         .and_then(|x| x.as_array())
@@ -363,7 +386,9 @@ fn github_skills(repo: &Repo, src: &Source, refresh: bool) -> Result<Vec<Entry>>
     let mut out: Vec<Entry> = vec![];
     for d in canonical_dirs(dirs).into_iter().take(120) {
         let file = if d.is_empty() { "SKILL.md".to_string() } else { format!("{d}/SKILL.md") };
-        let md = cached(repo, &format!("{}-{}", src.id, d), &format!("https://raw.githubusercontent.com/{r}/HEAD/{file}"), refresh).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+        let md = cached(repo, &format!("{}-{}", src.id, d), &format!("https://raw.githubusercontent.com/{r}/HEAD/{file}"), refresh)
+            .map(|b| String::from_utf8_lossy(&b).to_string())
+            .unwrap_or_default();
         let (name, description) = frontmatter(&md);
         let leaf = d.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or(r.split('/').nth(1).unwrap_or("skill"));
         let name = slug(name.as_deref().unwrap_or(leaf));
@@ -426,7 +451,11 @@ pub fn frontmatter(md: &str) -> (Option<String>, Option<String>) {
             v = parts.into_iter().filter(|p| !p.is_empty()).collect::<Vec<_>>().join(" ");
         }
         let v = v.trim_matches('"').trim_matches('\'').to_string();
-        if k == "name" { name = Some(v) } else { desc = Some(v) }
+        if k == "name" {
+            name = Some(v)
+        } else {
+            desc = Some(v)
+        }
     }
     (name.filter(|s| !s.is_empty()), desc.filter(|s| !s.is_empty()))
 }
@@ -653,12 +682,16 @@ fn skill_md(name: &str, description: &str, body: &str) -> String {
 // ------------------------------------------------------------------ install
 
 fn lock(root: &Path) -> Vec<Installed> {
-    std::fs::read_to_string(root.join(LOCK)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| serde_json::from_value(v.get("installed").cloned().unwrap_or(Value::Null)).ok()).unwrap_or_default()
+    std::fs::read_to_string(root.join(LOCK))
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| serde_json::from_value(v.get("installed").cloned().unwrap_or(Value::Null)).ok())
+        .unwrap_or_default()
 }
 
 fn save_lock(root: &Path, list: &[Installed]) -> Result<()> {
     std::fs::create_dir_all(root.join(".agents"))?;
-    std::fs::write(root.join(LOCK), serde_json::to_vec_pretty(&json!({ "installed": list }))? )?;
+    std::fs::write(root.join(LOCK), serde_json::to_vec_pretty(&json!({ "installed": list }))?)?;
     Ok(())
 }
 
@@ -728,7 +761,8 @@ pub fn install(repo: &Repo, e: &Entry, overwrite: bool) -> Result<Done> {
         }
         _ => bail!("that entry cannot be installed as a {}", e.kind),
     }
-    let rec = Installed { id: e.id.clone(), kind: e.kind.clone(), name, source: e.source.clone(), version: e.version.clone(), at: now(), needs };
+    let rec =
+        Installed { id: e.id.clone(), kind: e.kind.clone(), name, source: e.source.clone(), version: e.version.clone(), at: now(), needs };
     let mut l = lock(root);
     l.retain(|i| !(i.kind == rec.kind && i.name == rec.name));
     l.push(rec.clone());
@@ -802,7 +836,11 @@ fn clone_dir(tmp: &Path, repo: &str, path: &str) -> Result<PathBuf> {
     }
     let dst = tmp.join("src");
     let git = |args: &[&str]| -> Result<()> {
-        let o = Command::new("git").args(["-c", "protocol.allow=never", "-c", "protocol.https.allow=always"]).args(args).env("GIT_TERMINAL_PROMPT", "0").output()?;
+        let o = Command::new("git")
+            .args(["-c", "protocol.allow=never", "-c", "protocol.https.allow=always"])
+            .args(args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()?;
         if !o.status.success() {
             bail!("git {}: {}", args.first().unwrap_or(&""), String::from_utf8_lossy(&o.stderr).trim());
         }
@@ -870,7 +908,13 @@ fn now() -> i64 {
 mod tests {
     #[test]
     fn canonical_dirs_drop_mirrors_and_fixtures() {
-        let d = super::canonical_dirs(vec![".cursor/skills/x".into(), "skills/x".into(), ".claude/skills/x".into(), "tests/fixtures/x".into(), "y".into()]);
+        let d = super::canonical_dirs(vec![
+            ".cursor/skills/x".into(),
+            "skills/x".into(),
+            ".claude/skills/x".into(),
+            "tests/fixtures/x".into(),
+            "y".into(),
+        ]);
         assert_eq!(d, vec!["y".to_string(), "skills/x".to_string()]);
     }
 
@@ -892,7 +936,15 @@ mod tests {
         assert_eq!(p.entries.len(), 2);
         assert_eq!(p.next.as_deref(), Some("abc"));
         assert_eq!(p.entries[0].name, "weather");
-        assert_eq!(p.entries[0].install, Install::Mcp { command: "npx".into(), args: vec!["-y".into(), "@acme/weather@1.2.0".into()], url: String::new(), env: vec!["WEATHER_KEY".into()] });
+        assert_eq!(
+            p.entries[0].install,
+            Install::Mcp {
+                command: "npx".into(),
+                args: vec!["-y".into(), "@acme/weather@1.2.0".into()],
+                url: String::new(),
+                env: vec!["WEATHER_KEY".into()]
+            }
+        );
         assert!(matches!(&p.entries[1].install, Install::Mcp { url, .. } if url == "https://mcp.example.com/mcp"));
     }
 
@@ -923,7 +975,17 @@ mod tests {
         g(&["config", "user.email", "t@t"]);
         g(&["config", "user.name", "t"]);
         let r = Repo { root: d.path().canonicalize().unwrap() };
-        let draft = Draft { kind: "prompt".into(), name: "Code Review".into(), description: "Review a diff".into(), body: "Review this.".into(), version: String::new(), command: String::new(), args: vec![], url: String::new(), env: vec![] };
+        let draft = Draft {
+            kind: "prompt".into(),
+            name: "Code Review".into(),
+            description: "Review a diff".into(),
+            body: "Review this.".into(),
+            version: String::new(),
+            command: String::new(),
+            args: vec![],
+            url: String::new(),
+            env: vec![],
+        };
         let e = publish(&r, &draft).unwrap();
         let listed = store_entries(&r).unwrap();
         assert_eq!(listed.len(), 1);
@@ -931,7 +993,17 @@ mod tests {
         assert!(std::fs::read_to_string(r.root.join(".agents/prompts/code-review.md")).unwrap().contains("Review this."));
         assert_eq!(installed(&r).len(), 1);
         assert!(install(&r, &listed[0], false).is_err());
-        let mcp = Entry { id: "x:m".into(), kind: "mcp".into(), name: "m".into(), description: String::new(), source: "x".into(), version: String::new(), author: String::new(), homepage: String::new(), install: Install::Mcp { command: "npx".into(), args: vec!["-y".into(), "m".into()], url: String::new(), env: vec![] } };
+        let mcp = Entry {
+            id: "x:m".into(),
+            kind: "mcp".into(),
+            name: "m".into(),
+            description: String::new(),
+            source: "x".into(),
+            version: String::new(),
+            author: String::new(),
+            homepage: String::new(),
+            install: Install::Mcp { command: "npx".into(), args: vec!["-y".into(), "m".into()], url: String::new(), env: vec![] },
+        };
         install(&r, &mcp, false).unwrap();
         assert!(std::fs::read_to_string(r.root.join(".agents/mcp.json")).unwrap().contains("\"npx\""));
         uninstall(&r, "mcp", "m").unwrap();

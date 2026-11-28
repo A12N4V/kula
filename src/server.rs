@@ -651,7 +651,13 @@ async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(
             "rebase" => r.run(&["rebase", &name()?])?,
             "cherry_pick" => r.run(&["cherry-pick", &name()?])?,
             "revert" => r.run(&["revert", "--no-edit", &name()?])?,
-            "tag" => match &a.from { Some(f) => { validate_rev(f)?; r.run(&["tag", &name()?, f])? } None => r.run(&["tag", &name()?])? },
+            "tag" => match &a.from {
+                Some(f) => {
+                    validate_rev(f)?;
+                    r.run(&["tag", &name()?, f])?
+                }
+                None => r.run(&["tag", &name()?])?,
+            },
             "fetch" => r.run(&["fetch", "--all", "--prune"])?,
             "pull" => r.run(&["pull", "--ff-only"])?,
             "push" => r.run(&["push", "-u", "origin", "HEAD"])?,
@@ -662,7 +668,8 @@ async fn git_action(State(s): State<AppState>, Path(action): Path<String>, Json(
             },
             "stash_apply" => r.run(&["stash", "apply", &stash_ref(a.name.as_ref())?])?,
             "stash_drop" => r.run(&["stash", "drop", &stash_ref(a.name.as_ref())?])?,
-            "stash_show" => r.run(&["stash", "show", "-p", "--include-untracked", &stash_ref(a.name.as_ref())?])
+            "stash_show" => r
+                .run(&["stash", "show", "-p", "--include-untracked", &stash_ref(a.name.as_ref())?])
                 .or_else(|_| r.run(&["stash", "show", "-p", &stash_ref(a.name.as_ref())?]))?,
             "stash_message" => match a.message.as_deref().map(str::trim).filter(|m| !m.is_empty()) {
                 Some(m) => r.run(&["stash", "push", "-u", "-m", m])?,
@@ -915,7 +922,10 @@ fn territories(r: &Repo, cfg: &crate::config::Config) -> anyhow::Result<Value> {
         for p in &files {
             *size.entry(area_in(&areas, p)).or_default() += 1;
         }
-        let Some((big, _)) = size.iter().filter(|(a, _)| !done.contains(*a)).max_by_key(|(a, n)| (**n, std::cmp::Reverse((*a).clone()))) else { break };
+        let Some((big, _)) = size.iter().filter(|(a, _)| !done.contains(*a)).max_by_key(|(a, n)| (**n, std::cmp::Reverse((*a).clone())))
+        else {
+            break;
+        };
         let big = big.clone();
         let kids: BTreeSet<String> = files.iter().filter(|p| area_in(&areas, p) == big).filter_map(|p| child(&big, p)).collect();
         done.insert(big.clone());
@@ -975,7 +985,11 @@ fn recall_for(r: &Repo, target: &str, workflow: &str, scope: &[String]) -> anyho
     let g = crate::guard::Guards::new(&cfg, Some(t))?;
     let got = crate::memory::recall(r, &st, Some(target), None, 24)?;
     // a target is repo, file:<path> or symbol:<path>:<name>
-    let path_of = |t: &str| t.strip_prefix("file:").or_else(|| t.strip_prefix("symbol:").map(|s| s.rsplit_once(':').map(|x| x.0).unwrap_or(s))).map(String::from);
+    let path_of = |t: &str| {
+        t.strip_prefix("file:")
+            .or_else(|| t.strip_prefix("symbol:").map(|s| s.rsplit_once(':').map(|x| x.0).unwrap_or(s)))
+            .map(String::from)
+    };
     let keep: Vec<_> = got.into_iter().filter(|m| path_of(&m.target).map_or(true, |p| g.path(&p).level.readable())).collect();
     Ok(json!({ "recalled": keep }))
 }
@@ -1060,7 +1074,10 @@ async fn agents_action(State(s): State<AppState>, Path(action): Path<String>, Js
                 let cfg = crate::config::Config::load(&r.root)?;
                 let teams = if a.teams.is_empty() { cfg.teams.clone() } else { a.teams.clone() };
                 let seat = teams.iter().filter(|t| a.name.is_empty() || t.name == a.name).find_map(|t| {
-                    t.members.iter().find(|m| !a.agent.is_empty() && (m.name == a.agent || m.agent == a.agent)).map(|m| (t.name.clone(), m.clone()))
+                    t.members
+                        .iter()
+                        .find(|m| !a.agent.is_empty() && (m.name == a.agent || m.agent == a.agent))
+                        .map(|m| (t.name.clone(), m.clone()))
                 });
                 let g = match seat {
                     Some((team, m)) => crate::guard::Guards::for_seat(&cfg, &team, &m, None, None)?,
@@ -1433,6 +1450,10 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/store/log", get(store_log))
         .route("/api/store/show", get(store_show))
         .route("/api/store/{action}", post(store_action))
+        .route("/api/ops", get(ops_list))
+        .route("/api/ops/{id}", get(op_detail))
+        .route("/api/ops/undo", post(ops_undo))
+        .route("/api/saves", get(saves_list))
         .route("/api/extensions/sources", get(ext_sources))
         .route("/api/extensions/browse", get(ext_browse))
         .route("/api/extensions/installed", get(ext_installed))
@@ -1647,7 +1668,14 @@ async fn ext_sources(State(s): State<AppState>) -> ApiResult {
 async fn ext_browse(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {
         let g = |k: &str| q.get(k).map(String::as_str);
-        let page = crate::extensions::browse(&s.repo, g("source").unwrap_or("store"), g("q").unwrap_or(""), g("kind").filter(|k| !k.is_empty()), g("cursor").filter(|c| !c.is_empty()), g("refresh") == Some("1"))?;
+        let page = crate::extensions::browse(
+            &s.repo,
+            g("source").unwrap_or("store"),
+            g("q").unwrap_or(""),
+            g("kind").filter(|k| !k.is_empty()),
+            g("cursor").filter(|c| !c.is_empty()),
+            g("refresh") == Some("1"),
+        )?;
         Ok(serde_json::to_value(page)?)
     })
     .await
@@ -1678,7 +1706,11 @@ async fn ext_action(State(s): State<AppState>, Path(action): Path<String>, Json(
     blocking(move || {
         let r = &s.repo;
         Ok(match action.as_str() {
-            "install" => serde_json::to_value(crate::extensions::install(r, a.entry.as_ref().ok_or_else(|| anyhow!("entry missing"))?, a.overwrite)?)?,
+            "install" => serde_json::to_value(crate::extensions::install(
+                r,
+                a.entry.as_ref().ok_or_else(|| anyhow!("entry missing"))?,
+                a.overwrite,
+            )?)?,
             "uninstall" => json!({ "removed": crate::extensions::uninstall(r, &a.kind, &a.name)? }),
             "publish" => serde_json::to_value(crate::extensions::publish(r, a.draft.as_ref().ok_or_else(|| anyhow!("draft missing"))?)?)?,
             "unpublish" => {
@@ -1692,6 +1724,68 @@ async fn ext_action(State(s): State<AppState>, Path(action): Path<String>, Json(
             }
             _ => anyhow::bail!("unknown extensions action {action:?}"),
         })
+    })
+    .await
+}
+
+// –– Swarm op log (B2) ––
+
+/// GET /api/ops – the swarm op log, newest first.
+#[derive(Deserialize)]
+struct OpsQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+async fn ops_list(State(s): State<AppState>, axum::extract::Query(q): axum::extract::Query<OpsQuery>) -> ApiResult {
+    blocking(move || {
+        let limit = q.limit.unwrap_or(50);
+        let mut head = crate::ops::head(&s.repo);
+        let list = crate::ops::ops(&s.repo, limit)?;
+        if head.is_none() {
+            head = list.first().map(|o| o.id.clone());
+        }
+        Ok(json!({ "head": head, "ops": list }))
+    })
+    .await
+}
+
+/// GET /api/ops/{id} – one op and the view it recorded.
+async fn op_detail(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || Ok(json!(crate::ops::op(&s.repo, &id)?))).await
+}
+
+#[derive(Deserialize)]
+struct UndoBody {
+    /// Op id (or short sha) or save ref `refs/kula/saves/<seat>/<n>`.
+    op: String,
+    /// The run id to record the undo op under (optional).
+    #[serde(default)]
+    run: Option<String>,
+}
+/// POST /api/ops/undo – append an undo op and reset the seats' worktrees.
+async fn ops_undo(State(s): State<AppState>, Json(o): Json<UndoBody>) -> ApiResult {
+    blocking(move || {
+        let run = o.run.unwrap_or_else(|| format!("manual-{}", crate::meta::now()));
+        let op = crate::ops::undo_to(&s.repo, &o.op, &run)?;
+        Ok(json!(op))
+    })
+    .await
+}
+
+/// GET /api/saves?seat= – a seat's autosaves, newest first.
+#[derive(Deserialize)]
+struct SavesQuery {
+    seat: String,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+async fn saves_list(State(s): State<AppState>, axum::extract::Query(q): axum::extract::Query<SavesQuery>) -> ApiResult {
+    blocking(move || {
+        let list = crate::ops::saves(&s.repo, &q.seat, q.limit.unwrap_or(20))
+            .into_iter()
+            .map(|(refname, commit, tree, time)| json!({ "ref": refname, "commit": commit, "tree": tree, "time": time }))
+            .collect::<Vec<_>>();
+        Ok(json!({ "seat": q.seat, "saves": list }))
     })
     .await
 }

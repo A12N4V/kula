@@ -35,6 +35,8 @@ fn tools() -> Value {
           "inputSchema": s(json!({ "target": { "type": "string" } }), &[]) },
         { "name": "issues", "description": "Local issues and proposals tracked in git.",
           "inputSchema": s(json!({}), &[]) },
+        { "name": "kula_ops", "description": "The swarm operation log on refs/kula/ops: one commit per op (launch, save, commit, handoff, gate, merge, undo), each recording a VIEW – the head of every seat in the run – plus run id and parent op. Use it to see what the team did and to undo to an earlier view.",
+          "inputSchema": s(json!({ "op": { "type": "string", "description": "one op id to read in full" }, "limit": { "type": "integer", "description": "max ops (default 20)" } }), &[]) },
         { "name": "context_pack", "description": "The code you need for a task, not whole files: give symbols, files or a plain-language question; get their definitions plus what they use, who uses them, containers and tests, ranked by graph distance and fitted to a token budget (big bodies shrink to signatures). Use it before reading files.",
           "inputSchema": s(json!({ "targets": { "type": "array", "items": { "type": "string" }, "description": "symbol names, path:name, file paths, or a question" }, "budget": { "type": "integer", "description": "token budget (default 6000)" } }), &["targets"]) },
         { "name": "pre_edit", "description": "Call before changing a symbol: direct callers, total dependents and risk, the tests that reach it through the call graph, files that historically change with it, human notes, and concrete advice.",
@@ -199,6 +201,13 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
         "issues" => {
             let m = crate::meta::load(repo)?;
             json!({ "issues": m.issues, "proposals": m.proposals })
+        }
+        "kula_ops" => {
+            let limit = int_arg("limit", 20);
+            match str_arg("op").as_str() {
+                "" => json!({ "head": crate::ops::head(repo), "ops": crate::ops::ops(repo, limit)? }),
+                id => json!(crate::ops::op(repo, id)?),
+            }
         }
         "context_pack" => {
             let targets: Vec<String> = a

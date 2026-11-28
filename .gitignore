@@ -16,3 +16,4 @@ promo/film/out/
 promo/film/public/
 promo/.venv/
 tsconfig.tsbuildinfo
+.DS_Store

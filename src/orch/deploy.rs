@@ -81,13 +81,21 @@ pub fn team_plan(cfg: &Config, o: &DeployOpts, all_files: &[String], flow_files:
         id_of.insert(m.key().to_string(), id.clone());
         let own = seat_scope(cfg, m);
         let scope: Vec<String> = if flow_files.is_empty() {
-            if own.is_empty() { vec![".".into()] } else { own.clone() }
+            if own.is_empty() {
+                vec![".".into()]
+            } else {
+                own.clone()
+            }
         } else if own.is_empty() {
             flow_files.to_vec()
         } else {
             let both: Vec<String> = flow_files.iter().filter(|f| in_scope(f, &own)).cloned().collect();
             // A seat the flows do not reach keeps its own scope.
-            if both.is_empty() { own.clone() } else { both }
+            if both.is_empty() {
+                own.clone()
+            } else {
+                both
+            }
         };
         let module = own.first().cloned().unwrap_or_else(|| m.key().to_string());
         let agent = match m.provider(&cfg.agents.default) {
@@ -155,7 +163,8 @@ pub fn team_plan(cfg: &Config, o: &DeployOpts, all_files: &[String], flow_files:
 pub fn make(repo: &Repo, o: &DeployOpts) -> Result<(Plan, PathBuf)> {
     let cfg = Config::load(&repo.root)?;
     let st = crate::store::Store::open(repo).ok();
-    let all_files: Vec<String> = st.as_ref().and_then(|s| s.nodes_where("kind = 'file'", []).ok()).unwrap_or_default().into_iter().map(|n| n.path).collect();
+    let all_files: Vec<String> =
+        st.as_ref().and_then(|s| s.nodes_where("kind = 'file'", []).ok()).unwrap_or_default().into_iter().map(|n| n.path).collect();
     let mut flow_files: Vec<String> = vec![];
     if !o.flows.is_empty() {
         let st = st.as_ref().context("the repo is not indexed yet, so its flows are unknown")?;
@@ -193,7 +202,8 @@ pub fn make(repo: &Repo, o: &DeployOpts) -> Result<(Plan, PathBuf)> {
 
 /// A `run-plan` child for this plan is alive (its pid file names a live process).
 fn running(repo: &Repo, plan: &str) -> bool {
-    let pid = std::fs::read_to_string(repo.kula_dir().join("runs").join(plan).join("deploy.pid")).ok().and_then(|s| s.trim().parse::<u32>().ok());
+    let pid =
+        std::fs::read_to_string(repo.kula_dir().join("runs").join(plan).join("deploy.pid")).ok().and_then(|s| s.trim().parse::<u32>().ok());
     pid.is_some_and(|p| Command::new("kill").args(["-0", &p.to_string()]).stderr(Stdio::null()).status().is_ok_and(|s| s.success()))
 }
 
@@ -223,7 +233,13 @@ mod tests {
     use crate::config::Team;
 
     fn member(name: &str, scope: &[&str], hands: &[&str]) -> Member {
-        Member { name: name.into(), agent: "fake".into(), scope: scope.iter().map(|s| s.to_string()).collect(), hands_off: hands.iter().map(|s| s.to_string()).collect(), ..Default::default() }
+        Member {
+            name: name.into(),
+            agent: "fake".into(),
+            scope: scope.iter().map(|s| s.to_string()).collect(),
+            hands_off: hands.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        }
     }
 
     fn cfg(members: Vec<Member>) -> Config {

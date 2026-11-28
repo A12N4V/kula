@@ -160,7 +160,9 @@ pub fn seat_setup(root: &Path, agent: &str, m: &crate::config::Member, dir: &Pat
                     })
                     .collect();
                 let f = dir.join("mcp.json");
-                if std::fs::create_dir_all(dir).is_ok() && std::fs::write(&f, serde_json::json!({ "mcpServers": servers }).to_string()).is_ok() {
+                if std::fs::create_dir_all(dir).is_ok()
+                    && std::fs::write(&f, serde_json::json!({ "mcpServers": servers }).to_string()).is_ok()
+                {
                     args.extend(["--mcp-config".to_string(), f.to_string_lossy().into_owned(), "--strict-mcp-config".into()]);
                 }
             }
@@ -370,7 +372,16 @@ pub fn refusals(kula_dir: &Path, run: &str) -> BTreeMap<String, u32> {
 
 /// Builds the run's record from the finished plan and what was measured.
 #[allow(clippy::too_many_arguments)]
-pub fn build(plan: &Plan, run: &str, trigger: &str, started: u64, ended: u64, head: &str, seats: BTreeMap<String, SeatRun>, refused: &BTreeMap<String, u32>) -> Run {
+pub fn build(
+    plan: &Plan,
+    run: &str,
+    trigger: &str,
+    started: u64,
+    ended: u64,
+    head: &str,
+    seats: BTreeMap<String, SeatRun>,
+    refused: &BTreeMap<String, u32>,
+) -> Run {
     let mut out = vec![];
     let mut total = Usage::default();
     for s in &plan.slices {
@@ -492,7 +503,13 @@ mod tests {
 
     #[test]
     fn scores_go_down_with_refusals_retries_and_failure() {
-        let good = SeatRun { verdict: "passed".into(), attempts: 1, usage: Usage { tokens_in: 1000, turns: 1, ..Default::default() }, duration_ms: 60_000, ..Default::default() };
+        let good = SeatRun {
+            verdict: "passed".into(),
+            attempts: 1,
+            usage: Usage { tokens_in: 1000, turns: 1, ..Default::default() },
+            duration_ms: 60_000,
+            ..Default::default()
+        };
         let refused = SeatRun { refusals: 2, ..good.clone() };
         let retried = SeatRun { attempts: 3, ..good.clone() };
         let failed = SeatRun { verdict: "failed".into(), ..good.clone() };
