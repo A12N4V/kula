@@ -243,9 +243,15 @@ fn secs_since_last_save(repo: &Repo, seat: &str) -> u64 {
 /// Snapshot one seat's worktree without touching its branch or HEAD: a
 /// temporary index + `git commit-tree`, stored under `refs/kula/saves/<seat>/<n>`.
 /// Dedupes on the tree id, throttled to one save per seat per 30 s
-/// (`KULA_SAVE_MIN_SECS` overrides it, for tests). Returns the save op.
+/// (`KULA_SAVE_MIN_SECS` overrides it). Returns the save op, if one was made.
 pub fn autosave(repo: &Repo, wt: &std::path::Path, seat: &str, run: &str, message: &str) -> Result<Option<Op>> {
     let min = std::env::var("KULA_SAVE_MIN_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(MIN_SAVE_SECS);
+    autosave_with(repo, wt, seat, run, message, min)
+}
+
+/// `autosave` with an explicit throttle, so tests never race over env vars.
+pub fn autosave_with(repo: &Repo, wt: &std::path::Path, seat: &str, run: &str, message: &str, min_secs: u64) -> Result<Option<Op>> {
+    let min = min_secs;
     if secs_since_last_save(repo, seat) < min {
         return Ok(None); // throttled
     }
@@ -355,30 +361,27 @@ mod tests {
     #[test]
     fn autosave_dedupes_and_throttles() {
         let (_t, r) = repo();
-        std::env::set_var("KULA_SAVE_MIN_SECS", "0");
         let wt = r.root.clone();
         std::fs::write(wt.join("f.txt"), "two\n").unwrap();
-        let s1 = autosave(&r, &wt, "a", "run-1", "test").unwrap().unwrap();
+        let s1 = autosave_with(&r, &wt, "a", "run-1", "test", 0).unwrap().unwrap();
         assert_eq!(save_n(&format!("{SAVES_PREFIX}/a/1")), 1);
-        let s2 = autosave(&r, &wt, "a", "run-1", "test").unwrap();
+        let s2 = autosave_with(&r, &wt, "a", "run-1", "test", 0).unwrap();
         assert!(s2.is_none(), "unchanged tree must dedupe");
         std::fs::write(wt.join("f.txt"), "three\n").unwrap();
-        let s3 = autosave(&r, &wt, "a", "run-1", "test").unwrap().unwrap();
+        let s3 = autosave_with(&r, &wt, "a", "run-1", "test", 0).unwrap().unwrap();
         assert_ne!(s1.id, s3.id);
         assert_eq!(saves(&r, "a", 10).len(), 2);
-        std::env::set_var("KULA_SAVE_MIN_SECS", "30");
-        let s4 = autosave(&r, &wt, "a", "run-1", "test").unwrap();
+        let s4 = autosave_with(&r, &wt, "a", "run-1", "test", 30).unwrap();
         assert!(s4.is_none(), "throttled within 30 s of the last save");
     }
 
     #[test]
     fn restore_and_fork_leave_the_branch_alone() {
         let (_t, r) = repo();
-        std::env::set_var("KULA_SAVE_MIN_SECS", "0");
         let wt = r.root.clone();
         let base = r.run(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
         std::fs::write(wt.join("f.txt"), "saved\n").unwrap();
-        autosave(&r, &wt, "a", "run-1", "test").unwrap();
+        autosave_with(&r, &wt, "a", "run-1", "test", 0).unwrap();
         std::fs::write(wt.join("f.txt"), "lost\n").unwrap();
         restore_save(&r, &wt, "a", 1, "run-1").unwrap();
         assert_eq!(std::fs::read_to_string(wt.join("f.txt")).unwrap(), "saved\n");
@@ -386,7 +389,6 @@ mod tests {
         let (branch, fwt) = fork_from(&r, &base, "a", "retry").unwrap();
         assert_eq!(r.run(&["rev-parse", &branch]).unwrap().trim(), base);
         assert!(fwt.join("f.txt").exists());
-        std::env::set_var("KULA_SAVE_MIN_SECS", "30");
     }
 }
 
@@ -442,7 +444,6 @@ mod property_tests {
     /// ordered no matter how the undo/save/commit churn interleaves.
     #[test]
     fn undo_of_undo_restores_the_view() {
-        std::env::set_var("KULA_SAVE_MIN_SECS", "0");
         let (t, r): (TempDir, crate::git::Repo) = repo();
         let wt = r.root.clone();
         let mut rng = Lcg(0xC0FFEE);
@@ -455,7 +456,7 @@ mod property_tests {
             let marker = format!("change-{i}-{}", rng.next() % 1000);
             std::fs::write(wt.join("f.txt"), format!("{marker}\n")).unwrap();
             let op = match rng.next() % 3 {
-                0 => autosave(&r, &wt, "a", "run-1", &marker).unwrap().expect("new tree must save"),
+                0 => autosave_with(&r, &wt, "a", "run-1", &marker, 0).unwrap().expect("new tree must save"),
                 1 => append_op(&r, OpKind::Commit, "run-1", view_of(&r), &marker).unwrap(),
                 _ => append_op(&r, OpKind::Gate, "run-1", view_of(&r), &marker).unwrap(),
             };
@@ -484,7 +485,6 @@ mod property_tests {
         for w in log.windows(2) {
             assert_eq!(w[1].id, w[0].parent, "the log chain is intact, newest first");
         }
-        std::env::set_var("KULA_SAVE_MIN_SECS", "30");
     }
 
     fn op_at(r: &crate::git::Repo, id: &str) -> Op {
