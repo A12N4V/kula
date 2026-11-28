@@ -58,17 +58,6 @@ pub enum StreamFormat {
     Gemini,
 }
 
-impl StreamFormat {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "claude" => Some(Self::Claude),
-            "codex" => Some(Self::Codex),
-            "gemini" => Some(Self::Gemini),
-            _ => None,
-        }
-    }
-}
-
 /// What one stream line means, before it gets a seq.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Draft {

@@ -505,12 +505,9 @@ pub fn span_nest(events: &[crate::events::EventV2]) -> Vec<Span> {
     out
 }
 
-/// Replay a seat of a finished or live run from its run scoped log. This is
-/// the function the `/api/runs/{id}/events` route and `kula_events` both call;
-/// it seeks through the offset index, never a scan from byte 0.
-pub fn replay(kula_dir: &std::path::Path, run: &str, seat: &str, from: u64, limit: usize) -> anyhow::Result<Vec<crate::events::EventV2>> {
-    crate::events::replay(kula_dir, run, seat, from, limit)
-}
+// Replay lives in `events::replay` – the `/api/runs/{id}/events` route and
+// `kula_events` both call it there; it seeks through the offset index, never a
+// scan from byte 0.
 
 #[cfg(test)]
 mod tests {
