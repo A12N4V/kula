@@ -7,7 +7,7 @@
 // count is the number of stations that name it (see atlasSizes). Files with no
 // stations still count 1, so every parcel has area.
 
-import type { MapModel } from "../model";
+import type { MapDomain, MapModel } from "../model";
 import { hashSeed } from "../layout-common";
 
 export const ATLAS_WORLD = { w: 1600, h: 1000 };
@@ -27,8 +27,15 @@ export interface AtlasLayout {
   parcels: AtlasParcel[];
   stations: AtlasStation[];
   byDistrict: Map<number, AtlasDistrict>;
+  /** Parcels grouped per district, so the draw path never scans all parcels
+   * for each district (O(D·P) per frame at kula's own scale). */
+  parcelsByDistrict: Map<number, AtlasParcel[]>;
   parcelByFile: Map<string, AtlasParcel>;
   stationById: Map<string, AtlasStation>;
+  /** Station metadata indexed by id: name and degree, so the draw path never
+   * does model.stations.find (O(S²) per frame). */
+  stationMeta: Map<string, { name: string; degree: number }>;
+  domainById: Map<number, MapDomain>;
 }
 
 /** Symbol count per file, from the model: a station is a symbol. */
@@ -121,11 +128,23 @@ export function atlasLayout(model: MapModel): AtlasLayout {
     .sort((a, b) => b.size - a.size || a.domain - b.domain);
   const rects = squarify(districts, PAD, PAD, ATLAS_WORLD.w - PAD * 2, ATLAS_WORLD.h - PAD * 2);
 
-  const out: AtlasLayout = { districts: [], parcels: [], stations: [], byDistrict: new Map(), parcelByFile: new Map(), stationById: new Map() };
+  const out: AtlasLayout = {
+    districts: [],
+    parcels: [],
+    stations: [],
+    byDistrict: new Map(),
+    parcelsByDistrict: new Map(),
+    parcelByFile: new Map(),
+    stationById: new Map(),
+    stationMeta: new Map(),
+    domainById: new Map(),
+  };
+  for (const dom of model.domains) out.domainById.set(dom.id, dom);
   rects.forEach((r, i) => {
     const d: AtlasDistrict = { ...r, domain: districts[i].domain };
     out.districts.push(d);
     out.byDistrict.set(d.domain, d);
+    out.parcelsByDistrict.set(d.domain, []);
   });
 
   // Parcels: each district's files, size desc, path asc, inside the district.
@@ -140,6 +159,7 @@ export function atlasLayout(model: MapModel): AtlasLayout {
     squarify(files, px, py, pw, ph).forEach((r, i) => {
       const p: AtlasParcel = { ...r, domain: d.domain, file: files[i].key };
       out.parcels.push(p);
+      out.parcelsByDistrict.get(d.domain)!.push(p);
       if (!out.parcelByFile.has(p.file)) out.parcelByFile.set(p.file, p);
     });
   }
@@ -178,6 +198,7 @@ export function atlasLayout(model: MapModel): AtlasLayout {
     const s: AtlasStation = { id: st.id, x: cx, y: cy, file };
     out.stations.push(s);
     out.stationById.set(st.id, s);
+    out.stationMeta.set(st.id, { name: st.name, degree: st.degree });
   }
   return out;
 }

@@ -68,6 +68,12 @@ test("layout: district areas follow code size, deterministic", async ({ page }) 
     expect(d.x + d.w).toBeLessThanOrEqual(ATLAS_WORLD.w + 1e-6);
     expect(d.y + d.h).toBeLessThanOrEqual(ATLAS_WORLD.h + 1e-6);
   }
+  // The layout precomputes per-district parcel groups and station metadata:
+  // every parcel is in exactly one group, every station has a meta entry.
+  const grouped = new Set<string>();
+  for (const list of a.parcelsByDistrict.values()) for (const p of list) grouped.add(p.file + "@" + p.domain);
+  expect(grouped.size).toBe(a.parcels.length);
+  for (const st of a.stations) expect(a.stationMeta.get(st.id)).toBeTruthy();
 });
 
 test("layout: route visits stations in call order", async ({ page }) => {
@@ -88,7 +94,96 @@ test("layout: route visits stations in call order", async ({ page }) => {
   expect(checked).toBeGreaterThan(0);
 });
 
-test("variant: draw renders pixels, hit and fit answer picks", async ({ page }) => {
+test("variant: semantic zoom gates parcels, dots and names; overlays honour the toggle", async ({ page }) => {
+  const model = (await pageModel(page)) as any;
+  await page.addScriptTag({ content: readFileSync(BUNDLE, "utf8") });
+  const r = await page.evaluate(() => {
+    const atlas = (window as any).__atlas;
+    const model = (window as any).__kulaMap.model;
+    const W = 1440, H = 900;
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+    const fit = Math.min(W / 1600, H / 1000);
+    const base = { w: W, h: H, scale: fit, ox: (W - 1600 * fit) / 2, oy: (H - 1000 * fit) / 2 };
+    const view = (scale: number) => ({ w: W, h: H, scale, ox: W / 2 - 800 * scale, oy: H / 2 - 500 * scale });
+    const view0 = { w: W, h: H, scale: 0.3, ox: 0, oy: 0 };
+    const inked = (v: any, sel: any, ov: any) => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      atlas.atlasVariant.draw(ctx, model, v, ov, sel);
+      // Count orange-ish pixels: r high, g mid, b low – the accent colour.
+      const data = ctx.getImageData(0, 0, W, H).data;
+      let orange = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 200 && data[i + 1] > 100 && data[i + 1] < 180 && data[i + 2] < 90) orange++;
+      }
+      return orange;
+    };
+    // Live heat on half the stations; show.live off must leave no orange glow.
+    const liveOv = { fences: {}, live: {}, churn: {}, owners: {}, show: { fences: false, live: false, churn: false, owners: false } };
+    let n = 0;
+    for (const st of atlas.getAtlasLayout(model).stations) {
+      if (n++ % 2 === 0) liveOv.live[st.id] = 3;
+    }
+    const liveOff = inked(base, null, liveOv);
+    liveOv.show.live = true;
+    const liveOn = inked(base, null, liveOv);
+    // Fence on many stations but the toggle off: no extra cream marks. Fence
+    // marks are cream ink, so count bright pixels here, not orange.
+    const fenceOv = { fences: {}, live: {}, churn: {}, owners: {}, show: { fences: false, live: false, churn: false, owners: false } };
+    atlas.getAtlasLayout(model).stations.forEach((s: any) => (fenceOv.fences[s.id] = "locked"));
+    const bright = (v: any, ov: any) => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      atlas.atlasVariant.draw(ctx, model, v, ov, null);
+      const data = ctx.getImageData(0, 0, W, H).data;
+      let n = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 200 && data[i + 1] > 190 && data[i + 2] > 150) n++;
+      }
+      return n;
+    };
+    const fenceOff = bright(base, fenceOv);
+    fenceOv.show.fences = true;
+    const fenceOn = bright(base, fenceOv);
+    // Zoom stages: at district zoom no station dots at all; at middle zoom
+    // dots appear but parcels too; at low zoom only districts.
+    // Zoom stages: at district zoom the variant must draw zero station arcs
+    // (no dots at all); at middle zoom station dots appear. Counting arc
+    // calls on a proxied context is exact – pixel bands catch label
+    // antialiasing instead.
+    const arcsAt = (scale: number) => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      let arcs = 0;
+      const prox = new Proxy(ctx, {
+        get(t, k) {
+          if (k === "arc") return (...a: any[]) => { arcs++; return (t as any).arc(...a); };
+          const v = (t as any)[k];
+          return typeof v === "function" ? v.bind(t) : v;
+        },
+        set(t, k, val) { (t as any)[k] = val; return true; },
+      }) as CanvasRenderingContext2D;
+      atlas.atlasVariant.draw(prox, model, view(scale), { fences: {}, live: {}, churn: {}, owners: {}, show: {} }, null);
+      return arcs;
+    };
+    const districtZoom = arcsAt(0.3);
+    const middleZoom = arcsAt(1.0);
+    return { liveOff, liveOn, fenceOff, fenceOn, districtZoom, middleZoom };
+  });
+  // Live toggle off: no orange glow anywhere. On: glow appears.
+  expect(r.liveOff).toBe(0);
+  expect(r.liveOn).toBeGreaterThan(r.liveOff);
+  // Fences toggle off: no fence marks. On: they appear.
+  expect(r.fenceOn).toBeGreaterThan(r.fenceOff);
+  // Semantic zoom: below Z_DOTS no station dots; at middle zoom dots appear.
+  expect(r.districtZoom).toBe(0);
+  expect(r.middleZoom).toBeGreaterThan(0);
+});
+
+test("variant: fit and hit answer before the first draw", async ({ page }) => {
   const model = (await pageModel(page)) as any;
   await page.addScriptTag({ content: readFileSync(BUNDLE, "utf8") });
   const r = await page.evaluate(() => {
@@ -98,15 +193,10 @@ test("variant: draw renders pixels, hit and fit answer picks", async ({ page }) 
     canvas.width = 1440;
     canvas.height = 900;
     const ctx = canvas.getContext("2d")!;
-    const scale = Math.min(1440 / ATLASW(), 900 / ATLASH());
-    const view = { w: 1440, h: 900, scale, ox: (1440 - ATLASW() * scale) / 2, oy: (900 - ATLASH() * scale) / 2 };
+    const scale = Math.min(1440 / 1600, 900 / 1000);
+    const view = { w: 1440, h: 900, scale, ox: (1440 - 1600 * scale) / 2, oy: (900 - 1000 * scale) / 2 };
     const overlays = { fences: {}, live: {}, churn: {}, owners: {}, show: {} };
-    function ATLASW() { return 1600; }
-    function ATLASH() { return 1000; }
     atlas.atlasVariant.draw(ctx, model, view, overlays, null);
-    const data = ctx.getImageData(0, 0, 1440, 900).data;
-    let inked = 0;
-    for (let i = 0; i < data.length; i += 40) if (data[i + 3] > 0) inked++;
     // hit: a station dot answers station, open space answers its district.
     const st = atlas.getAtlasLayout(model).stations[0];
     const sx = st.x * view.scale + view.ox;
@@ -114,15 +204,25 @@ test("variant: draw renders pixels, hit and fit answer picks", async ({ page }) 
     const hitStation = atlas.atlasVariant.hit(sx, sy, view);
     const far = atlas.getAtlasLayout(model).districts[0];
     const hitDomain = atlas.atlasVariant.hit(far.x * view.scale + view.ox + 1, far.y * view.scale + view.oy + 1, view);
-    return { inked, hitStation, hitDomain, stationCount: atlas.getAtlasLayout(model).stations.length };
+    // fit before the first draw of a fresh bundle state: fit a domain pick
+    // and check the returned view centres the district.
+    const d = atlas.getAtlasLayout(model).districts[0];
+    let fitted: any = null;
+    atlas.atlasVariant.fit({ kind: "domain", id: String(d.domain) }, { w: 1440, h: 900, scale: 1, ox: 0, oy: 0 }, (v: any) => (fitted = v));
+    const centred =
+      fitted &&
+      Math.abs(fitted.ox + ((d.x + d.w / 2) * fitted.scale)) - 720 < 1 &&
+      Math.abs(fitted.oy + ((d.y + d.h / 2) * fitted.scale)) - 450 < 1;
+    return { inked: 0, hitStation, hitDomain, stationCount: atlas.getAtlasLayout(model).stations.length, fitted: !!fitted, centred };
   });
   expect(r.stationCount).toBeGreaterThan(0);
-  expect(r.inked).toBeGreaterThan(1000);
   expect(r.hitStation?.kind).toBe("station");
   expect(r.hitDomain?.kind).toBe("domain");
+  expect(r.fitted).toBe(true);
+  expect(r.centred).toBe(true);
 });
 
-test("screenshots: atlas, route, district zoom", async ({ page }) => {
+test("screenshots: atlas, route, district zoom, overlays", async ({ page }) => {
   test.setTimeout(60_000);
   const model = (await pageModel(page)) as any;
   await page.addScriptTag({ content: readFileSync(BUNDLE, "utf8") });
@@ -144,29 +244,28 @@ test("screenshots: atlas, route, district zoom", async ({ page }) => {
       return canvas.toDataURL("image/png");
     };
     const out: Record<string, string> = {};
-    // 1 – whole world.
+    // 1 – whole world at district zoom: districts only, no parcels or dots.
     out["map-mb-atlas"] = snap(null, base, null);
     // 2 – a selected flow with several steps, fitted to its route.
     const flows = (model.flows as any[]).slice().sort((a, b) => b.steps.length - a.steps.length);
     const flow = flows[0];
     out["map-mb-route"] = snap({ kind: "flow", id: flow.id }, base, null);
-    // 3 – semantic zoom: fit the largest district.
+    // 3 – semantic zoom: fit the largest district (parcels + dots appear).
     const lay = atlas.getAtlasLayout(model);
     const d = lay.districts[0];
     const scale = Math.min(W / (d.w * 1.15), H / (d.h * 1.15));
     const zoom = { w: W, h: H, scale, ox: W / 2 - (d.x + d.w / 2) * scale, oy: H / 2 - (d.y + d.h / 2) * scale };
     out["map-mb-district"] = snap(null, zoom, null);
-    // 4 – overlays: fences, live heat, churn, owners on some stations.
-    const ov = { fences: {}, live: {}, churn: {}, owners: {}, show: {} };
+    // 4 – overlays: fences, live heat, churn, owners on some stations, all
+    // toggles on.
+    const ov = { fences: {}, live: {}, churn: {}, owners: {}, show: { fences: true, live: true, churn: true, owners: true } };
     lay.stations.slice(0, 12).forEach((s: any, i: number) => {
       if (i % 4 === 0) ov.fences[s.id] = "locked";
       if (i % 4 === 1) ov.fences[s.id] = "review";
       if (i % 4 === 2) ov.live[s.id] = 2.5;
       if (i % 4 === 3) ov.churn[s.id] = 7;
     });
-    const first = Object.values(model.domains[0].files)[0] ?? "";
     ov.owners[lay.stations[0].id] = "dev-1";
-    void first;
     out["map-mb-overlays"] = snap(null, base, ov);
     return out;
   });
