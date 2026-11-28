@@ -234,6 +234,7 @@ pub struct FlagTable {
     pub mcp_config_flag: Option<&'static str>,
 }
 
+#[allow(dead_code)] // the launcher (B2's orch) wires these in when seats launch
 pub const TABLES: &[FlagTable] = &[
     FlagTable {
         cli: "claude",
@@ -271,6 +272,7 @@ pub const TABLES: &[FlagTable] = &[
 /// short-circuits the version probe and still returns the would-be argv –
 /// nothing spawns, tests stay hermetic. `seat_dir` is the rendered seat
 /// folder; `prompt` the task text; `wt` the worktree.
+#[allow(dead_code)] // the launcher (B2's orch) wires this in when seats launch
 pub fn build_argv(spec: &crate::config::SeatSpec, seat_dir: &crate::agent_config::SeatDir, prompt: &str, wt: &Path) -> anyhow::Result<Vec<String>> {
     let table = TABLES.iter().find(|t| t.cli == spec.agent).ok_or_else(|| anyhow::anyhow!("no adapter for agent {:?}", spec.agent))?;
     let no_agent = std::env::var_os("KULA_NO_AGENT").is_some();
@@ -319,6 +321,8 @@ pub fn build_argv(spec: &crate::config::SeatSpec, seat_dir: &crate::agent_config
 }
 
 /// Public aliases the plan names; all three go through `build_argv`.
+/// Test-only for now – the launcher (B2's orch) wires them in when seats launch.
+#[allow(dead_code)]
 pub mod adapters {
     use super::*;
     pub fn claude_argv(spec: &crate::config::SeatSpec, seat_dir: &crate::agent_config::SeatDir, prompt: &str, wt: &Path) -> anyhow::Result<Vec<String>> {
@@ -825,11 +829,6 @@ mod tests {
                 std::fs::copy(&p, &d).unwrap();
             }
         }
-    }
-
-    fn lint_ok(root: &Path, seat: &str, field: &str) -> bool {
-        let cfg = crate::config::Config::load(root).unwrap();
-        lint(root, &cfg).iter().all(|e| !(e.seat == seat && e.field == field))
     }
 
     #[test]

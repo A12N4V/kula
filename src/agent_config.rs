@@ -672,11 +672,6 @@ mod tests {
         }
     }
 
-    fn spec(root: &std::path::Path) -> SeatSpec {
-        let cfg = crate::config::Config::load(root).unwrap();
-        crate::config::merge_config(&cfg)[0].clone()
-    }
-
     fn spec_alpha() -> SeatSpec {
         SeatSpec {
             team: "lint".into(),
@@ -734,7 +729,6 @@ mod tests {
 
     #[test]
     fn hash_is_order_stable() {
-        let s = spec_alpha();
         let mut files = BTreeMap::new();
         files.insert("a.md".to_string(), "x".into());
         files.insert("b.md".to_string(), "y".into());
