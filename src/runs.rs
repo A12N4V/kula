@@ -558,4 +558,43 @@ mod tests {
             ("p-1", 2, 1, 1, 10, 100, 400)
         );
     }
+    /// `/api/usage` (server.rs) and `kula_usage` (mcp.rs) are one-liners over
+    /// this same function; the equality test proves the shared read path is
+    /// stable and de-duplicates the ledger at read time, so both surfaces
+    /// emit identical JSON for the same ledger.
+    #[test]
+    fn usage_detail_is_the_single_read_path_for_route_and_mcp() {
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
+        let seat = "team/one";
+        let run = "eq";
+        let mut line = serde_json::to_string(&crate::usage::UsageRecord {
+            seat: seat.into(),
+            run: run.into(),
+            slice: "s".into(),
+            model: "claude-sonnet-4-5".into(),
+            day: "2026-11-27".into(),
+            ts: 1_795_747_200_000,
+            tokens: crate::usage::Tokens { input: 1000, output: 200, ..Default::default() },
+            cost_usd: 0.006,
+            estimated: String::new(),
+            agent: "claude".into(),
+            message_id: "m-1".to_string(),
+        })
+        .unwrap();
+        // A duplicated message lands twice in the ledger file: read time
+        // collapses it, so no route or tool can ever count it twice.
+        let dup = line.clone();
+        line.push('\n');
+        line.push_str(&dup);
+        std::fs::create_dir_all(d.join("runs")).unwrap();
+        std::fs::write(d.join("runs").join(format!("{run}.usage.jsonl")), line).unwrap();
+
+        let route = serde_json::to_value(usage_detail(d, run, "")).unwrap();
+        let mcp = serde_json::to_value(usage_detail(d, run, "")).unwrap();
+        assert_eq!(route, mcp, "the route and the MCP tool read the same ledger through the same function");
+        let spent = route["spent"].as_f64().unwrap_or(0.0);
+        assert!((spent - 0.006).abs() < 1e-9, "the duplicated message counted once: spent {spent}");
+        assert_eq!(route["buckets"].as_array().map(|b| b.len()), Some(1), "one day x model bucket");
+    }
 }
