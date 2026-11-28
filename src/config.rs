@@ -34,6 +34,99 @@ pub struct Config {
     /// `[[schedule]]` team runs on a clock or on a push.
     #[serde(rename = "schedule", skip_serializing_if = "Vec::is_empty")]
     pub schedules: Vec<Schedule>,
+    /// `[[price]]` dated price rows per model: dollars per million tokens,
+    /// for the usage pipeline (see `usage.rs`).
+    #[serde(rename = "price", skip_serializing_if = "Vec::is_empty")]
+    pub prices: Vec<PriceRow>,
+}
+
+/// One dated price row for a model, in dollars per million tokens.
+///
+/// ```toml
+/// [[price]]
+/// model = "claude-opus-5-5"
+/// date = "2026-11-01"          # the row applies from this date on
+/// input = 5.0
+/// output = 25.0
+/// cache_read = 0.5
+/// cache_write = 6.25
+/// ```
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct PriceRow {
+    pub model: String,
+    /// The day the row applies from (`YYYY-MM-DD`); 1970-01-01 when left out.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub date: String,
+    pub input: f64,
+    pub output: f64,
+    #[serde(skip_serializing_if = "is_zero_f64")]
+    pub cache_read: f64,
+    #[serde(skip_serializing_if = "is_zero_f64")]
+    pub cache_write: f64,
+}
+
+impl Default for PriceRow {
+    fn default() -> Self {
+        PriceRow { model: String::new(), date: "1970-01-01".into(), input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 }
+    }
+}
+
+fn is_zero_f64(n: &f64) -> bool {
+    *n == 0.0
+}
+
+/// Dated prices per model: `[[price]]` rows in kula.toml. For a model on a
+/// day, the row with the latest date that is not after the day wins; ties
+/// keep the first written (append only). An unknown model is an error, never
+/// a silent zero price.
+#[derive(Clone, Debug, Default)]
+pub struct PriceTable {
+    pub rows: Vec<PriceRow>,
+}
+
+impl PriceTable {
+    pub fn from(cfg: &Config) -> PriceTable {
+        PriceTable { rows: cfg.prices.clone() }
+    }
+
+    /// Parse a `YYYY-MM-DD` day into a comparable number; 0 when unparsable.
+    pub fn day_num(day: &str) -> u32 {
+        let mut it = day.split('-');
+        let (y, m, d) = (it.next(), it.next(), it.next());
+        match (y, m, d) {
+            (Some(y), Some(m), Some(d)) => y.parse::<u32>().unwrap_or(0) * 10_000 + m.parse::<u32>().unwrap_or(0) * 100 + d.parse::<u32>().unwrap_or(0),
+            _ => 0,
+        }
+    }
+
+    /// The price row for a model on a day, or an error naming the model
+    /// (never a silent zero).
+    pub fn price(&self, model: &str, day: &str) -> anyhow::Result<&PriceRow> {
+        let day = PriceTable::day_num(day);
+        let mut best: Option<&PriceRow> = None;
+        for r in &self.rows {
+            if r.model != model {
+                continue;
+            }
+            let rd = PriceTable::day_num(&r.date);
+            if rd <= day && best.as_ref().map_or(true, |b| PriceTable::day_num(&b.date) <= rd) {
+                best = Some(r);
+            }
+        }
+        best.ok_or_else(|| anyhow::anyhow!("no price row for model {model:?} on day {day}: add a [[price]] row to kula.toml"))
+    }
+
+    /// Cost in dollars for one usage record: each token class at its rate,
+    /// dollars per million tokens.
+    pub fn cost(&self, model: &str, day: &str, u: &crate::usage::Tokens) -> anyhow::Result<f64> {
+        let p = self.price(model, day)?;
+        let m = 1_000_000.0;
+        Ok(u.input as f64 / m * p.input
+            + u.output as f64 / m * p.output
+            + u.cache_read as f64 / m * p.cache_read
+            + u.cache_write as f64 / m * p.cache_write)
+    }
 }
 
 /// A team run kula starts on its own while `kula serve` is up.

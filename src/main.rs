@@ -34,6 +34,7 @@ mod server;
 mod setup;
 mod skills;
 mod term;
+mod usage;
 mod workflow;
 
 use anyhow::{bail, Result};
