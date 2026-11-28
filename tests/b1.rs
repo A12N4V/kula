@@ -321,3 +321,23 @@ fn uncommitted_edit_is_never_served_a_stale_cached_parse() {
     let nodes = st.nodes_where("1=1", ()).unwrap();
     assert!(nodes.iter().any(|n| n.name == "extra"), "uncommitted edit was not indexed (stale cache hit)");
 }
+
+/// Bench proof for the warm reindex: times cold and warm indexing of the
+/// fixture and reports both numbers. The gate the brief sets is warm < cold;
+/// the numbers go into the hand-off. A debug-build ratio (not an absolute
+/// machine speed) so it holds on any runner.
+#[test]
+fn bench_warm_reindex_is_faster_than_cold() {
+    let t = fixture();
+    let d = t.path();
+    let t0 = std::time::Instant::now();
+    index(d);
+    let cold = t0.elapsed();
+    // One warm run to fill every derived cache, then the measured one.
+    index(d);
+    let t1 = std::time::Instant::now();
+    index(d);
+    let warm = t1.elapsed();
+    println!("bench warm reindex: cold {cold:?}, warm {warm:?}");
+    assert!(warm < cold, "warm {warm:?} must beat cold {cold:?}");
+}
