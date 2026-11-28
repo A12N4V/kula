@@ -177,7 +177,9 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     let run_id = format!("{}-{}", plan.id, started / 1000);
     let cfg = crate::config::Config::load(&repo.root).unwrap_or_default();
     let base_sha = repo.run(&["rev-parse", if plan.base_ref.is_empty() { "HEAD" } else { &plan.base_ref }]).map(|s| s.trim().to_string()).unwrap_or_default();
-    let sh = Shared { plan: Mutex::new(plan), cv: Condvar::new(), state_path: run_dir.join("state.json") };
+    let sh = Shared { plan: Mutex::new(plan.clone()), cv: Condvar::new(), state_path: run_dir.join("state.json") };
+    // The swarm op log opens with the launch op: every seat at its base.
+    record_launch(repo, &plan, &run_id);
     sh.update(|p| p.run = run_id.clone());
     // What each seat cost and changed, for the run ledger.
     let measured: Mutex<std::collections::BTreeMap<String, crate::launch::SeatRun>> = Mutex::new(Default::default());
@@ -313,6 +315,9 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                                 &repo.kula_dir(),
                                 crate::events::Event { kind: "attempt".into(), team: snap.team.clone(), agent: slice.agent.clone(), plan: snap.id.clone(), run: run_id.clone(), slice: id.clone(), msg: format!("attempt {n} exited {code}"), usage, ..Default::default() },
                             );
+                            // Autosave the seat's worktree between attempts: a snapshot
+                            // under refs/kula/saves without touching its branch.
+                            let _ = crate::ops::autosave(repo, &wt, &slice.seat, run_id, &format!("slice {id} after attempt {n}"));
                             (code, out)
                         },
                         |state, n, _| {
@@ -341,6 +346,10 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                     if kept.is_none() && matches!(&r, Ok(o) if o.state == SliceState::Passed) {
                         let sha = repo.run(&["rev-parse", &snap.branch(&id)]).unwrap_or_default();
                         measured.lock().unwrap().entry(id.clone()).or_default().commit = sha.trim().to_string();
+                        let sha = sha.trim().to_string();
+                        if !sha.is_empty() {
+                            commit_op(repo, &snap, run_id, &id, &sha);
+                        }
                     }
                     sh.update(|p| {
                         let s = p.slice_mut(&id).unwrap();
@@ -396,4 +405,66 @@ mod tests {
         assert!(is_real_agent(&agent_cmd(&plan, "codex")));
         assert!(!is_real_agent(&agent_cmd(&plan, "fake-agent")));
     }
+}
+
+// –– Swarm views (B2): the op log meets the seat worktrees ––
+
+/// Reset every seat's worktree to the commit its view entry names. Seat keys
+/// are slice ids or team seats (`team/key`); branches are never touched. A
+/// slice that is running or gating keeps its worktree: an in-flight agent must
+/// not have the floor pulled from under it.
+pub fn apply_view(repo: &Repo, plan: &Plan, view: &std::collections::BTreeMap<String, String>) -> Result<usize> {
+    let mut reset = 0;
+    for (seat, commit) in view {
+        let Some(s) = plan.slices.iter().find(|s| s.id == *seat || (!s.seat.is_empty() && s.seat == *seat)) else {
+            continue;
+        };
+        if s.state.active() {
+            bail!("seat {seat} is {:?} – refuse to reset under an in-flight agent", s.state);
+        }
+        let wt = plan.worktree(repo, &s.id);
+        if !wt.exists() {
+            continue;
+        }
+        crate::git::reset_worktree_to(&wt, commit).with_context(|| format!("could not reset seat {seat} to {commit}"))?;
+        reset += 1;
+    }
+    Ok(reset)
+}
+
+/// The view entry key for a slice: its team seat when it has one, else its id.
+fn seat_key(s: &super::task::Slice) -> String {
+    if s.seat.is_empty() { s.id.clone() } else { s.seat.clone() }
+}
+
+/// Append a launch op: the view of every seat at its base commit.
+fn launch_op(repo: &Repo, plan: &Plan, run_id: &str) {
+    let mut view = std::collections::BTreeMap::new();
+    for s in &plan.slices {
+        let base = s.base_ref.trim();
+        let key = if base.is_empty() { "HEAD" } else { base };
+        let sha = repo.run(&["rev-parse", "--verify", key]).map(|x| x.trim().to_string()).unwrap_or_default();
+        if !sha.is_empty() {
+            view.insert(seat_key(s), sha);
+        }
+    }
+    if let Err(e) = crate::ops::append_op(repo, crate::ops::OpKind::Launch, run_id, view, &format!("run {} launched", plan.id)) {
+        eprintln!("kula: could not record the launch op: {e:#}");
+    }
+}
+
+/// Append a commit op after a slice's branch advanced.
+fn commit_op(repo: &Repo, plan: &Plan, run_id: &str, slice: &str, sha: &str) {
+    let last = crate::ops::ops(repo, 1).ok().and_then(|l| l.into_iter().next());
+    let mut view = last.map(|o| o.view).unwrap_or_default();
+    let key = plan.slice(slice).map(seat_key).unwrap_or_else(|| slice.to_string());
+    view.insert(key, sha.to_string());
+    if let Err(e) = crate::ops::append_op(repo, crate::ops::OpKind::Commit, run_id, view, &format!("slice {slice} committed {sha}")) {
+        eprintln!("kula: could not record the commit op: {e:#}");
+    }
+}
+
+/// Record the run's launch op before the slices start.
+pub fn record_launch(repo: &Repo, plan: &Plan, run_id: &str) {
+    launch_op(repo, plan, run_id);
 }

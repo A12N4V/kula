@@ -1433,6 +1433,10 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/store/log", get(store_log))
         .route("/api/store/show", get(store_show))
         .route("/api/store/{action}", post(store_action))
+        .route("/api/ops", get(ops_list))
+        .route("/api/ops/{id}", get(op_detail))
+        .route("/api/ops/undo", post(ops_undo))
+        .route("/api/saves", get(saves_list))
         .route("/api/extensions/sources", get(ext_sources))
         .route("/api/extensions/browse", get(ext_browse))
         .route("/api/extensions/installed", get(ext_installed))
@@ -1692,6 +1696,73 @@ async fn ext_action(State(s): State<AppState>, Path(action): Path<String>, Json(
             }
             _ => anyhow::bail!("unknown extensions action {action:?}"),
         })
+    })
+    .await
+}
+
+// –– Swarm op log (B2) ––
+
+/// GET /api/ops – the swarm op log, newest first.
+#[derive(Deserialize)]
+struct OpsQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+async fn ops_list(State(s): State<AppState>, axum::extract::Query(q): axum::extract::Query<OpsQuery>) -> ApiResult {
+    blocking(move || {
+        let limit = q.limit.unwrap_or(50);
+        let mut head = crate::ops::head(&s.repo);
+        let mut list = crate::ops::ops(&s.repo, limit)?;
+        for o in &mut list {
+            if o.kind == "undo" && o.undo_of.is_empty() {
+                o.undo_of = String::new();
+            }
+        }
+        if head.is_none() {
+            head = list.first().map(|o| o.id.clone());
+        }
+        Ok(json!({ "head": head, "ops": list }))
+    })
+    .await
+}
+
+/// GET /api/ops/{id} – one op and the view it recorded.
+async fn op_detail(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    blocking(move || Ok(json!(crate::ops::op(&s.repo, &id)?))).await
+}
+
+#[derive(Deserialize)]
+struct UndoBody {
+    /// Op id (or short sha) or save ref `refs/kula/saves/<seat>/<n>`.
+    op: String,
+    /// The run id to record the undo op under (optional).
+    #[serde(default)]
+    run: Option<String>,
+}
+/// POST /api/ops/undo – append an undo op and reset the seats' worktrees.
+async fn ops_undo(State(s): State<AppState>, Json(o): Json<UndoBody>) -> ApiResult {
+    blocking(move || {
+        let run = o.run.unwrap_or_else(|| format!("manual-{}", crate::meta::now()));
+        let op = crate::ops::undo_to(&s.repo, &o.op, &run)?;
+        Ok(json!(op))
+    })
+    .await
+}
+
+/// GET /api/saves?seat= – a seat's autosaves, newest first.
+#[derive(Deserialize)]
+struct SavesQuery {
+    seat: String,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+async fn saves_list(State(s): State<AppState>, axum::extract::Query(q): axum::extract::Query<SavesQuery>) -> ApiResult {
+    blocking(move || {
+        let list = crate::ops::saves(&s.repo, &q.seat, q.limit.unwrap_or(20))
+            .into_iter()
+            .map(|(refname, commit, tree, time)| json!({ "ref": refname, "commit": commit, "tree": tree, "time": time }))
+            .collect::<Vec<_>>();
+        Ok(json!({ "seat": q.seat, "saves": list }))
     })
     .await
 }

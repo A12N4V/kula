@@ -533,3 +533,48 @@ pub struct Overview {
     pub worktrees: Vec<Worktree>,
     pub branches: Vec<OverviewBranch>,
 }
+
+// –– Swarm saves (B2): object and worktree helpers used by the op log ––
+
+/// Snapshot a worktree into a tree object without touching its HEAD, branch or
+/// real index: a temporary `GIT_INDEX_FILE` gets `add -A`, then `write-tree`.
+/// The snapshot is content addressed – same worktree state, same tree id.
+pub fn commit_tree_temp_index(_repo: &Repo, wt: &Path) -> Result<String> {
+    let tmp = std::env::temp_dir().join(format!(
+        "kula-save-{}-{}.idx",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
+    ));
+    let mut step = |args: &[&str]| -> Result<String> {
+        let mut c = Command::new("git");
+        c.arg("-C").arg(wt).env("GIT_INDEX_FILE", &tmp).env("GIT_TERMINAL_PROMPT", "0");
+        let out = c.args(args).output().context("failed to run git")?;
+        if !out.status.success() {
+            bail!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim());
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    };
+    let tree = step(&["add", "-A", "--", "."])
+        .and_then(|_| step(&["write-tree"]))
+        .map(|s| s.trim().to_string());
+    let _ = std::fs::remove_file(&tmp);
+    tree.with_context(|| format!("could not snapshot {}", wt.display()))
+}
+
+/// Commit an already-written tree (kula's identity, never the repo's config).
+pub fn save_commit(repo: &Repo, tree: &str, message: &str) -> Result<String> {
+    let out = repo
+        .run(&["-c", "user.name=kula", "-c", "user.email=kula@localhost", "commit-tree", tree, "-m", message])?;
+    Ok(out.trim().to_string())
+}
+
+/// Bring a worktree's index and files to `commit` without moving HEAD or its
+/// branch: `read-tree -u --reset` updates tracked files, `clean` drops the
+/// rest. Untracked `.kula/` bookkeeping stays.
+pub fn reset_worktree_to(wt: &Path, commit: &str) -> Result<()> {
+    validate_rev(commit)?;
+    let r = Repo::discover(wt)?;
+    r.run(&["read-tree", "-u", "--reset", commit])?;
+    r.run(&["clean", "-fd", "--exclude=.kula"])?;
+    Ok(())
+}
