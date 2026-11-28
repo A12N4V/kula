@@ -198,7 +198,7 @@ export default function IssueDesk({ version, onChanged, openSymbol, target, embe
                     <input type="checkbox" checked={picked.has(i.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(i.id)} aria-label={`Select #${i.id}`} />
                     <span className={`id-state ${i.status}`} title={i.status === "closed" && i.reason ? i.reason.replace("_", " ") : i.status}><Icon.issues /></span>
                     <div className="id-main">
-                      <div className="id-title">{i.pinned && <span className="acc" title="Pinned">● </span>}{i.title}</div>
+                      <div className="id-title">{i.pinned && <span className="acc" title="Pinned"><Icon.pin /> </span>}{i.title}</div>
                       <div className="id-sub">
                         <span className="mono">#{i.id}</span>
                         <span>{relTime(i.updated || i.created)}</span>

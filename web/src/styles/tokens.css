@@ -48,11 +48,14 @@
   --ctl-pad-sm: 8px;
   --ctl-font: 12px;
   --row-h: 26px;
-  --font: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  /* D1 – type by role: Jost (variable) for the interface, JetBrains Mono
+     Variable for data (numbers, code, tables). --ui points at the interface
+     face so a stray font-family var(--font) still resolves to Jost. */
+  --font: "Jost Variable", ui-sans-serif, system-ui, sans-serif;
   --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
-  --display: var(--serif);
-  --serif: var(--mono);
-  --ui: var(--mono);
+  --display: var(--font);
+  --serif: var(--font);
+  --ui: var(--font);
   --module: 8px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: dark;

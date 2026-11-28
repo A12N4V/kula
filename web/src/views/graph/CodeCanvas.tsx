@@ -237,7 +237,7 @@ function Canvas({ m, focus, setFocus, rescan, busy }: Props & { m: Model; rescan
   const hovered = hover?.hit?.type === "sym" ? hover.hit.sym : null;
 
   return (
-    <div className="ct">
+    <div className="graph-wrap"><div className="ct">
       <header className="qv-head graph-head">
         <Crumbs m={m} sel={sel} pick={(s) => pick(s)} />
       </header>
@@ -258,7 +258,7 @@ function Canvas({ m, focus, setFocus, rescan, busy }: Props & { m: Model; rescan
       <Docked label="Selected">
         <SelectedPanel m={m} sel={sel} p={p} counts={counts} set={set} pick={(s) => pick(s)} open={openSrc} rescan={rescan} busy={busy} />
       </Docked>
-    </div>
+    </div></div>
   );
 }
 
