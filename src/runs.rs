@@ -115,7 +115,14 @@ pub fn synopsis(r: &Run) -> Synopsis {
 fn research_synopsis(r: &Run, x: &crate::launch::ResearchLine) -> Synopsis {
     use crate::research::fmt;
     let kept = x.points.iter().filter(|p| p.verdict == "kept").count();
-    let mut head = format!("{} of {} kept, {} from {} to {}", kept, plural(x.points.len() as u64, "experiment", "experiments"), x.workflow, fmt(x.baseline), fmt(x.best));
+    let mut head = format!(
+        "{} of {} kept, {} from {} to {}",
+        kept,
+        plural(x.points.len() as u64, "experiment", "experiments"),
+        x.workflow,
+        fmt(x.baseline),
+        fmt(x.best)
+    );
     if x.gain != 0.0 {
         head.push_str(&format!(" ({:.1}% {})", x.gain.abs() * 100.0, if x.gain > 0.0 { "better" } else { "worse" }));
     }
@@ -185,7 +192,14 @@ pub fn changelog(runs: &[Run], map: Option<&FlowMap>, since: u64) -> Vec<Section
     for r in runs.iter().filter(|r| r.ended >= since) {
         for x in r.seats.iter().filter(|x| x.verdict == "passed") {
             for p in &x.paths {
-                let t = Touch { path: p.clone(), run: r.id.clone(), slice: x.slice.clone(), seat: x.seat.clone(), commit: x.commit.clone(), ended: r.ended };
+                let t = Touch {
+                    path: p.clone(),
+                    run: r.id.clone(),
+                    slice: x.slice.clone(),
+                    seat: x.seat.clone(),
+                    commit: x.commit.clone(),
+                    ended: r.ended,
+                };
                 by.entry(domain_of.get(p.as_str()).copied()).or_default().push(t);
             }
         }
@@ -314,7 +328,21 @@ pub fn current(events: &[crate::events::Event], done: &[String], now: u64) -> Ve
     let mut by: BTreeMap<String, (Current, BTreeMap<String, String>, bool)> = BTreeMap::new();
     for e in events.iter().filter(|e| !e.run.is_empty()) {
         let (c, slices, ended) = by.entry(e.run.clone()).or_insert_with(|| {
-            (Current { id: e.run.clone(), plan: e.plan.clone(), team: e.team.clone(), started: e.ts, last: e.ts, slices: 0, passed: 0, attempts: 0, usage: Usage::default() }, BTreeMap::new(), false)
+            (
+                Current {
+                    id: e.run.clone(),
+                    plan: e.plan.clone(),
+                    team: e.team.clone(),
+                    started: e.ts,
+                    last: e.ts,
+                    slices: 0,
+                    passed: 0,
+                    attempts: 0,
+                    usage: Usage::default(),
+                },
+                BTreeMap::new(),
+                false,
+            )
         });
         c.last = c.last.max(e.ts);
         if c.team.is_empty() {
@@ -394,16 +422,39 @@ mod tests {
 
     fn run(id: &str, started: u64, team: &str, seats: Vec<SeatRun>) -> Run {
         let score = seats.iter().map(|s| s.score).sum::<f64>() / seats.len() as f64;
-        Run { id: id.into(), plan: "p".into(), team: team.into(), goal: "ship it".into(), trigger: "manual".into(), started, ended: started + 65_000, state: "partial".into(), usage: Usage { tokens_in: 200, tokens_out: 100, cost_usd: 0.04, ..Default::default() }, score, seats, handoffs: vec![Handoff { from: "a".into(), to: "b".into() }], ..Default::default() }
+        Run {
+            id: id.into(),
+            plan: "p".into(),
+            team: team.into(),
+            goal: "ship it".into(),
+            trigger: "manual".into(),
+            started,
+            ended: started + 65_000,
+            state: "partial".into(),
+            usage: Usage { tokens_in: 200, tokens_out: 100, cost_usd: 0.04, ..Default::default() },
+            score,
+            seats,
+            handoffs: vec![Handoff { from: "a".into(), to: "b".into() }],
+            ..Default::default()
+        }
     }
 
     #[test]
     fn synopsis_is_written_from_the_ledger() {
-        let r = run("p-1", 0, "ship", vec![seat("a", "ship/lead", "passed", &["src/a.rs"], 90.0, 0), seat("b", "", "rejected", &["src/b.rs", "x"], 30.0, 2)]);
+        let r = run(
+            "p-1",
+            0,
+            "ship",
+            vec![seat("a", "ship/lead", "passed", &["src/a.rs"], 90.0, 0), seat("b", "", "rejected", &["src/b.rs", "x"], 30.0, 2)],
+        );
         let s = synopsis(&r);
         assert_eq!(s.headline, "1 of 2 seats passed, score 60, 300 tokens, $0.04, 1m 5s");
         assert!(s.lines.contains(&"ship/lead on a (claude) passed: 1 file, 3 added, 1 removed".to_string()), "{:?}", s.lines);
-        assert!(s.lines.iter().any(|l| l.starts_with("b (claude) rejected: 2 files") && l.ends_with("2 refusals by fences")), "{:?}", s.lines);
+        assert!(
+            s.lines.iter().any(|l| l.starts_with("b (claude) rejected: 2 files") && l.ends_with("2 refusals by fences")),
+            "{:?}",
+            s.lines
+        );
         assert!(s.lines.contains(&"a handed off to b".to_string()));
         assert!(s.lines.contains(&"Fences held on b".to_string()));
         assert_eq!(synopsis(&r), s);
@@ -413,7 +464,12 @@ mod tests {
     fn changelog_keeps_passed_work_since_a_time() {
         let runs = vec![
             run("old", 0, "", vec![seat("a", "", "passed", &["src/old.rs"], 90.0, 0)]),
-            run("new", 100_000, "", vec![seat("a", "", "passed", &["src/a.rs", "README.md"], 90.0, 0), seat("b", "", "rejected", &["src/b.rs"], 20.0, 0)]),
+            run(
+                "new",
+                100_000,
+                "",
+                vec![seat("a", "", "passed", &["src/a.rs", "README.md"], 90.0, 0), seat("b", "", "rejected", &["src/b.rs"], 20.0, 0)],
+            ),
         ];
         let c = changelog(&runs, None, 100_000);
         assert_eq!(c.len(), 1);
@@ -439,12 +495,25 @@ mod tests {
 
     #[test]
     fn spans_read_well() {
-        assert_eq!((span(840), span(5_000), span(192_000), span(3_840_000)), ("840ms".into(), "5s".into(), "3m 12s".into(), "1h 4m".into()));
+        assert_eq!(
+            (span(840), span(5_000), span(192_000), span(3_840_000)),
+            ("840ms".into(), "5s".into(), "3m 12s".into(), "1h 4m".into())
+        );
     }
     #[test]
     fn a_run_is_current_until_it_ends_or_goes_quiet() {
         use crate::events::Event;
-        let ev = |kind: &str, run: &str, slice: &str, verdict: &str, ts: u64| Event { kind: kind.into(), run: run.into(), plan: "p".into(), team: "ship".into(), slice: slice.into(), verdict: verdict.into(), ts, usage: (kind == "attempt").then(|| Usage { tokens_in: 10, ..Default::default() }), ..Default::default() };
+        let ev = |kind: &str, run: &str, slice: &str, verdict: &str, ts: u64| Event {
+            kind: kind.into(),
+            run: run.into(),
+            plan: "p".into(),
+            team: "ship".into(),
+            slice: slice.into(),
+            verdict: verdict.into(),
+            ts,
+            usage: (kind == "attempt").then(|| Usage { tokens_in: 10, ..Default::default() }),
+            ..Default::default()
+        };
         let events = vec![
             ev("slice", "p-1", "a", "running", 100),
             ev("attempt", "p-1", "a", "", 200),
@@ -457,6 +526,9 @@ mod tests {
         ];
         let c = current(&events, &["p-3".to_string()], 400 + STALE_MS - 1);
         assert_eq!(c.len(), 1, "{c:?}");
-        assert_eq!((c[0].id.as_str(), c[0].slices, c[0].passed, c[0].attempts, c[0].usage.tokens_in, c[0].started, c[0].last), ("p-1", 2, 1, 1, 10, 100, 400));
+        assert_eq!(
+            (c[0].id.as_str(), c[0].slices, c[0].passed, c[0].attempts, c[0].usage.tokens_in, c[0].started, c[0].last),
+            ("p-1", 2, 1, 1, 10, 100, 400)
+        );
     }
 }

@@ -614,9 +614,14 @@ pub fn shell_targets(cmd: &str) -> (Vec<Target>, Option<String>) {
                 // `-C PATH` is a global option with a value: the value is never the subcommand
                 let mut skip = 0;
                 while let Some(a) = args.get(skip) {
-                    skip += match *a { "-C" => 2, _ if a.starts_with('-') => 1, _ => break };
+                    skip += match *a {
+                        "-C" => 2,
+                        _ if a.starts_with('-') => 1,
+                        _ => break,
+                    };
                 }
-                let plain: Vec<&str> = args[skip.min(args.len())..].iter().copied().filter(|a| !a.is_empty() && !a.starts_with('-') && *a != "--").collect();
+                let plain: Vec<&str> =
+                    args[skip.min(args.len())..].iter().copied().filter(|a| !a.is_empty() && !a.starts_with('-') && *a != "--").collect();
                 let sub = plain.first().copied().unwrap_or("");
                 let next = plain.get(1).copied().unwrap_or("");
                 let off = match sub {

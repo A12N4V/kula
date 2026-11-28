@@ -79,7 +79,7 @@ pub fn load(root: &std::path::Path) -> Option<ScipIndex> {
 
 fn parse_bytes(bytes: &[u8]) -> Option<ScipIndex> {
     let mut docs = HashMap::new();
-    for (num, f) in fields(&bytes) {
+    for (num, f) in fields(bytes) {
         if num != 2 {
             continue;
         }
@@ -136,7 +136,7 @@ pub fn source_rank(source: &str) -> u8 {
 /// index can pin to a caller and a definition lands as `resolved` with source
 /// `scip`; where it disagrees with a weaker edge the stronger source wins and
 /// the disagreement is counted. Returns (edges, disagreement count).
-pub fn apply(mut scip: ScipIndex, nodes: &[crate::store::Node], mut edges: Vec<Edge>) -> (Vec<Edge>, usize) {
+pub fn apply(scip: ScipIndex, nodes: &[crate::store::Node], mut edges: Vec<Edge>) -> (Vec<Edge>, usize) {
     // Def nodes per path, by start line, plus their spans for caller lookup.
     let mut defs_by_path: HashMap<&str, Vec<(u32, u32, i64)>> = HashMap::new();
     for n in nodes {
@@ -164,7 +164,7 @@ pub fn apply(mut scip: ScipIndex, nodes: &[crate::store::Node], mut edges: Vec<E
             if !o.is_def {
                 continue;
             }
-            if let Some(&(_, _, id)) = spans.iter().find(|(s, e, _)| o.line + 1 >= *s && o.line + 1 <= *e) {
+            if let Some(&(_, _, id)) = spans.iter().find(|(s, e, _)| o.line + 1 >= *s && o.line < *e) {
                 node_of_symbol.insert(o.symbol.as_str(), id);
             }
         }
@@ -180,11 +180,8 @@ pub fn apply(mut scip: ScipIndex, nodes: &[crate::store::Node], mut edges: Vec<E
                 continue;
             }
             let Some(&dst) = node_of_symbol.get(o.symbol.as_str()) else { continue };
-            let caller = spans
-                .iter()
-                .filter(|(s, e, _)| o.line + 1 >= *s && o.line + 1 <= *e)
-                .min_by_key(|(s, e, _)| e - s)
-                .map(|(_, _, id)| *id);
+            let caller =
+                spans.iter().filter(|(s, e, _)| o.line + 1 >= *s && o.line < *e).min_by_key(|(s, e, _)| e - s).map(|(_, _, id)| *id);
             let Some(src) = caller else { continue };
             if src != dst {
                 wanted.insert((src, dst), ());
@@ -219,6 +216,7 @@ pub fn apply(mut scip: ScipIndex, nodes: &[crate::store::Node], mut edges: Vec<E
 /// Minimal SCIP writer for tests and fixtures: enough of the format to round
 /// trip a set of (file, def-line, symbol, call-line) facts.
 /// Minimal SCIP writer, exposed for fixtures and tests.
+#[allow(dead_code)] // used only by fixture builders and unit tests
 pub fn encode(doc_path: &str, occs: &[(u32, &str, bool)]) -> Vec<u8> {
     fn tag(field: u32, wire: u32) -> Vec<u8> {
         let mut t = field << 3 | wire;

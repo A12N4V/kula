@@ -76,16 +76,10 @@ fn graph_dump(dir: &Path) -> String {
     let st = kula::store::Store::open(&repo).expect("store");
     let mut lines = Vec::new();
     for n in st.nodes_where("1=1", ()).unwrap() {
-        lines.push(format!(
-            "N|{}|{}|{}|{}|{}|{:?}|{}",
-            n.kind, n.name, n.path, n.lang, n.start_line, n.parent, n.community
-        ));
+        lines.push(format!("N|{}|{}|{}|{}|{}|{:?}|{}", n.kind, n.name, n.path, n.lang, n.start_line, n.parent, n.community));
     }
     for e in st.all_edges().unwrap() {
-        lines.push(format!(
-            "E|{}|{}|{}|{:.4}|{}|{}",
-            e.src, e.dst, e.kind, e.weight, e.confidence, e.source
-        ));
+        lines.push(format!("E|{}|{}|{}|{:.4}|{}|{}", e.src, e.dst, e.kind, e.weight, e.confidence, e.source));
     }
     lines.sort();
     lines.join("\n")
@@ -127,14 +121,8 @@ fn mcp_call_flows(dir: &Path) -> Value {
         "jsonrpc": "2.0", "id": 2, "method": "tools/call",
         "params": { "name": "kula_flows", "arguments": { "limit": 30 } }
     });
-    let mut child = Command::new(KULA)
-        .arg("-C")
-        .arg(dir)
-        .arg("mcp")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("spawn kula mcp");
+    let mut child =
+        Command::new(KULA).arg("-C").arg(dir).arg("mcp").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().expect("spawn kula mcp");
     use std::io::Write;
     let stdin = child.stdin.as_mut().unwrap();
     writeln!(stdin, "{init}").unwrap();
@@ -161,8 +149,9 @@ fn mcp_kula_flows_equals_http_flowmap() {
     let t = fixture();
     let d = t.path();
     index(d);
-    // kula view on a fixed token and port; the port line is printed on stdout.
-    let port = 28471u16;
+    // A free port picked by the OS: a fixed port collides with other runs
+    // (and other agents' views) on a shared machine.
+    let port = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
     let mut child = Command::new(KULA)
         .arg("-C")
         .arg(d)
@@ -174,15 +163,19 @@ fn mcp_kula_flows_equals_http_flowmap() {
         .stdout(Stdio::piped())
         .spawn()
         .expect("spawn kula view");
-    // Wait until the port answers.
-    let http = (0..150).find_map(|_| http_get_json(port, "/api/flowmap", "b1-test-token"));
+    // Wait until the port answers. A back-off matters: without it the loop
+    // burns all 150 attempts in the few milliseconds before the server binds.
+    let http = (0..150).find_map(|i| {
+        if i > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        http_get_json(port, "/api/flowmap", "b1-test-token")
+    });
     let http = http.expect("no /api/flowmap reply from kula view");
     let mcp = mcp_call_flows_no_args(d);
-    child.kill().ok();
-    assert_eq!(
-        http, mcp,
-        "/api/flowmap and kula_flows differ – the same flows must come out of both doors"
-    );
+    child.kill().expect("kill kula view");
+    child.wait().expect("wait kula view");
+    assert_eq!(http, mcp, "/api/flowmap and kula_flows differ – the same flows must come out of both doors");
     assert!(!http.pointer("/flows").and_then(|v| v.as_array()).map_or(true, |a| a.is_empty()), "flows are empty");
 }
 
@@ -213,14 +206,8 @@ fn mcp_call_flows_no_args(dir: &Path) -> Value {
         "jsonrpc": "2.0", "id": 2, "method": "tools/call",
         "params": { "name": "kula_flows", "arguments": {} }
     });
-    let mut child = Command::new(KULA)
-        .arg("-C")
-        .arg(dir)
-        .arg("mcp")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("spawn kula mcp");
+    let mut child =
+        Command::new(KULA).arg("-C").arg(dir).arg("mcp").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().expect("spawn kula mcp");
     use std::io::Write;
     let stdin = child.stdin.as_mut().unwrap();
     writeln!(stdin, "{init}").unwrap();
@@ -316,11 +303,7 @@ fn fixture_symbols_and_edges_are_built() {
     assert!(!edges.is_empty(), "no edges built");
     // Every edge carries a source: scip, resolver or name.
     for e in &edges {
-        assert!(
-            ["scip", "resolver", "name"].contains(&e.source.as_str()),
-            "edge with unknown source {:?}",
-            e.source
-        );
+        assert!(["scip", "resolver", "name"].contains(&e.source.as_str()), "edge with unknown source {:?}", e.source);
     }
 }
 

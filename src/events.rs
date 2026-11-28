@@ -125,11 +125,25 @@ pub fn plan_diff(old: Option<&crate::orch::task::Plan>, new: &crate::orch::task:
             continue;
         }
         let st = serde_json::to_value(s.state).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
-        let base = Event { kind: "slice".into(), agent: s.agent.clone(), plan: new.id.clone(), run: new.run.clone(), team: new.team.clone(), slice: s.id.clone(), verdict: st.clone(), ..Default::default() };
+        let base = Event {
+            kind: "slice".into(),
+            agent: s.agent.clone(),
+            plan: new.id.clone(),
+            run: new.run.clone(),
+            team: new.team.clone(),
+            slice: s.id.clone(),
+            verdict: st.clone(),
+            ..Default::default()
+        };
         if s.state == SliceState::Running {
             for d in &s.deps {
                 if let Some(dep) = new.slice(d) {
-                    out.push(Event { kind: "handoff".into(), from: dep.agent.clone(), msg: format!("{} after {}", s.id, dep.id), ..base.clone() });
+                    out.push(Event {
+                        kind: "handoff".into(),
+                        from: dep.agent.clone(),
+                        msg: format!("{} after {}", s.id, dep.id),
+                        ..base.clone()
+                    });
                 }
             }
         }
@@ -169,9 +183,23 @@ mod tests {
 
     #[test]
     fn plan_diff_sees_handoffs_and_verdicts() {
-        let s = |id: &str, agent: &str, deps: &[&str], st| Slice { id: id.into(), agent: agent.into(), deps: deps.iter().map(|x| x.to_string()).collect(), state: st, ..Default::default() };
-        let old = Plan { id: "p".into(), slices: vec![s("a", "claude", &[], SliceState::Gating), s("b", "codex", &["a"], SliceState::Queued)], ..Default::default() };
-        let new = Plan { id: "p".into(), slices: vec![s("a", "claude", &[], SliceState::Passed), s("b", "codex", &["a"], SliceState::Running)], ..Default::default() };
+        let s = |id: &str, agent: &str, deps: &[&str], st| Slice {
+            id: id.into(),
+            agent: agent.into(),
+            deps: deps.iter().map(|x| x.to_string()).collect(),
+            state: st,
+            ..Default::default()
+        };
+        let old = Plan {
+            id: "p".into(),
+            slices: vec![s("a", "claude", &[], SliceState::Gating), s("b", "codex", &["a"], SliceState::Queued)],
+            ..Default::default()
+        };
+        let new = Plan {
+            id: "p".into(),
+            slices: vec![s("a", "claude", &[], SliceState::Passed), s("b", "codex", &["a"], SliceState::Running)],
+            ..Default::default()
+        };
         let ev = plan_diff(Some(&old), &new);
         assert!(ev.iter().any(|e| e.kind == "verdict" && e.slice == "a" && e.verdict == "passed"));
         assert!(ev.iter().any(|e| e.kind == "handoff" && e.from == "claude" && e.agent == "codex"));

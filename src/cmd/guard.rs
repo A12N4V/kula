@@ -134,7 +134,10 @@ pub(crate) fn guard_cmd(repo: &Repo, c: GuardCmd, json: bool) -> Result<()> {
             if json {
                 println!("{}", serde_json::to_string(&e)?);
             } else {
-                let what = match &e.symbol { Some(s) => format!("{}:{s}", e.path), None => e.path.clone() };
+                let what = match &e.symbol {
+                    Some(s) => format!("{}:{s}", e.path),
+                    None => e.path.clone(),
+                };
                 println!("  {}  {}  {}", level_tag(e.verdict.level), bold(&what), dim(&e.verdict.reason));
                 for h in &e.hits {
                     let mark = if h.rule == e.verdict.rule && h.level == e.verdict.level { "→" } else { " " };

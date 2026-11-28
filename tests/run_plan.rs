@@ -408,7 +408,11 @@ fn a_run_leaves_a_ledger_with_usage_and_scores() {
     assert_eq!(r["usage"]["tokens_in"], 2400, "{r}");
     assert_eq!(r["handoffs"][0], json!({"from": "a", "to": "b"}));
     let a = &r["seats"][0];
-    assert_eq!((a["seat"].as_str(), a["files"].as_u64(), a["added"].as_u64(), a["attempts"].as_u64()), (Some("ship/lead"), Some(1), Some(1), Some(1)), "{a}");
+    assert_eq!(
+        (a["seat"].as_str(), a["files"].as_u64(), a["added"].as_u64(), a["attempts"].as_u64()),
+        (Some("ship/lead"), Some(1), Some(1), Some(1)),
+        "{a}"
+    );
     assert_eq!(a["usage"]["model"], "fake");
     // The changelog reads paths and the kept commit from the ledger, not the slice branch.
     assert_eq!(a["paths"].as_array().map(|v| v.len()), Some(1), "{a}");
@@ -484,7 +488,12 @@ fn a_due_schedule_deploys_its_team_once() {
     assert!(o.status.success(), "{}", text(&o));
     assert!(text(&o).contains("started often"), "{}", text(&o));
     // The run is in the ledger, triggered by the schedule.
-    let runs: Vec<_> = std::fs::read_dir(d.join(".kula/runs")).unwrap().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect();
+    let runs: Vec<_> = std::fs::read_dir(d.join(".kula/runs"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
     assert_eq!(runs.len(), 1, "{runs:?}");
     let run: Value = serde_json::from_str(&std::fs::read_to_string(&runs[0]).unwrap()).unwrap();
     assert_eq!(run["trigger"], "schedule", "{run}");

@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 
 /// FNV-1a, stable across runs and platforms (same constant as the index).
+#[allow(dead_code)] // used by symbol_id() and relink() – exported for B3
 fn fnv(b: &[u8]) -> u64 {
     b.iter().fold(0xcbf29ce484222325u64, |h, x| (h ^ *x as u64).wrapping_mul(0x100000001b3))
 }
@@ -16,6 +17,7 @@ fn fnv(b: &[u8]) -> u64 {
 /// Stable identity for one symbol: a hash of its (path, name, bodyhash)
 /// triple. Two indexes that both know the triple agree on the id without
 /// sharing state.
+#[allow(dead_code)] // exported for B3 (fence relinking) – wired up in wave 2
 pub fn symbol_id(path: &str, name: &str, bodyhash: u64) -> String {
     let mut h = fnv(path.as_bytes());
     h = (h ^ fnv(name.as_bytes())).wrapping_mul(0x100000001b3);
@@ -24,6 +26,7 @@ pub fn symbol_id(path: &str, name: &str, bodyhash: u64) -> String {
 }
 
 /// How many of the three identity parts two symbols share.
+#[allow(dead_code)] // used by relink() – exported for B3
 fn overlap(path_a: &str, name_a: &str, hash_a: u64, path_b: &str, name_b: &str, hash_b: u64) -> usize {
     [path_a == path_b, name_a == name_b, hash_a == hash_b && hash_a != 0].iter().filter(|m| **m).count()
 }
@@ -32,6 +35,7 @@ fn overlap(path_a: &str, name_a: &str, hash_a: u64, path_b: &str, name_b: &str, 
 /// Returns, for each old index, the index of its new counterpart (or `None`).
 /// Ambiguity (two new symbols claim the same old one) keeps the first by new
 /// index order – deterministic, since inputs are in index order.
+#[allow(dead_code)] // exported for B3 (fence relinking) – wired up in wave 2
 pub fn relink(old: &[(String, String, u64)], new: &[(String, String, u64)]) -> Vec<Option<usize>> {
     // Bucket new symbols by each single part, so a two-part match is two
     // bucket lookups instead of a full scan.
@@ -78,18 +82,10 @@ mod tests {
 
     #[test]
     fn relinks_two_of_three() {
-        let old = vec![
-            ("src/a.rs".into(), "f".into(), 1),
-            ("src/a.rs".into(), "g".into(), 2),
-            ("src/b.rs".into(), "h".into(), 3),
-        ];
+        let old = vec![("src/a.rs".into(), "f".into(), 1), ("src/a.rs".into(), "g".into(), 2), ("src/b.rs".into(), "h".into(), 3)];
         // f moved file with the same name (name + body match); g moved file,
         // same name; h unchanged. All three are two-of-three matches.
-        let new = vec![
-            ("src/c.rs".into(), "f".into(), 1),
-            ("src/deep/g.rs".into(), "g".into(), 2),
-            ("src/b.rs".into(), "h".into(), 3),
-        ];
+        let new = vec![("src/c.rs".into(), "f".into(), 1), ("src/deep/g.rs".into(), "g".into(), 2), ("src/b.rs".into(), "h".into(), 3)];
         let m = relink(&old, &new);
         assert_eq!(m, vec![Some(0), Some(1), Some(2)]);
     }

@@ -400,10 +400,15 @@ impl Repo {
                     _ => {}
                 }
             }
-            w.name = if w.main { "main".into() } else { Path::new(&w.path).file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default() };
+            w.name = if w.main {
+                "main".into()
+            } else {
+                Path::new(&w.path).file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default()
+            };
             w.current = Path::new(&w.path).canonicalize().ok() == self.root.canonicalize().ok();
             if !w.bare && !w.prunable && Path::new(&w.path).is_dir() {
-                let st = Command::new("git").arg("-C").arg(&w.path).args(["status", "--porcelain"]).env("GIT_TERMINAL_PROMPT", "0").output();
+                let st =
+                    Command::new("git").arg("-C").arg(&w.path).args(["status", "--porcelain"]).env("GIT_TERMINAL_PROMPT", "0").output();
                 if let Ok(o) = st {
                     w.dirty = String::from_utf8_lossy(&o.stdout).lines().filter(|l| !l.is_empty()).count();
                 }

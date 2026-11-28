@@ -81,7 +81,15 @@ pub(crate) fn check(repo: &Repo, base: Option<String>, max_risk: Option<String>,
             println!("  {} {}", yellow("!"), w);
         }
         for o in &overlaps {
-            println!("  {} team {}: {} and {} may both write {} file(s), e.g. {}", yellow("!"), o.team, o.a, o.b, o.count, o.paths.join(", "));
+            println!(
+                "  {} team {}: {} and {} may both write {} file(s), e.g. {}",
+                yellow("!"),
+                o.team,
+                o.a,
+                o.b,
+                o.count,
+                o.paths.join(", ")
+            );
         }
         if !r.undeclared.is_empty() {
             println!("  {} undeclared: {}", yellow("!"), r.undeclared.join(", "));

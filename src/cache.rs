@@ -263,18 +263,20 @@ pub fn blob_oids(root: &Path) -> HashMap<String, String> {
     }
     // Drop every path git reports as dirty; those keys would claim the cached
     // parse of the committed blob for content that has since changed.
-    if let Ok(st) = std::process::Command::new("git").arg("-C").arg(root).args(["status", "--porcelain", "-z", "--untracked-files"]).output() {
+    if let Ok(st) =
+        std::process::Command::new("git").arg("-C").arg(root).args(["status", "--porcelain", "-z", "--untracked-files"]).output()
+    {
         for rec in st.stdout.split(|b| *b == 0) {
             let s = std::str::from_utf8(rec).unwrap_or_default();
             if s.len() < 4 {
                 continue;
             }
-            out.remove(&s[3..].to_string());
+            out.remove(&s[3..]);
             // Rename records are "XY new\0old\0": the old path is dirty too.
             if s.starts_with('R') {
                 if let Some((new, old)) = s[3..].split_once('\0') {
-                    out.remove(&new.to_string());
-                    out.remove(&old.to_string());
+                    out.remove(new);
+                    out.remove(old);
                 }
             }
         }
@@ -317,7 +319,8 @@ impl ParseCache {
             // Cap: keep the newest entries when the cache outgrows ~40k parses.
             if let Ok(n) = c.query_row("SELECT count(*) FROM pcache", [], |r| r.get::<_, i64>(0)) {
                 if n > 40_000 {
-                    let _ = c.execute("DELETE FROM pcache WHERE rowid IN (SELECT rowid FROM pcache ORDER BY rowid LIMIT ?1)", [(n - 40_000)]);
+                    let _ =
+                        c.execute("DELETE FROM pcache WHERE rowid IN (SELECT rowid FROM pcache ORDER BY rowid LIMIT ?1)", [(n - 40_000)]);
                 }
             }
         }
@@ -370,7 +373,16 @@ mod pcache_tests {
             path: "a.rs".into(),
             lang: "rust".into(),
             loc: 12,
-            defs: vec![CachedDef { name: "f".into(), kind: "function".into(), start_line: 1, end_line: 3, start_byte: 0, end_byte: 9, parent_name: None, hash: 42 }],
+            defs: vec![CachedDef {
+                name: "f".into(),
+                kind: "function".into(),
+                start_line: 1,
+                end_line: 3,
+                start_byte: 0,
+                end_byte: 9,
+                parent_name: None,
+                hash: 42,
+            }],
             calls: vec![("g".into(), 5)],
             self_calls: HashSet::new(),
             imports: vec!["std::io".into()],

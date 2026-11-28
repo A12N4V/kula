@@ -280,7 +280,9 @@ impl Store {
     pub fn all_edges(&self) -> Result<Vec<Edge>> {
         let mut st = self.conn.prepare("SELECT src, dst, kind, weight, confidence, source FROM edges")?;
         let rows = st
-            .query_map([], |r| Ok(Edge { src: r.get(0)?, dst: r.get(1)?, kind: r.get(2)?, weight: r.get(3)?, confidence: r.get(4)?, source: r.get(5)? }))?
+            .query_map([], |r| {
+                Ok(Edge { src: r.get(0)?, dst: r.get(1)?, kind: r.get(2)?, weight: r.get(3)?, confidence: r.get(4)?, source: r.get(5)? })
+            })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }

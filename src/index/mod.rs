@@ -7,10 +7,9 @@ pub mod resolve;
 pub mod identity;
 pub mod scip;
 
-/// Symbol identity for callers outside the index (B3 uses these to make
-/// fences follow moves): stable id from (path, name, bodyhash) and the
-/// old→new relink map.
-pub use identity::{relink, symbol_id};
+// B3 (fence relinking) calls identity::symbol_id() and identity::relink()
+// through the module path; the bin target warns on unused pub items until
+// then, hence the scoped allows in identity.rs.
 
 use crate::git::Repo;
 use crate::store::{Edge, Node, Store};
@@ -908,19 +907,26 @@ fn parse_one_cached(
         Some(c) => c,
         None => return parse_one(path, lid, read, parser),
     };
-    let Some(src) = read(path) else { return None };
+    let src = read(path)?;
     // refine() is a cheap content scan and needs no grammar; look the cache up
     // before langs::get(), because loading a grammar (compiling queries) is the
     // most expensive step of a fully-warm reindex and a hit never parses.
     let rid = langs::refine(lid, &src);
     let oid = match oids.and_then(|m| m.get(path).cloned()) {
         Some(o) => o,
-        None => { if std::env::var("KULA_DBG_OID").is_ok() { eprintln!("FNV {path}"); } crate::cache::content_oid(&src) }
+        None => {
+            if std::env::var("KULA_DBG_OID").is_ok() {
+                eprintln!("FNV {path}");
+            }
+            crate::cache::content_oid(&src)
+        }
     };
     if let Some(c) = cache.get(&oid, rid) {
         return from_cached(c);
     }
-    if std::env::var("KULA_DBG_MISS").is_ok() { eprintln!("MISS {path} {oid} {rid}"); }
+    if std::env::var("KULA_DBG_MISS").is_ok() {
+        eprintln!("MISS {path} {oid} {rid}");
+    }
     let lang = langs::get(rid)?;
     parser.set_language(&lang.language).ok()?;
     let pf = parse_source(path, &langs::prepare(lang.id, &src), lang, parser)?;
@@ -947,13 +953,14 @@ fn build_with(
         langs::warm(source.iter().map(|(_, l)| *l));
     }
     trace("grammars");
-    let (_cache_root, oids, pc): (Option<&std::path::Path>, Option<&HashMap<String, String>>, Option<crate::cache::ParseCache>) = match cache {
-        Some((root, oids)) => {
-            let pc = crate::cache::ParseCache::open(root);
-            (Some(root), oids, Some(pc))
-        }
-        None => (None, None, None),
-    };
+    let (_cache_root, oids, pc): (Option<&std::path::Path>, Option<&HashMap<String, String>>, Option<crate::cache::ParseCache>) =
+        match cache {
+            Some((root, oids)) => {
+                let pc = crate::cache::ParseCache::open(root);
+                (Some(root), oids, Some(pc))
+            }
+            None => (None, None, None),
+        };
     let cache_ref = pc.as_ref();
     // Parse in parallel: threads take the next file from a shared counter, so a
     // few large files never leave one thread working while the rest sit idle.
@@ -1047,8 +1054,10 @@ fn build_with(
         }
         // Owner links (class → method), else file → symbol.
         for (i, d) in pf.defs.iter().enumerate() {
-            let owner =
-                d.parent_name.as_ref().and_then(|pn| pf.defs.iter().position(|o| &o.name == pn && matches!(o.kind.as_str(), "class" | "interface")));
+            let owner = d
+                .parent_name
+                .as_ref()
+                .and_then(|pn| pf.defs.iter().position(|o| &o.name == pn && matches!(o.kind.as_str(), "class" | "interface")));
             match owner {
                 Some(o) if o != i => {
                     nodes[ids[i]].parent = Some(ids[o] as i64);
@@ -1291,7 +1300,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         }
         None => (built.edges, 0),
     };
-    let Built { mut nodes, communities, files: nfiles, parsed, cached, .. } = built;
+    let Built { mut nodes, communities: _, files: nfiles, parsed, cached, .. } = built;
 
     PROGRESS.phase(5, 0);
     // A warm reindex of an unchanged tree builds the same node+edge structure;

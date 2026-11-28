@@ -58,7 +58,10 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
     if let Cmd::Explain { target } = &cmd {
         return cmd::map::run_explain(&repo, target, json);
     }
-    if matches!(cmd, Cmd::Plan { .. } | Cmd::Gate { .. } | Cmd::RunPlan { .. } | Cmd::MergeTrain { .. } | Cmd::Deploy { .. } | Cmd::Schedule { .. }) {
+    if matches!(
+        cmd,
+        Cmd::Plan { .. } | Cmd::Gate { .. } | Cmd::RunPlan { .. } | Cmd::MergeTrain { .. } | Cmd::Deploy { .. } | Cmd::Schedule { .. }
+    ) {
         return cmd::orch::run(&repo, cmd, json);
     }
     if let Cmd::Brief { format } = &cmd {
@@ -448,7 +451,12 @@ fn ext_cmd(repo: &crate::git::Repo, c: crate::cli::ExtCmd) -> anyhow::Result<()>
         }
         Add { source, name, overwrite } => {
             let p = ex::browse(repo, &source, &name, None, None, false)?;
-            let e = p.entries.iter().find(|e| e.name == ex::slug(&name)).or(p.entries.first()).ok_or_else(|| anyhow::anyhow!("nothing named {name} in {source}"))?;
+            let e = p
+                .entries
+                .iter()
+                .find(|e| e.name == ex::slug(&name))
+                .or(p.entries.first())
+                .ok_or_else(|| anyhow::anyhow!("nothing named {name} in {source}"))?;
             let d = ex::install(repo, e, overwrite)?;
             println!("installed {} {}", d.entry.kind, d.entry.name);
             if !d.entry.needs.is_empty() {

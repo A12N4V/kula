@@ -237,9 +237,7 @@ fn cli_variants(store: &Store) -> HashSet<String> {
         let mut in_enum = false;
         for line in text.lines() {
             let t = line.trim();
-            if t.starts_with("enum ")
-                && ["Commands", "Subcommand", "Action", "Verb"].iter().any(|k| t.contains(k))
-            {
+            if t.starts_with("enum ") && ["Commands", "Subcommand", "Action", "Verb"].iter().any(|k| t.contains(k)) {
                 in_enum = true;
                 continue;
             }

@@ -176,7 +176,10 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     let started = crate::events::now_ms();
     let run_id = format!("{}-{}", plan.id, started / 1000);
     let cfg = crate::config::Config::load(&repo.root).unwrap_or_default();
-    let base_sha = repo.run(&["rev-parse", if plan.base_ref.is_empty() { "HEAD" } else { &plan.base_ref }]).map(|s| s.trim().to_string()).unwrap_or_default();
+    let base_sha = repo
+        .run(&["rev-parse", if plan.base_ref.is_empty() { "HEAD" } else { &plan.base_ref }])
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
     let sh = Shared { plan: Mutex::new(plan), cv: Condvar::new(), state_path: run_dir.join("state.json") };
     sh.update(|p| p.run = run_id.clone());
     // What each seat cost and changed, for the run ledger.
@@ -280,7 +283,8 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                         continue;
                     }
                 };
-                let wt_base = Repo::discover(&wt).and_then(|w| w.run(&["rev-parse", "HEAD"])).map(|s| s.trim().to_string()).unwrap_or_default();
+                let wt_base =
+                    Repo::discover(&wt).and_then(|w| w.run(&["rev-parse", "HEAD"])).map(|s| s.trim().to_string()).unwrap_or_default();
                 let (sh, exe, run_dir, snap, measured, cfg, run_id) = (&sh, &exe, &run_dir, snapshot.clone(), &measured, &cfg, &run_id);
                 scope.spawn(move || {
                     let slice = snap.slice(&id).unwrap().clone();
@@ -304,14 +308,36 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                         &log_dir,
                         |n, prompt| {
                             let prompt = if pre.is_empty() { prompt.to_string() } else { format!("{pre}\n{prompt}") };
-                            let (code, out) = launch(exe, &wt, &log_dir, &id, &scope_s, &slice.agent, &cmd, &sh.state_path, n, &prompt, (&snap.id, run_id, &snap.team));
+                            let (code, out) = launch(
+                                exe,
+                                &wt,
+                                &log_dir,
+                                &id,
+                                &scope_s,
+                                &slice.agent,
+                                &cmd,
+                                &sh.state_path,
+                                n,
+                                &prompt,
+                                (&snap.id, run_id, &snap.team),
+                            );
                             let usage = crate::launch::parse(&out);
                             if let Some(u) = &usage {
                                 measured.lock().unwrap().entry(id.clone()).or_default().usage.add(u);
                             }
                             crate::events::append(
                                 &repo.kula_dir(),
-                                crate::events::Event { kind: "attempt".into(), team: snap.team.clone(), agent: slice.agent.clone(), plan: snap.id.clone(), run: run_id.clone(), slice: id.clone(), msg: format!("attempt {n} exited {code}"), usage, ..Default::default() },
+                                crate::events::Event {
+                                    kind: "attempt".into(),
+                                    team: snap.team.clone(),
+                                    agent: slice.agent.clone(),
+                                    plan: snap.id.clone(),
+                                    run: run_id.clone(),
+                                    slice: id.clone(),
+                                    msg: format!("attempt {n} exited {code}"),
+                                    usage,
+                                    ..Default::default()
+                                },
                             );
                             (code, out)
                         },
@@ -372,12 +398,22 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     let head = repo.run(&["rev-parse", "HEAD"]).map(|s| s.trim().to_string()).unwrap_or_default();
     let refused = crate::launch::refusals(&repo.kula_dir(), &run_id);
     let trigger = std::env::var("KULA_TRIGGER").ok().filter(|t| !t.is_empty()).unwrap_or_else(|| "manual".into());
-    let mut ledger = crate::launch::build(&plan, &run_id, &trigger, started, crate::events::now_ms(), &head, measured.into_inner().unwrap(), &refused);
+    let mut ledger =
+        crate::launch::build(&plan, &run_id, &trigger, started, crate::events::now_ms(), &head, measured.into_inner().unwrap(), &refused);
     ledger.base = base_sha;
     match crate::launch::save(repo, &ledger) {
         Ok(_) => crate::events::append(
             &repo.kula_dir(),
-            crate::events::Event { kind: "run_end".into(), team: plan.team.clone(), plan: plan.id.clone(), run: run_id, verdict: ledger.state.clone(), usage: Some(ledger.usage.clone()), msg: format!("score {}", ledger.score), ..Default::default() },
+            crate::events::Event {
+                kind: "run_end".into(),
+                team: plan.team.clone(),
+                plan: plan.id.clone(),
+                run: run_id,
+                verdict: ledger.state.clone(),
+                usage: Some(ledger.usage.clone()),
+                msg: format!("score {}", ledger.score),
+                ..Default::default()
+            },
         ),
         Err(e) => eprintln!("kula: could not record run {run_id}: {e:#}"),
     }

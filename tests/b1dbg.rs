@@ -37,7 +37,16 @@ fn flake_hunt() {
         let mut kids = Vec::new();
         for _ in 0..4 {
             let t = fixture();
-            kids.push(Command::new(KULA).arg("-C").arg(t.path()).args(["index"]).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().unwrap());
+            kids.push(
+                Command::new(KULA)
+                    .arg("-C")
+                    .arg(t.path())
+                    .args(["index"])
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .unwrap(),
+            );
             dirs.push(t);
         }
         let mut bad = false;
@@ -51,9 +60,13 @@ fn flake_hunt() {
             if util != 2 {
                 bad = true;
                 eprintln!("ITER {it}: util.rs file nodes = {util}; {text}");
-                for n in &nodes { eprintln!("  file {}", n.path); }
+                for n in &nodes {
+                    eprintln!("  file {}", n.path);
+                }
             }
         }
-        if bad { panic!("flake at iter {it}"); }
+        if bad {
+            panic!("flake at iter {it}");
+        }
     }
 }

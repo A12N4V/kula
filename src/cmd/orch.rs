@@ -57,7 +57,13 @@ pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
             let o = crate::orch::deploy::DeployOpts { team, goal, flows, budget };
             let (plan, path) = crate::orch::deploy::make(repo, &o)?;
             let mut child = crate::orch::deploy::start(repo, &plan, &path, "manual")?;
-            println!("{} {} · {} seats · {}", accent("deployed"), plan.id, plan.slices.len(), dim(&plan.run_dir(repo).join("deploy.log").display().to_string()));
+            println!(
+                "{} {} · {} seats · {}",
+                accent("deployed"),
+                plan.id,
+                plan.slices.len(),
+                dim(&plan.run_dir(repo).join("deploy.log").display().to_string())
+            );
             if wait {
                 let st = child.wait()?;
                 std::process::exit(st.code().unwrap_or(1));
@@ -76,7 +82,11 @@ pub(crate) fn run(repo: &Repo, cmd: Cmd, json: bool) -> Result<()> {
                     }
                     for i in list.iter().filter(|_| !json) {
                         let when = if !i.schedule.cron.is_empty() { i.schedule.cron.clone() } else { format!("on {}", i.schedule.on) };
-                        let state = if i.paused { "paused".to_string() } else { i.next.map(|n| format!("next {}", crate::orch::schedule::local(n))).unwrap_or_default() };
+                        let state = if i.paused {
+                            "paused".to_string()
+                        } else {
+                            i.next.map(|n| format!("next {}", crate::orch::schedule::local(n))).unwrap_or_default()
+                        };
                         println!("{}  {} · {}  {}  {}", accent(&i.key), i.schedule.team, i.schedule.goal, dim(&when), dim(&state));
                         if !i.error.is_empty() {
                             println!("  {}", dim(&i.error));
