@@ -354,7 +354,8 @@ async fn seats(State(s): State<AppState>, Query(q): Query<HashMap<String, String
                 .collect::<Vec<_>>();
         }
         Ok(json!({ "seats": rows, "drift": drifts }))
-    }).await
+    })
+    .await
 }
 
 /// H.6: the run ledger, read back.

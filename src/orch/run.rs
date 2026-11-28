@@ -164,13 +164,7 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     let lint_errors = crate::launch::lint(&repo.root, &cfg);
     if !lint_errors.is_empty() {
         let first = &lint_errors[0];
-        bail!(
-            "seat lint failed for {} – field {}: {} ({} error(s) total)",
-            first.seat,
-            first.field,
-            first.problem,
-            lint_errors.len()
-        );
+        bail!("seat lint failed for {} – field {}: {} ({} error(s) total)", first.seat, first.field, first.problem, lint_errors.len());
     }
     if std::env::var_os("KULA_NO_AGENT").is_some() {
         for s in &plan.slices {
@@ -194,13 +188,7 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     let lint_errors = crate::launch::lint(&repo.root, &cfg);
     if !lint_errors.is_empty() {
         let first = &lint_errors[0];
-        bail!(
-            "seat lint failed for {} – field {}: {} ({} error(s) total)",
-            first.seat,
-            first.field,
-            first.problem,
-            lint_errors.len()
-        );
+        bail!("seat lint failed for {} – field {}: {} ({} error(s) total)", first.seat, first.field, first.problem, lint_errors.len());
     }
     let base_sha = repo
         .run(&["rev-parse", if plan.base_ref.is_empty() { "HEAD" } else { &plan.base_ref }])

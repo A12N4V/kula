@@ -40,11 +40,9 @@ pub fn lint(root: &Path, cfg: &crate::config::Config) -> Vec<LintError> {
         // 1 · CLI on PATH with a version
         if !no_agent && !spec.agent.is_empty() && spec.agent != "any" {
             match cli_version(&spec.agent) {
-                Ok(v) if v.is_empty() => out.push(LintError {
-                    seat: spec.id(),
-                    field: "agent".into(),
-                    problem: format!("{} printed no version", spec.agent),
-                }),
+                Ok(v) if v.is_empty() => {
+                    out.push(LintError { seat: spec.id(), field: "agent".into(), problem: format!("{} printed no version", spec.agent) })
+                }
                 Err(e) => out.push(LintError { seat: spec.id(), field: "agent".into(), problem: e }),
                 _ => {}
             }
@@ -72,10 +70,7 @@ pub fn lint(root: &Path, cfg: &crate::config::Config) -> Vec<LintError> {
 
         // 3 · every MCP server defined once
         if !spec.mcp.is_empty() {
-            let src = crate::agent_config::read_mcp(root, crate::agent_config::MCP_SOURCE)
-                .ok()
-                .flatten()
-                .unwrap_or_default();
+            let src = crate::agent_config::read_mcp(root, crate::agent_config::MCP_SOURCE).ok().flatten().unwrap_or_default();
             let dupes: Vec<&String> = spec.mcp.iter().filter(|n| spec.mcp.iter().filter(|m| *m == *n).count() > 1).collect();
             if !dupes.is_empty() {
                 out.push(LintError {
@@ -136,11 +131,7 @@ pub fn lint(root: &Path, cfg: &crate::config::Config) -> Vec<LintError> {
         for (level, pats) in [("lock", &spec.fence.lock), ("hide", &spec.fence.hide), ("review", &spec.fence.review)] {
             for p in pats {
                 if !seen.insert(format!("{level}:{p}")) {
-                    out.push(LintError {
-                        seat: spec.id(),
-                        field: format!("fence.{level}"),
-                        problem: format!("{p:?} is listed twice"),
-                    });
+                    out.push(LintError { seat: spec.id(), field: format!("fence.{level}"), problem: format!("{p:?} is listed twice") });
                 }
             }
         }
@@ -288,13 +279,22 @@ pub const TABLES: &[FlagTable] = &[
 /// nothing spawns, tests stay hermetic. `seat_dir` is the rendered seat
 /// folder; `prompt` the task text; `wt` the worktree.
 #[allow(dead_code)] // the launcher (B2's orch) wires this in when seats launch
-pub fn build_argv(spec: &crate::config::SeatSpec, seat_dir: &crate::agent_config::SeatDir, prompt: &str, wt: &Path) -> anyhow::Result<Vec<String>> {
+pub fn build_argv(
+    spec: &crate::config::SeatSpec,
+    seat_dir: &crate::agent_config::SeatDir,
+    prompt: &str,
+    wt: &Path,
+) -> anyhow::Result<Vec<String>> {
     let table = TABLES.iter().find(|t| t.cli == spec.agent).ok_or_else(|| anyhow::anyhow!("no adapter for agent {:?}", spec.agent))?;
     let no_agent = std::env::var_os("KULA_NO_AGENT").is_some();
     if !no_agent {
         let v = cli_version(&spec.agent).map_err(anyhow::Error::msg)?;
         if !table.versions.iter().any(|p| v.starts_with(p)) {
-            anyhow::bail!("{} is version {v:?}, not pinned in kula's flag table (wants {}…) – refusing to guess flags", spec.agent, table.versions.join("/"));
+            anyhow::bail!(
+                "{} is version {v:?}, not pinned in kula's flag table (wants {}…) – refusing to guess flags",
+                spec.agent,
+                table.versions.join("/")
+            );
         }
     }
 
@@ -340,13 +340,28 @@ pub fn build_argv(spec: &crate::config::SeatSpec, seat_dir: &crate::agent_config
 #[allow(dead_code)]
 pub mod adapters {
     use super::*;
-    pub fn claude_argv(spec: &crate::config::SeatSpec, seat_dir: &crate::agent_config::SeatDir, prompt: &str, wt: &Path) -> anyhow::Result<Vec<String>> {
+    pub fn claude_argv(
+        spec: &crate::config::SeatSpec,
+        seat_dir: &crate::agent_config::SeatDir,
+        prompt: &str,
+        wt: &Path,
+    ) -> anyhow::Result<Vec<String>> {
         build_argv(&spec_with_agent(spec, "claude"), seat_dir, prompt, wt)
     }
-    pub fn codex_argv(spec: &crate::config::SeatSpec, seat_dir: &crate::agent_config::SeatDir, prompt: &str, wt: &Path) -> anyhow::Result<Vec<String>> {
+    pub fn codex_argv(
+        spec: &crate::config::SeatSpec,
+        seat_dir: &crate::agent_config::SeatDir,
+        prompt: &str,
+        wt: &Path,
+    ) -> anyhow::Result<Vec<String>> {
         build_argv(&spec_with_agent(spec, "codex"), seat_dir, prompt, wt)
     }
-    pub fn gemini_argv(spec: &crate::config::SeatSpec, seat_dir: &crate::agent_config::SeatDir, prompt: &str, wt: &Path) -> anyhow::Result<Vec<String>> {
+    pub fn gemini_argv(
+        spec: &crate::config::SeatSpec,
+        seat_dir: &crate::agent_config::SeatDir,
+        prompt: &str,
+        wt: &Path,
+    ) -> anyhow::Result<Vec<String>> {
         build_argv(&spec_with_agent(spec, "gemini"), seat_dir, prompt, wt)
     }
     fn spec_with_agent(spec: &crate::config::SeatSpec, agent: &str) -> crate::config::SeatSpec {
@@ -863,11 +878,7 @@ mod tests {
         ];
         let text = std::fs::read_to_string(root.join("kula.toml")).unwrap();
         for (name, from, field) in cases {
-            let mut bad = if *field == "budget" {
-                text.replace("budget = 100000,", "")
-            } else {
-                text.replace(*from, "")
-            };
+            let mut bad = if *field == "budget" { text.replace("budget = 100000,", "") } else { text.replace(*from, "") };
             let _ = name;
             bad = if *field == "memory" { text.replace("memory = \"notes.md\"", "memory = \"../x.md\"") } else { bad };
             if *field == "mcp" {
@@ -899,10 +910,7 @@ mod tests {
             .replace("reports_to = \"alpha\"", "hands_off = [\"alpha\"]");
         std::fs::write(root.join("kula.toml"), &handoff).unwrap();
         let errs = lint(root, &crate::config::Config::load(root).unwrap());
-        assert!(
-            errs.iter().any(|e| e.problem.contains("cycle")),
-            "hands_off-only cycle must be caught: {errs:?}"
-        );
+        assert!(errs.iter().any(|e| e.problem.contains("cycle")), "hands_off-only cycle must be caught: {errs:?}");
 
         // An absolute memory path reads outside the repo even without "..".
         std::fs::write(root.join("kula.toml"), &text).unwrap();

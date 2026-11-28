@@ -489,8 +489,7 @@ pub fn seat_skills(root: &Path, spec: &crate::config::SeatSpec) -> Result<BTreeM
         let src = root.join(crate::skills::SOURCE).join(&s.name);
         let base = format!("skills/{}/", s.name);
         for f in std::iter::once("SKILL.md".to_string()).chain(s.files.iter().cloned()) {
-            let text = std::fs::read_to_string(src.join(&f))
-                .with_context(|| format!("reading skill {} file {}", s.name, f))?;
+            let text = std::fs::read_to_string(src.join(&f)).with_context(|| format!("reading skill {} file {}", s.name, f))?;
             out.insert(format!("{base}{f}"), text);
         }
     }
@@ -705,7 +704,12 @@ mod tests {
         assert_eq!(a.hash, b.hash, "same config must render the same hash");
         assert_eq!(a.path, b.path, "same config must render the same folder");
         assert!(a.files.contains_key("skills/demo-skill/SKILL.md"), "this seat's skill is in the folder");
-        assert!(a.files.contains_key("mcp.json") && a.files.contains_key("memory.md") && a.files.contains_key("fence.toml") && a.files.contains_key("env"));
+        assert!(
+            a.files.contains_key("mcp.json")
+                && a.files.contains_key("memory.md")
+                && a.files.contains_key("fence.toml")
+                && a.files.contains_key("env")
+        );
         assert!(a.files["fence.toml"].contains("src/locked.rs"));
         assert!(a.files["env"].contains("KULA_SEAT=lint/alpha"));
         assert!(a.files["memory.md"].contains("notes.md"));
@@ -721,7 +725,8 @@ mod tests {
         let root = d.path();
         let s = spec_alpha();
         render_seat(root, &s).unwrap();
-        let mut s2 = s.clone();        s2.prompt = "changed".into();
+        let mut s2 = s.clone();
+        s2.prompt = "changed".into();
         let dr = drift(root, &[s2]).unwrap();
         assert!(dr[0].drifted, "new hash → drift reported");
         let _ = std::fs::remove_dir_all(&d);
