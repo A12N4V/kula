@@ -238,11 +238,7 @@ pub fn flowmap(store: &Store, limit: usize) -> Result<FlowMap> {
             entries.push((m, "main", None));
         }
     }
-    for e in store.nodes_where(
-        "kind IN ('function','method') AND id NOT IN (SELECT dst FROM edges WHERE kind = 'CALLS')
-         AND (SELECT count(*) FROM edges WHERE kind = 'CALLS' AND src = nodes.id) >= 2",
-        [],
-    )? {
+    for e in super::paths::uncalled_callers(store)? {
         if taken.insert(e.id) {
             let kind = if crate::agent::is_test_path(&e.path) { "test" } else { "entry" };
             entries.push((e, kind, None));

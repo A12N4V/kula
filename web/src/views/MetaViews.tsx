@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, colorFor, relTime, type Compare, type Flow, type Meta, type Node } from "../api";
-import { Empty, Icon, Kind, Md, Sym, useToast } from "../ui";
+import { api, relTime, type Compare, type Meta } from "../api";
+import { Empty, Icon, Md, useToast } from "../ui";
 import { CompareReport } from "./GitViews";
 import type { Go, Target } from "../nav";
 import { Grip, listWidth } from "../resize";
@@ -31,73 +31,10 @@ function Thread({ comments, onSend }: { comments: { author: string; body: string
   );
 }
 
+import IssueDesk from "./IssueDesk";
 // ============================================================ Issues
 export function Issues({ version, onChanged, openSymbol, target }: Nav) {
-  const [meta, setMeta] = useState<Meta | null>(null);
-  const [sel, setSel] = useState<number | "new" | null>(target?.issue ?? null);
-  const [show, setShow] = useState<"open" | "closed">("open");
-  const [form, setForm] = useState({ title: "", body: "", labels: "", anchors: "" });
-  const toast = useToast();
-  const load = () => api.meta().then(setMeta);
-  useEffect(() => { load(); }, [version]);
-  const list = meta?.issues.filter((i) => i.status === show).sort((a, b) => b.id - a.id) ?? [];
-  const issue = typeof sel === "number" ? meta?.issues.find((i) => i.id === sel) : null;
-  useEffect(() => { if (sel == null && list[0]) setSel(list[0].id); }, [list.length]);
-  const act = async (action: string | number, body: Record<string, unknown>, ok?: string) => {
-    try { await api.metaAction("issues", action, body); if (ok) toast(ok); await load(); onChanged(); } catch (e: any) { toast(e.message, "err"); }
-  };
-  const split = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
-
-  return (
-    <div className="split" style={listWidth("issues", 340)}>
-      <div className="list">
-        <div className="list-head">
-          <h2>Issues</h2>
-          <div className="seg"><button className={show === "open" ? "on" : ""} onClick={() => setShow("open")}>Open</button><button className={show === "closed" ? "on" : ""} onClick={() => setShow("closed")}>Closed</button></div>
-          <span className="spacer" /><button className="btn sm primary" onClick={() => setSel("new")}><Icon.plus /> New</button>
-        </div>
-        {list.length === 0 && <Empty title={`No ${show} issues`} />}
-        {list.map((i) => (
-          <div key={i.id} className={`item ${sel === i.id ? "on" : ""}`} onClick={() => setSel(i.id)}>
-            <span style={{ color: i.status === "open" ? "var(--green)" : "var(--text-3)", marginTop: 1 }}><Icon.issues /></span>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="title">{i.title}</div>
-              <div className="sub row" style={{ gap: 6, flexWrap: "wrap" }}>#{i.id} · {i.author} · {relTime(i.created)}{i.labels.map((l) => <span key={l} className="tag violet" style={{ height: 17 }}>{l}</span>)}{i.comments.length > 0 && <span>· {i.comments.length} 💬</span>}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <Grip id="issues" edge="right" target="prev" min={220} max={900} label="Resize list" />
-      <div className="detail">
-        {sel === "new" ? (
-          <div className="detail-pad stack" style={{ maxWidth: 720 }}>
-            <h1>New issue</h1>
-            <input className="input" placeholder="Title" autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-            <textarea className="textarea" style={{ minHeight: 160 }} placeholder="Describe it. Link code with [[symbolName]]." value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
-            <div className="row"><input className="input" placeholder="Labels (comma separated)" value={form.labels} onChange={(e) => setForm({ ...form, labels: e.target.value })} /><input className="input" placeholder="Anchor symbols/files (comma separated)" value={form.anchors} onChange={(e) => setForm({ ...form, anchors: e.target.value })} /></div>
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn ghost" onClick={() => setSel(null)}>Cancel</button>
-              <button className="btn primary" disabled={!form.title.trim()} onClick={async () => {
-                await act("new", { title: form.title, body: form.body, labels: split(form.labels), anchors: split(form.anchors) }, "Issue opened");
-                setForm({ title: "", body: "", labels: "", anchors: "" }); setSel(null);
-              }}>Open issue</button>
-            </div>
-          </div>
-        ) : issue ? (
-          <div className="detail-pad" style={{ maxWidth: 820 }}>
-            <div className="row" style={{ alignItems: "flex-start" }}>
-              <div style={{ flex: 1 }}><h1>{issue.title} <span className="muted" style={{ fontWeight: 400 }}>#{issue.id}</span></h1>
-                <div className="row" style={{ marginBottom: 14 }}><span className={`tag ${issue.status === "open" ? "green" : ""}`}>{issue.status}</span><span className="muted">{issue.author} opened {relTime(issue.created)}</span></div></div>
-              <button className="btn" onClick={() => act(issue.id, { status: issue.status === "open" ? "closed" : "open" }, issue.status === "open" ? "Closed" : "Reopened")}>{issue.status === "open" ? "Close issue" : "Reopen"}</button>
-            </div>
-            {issue.body ? <Md text={issue.body} onSymbol={(n) => openByName(n, openSymbol)} /> : <span className="muted">No description.</span>}
-            {issue.anchors.length > 0 && (<><div className="section-title">Anchored to</div><div className="row" style={{ flexWrap: "wrap" }}>{issue.anchors.map((a) => <button key={a} className="btn sm" onClick={() => openByName(a, openSymbol)}>⌖ {a}</button>)}</div></>)}
-            <Thread comments={issue.comments} onSend={(b) => act(issue.id, { body: b })} />
-          </div>
-        ) : <Empty title="Select an issue" />}
-      </div>
-    </div>
-  );
+  return <IssueDesk version={version} onChanged={onChanged} openSymbol={openSymbol} target={target?.issue ?? null} />;
 }
 
 // ============================================================ Proposals (local PRs)

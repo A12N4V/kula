@@ -42,12 +42,6 @@ pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-
    28px hit targets on desktop, 40px on phones (integration pass). */
 .console form.prompt { min-height: 28px; }
 .console form.prompt input { min-height: 28px; }
-@media (max-width: 760px) {
-  .term-bar { height: 41px; }
-  .term-x { width: 40px; height: 40px; }
-  .console form.prompt { min-height: 40px; align-items: center; }
-  .console form.prompt input { min-height: 40px; }
-}
 
 /* ---------- history lanes ---------- */
 .lane-svg { flex: none; }
@@ -62,7 +56,6 @@ pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-
 .ch-title { margin: 6px 0 18px; font: 600 clamp(40px, 6vw, 80px)/.95 var(--display); letter-spacing: -.01em; color: var(--text); }
 .ch-text p { margin: 0 0 14px; max-width: 520px; color: var(--text-2); font-size: 13px; }
 .ch-text b { color: var(--text); font-family: var(--mono); font-weight: 500; font-size: 12px; }
-@media (max-width: 760px) { .console-hero { grid-template-columns: 1fr; } .ch-dither { height: 180px; } .ch-life { height: 120px; } }
 
 /* g1: split grips – a real grab strip, not a 7px hairline. Geometry now lives
    once, in settings.css (integration: strip moved right of the boundary so it
@@ -77,7 +70,3 @@ pre.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-
 .cmp-grid .sym .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* g1: phone floor – everything reachable is 40px in the git views. */
-@media (max-width: 760px) {
-  .list-head .input { height: 40px; }
-  .split .btn.sm { min-height: 40px; }
-}

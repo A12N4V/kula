@@ -39,10 +39,6 @@
 }
 
 /* D1 – phone touch floor: interactive controls reach 40px on phones. */
-@media (max-width: 760px) {
-  :root { --ctl-h: 40px; --ctl-h-sm: 40px; --ctl-pad: 12px; --ctl-pad-sm: 10px; --row-h: 36px; }
-  .input, .textarea, select.input { height: 40px; }
-}
 
 /* icons without their own size take the text's */
 .chip svg, .btn svg, .tag svg { width: 14px; height: 14px; flex: none; }

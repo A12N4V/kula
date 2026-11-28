@@ -1,7 +1,7 @@
 // Generic agents: a name and a title per seat, so a team reads as people with
 // jobs rather than a list of vendor products the user may not even have.
 // Names are stable per (team, seat) and never repeat inside one team; the
-// sigil comes from the name (see sigil.tsx).
+// sigil comes from the name.
 
 const NAMES = (
   "Atlas Vega Orin Juno Kestrel Sable Ember Quill Nova Rook Lumen Cato Wren Iris Talon Marlo Pike Sol Tamsin Bram " +
@@ -10,21 +10,6 @@ const NAMES = (
   "Gideon Hale Ilya Jory Kit Linnea Moss Nadia Oskar Pema Rune Saskia Thane Una Viggo Willa Yusuf Zola Anouk " +
   "Basil Clio Dune Edda Flint Greer Hesper Indra Jules Koa Leif Mabel Nico Ondine Perrin Rafe Sage Tycho Vale"
 ).split(" ");
-
-/** What each seat role is called on a card. */
-export const TITLES: Record<string, string> = {
-  lead: "Team lead",
-  solver: "Researcher",
-  review: "Reviewer",
-  tests: "Test engineer",
-  fix: "Fixer",
-  docs: "Technical writer",
-  writer: "Writer",
-  triage: "Triage",
-};
-
-/** A known role's title; a custom role reads exactly as the person typed it. */
-export const titleFor = (role?: string) => (role && TITLES[role]) || role || "Agent";
 
 function hash(s: string) {
   let h = 2166136261;

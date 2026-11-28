@@ -28,7 +28,7 @@ function readOpen(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? "[\"src\"]")); } catch { return new Set(["src"]); }
 }
 
-export default function ProjectTree({ repo, version, active, onOpen }: { repo: string; version: number; active: string | null; onOpen: (path: string) => void }) {
+export default function ProjectTree({ repo, version, active, onOpen, onEdit }: { repo: string; version: number; active: string | null; onOpen: (path: string) => void; onEdit?: (path: string) => void }) {
   const [files, setFiles] = useState<string[] | null>(null);
   const [status, setStatus] = useState<FileStatus[]>([]);
   const [open, setOpen] = useState<Set<string>>(readOpen);
@@ -71,7 +71,7 @@ export default function ProjectTree({ repo, version, active, onOpen }: { repo: s
       const name = f.slice(f.lastIndexOf("/") + 1);
       const st = changed.get(f);
       rows.push(
-        <button key={f} className={`pt-row file ${st ?? ""} ${active === f ? "on" : ""}`} style={{ paddingLeft: 22 + depth * 14 }} onClick={() => onOpen(f)} title={f}>
+        <button key={f} className={`pt-row file ${st ?? ""} ${active === f ? "on" : ""}`} style={{ paddingLeft: 22 + depth * 14 }} onClick={() => onOpen(f)} onDoubleClick={() => onEdit?.(f)} title={f}>
           <Icon.file /><span className="pt-name">{name}</span>
         </button>,
       );

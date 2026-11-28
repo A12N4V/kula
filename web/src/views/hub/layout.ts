@@ -27,9 +27,6 @@ function depth(t: Team, key: string): number {
   return d;
 }
 
-/** Seats are one size; kept as a function so callers need not know. */
-export function seatH(_m?: Member, _research = false): number { return SEAT_H; }
-
 export function place(teams: Team[], saved: Saved, _research: (m: Member) => boolean = () => false, aspect = 1.6): Placed {
   const out: Placed = { teams: new Map(), seats: new Map() };
   const keep = !!saved[LAYOUT_MARK];

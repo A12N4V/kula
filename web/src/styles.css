@@ -1,7 +1,4 @@
 @import "@fontsource-variable/jetbrains-mono";
-@import "@fontsource/cormorant-garamond/500.css";
-@import "@fontsource/cormorant-garamond/600.css";
-@import "@fontsource-variable/jost";
 @import "./styles/tokens.css";
 @import "./styles/base.css";
 @import "./styles/system.css";
@@ -17,8 +14,10 @@
 @import "./styles/type.css";
 @import "./styles/sweep.css";
 @import "./styles/studio.css";
+@import "./styles/issues.css";
 @import "./styles/hub.css";
 @import "./styles/codecanvas.css";
+@import "./styles/panels.css";
 
 /* ------------------------------------------------------------------ K2 · unified agent config (skills, rules, MCP, memory layers) */
 .sk-diff { margin-top: var(--gap); border-top: 1px solid var(--line); padding-top: var(--gap); }
@@ -43,20 +42,10 @@
 /* the memory target is a link inside a compact row: give it a real hit target */
 .k2-layers-t .linkish { display: inline-block; padding: 4px 6px; min-height: 28px; }
 .k2-scope-pick { margin-bottom: var(--gap); }
-@media (max-width: 720px) {
-  .k2-mem-body { max-width: 180px; }
-  .k2-diff { max-height: 180px; }
-  /* the phone floor is a 40 px hit target: the skill TabStrip add button and
-     the template chips in the editor were 28–32 px */
-  .sk .team-tab-add { min-width: 40px; min-height: 40px; }
-  .sk .chip-toggle { min-height: 40px; }
-  .k2-layers .chip-toggle { min-height: 40px; }
-  .k2-layers-t .linkish { min-height: 40px; padding: 8px 6px; }
-}
 
 /* ================================================================ integration: split panels vs the grab strip
    The g1 grab strip now sits wholly right of the list boundary; the query
    detail side clears it so neither the textarea nor the bar buttons are under it. */
-@media (min-width: 761px) {
+
   .kq .kq-editor { padding-left: 32px; }
-}
+

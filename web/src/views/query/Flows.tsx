@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, colorFor, type FlowMap, type FlowPath } from "../../api";
 import { useCode } from "../../CodePanel";
-import { ModeToggle } from "../../modes";
 import { Docked } from "../../studio/Dock";
 import { Grip, listWidth } from "../../resize";
 import { Icon, Kind } from "../../ui";
@@ -40,7 +39,6 @@ export default function Flows({ version, go }: Nav) {
   return (
     <div className="qv" data-testid="query-flows">
       <header className="qv-head">
-        <ModeToggle />
         <Seg label="Flow kind" value={kind} set={setKind} opts={[...KINDS]} />
         <div className="qv-domains" role="radiogroup" aria-label="Domain">
           <button role="radio" aria-checked={domain === null} className={`qv-chip${domain === null ? " on" : ""}`} onClick={() => setDomain(null)}>All domains</button>

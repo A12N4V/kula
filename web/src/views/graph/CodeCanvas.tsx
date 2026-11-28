@@ -3,8 +3,7 @@
 // dock into the shell's right sidebar and the Project tree picks files in place.
 // Model, layout and paint live beside this file.
 
-import { ModeToggle } from "../../modes";
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import { api, type GraphData } from "../../api";
 import { useCode } from "../../CodePanel";
 import { Empty, Icon, Kind, useToast } from "../../ui";
@@ -15,9 +14,8 @@ import { Docked, useDockTree } from "../../studio/Dock";
 import { build, connected, kindOf, KINDS, selKey, type FileN, type KindId, type Model, type Selection, type Sym } from "./model";
 import { SelectedPanel } from "./SelectedPanel";
 import { usePrefs } from "./state";
-import { GoTo } from "./GoTo";
 
-type Props = { focus: number | null; setFocus: (id: number | null) => void; version: number; layout: ReactNode };
+type Props = { focus: number | null; setFocus: (id: number | null) => void; version: number };
 
 export default function CodeCanvas(props: Props) {
   const [data, setData] = useState<GraphData | null>(null);
@@ -45,7 +43,7 @@ export default function CodeCanvas(props: Props) {
   return <Canvas key={repo} m={m} {...props} rescan={rescan} busy={busy} />;
 }
 
-function Canvas({ m, focus, setFocus, layout, rescan, busy }: Props & { m: Model; rescan: () => void; busy: boolean }) {
+function Canvas({ m, focus, setFocus, rescan, busy }: Props & { m: Model; rescan: () => void; busy: boolean }) {
   const code = useCode();
   const [p, set] = usePrefs();
   const [sel, setSel] = useState<Selection>(null);
@@ -215,8 +213,8 @@ function Canvas({ m, focus, setFocus, layout, rescan, busy }: Props & { m: Model
   };
   const onDouble = (e: MouseEvent) => {
     const hit = hitAt(e);
-    if (hit?.type === "sym") openSrc(hit.sym);
-    else if (hit?.type === "file") code.open({ path: hit.file.path, name: hit.file.name, kind: "file", id: hit.file.id });
+    if (hit?.type === "sym") code.edit({ path: hit.sym.file.path, line: hit.sym.line, end: hit.sym.end, name: hit.sym.name, kind: hit.sym.kind, id: hit.sym.id });
+    else if (hit?.type === "file") code.edit({ path: hit.file.path, name: hit.file.name, kind: "file", id: hit.file.id });
     else if (hit?.type === "dir" || hit?.type === "toggle") { const b = placed.dirs.get(hit.dir); if (b) fit(b, 3); }
   };
 
@@ -241,9 +239,6 @@ function Canvas({ m, focus, setFocus, layout, rescan, busy }: Props & { m: Model
   return (
     <div className="ct">
       <header className="qv-head graph-head">
-        <ModeToggle />
-        {layout}
-        <GoTo m={m} pick={(s) => pick(s)} />
         <Crumbs m={m} sel={sel} pick={(s) => pick(s)} />
       </header>
       <div className="ct-stage" ref={wrap}>

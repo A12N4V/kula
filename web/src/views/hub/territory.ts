@@ -1,9 +1,7 @@
 // Territories (P3.16): the repository's regions as the canvas draws them, and
 // the small rules the scope brush, the pins and the pockets share.
 
-import type { AgentsInfo, GuardLevel, Memory, Team, Territory } from "../../api";
-
-type Member = Team["members"][number];
+import type { Memory, Territory } from "../../api";
 
 /** The file a memory target sits on, or null for `repo` and bare symbols. */
 export function pathOf(target: string): string | null {
@@ -41,27 +39,6 @@ export function coverage(scope: string[], area: string): "all" | "part" | "none"
   return part ? "part" : "none";
 }
 
-/** The scope a seat works under: its own, else its workflow's. */
-export function seatScope(info: AgentsInfo, m: Member): string[] {
-  if (m.scope?.length) return m.scope;
-  return info.workflows.find((w) => w.name === m.workflow)?.scope ?? [];
-}
-
-/** The fence an area shows for a workflow, falling back to the repository's own. */
-export function levelFor(t: Territory, workflow?: string): { level: GuardLevel; mixed: boolean } {
-  return (workflow && t.workflows[workflow]) || t.base;
-}
-
-/** Why the brush may not paint an area for this seat, or null when it may. */
-export function refusal(t: Territory, m: Member): string | null {
-  if (t.path === ".") return "root files are painted with the repository";
-  const { level } = levelFor(t, m.workflow);
-  if (level === "locked") return `${t.path} is locked`;
-  if (level === "hidden") return `${t.path} is hidden`;
-  if (level === "scope") return `${t.path} is outside the ${m.workflow} workflow`;
-  return null;
-}
-
 /** Fresh and stale memories anchored in each area; `repo` and unplaced ones go to the shelf. */
 export function pins(areas: Territory[], memories: Memory[]) {
   const by = new Map<string, { fresh: number; stale: number }>();
@@ -73,18 +50,4 @@ export function pins(areas: Territory[], memories: Memory[]) {
     if (m.stale) slot.stale++; else slot.fresh++;
   }
   return { by, shelf };
-}
-
-/** The memories a seat carries: repository wide ones and those anchored inside its scope it may read. */
-export function pocket(info: AgentsInfo, areas: Territory[], m: Member): Memory[] {
-  const scope = seatScope(info, m);
-  return info.memories.filter((x) => {
-    const p = pathOf(x.target);
-    if (!p) return true;
-    const a = areaOf(areas, p);
-    const t = a ? areas.find((y) => y.path === a) : undefined;
-    if (t && levelFor(t, m.workflow).level === "hidden") return false;
-    if (!scope.length) return true;
-    return scope.some((raw) => { const e = bare(raw); return p === e || p.startsWith(e + "/"); });
-  });
 }

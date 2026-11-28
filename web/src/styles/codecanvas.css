@@ -1,6 +1,6 @@
 /* Code canvas: file tree | canvas | selected. Flat panels on black, 1px warm lines. */
 
-.ct { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); height: 100%; min-height: 0; background: var(--bg); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; color: var(--text); }
+.ct { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); height: 100%; min-height: 0; background: var(--bg); font-family: var(--mono); font-size: 12px; color: var(--text); }
 .ct > .empty, .ct-loading { grid-column: 1 / -1; align-self: center; justify-self: center; }
 .ct-loading { color: var(--text-3); }
 .ct .ct-num { margin-left: auto; color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -20,26 +20,13 @@
 /* centre: stage */
 .ct-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); }
 .ct-canvas { position: absolute; inset: 0; display: block; touch-action: none; }
-.ct-goto { position: relative; flex: 1 1 360px; min-width: 200px; max-width: 420px; margin: 0 auto; }
-.ct-goto-box { display: flex; align-items: center; gap: 6px; height: var(--ctl-h); padding: 0 4px 0 8px; border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--text-3); transition: border-color var(--dur) var(--ease); }
-.ct-goto-box:focus-within { border-color: var(--accent); }
-.ct-goto-box input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 12px; }
-.ct-goto-box input::placeholder { color: var(--text-3); }
 .ct-box { display: grid; place-items: center; flex: none; width: 14px; height: 14px; padding: 0; border: 1px solid var(--line-2); border-radius: 3px; background: var(--bg); color: var(--accent-ink); transition: background var(--dur), border-color var(--dur); }
 .ct-box.on { background: var(--accent); border-color: var(--accent); }
 .ct-box svg { width: 10px; height: 10px; stroke-width: 3; }
-.ct-goto-box { padding-right: 4px; }
 .ct-crumbs { display: flex; align-items: center; gap: 2px; max-width: 60%; overflow: hidden; white-space: nowrap; }
 .ct-crumbs button { padding: 2px 4px; border: 0; border-radius: 4px; background: none; color: var(--text-3); font-size: 11.5px; cursor: pointer; }
 .ct-crumbs button:hover { color: var(--text); background: var(--panel-2); }
 .ct-crumbs button:last-child { color: var(--text); }
-.ct-goto-box { background: var(--bg); }
-.ct-goto-box kbd { padding: 0 4px; border: 1px solid var(--line-2); border-radius: 3px; color: var(--text-3); font: inherit; font-size: 10.5px; }
-.ct-goto-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 10; display: flex; flex-direction: column; max-height: 360px; overflow: auto; padding: 4px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel); }
-.ct-goto-list button { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: none; text-align: left; cursor: pointer; }
-.ct-goto-list button.on { background: var(--panel-2); color: var(--accent); }
-.ct-goto-label { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ct-goto-list .ct-at { margin-left: auto; }
 .ct-ico { display: grid; place-items: center; width: 14px; color: var(--text-3); }
 .ct-ico svg { width: 13px; height: 13px; }
 .ct-zoom { position: absolute; left: 10px; bottom: 10px; z-index: 5; display: flex; align-items: center; gap: 0; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); }
@@ -62,7 +49,7 @@
 .ct-peek-head b { flex: none; max-width: 45%; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ct-peek-head .ct-at { margin-left: auto; direction: rtl; }
 .ct-peek-head:hover b { color: var(--accent); }
-.ct-peek-code { flex: 1; min-height: 0; margin: 0; padding: 6px 0 8px; overflow: hidden; font: 400 11px/1.55 "JetBrains Mono", ui-monospace, monospace; color: var(--text); white-space: pre; }
+.ct-peek-code { flex: 1; min-height: 0; margin: 0; padding: 6px 0 8px; overflow: hidden; font: 400 11px/1.55 var(--mono); color: var(--text); white-space: pre; }
 .ct-peek-code > div { padding-right: 10px; overflow: hidden; text-overflow: ellipsis; }
 .ct-peek-code .ct-hint { padding-left: 10px; }
 .ct-peek-n { display: inline-block; width: 40px; padding-right: 12px; color: var(--text-3); text-align: right; user-select: none; }
@@ -136,7 +123,7 @@
 /* Kind checkboxes carry the edge colour; body rows stay neutral. */
 .ct-kind .ct-box.on { background: var(--c, var(--accent)); border-color: var(--c, var(--accent)); }
 .ct-body .ct-box.on { background: none; border-color: var(--line-2); color: var(--text-2); }
-.ct-num, .ct-pct, .ct-sub, .ct-at, .ct-crumbs, .ct-tip b { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.ct-num, .ct-pct, .ct-sub, .ct-at, .ct-crumbs, .ct-tip b { font-family: var(--mono); }
 .graph-head .ct-crumbs { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 /* v3: link kinds and view options as icon buttons that light up when on. */

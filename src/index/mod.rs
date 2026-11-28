@@ -57,6 +57,16 @@ impl Progress {
     }
 }
 
+/// With KULA_TRACE set, prints how long each indexing step took since the last one.
+pub(crate) fn trace(step: &str) {
+    static T: std::sync::OnceLock<Option<std::sync::Mutex<Instant>>> = std::sync::OnceLock::new();
+    if let Some(m) = T.get_or_init(|| std::env::var_os("KULA_TRACE").map(|_| std::sync::Mutex::new(Instant::now()))) {
+        let mut t = m.lock().unwrap_or_else(|e| e.into_inner());
+        eprintln!("kula trace {step:<8} {:>8.1} ms", t.elapsed().as_secs_f64() * 1e3);
+        *t = Instant::now();
+    }
+}
+
 /// Marks the build finished even if it bails out early.
 struct ProgressGuard;
 impl Drop for ProgressGuard {
@@ -770,6 +780,39 @@ pub struct Built {
 pub type Reader<'a> = &'a (dyn Fn(&str) -> Option<String> + Sync);
 
 /// Build a graph from a file list and a content reader (working tree or git objects).
+/// `f(0..n)` across threads that take the next index from a shared counter,
+/// returned in index order so results never depend on thread timing.
+pub(crate) fn par_map<T: Send>(n: usize, f: impl Fn(usize) -> T + Sync) -> Vec<T> {
+    let next = AtomicUsize::new(0);
+    let threads = std::thread::available_parallelism().map(|t| t.get()).unwrap_or(4).min(16).min(n.max(1));
+    let mut out: Vec<(usize, T)> = std::thread::scope(|s| {
+        let hs: Vec<_> = (0..threads)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut got = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, Relaxed);
+                        if i >= n {
+                            break got;
+                        }
+                        got.push((i, f(i)));
+                    }
+                })
+            })
+            .collect();
+        hs.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
+    });
+    out.sort_unstable_by_key(|(i, _)| *i);
+    out.into_iter().map(|(_, t)| t).collect()
+}
+
+fn parse_one(path: &str, lid: &'static str, read: Reader, parser: &mut Parser) -> Option<ParsedFile> {
+    let src = read(path)?;
+    let lang = langs::get(langs::refine(lid, &src))?;
+    parser.set_language(&lang.language).ok()?;
+    parse_source(path, &langs::prepare(lang.id, &src), lang, parser)
+}
+
 pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
     build_with(files, read, None)
 }
@@ -781,37 +824,37 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
         p.phase(2, source.len());
     }
     langs::warm(source.iter().map(|(_, l)| *l));
-    // Parse in parallel.
+    trace("grammars");
+    // Parse in parallel: threads take the next file from a shared counter, so a
+    // few large files never leave one thread working while the rest sit idle.
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(16);
-    let chunk = source.len().div_ceil(threads).max(1);
-    let parsed: Vec<ParsedFile> = std::thread::scope(|s| {
-        let handles: Vec<_> = source
-            .chunks(chunk)
-            .map(|batch| {
-                s.spawn(move || {
-                    let read = read;
+    let next = AtomicUsize::new(0);
+    let mut parsed: Vec<(usize, ParsedFile)> = std::thread::scope(|s| {
+        let handles: Vec<_> = (0..threads)
+            .map(|_| {
+                s.spawn(|| {
                     let mut parser = Parser::new();
                     let mut out = Vec::new();
-                    for (path, lid) in batch {
-                        let Some(src) = read(path) else { continue };
-                        let Some(lang) = langs::get(langs::refine(lid, &src)) else { continue };
-                        if parser.set_language(&lang.language).is_err() {
-                            continue;
-                        }
-                        if let Some(pf) = parse_source(path, &langs::prepare(lang.id, &src), lang, &mut parser) {
-                            out.push(pf);
+                    loop {
+                        let i = next.fetch_add(1, Relaxed);
+                        let Some((path, lid)) = source.get(i) else { break out };
+                        if let Some(pf) = parse_one(path, lid, read, &mut parser) {
+                            out.push((i, pf));
                         }
                         if let Some(p) = progress {
                             p.done.fetch_add(1, Relaxed);
                         }
                     }
-                    out
                 })
             })
             .collect();
         handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
     });
+    // file order, so node ids never depend on thread timing
+    parsed.sort_unstable_by_key(|(i, _)| *i);
+    let parsed: Vec<ParsedFile> = parsed.into_iter().map(|(_, pf)| pf).collect();
 
+    trace("parse");
     if let Some(p) = progress {
         p.phase(3, 0);
     }
@@ -887,6 +930,7 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
         sym_ids.push(ids);
     }
 
+    trace("nodes");
     // Imports. What resolves to no indexed file and names a package becomes a
     // `package` node (path `pkg:<name>`), so dependencies sit in the graph too.
     let mut imports_of: HashMap<usize, HashSet<usize>> = HashMap::new();
@@ -927,26 +971,45 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
         }
     }
 
-    // Calls.
+    trace("imports");
+    // Calls. Every caller sits in its own file, so files link independently:
+    // in parallel, deduplicated per file, concatenated in file order.
     use langs::family;
-    let mut call_set: HashSet<(usize, usize)> = HashSet::new();
-    for (pi, pf) in parsed.iter().enumerate() {
+    let mut top: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (id, n) in nodes.iter().enumerate() {
+        if let Some(p) = n.parent.filter(|p| nodes[*p as usize].kind == "file") {
+            top.entry(p as usize).or_default().push(id);
+        }
+    }
+    let file_memo: std::sync::Mutex<HashMap<String, Option<String>>> = Default::default();
+    let read_memo = |p: &str| -> Option<String> {
+        if let Some(v) = file_memo.lock().unwrap_or_else(|e| e.into_inner()).get(p) {
+            return v.clone();
+        }
+        let v = read(p);
+        file_memo.lock().unwrap_or_else(|e| e.into_inner()).insert(p.to_string(), v.clone());
+        v
+    };
+    let exports_memo = Default::default();
+    let link = |pi: usize| -> Vec<Edge> {
+        let pf = &parsed[pi];
+        let mut edges: Vec<Edge> = Vec::new();
+        let mut call_set: HashSet<(usize, usize)> = HashSet::new();
         let fid = file_id[&pf.path];
         let ids = &sym_ids[pi];
         let imported = imports_of.get(&fid);
-        // Innermost enclosing def that is callable (or any def) → caller.
+        // Innermost enclosing def → caller. Defs nest, so sorted by start (the
+        // larger first on a tie) the innermost container is the latest started
+        // def that still spans the byte: a binary search and a short walk back.
+        let mut spans: Vec<(usize, usize, usize)> = pf.defs.iter().enumerate().map(|(i, d)| (d.start_byte, d.end_byte, i)).collect();
+        // identical spans (a local type tagged with its function's extent) go to the earlier def
+        spans.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then(b.2.cmp(&a.2)));
         let caller_of = |byte: usize| -> usize {
-            pf.defs
-                .iter()
-                .enumerate()
-                .filter(|(_, d)| d.start_byte <= byte && byte < d.end_byte)
-                .min_by_key(|(_, d)| d.end_byte - d.start_byte)
-                .map(|(i, _)| ids[i])
-                .unwrap_or(fid)
+            let upto = spans.partition_point(|s| s.0 <= byte);
+            spans[..upto].iter().rev().find(|s| byte < s.1).map(|s| ids[s.2]).unwrap_or(fid)
         };
         // Per-language resolvers run first: they emit exact `resolved` edges and
         // claim the call bytes they own, which the name linker below must skip.
-        let read_local = |p: &str| read(p);
         let rctx = resolve::ResolveCtx {
             file: pf,
             nodes: &nodes,
@@ -955,7 +1018,9 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
             imports_of: &imports_of,
             by_stem: &by_stem,
             by_dir: &by_dir,
-            read: &read_local,
+            read: &read_memo,
+            top: &top,
+            exports: &exports_memo,
         };
         let rout = resolve::run(&rctx);
         for (byte, target) in &rout.edges {
@@ -1043,16 +1108,21 @@ fn build_with(files: &[(String, Option<&'static str>)], read: Reader, progress: 
                 }
             }
         }
-    }
+        edges
+    };
+    let linked = par_map(parsed.len(), link);
+    edges.extend(linked.into_iter().flatten());
 
+    trace("calls");
     // Runtime layers: dependencies, env vars (routes come later).
-    crate::layers::apply(&parsed, &sym_ids, files, read, &mut nodes, &mut edges, &file_id, &mut hashes);
+    crate::layers::apply(&parsed, &sym_ids, files, &read_memo, &mut nodes, &mut edges, &file_id, &mut hashes);
 
     // Communities.
     if let Some(p) = progress {
         p.phase(4, 0);
     }
     let communities = crate::graph::detect_communities(&mut nodes, &edges);
+    trace("cluster");
     Built { nodes, edges, communities, hashes, files: files.len(), parsed: parsed.len() }
 }
 
@@ -1065,7 +1135,9 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     PROGRESS.phase(1, 0);
     let _done = ProgressGuard;
     let root = repo.root.clone();
+    trace("start");
     let files = walk(&root);
+    trace("walk");
     if !quiet {
         if let Some(h) = missing_hint(&files) {
             eprintln!("\n{h}");
@@ -1077,6 +1149,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     PROGRESS.phase(5, 0);
     let store = Store::create(repo)?;
     store.write_all(&nodes, &edges, &communities)?;
+    trace("rows");
     store.set_meta("schema", crate::store::SCHEMA_VERSION)?;
     store.set_meta("indexer", env!("CARGO_PKG_VERSION"))?;
     store.set_meta("indexed_head", &repo.head().unwrap_or_default())?;
@@ -1095,6 +1168,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     };
     store.set_meta("stats", &serde_json::to_string(&stats)?)?;
     store.publish()?;
+    trace("write");
     if !quiet {
         eprintln!();
     }

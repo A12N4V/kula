@@ -166,13 +166,19 @@ pub struct Flow {
     pub reach: usize,
 }
 
-/// Execution flows: entry points (nothing calls them, they call things) and what they reach.
-pub fn flows(store: &Store, limit: usize) -> Result<Vec<Flow>> {
-    let entries = store.nodes_where(
+/// Entry candidates: functions nothing calls that call at least two things.
+/// Shared by `flows` and the flow map.
+pub fn uncalled_callers(store: &Store) -> Result<Vec<crate::store::Node>> {
+    store.nodes_where(
         "kind IN ('function','method') AND id NOT IN (SELECT dst FROM edges WHERE kind = 'CALLS')
          AND (SELECT count(*) FROM edges WHERE kind = 'CALLS' AND src = nodes.id) >= 2",
         [],
-    )?;
+    )
+}
+
+/// Execution flows: entry points (nothing calls them, they call things) and what they reach.
+pub fn flows(store: &Store, limit: usize) -> Result<Vec<Flow>> {
+    let entries = uncalled_callers(store)?;
     let mut out = Vec::new();
     for e in entries {
         let imp = impact(store, e.id, false, 4)?;

@@ -984,7 +984,7 @@ pub fn shell_guard(cmd: &str, cwd_rel: &str, fenced: &[String], hidden: &[String
 /// behind the fences, and reads of hidden paths.
 /// Where git's subcommand sits after its global options (`-C dir`, `-c k=v`, `--git-dir=…`), and whether any of
 /// them moves the tree the command works on. A valued option's value is never the subcommand.
-pub fn git_sub<'a>(args: &[&'a str]) -> (usize, bool) {
+pub fn git_sub(args: &[&str]) -> (usize, bool) {
     let (mut i, mut moved) = (0, false);
     while let Some(a) = args.get(i).copied() {
         match a {

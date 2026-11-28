@@ -180,10 +180,24 @@ export type GitOp = "merge" | "rebase" | "cherry_pick" | "revert";
 /** Porcelain codes that mean a path is unmerged. */
 export const isConflict = (f: FileStatus) => f.index === "U" || f.worktree === "U" || (f.index === "A" && f.worktree === "A") || (f.index === "D" && f.worktree === "D");
 export interface Branch { name: string; remote: boolean; sha: string; time: number; upstream: string; track: string; current: boolean; subject: string }
-export interface Comment { author: string; body: string; at: number }
-export interface Issue { id: number; title: string; body: string; status: string; labels: string[]; anchors: string[]; author: string; created: number; comments: Comment[] }
+export interface Comment { author: string; body: string; at: number; edited?: number }
+export interface IssueEvent { by: string; at: number; what: string }
+export type Priority = "" | "urgent" | "high" | "medium" | "low";
+export interface Issue {
+  id: number; title: string; body: string; status: string; labels: string[]; anchors: string[]; author: string; created: number; comments: Comment[];
+  assignees?: string[]; milestone?: string; priority?: Priority; reason?: string; links?: string[]; locked?: boolean; pinned?: boolean; template?: string; updated?: number; events?: IssueEvent[];
+}
+export interface IssueTemplate { name: string; about: string; title: string; body: string; labels: string[]; assignees: string[]; priority: Priority }
+export interface LabelDef { name: string; color: string; description: string }
+export interface Milestone { name: string; description: string; due?: number; state: "open" | "closed" }
+export interface IssueConfig { templates: IssueTemplate[]; labels: LabelDef[]; milestones: Milestone[]; people: string[] }
+export interface IssuePatch {
+  title?: string; body?: string; status?: string; reason?: string; labels?: string[]; add_labels?: string[]; remove_labels?: string[];
+  assignees?: string[]; add_assignees?: string[]; remove_assignees?: string[]; milestone?: string; priority?: Priority; anchors?: string[]; links?: string[]; locked?: boolean; pinned?: boolean;
+}
+export type IssueDraft = { title: string; body?: string; labels?: string[]; anchors?: string[]; assignees?: string[]; milestone?: string; priority?: Priority; links?: string[]; template?: string };
 export interface Proposal { id: number; title: string; body: string; base: string; head: string; status: string; author: string; created: number; comments: Comment[]; merged_sha: string | null }
-export interface Meta { issues: Issue[]; proposals: Proposal[]; notes: Note[] }
+export interface Meta { issues: Issue[]; proposals: Proposal[]; notes: Note[]; issue_config?: IssueConfig }
 export interface Compare {
   base: string; head: string; ahead: number; behind: number; commits: Commit[];
   files: { status: string; path: string; symbols: Node[] }[];
@@ -211,7 +225,6 @@ export interface IndexProgress { active: boolean; phase: "idle" | "walk" | "pars
 /** A located symbol in an agent answer (src/agent.rs Ref). */
 export interface AgentRef { name: string; path: string; line: number; detail?: string }
 /** Before editing a symbol (src/agent.rs pre_edit). */
-export interface PreEdit { symbol: Node; risk: string; dependents: number; files: number; direct_callers: string[]; tests: string[]; co_changes: [string, number][]; notes: string[]; advice: string[]; direct_caller_refs: AgentRef[]; test_refs: AgentRef[]; guard: Verdict; memories: Memory[] }
 /** The working tree's graph against HEAD (src/agent.rs verify_edit). */
 export interface Verify {
   summary: { added: number; removed: number; modified: number; same: number; edges_added: number; edges_removed: number; files_touched: number };
@@ -224,7 +237,6 @@ export const api = {
   repo: () => get<RepoInfo>("/api/repo"),
   reindex: () => post("/api/index"),
   progress: () => get<IndexProgress>("/api/index/progress"),
-  preEdit: (id: number) => get<PreEdit>(`/api/agent/pre_edit/${id}`),
   verify: () => get<Verify>("/api/agent/verify"),
   graph: (level = "symbol") => get<GraphData>(`/api/graph?${q({ level })}`),
   search: (s: string) => get<Node[]>(`/api/search?${q({ q: s })}`),
@@ -269,6 +281,11 @@ export const api = {
   sparql: (query: string, limit = 500) => post<SparqlResult>("/api/kg/sparql", { query, limit }),
   kgExport: (format: "ttl" | "nt" | "jsonld" | "rdfxml") => get<{ format: string; text: string }>(`/api/kg/export?${q({ format })}`),
   kgExamples: () => get<{ examples: { title: string; query: string }[]; vocabulary: { term: string; kind: string; doc: string }[]; prefixes: { prefix: string; iri: string }[] }>("/api/kg/examples"),
+  issueCreate: (d: IssueDraft) => post<Issue>("/api/issues/create", d),
+  issuePatch: (ids: number[], patch: IssuePatch) => post<Issue[]>("/api/issues/patch", { ids, patch }),
+  issueComment: (id: number, index: number, body: string | null) => post<Issue>("/api/issues/comment", { id, index, body }),
+  issueDelete: (ids: number[]) => post<{ deleted: number }>("/api/issues/delete", { ids }),
+  issueConfig: (config: IssueConfig, renames: [string, string, string][] = []) => post<IssueConfig>("/api/issues/config", { config, renames }),
   metaAction: <T = unknown>(kind: "issues" | "proposals" | "notes", action: string | number, body: Record<string, unknown>) =>
     post<T>(`/api/meta/${kind}/${action}`, body),
 
@@ -306,3 +323,43 @@ export function relTime(ts: number) {
 export { hue as colorFor } from "./colors";
 
 export type LangRow = { id: string; name: string; files: number; indexed: boolean; builtin: boolean; tier: string };
+
+// Git overview: every worktree and branch at once (src/git overview route).
+export interface Worktree { name: string; path: string; branch: string; head: string; main: boolean; current: boolean; detached: boolean; bare: boolean; locked: boolean; prunable: boolean; dirty: number }
+export interface OverviewBranch extends Branch { ahead: number; behind: number; merged: boolean; worktree?: string | null }
+export interface GitOverview { base: string; local: number; remote: number; dirty: number; stale: number; worktrees: Worktree[]; branches: OverviewBranch[] }
+
+// kulastore: agent memory, skills and config kept on their own git ref.
+export interface StoreSummary { head?: string | null; worktree: string; sections: Record<string, number>; changed: number; commits: number }
+export interface StoreEntry { path: string; section: string; state: string; live?: string | null; restorable: boolean }
+export interface StoreCommit { sha: string; time: number; subject: string; files: number }
+export interface StoreReq { sections?: string[]; paths?: string[]; message?: string; rev?: string; overwrite?: boolean; remote?: string }
+
+// Extensions: skills, prompts and MCP servers from web catalogs and our store.
+export type ExtKind = "skill" | "prompt" | "mcp" | string;
+export type ExtInstall =
+  | { type: "mcp"; command?: string; args?: string[]; url?: string; env?: string[] }
+  | { type: "git"; repo: string; path?: string }
+  | { type: "text"; body: string }
+  | { type: "store"; path: string };
+export interface ExtEntry { id: string; kind: ExtKind; name: string; description: string; source: string; version: string; author: string; homepage: string; install: ExtInstall }
+export interface ExtPage { entries: ExtEntry[]; next?: string | null; total?: number | null }
+export interface ExtSource { id: string; kind: string; url: string; label: string; builtin: boolean }
+export interface ExtInstalled { id: string; kind: ExtKind; name: string; source: string; version: string; at: number; needs: string[] }
+export interface ExtDraft { kind: ExtKind; name: string; description: string; body: string; version: string; command: string; args: string[]; url: string; env: string[] }
+export interface ExtReq { entry?: ExtEntry; draft?: ExtDraft; kind?: string; name?: string; spec?: string; label?: string; id?: string; overwrite?: boolean }
+
+export const hub = {
+  gitOverview: () => get<GitOverview>("/api/git/overview"),
+  store: () => get<StoreSummary>("/api/store"),
+  storeStatus: () => get<{ entries: StoreEntry[] }>("/api/store/status"),
+  storeLog: (limit = 30) => get<{ log: StoreCommit[] }>(`/api/store/log?${q({ limit })}`),
+  storeShow: (path: string, rev?: string) => get<{ path: string; text: string }>(`/api/store/show?${q({ path, rev })}`),
+  storeAction: <T = unknown>(action: "snapshot" | "restore" | "push" | "pull", body: StoreReq = {}) => post<T>(`/api/store/${action}`, body),
+  extSources: () => get<{ sources: ExtSource[] }>("/api/extensions/sources"),
+  extBrowse: (source: string, query = "", kind = "", cursor = "") =>
+    get<ExtPage>(`/api/extensions/browse?${q({ source, q: query || undefined, kind: kind || undefined, cursor: cursor || undefined })}`),
+  extInstalled: () => get<{ installed: ExtInstalled[] }>("/api/extensions/installed"),
+  extAction: <T = unknown>(action: "install" | "uninstall" | "publish" | "unpublish" | "add-source" | "remove-source", body: ExtReq) =>
+    post<T>(`/api/extensions/${action}`, body),
+};

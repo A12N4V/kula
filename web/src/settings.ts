@@ -24,6 +24,8 @@ export interface Settings {
   flow: boolean;
   /** User colour overrides, keyed by directory path. */
   dirColors: Record<string, string>;
+  /** Keybinding overrides, keyed by action id (see keys.ts). */
+  keys: Record<string, string>;
 }
 
 export const DEFAULTS: Settings = {
@@ -41,6 +43,7 @@ export const DEFAULTS: Settings = {
   packages: false,
   flow: true,
   dirColors: {},
+  keys: {},
 };
 
 const KEY = "kula.settings.v1";

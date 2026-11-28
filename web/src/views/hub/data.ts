@@ -8,8 +8,7 @@
 // Shared data plumbing for the agents tabs (module S1): the Nav type, shared
 // constants, the one api.agents read and the action callback every tab uses.
 
-import { useCallback, useEffect, useState } from "react";
-import { api, type AgentsInfo, type Workflow } from "../../api";
+import { api, type Workflow } from "../../api";
 import type { Go, Target } from "../../nav";
 
 export type Nav = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
@@ -22,15 +21,6 @@ export const MODELS: Record<string, string[]> = {
   gemini: ["gemini-2.5-pro", "gemini-2.5-flash"],
 };
 export const AGENT_NAME: Record<string, string> = { claude: "Claude Code", cursor: "Cursor", codex: "Codex", gemini: "Gemini CLI" };
-export const GLYPHS: Record<string, string> = { claude: "\u273b", cursor: "\u25c6", codex: ">", gemini: "\u2726" };
 export const blank = (): Workflow => ({ name: "", about: "", scope: [], lock: [], hide: [], review: [], memory: "write", steps: [], docs: [] });
 
-/** One `api.agents` read for the whole tab strip, re-read whenever `version` moves. */
-export function useAgentsInfo(version: number) {
-  const [info, setInfo] = useState<AgentsInfo | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const load = useCallback(() => api.agents().then((i) => { setInfo(i); setErr(null); }).catch((e) => setErr(e.message)), []);
-  useEffect(() => { load(); }, [version]);
-  return { info, err, load };
-}
 export type Act = (action: Parameters<typeof api.agentAction>[0], body: Record<string, unknown>, done: string) => Promise<unknown>;

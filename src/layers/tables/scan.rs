@@ -265,7 +265,8 @@ pub fn scan(path: &str, lang: &str, src: &str) -> Vec<TableDef> {
                 .unwrap_or_else(|| format!("{app}_{}", name.to_ascii_lowercase()));
             out.push(def(&t, Some(name), s));
         }
-    } else if matches!(lang, "javascript" | "typescript" | "tsx") {
+    } else if matches!(lang, "javascript" | "typescript" | "tsx") && (src.contains("Table") || src.contains("Schema(")) {
+        // every table call below names `...Table(` or `...TableCreator(`, or sits under a `Schema(`
         let mask = lex(src, Style::Js);
         let mut fs: Vec<String> = ["pgTable(", "mysqlTable(", "sqliteTable("].map(String::from).to_vec();
         if src.contains("Schema(") {

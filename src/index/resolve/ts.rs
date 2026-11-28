@@ -161,7 +161,28 @@ fn resolve_export(
     if targets.len() != 1 {
         return None;
     }
-    exports_of(ctx, &targets[0], ts, depth, chain).remove(exported)
+    exports_cached(ctx, &targets[0], ts, depth, chain).get(exported).copied()
+}
+
+/// `exports_of`, worked out once per module for the whole index. A barrel
+/// imported from a thousand files is chased once, not a thousand times.
+fn exports_cached(
+    ctx: &ResolveCtx,
+    path: &str,
+    ts: &TsPaths,
+    depth: usize,
+    chain: &HashSet<String>,
+) -> std::sync::Arc<HashMap<String, usize>> {
+    let lock = || ctx.exports.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(hit) = lock().get(path) {
+        return hit.clone();
+    }
+    let out = std::sync::Arc::new(exports_of(ctx, path, ts, depth, chain));
+    // only a walk from the top sees every re-export; deeper ones stop at the cycle guard
+    if depth == 0 && chain.is_empty() {
+        lock().insert(path.to_string(), out.clone());
+    }
+    out
 }
 
 /// All names a file exports (its own top-level defs plus re-exports).

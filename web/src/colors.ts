@@ -4,7 +4,7 @@
 //   shape    – hubs become square tiles carrying a kind/language glyph
 //   ground   – directory territories behind the nodes
 
-import type { ColorBy, Settings } from "./settings";
+import type { Settings } from "./settings";
 
 export function isLight() {
   const t = document.documentElement.dataset.theme;
@@ -25,19 +25,7 @@ const KIND_DARK: Record<string, string> = { function: "#6aa5dc", method: "#5fbdb
 const KIND_LIGHT: Record<string, string> = { function: "#2f6db0", method: "#1d8583", class: "#7f56b3", interface: "#8f720c", file: "#7a756c", package: "#5d5850" };
 export const kindColor = (k: string) => (isLight() ? KIND_LIGHT : KIND_DARK)[k] ?? "#888888";
 
-/** 0 → neutral, 1 → hot. Log-scaled by the caller. */
-export function churnColor(t: number) {
-  const stops = isLight()
-    ? [[176, 170, 160], [214, 160, 40], [200, 70, 40]]
-    : [[92, 90, 88], [226, 178, 70], [240, 104, 82]];
-  const u = Math.max(0, Math.min(1, t)) * 2;
-  const [a, b] = u < 1 ? [stops[0], stops[1]] : [stops[1], stops[2]];
-  const f = u < 1 ? u : u - 1;
-  return "#" + a.map((x, i) => Math.round(x + (b[i] - x) * f).toString(16).padStart(2, "0")).join("");
-}
-
 export const GLYPH: Record<string, string> = { function: "ƒ", method: "m", class: "C", interface: "I", file: "·", package: "▭" };
-export const LANG_GLYPH: Record<string, string> = { typescript: "TS", tsx: "TX", javascript: "JS", python: "PY", rust: "RS", go: "GO" };
 
 /** Directory of `path`, cut to `depth` segments ("src/index/mod.rs", 1 → "src"). */
 export function dirOf(path: string, depth: number) {
@@ -125,27 +113,6 @@ export function groupDirs(paths: string[], depth: number): Groups {
 
 export function dirColor(dir: string, groups: Groups, s: Settings) {
   return s.dirColors[dir] ?? rankHue(groups.index.get(dir) ?? 99);
-}
-
-export interface Colorer {
-  node: (n: { kind: string; path: string; community: number }) => string;
-  mode: ColorBy;
-}
-
-export function makeColorer(s: Settings, groups: Groups, churn: Record<string, number>): Colorer {
-  // Absolute scale with a floor: 20+ commits in 90 days is hot in any repo, so a
-  // young repo where everything changed once doesn't light up uniformly.
-  const max = Math.max(20, ...Object.values(churn));
-  switch (s.colorBy) {
-    case "cluster":
-      return { mode: "cluster", node: (n) => hue(n.community) };
-    case "kind":
-      return { mode: "kind", node: (n) => kindColor(n.kind) };
-    case "churn":
-      return { mode: "churn", node: (n) => churnColor(Math.log1p(churn[n.path] ?? 0) / Math.log1p(max)) };
-    default:
-      return { mode: "directory", node: (n) => dirColor(groups.of(n.path), groups, s) };
-  }
 }
 
 /** Colour `c` at opacity `a`, pre-blended onto `bg` (WebGL edge programs ignore alpha). */

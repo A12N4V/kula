@@ -1,9 +1,7 @@
 // Shared pieces of the Query views: props, a radio toggle, a symbol picker,
 // and a saved value. Frames come from ../widget.
-import { useEffect, useRef, useState, type ComponentType } from "react";
-import { api, type Node } from "../../api";
+import { useState, type ComponentType } from "react";
 import type { Go, Target } from "../../nav";
-import { Icon, Kind } from "../../ui";
 import "./query.css";
 
 export { IB, WEmpty, Widget } from "../widget";
@@ -30,52 +28,6 @@ export function Seg<T extends string | number>({ label, value, set, opts, classN
           {o.icon && <o.icon />}<span>{o.label}</span>
         </button>
       ))}
-    </div>
-  );
-}
-
-/** Search the map and pick one symbol. */
-export function SymbolPicker({ value, pick, placeholder = "Find a symbol" }: { value: Node | null; pick: (n: Node) => void; placeholder?: string }) {
-  const [q, setQ] = useState("");
-  const [hits, setHits] = useState<Node[]>([]);
-  const [open, setOpen] = useState(false);
-  const [at, setAt] = useState(0);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const s = q.trim();
-    if (!s) { setHits([]); return; }
-    let live = true;
-    const t = setTimeout(() => api.search(s).then((h) => { if (live) { setHits(h.filter((n) => n.kind !== "package" && !/^(dep|pkg):/.test(n.path)).slice(0, 12)); setAt(0); } }).catch(() => {}), 120);
-    return () => { live = false; clearTimeout(t); };
-  }, [q]);
-  useEffect(() => {
-    const off = (e: MouseEvent) => { if (!box.current?.contains(e.target as globalThis.Node)) setOpen(false); };
-    document.addEventListener("mousedown", off);
-    return () => document.removeEventListener("mousedown", off);
-  }, []);
-  const choose = (n: Node) => { pick(n); setQ(""); setOpen(false); };
-  return (
-    <div className="qv-pick" ref={box}>
-      <Icon.search />
-      <input className="input qv-pick-in" value={q} placeholder={value ? value.name : placeholder} aria-label={placeholder}
-        onFocus={() => setOpen(true)} onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown") { e.preventDefault(); setAt((a) => Math.min(a + 1, hits.length - 1)); }
-          else if (e.key === "ArrowUp") { e.preventDefault(); setAt((a) => Math.max(a - 1, 0)); }
-          else if (e.key === "Enter" && hits[at]) { e.preventDefault(); choose(hits[at]); }
-          else if (e.key === "Escape") setOpen(false);
-        }} />
-      {open && hits.length > 0 && (
-        <div className="qv-pick-menu" role="listbox">
-          {hits.map((n, i) => (
-            <div key={n.id} role="option" aria-selected={i === at} className={`w-row${i === at ? " on" : ""}`} onMouseEnter={() => setAt(i)} onMouseDown={(e) => { e.preventDefault(); choose(n); }}>
-              <Kind kind={n.kind} community={n.community} size={14} />
-              <span className="grow mono">{n.name}</span>
-              <span className="dim mono">{n.path}:{n.start_line}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

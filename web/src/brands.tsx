@@ -31,6 +31,3 @@ export function Mark({ id, size = 18, link = false, mono = false }: { id: string
   if (!link) return svg;
   return <a className="mark-link" href={b.docs} target="_blank" rel="noreferrer" title={`${b.title} docs`} aria-label={`${b.title} docs`}>{svg}</a>;
 }
-
-/** Open a tool's docs in a new tab. */
-export const openDocs = (id: string) => { const b = BRANDS[id]; if (b) window.open(b.docs, "_blank", "noopener"); };

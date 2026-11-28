@@ -391,9 +391,88 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
         Cmd::Kg(kc) => kg_cmd(&repo, kc, json)?,
         Cmd::Sync { remote, overwrite } => cmd::project_cmds::sync(&repo, remote, overwrite)?,
         Cmd::Share { remote } => cmd::project_cmds::share(&repo, remote)?,
+        Cmd::Store(c) => store_cmd(&repo, c)?,
+        Cmd::Ext(c) => ext_cmd(&repo, c)?,
         Cmd::Mcp => mcp::run(repo)?,
         Cmd::Doctor | Cmd::Lang(_) | Cmd::Init { .. } | Cmd::Git { .. } | Cmd::External(_) => unreachable!(),
         _ => unreachable!(),
+    }
+    Ok(())
+}
+
+fn store_cmd(repo: &crate::git::Repo, c: crate::cli::StoreCmd) -> anyhow::Result<()> {
+    use crate::cli::StoreCmd::*;
+    use crate::kulastore as ks;
+    match c {
+        Snapshot { sections, message } => {
+            let s = ks::snapshot(repo, &sections, message.as_deref())?;
+            match s.commit {
+                Some(c) if s.changed > 0 => println!("stored {} changed of {} files at {}", s.changed, s.files, &c[..c.len().min(8)]),
+                _ => println!("nothing changed ({} files)", s.files),
+            }
+        }
+        Status => {
+            for e in ks::status(repo)?.into_iter().filter(|e| e.state != "same") {
+                println!("{:8} {}", e.state, e.path);
+            }
+        }
+        Log { limit } => {
+            for l in ks::log(repo, limit)? {
+                println!("{}  {:>4} files  {}", &l.sha[..l.sha.len().min(8)], l.files, l.subject);
+            }
+        }
+        Restore { paths, rev, overwrite } => {
+            if let Some(r) = &rev {
+                crate::git::validate_rev(r)?;
+            }
+            let r = ks::restore(repo, &paths, rev.as_deref(), overwrite)?;
+            println!("restored {} files, kept {} you changed (use --overwrite)", r.written.len(), r.kept.len());
+        }
+        Push { remote } => println!("{}", ks::push(repo, &remote)?),
+        Pull { remote } => println!("{}", ks::pull(repo, &remote)?),
+    }
+    Ok(())
+}
+
+fn ext_cmd(repo: &crate::git::Repo, c: crate::cli::ExtCmd) -> anyhow::Result<()> {
+    use crate::cli::ExtCmd::*;
+    use crate::extensions as ex;
+    match c {
+        Search { query, source, kind } => {
+            let p = ex::browse(repo, &source, &query, kind.as_deref(), None, false)?;
+            for e in p.entries {
+                let d: String = e.description.chars().take(80).collect();
+                println!("{:6} {:32} {}", e.kind, e.name, d);
+            }
+        }
+        Add { source, name, overwrite } => {
+            let p = ex::browse(repo, &source, &name, None, None, false)?;
+            let e = p.entries.iter().find(|e| e.name == ex::slug(&name)).or(p.entries.first()).ok_or_else(|| anyhow::anyhow!("nothing named {name} in {source}"))?;
+            let d = ex::install(repo, e, overwrite)?;
+            println!("installed {} {}", d.entry.kind, d.entry.name);
+            if !d.entry.needs.is_empty() {
+                println!("set before use: {}", d.entry.needs.join(" "));
+            }
+        }
+        Remove { kind, name } => {
+            for p in ex::uninstall(repo, &kind, &name)? {
+                println!("removed {p}");
+            }
+        }
+        List => {
+            for i in ex::installed(repo) {
+                println!("{:6} {:32} {}", i.kind, i.name, i.source);
+            }
+        }
+        Sources => {
+            for s in ex::sources(repo) {
+                println!("{:18} {:7} {}", s.id, s.kind, if s.url.is_empty() { &s.label } else { &s.url });
+            }
+        }
+        Source { spec, label } => {
+            let s = ex::add_source(repo, &spec, label.as_deref())?;
+            println!("added {} {}", s.id, s.url);
+        }
     }
     Ok(())
 }

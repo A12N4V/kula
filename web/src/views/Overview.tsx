@@ -5,11 +5,12 @@ import type { Go } from "../nav";
 import Coupling from "../Coupling";
 import { useCode } from "../CodePanel";
 import AsciiMark from "../AsciiMark";
+import IssueDesk from "./IssueDesk";
 
-type Props = { repo: RepoInfo | null; version: number; go: Go };
+type Props = { repo: RepoInfo | null; version: number; go: Go; onChanged: () => void; openSymbol: (id: number) => void };
 
 /** Repository health at a glance; the queues themselves live in Git and Work. */
-export default function Overview({ repo, version, go }: Props) {
+export default function Overview({ repo, version, go, onChanged, openSymbol }: Props) {
   const [o, setO] = useState<O | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const code = useCode();
@@ -65,6 +66,19 @@ export default function Overview({ repo, version, go }: Props) {
               <dt>Build</dt><dd className="mono">{s ? `${s.millis} ms` : "0"}</dd>
             </dl>
           </section>
+          <section className="card ov-sum" data-testid="ov-git">
+            <div className="card-head"><h2>Git</h2><button className="btn sm" onClick={() => go("git")}>Open</button></div>
+            <dl className="ov-health">
+              <dt>Branch</dt><dd className="mono">{repo?.branch ?? "none"}</dd>
+              <dt>Worktree</dt><dd className={`mono${o.changes ? " acc" : ""}`}>{o.changes ? `${o.changes} changed` : "clean"}</dd>
+              <dt>Branches</dt><dd className="mono">{o.branches.length}{stale ? ` · ${stale} behind` : ""}</dd>
+            </dl>
+            {o.recent.slice(0, 4).map((c) => (
+              <div key={c.sha} className="ov-sum-row" onClick={() => go("git")} title={c.subject}>
+                <span className="mono dim">{c.short}</span><span className="grow">{c.subject}</span><span className="mono dim">{relTime(c.time).replace(" ago", "")}</span>
+              </div>
+            ))}
+          </section>
         </div>
         <div className="ov-col">
           <section className="card">
@@ -82,6 +96,10 @@ export default function Overview({ repo, version, go }: Props) {
           </section>
         </div>
       </div>
+      <section className="card ov-issues" data-testid="ov-issues" data-rail-badge={o.issues_open || undefined} data-rail-info={`${o.issues_open} open`}>
+        <div className="card-head"><h2>Issues</h2><span className="spacer" /><button className="btn sm" onClick={() => go("issues")}>Open full</button></div>
+        <IssueDesk embedded version={version} onChanged={onChanged} openSymbol={openSymbol} />
+      </section>
     </div>
   );
 }

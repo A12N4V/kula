@@ -67,7 +67,6 @@
 .hot-n { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hot-n b { font-weight: 600; color: var(--text); }
 @media (max-width: 1100px) { .kpi-strip { grid-template-columns: repeat(3, 1fr); } .kpi-cell:nth-child(3) { border-right: 0; } .kpi-cell:nth-child(-n+3) { border-bottom: 1px solid var(--line); } }
-@media (max-width: 760px) { .kpi-strip { grid-template-columns: repeat(2, 1fr); } }
 .ov-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
 .ov-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .hot-row { grid-template-columns: minmax(0, 1fr) 60px 52px 44px; }
@@ -86,26 +85,24 @@
 .kpi:hover { transform: none; }
 
 /* g1: phone floor and clipped facts. */
-@media (max-width: 760px) {
-  .ov-facts { display: none; }
-  .cpl-row { min-height: 40px; }
-  .cpl-col, .cpl-cell { min-height: 40px; }
-}
 
 /* N1: the repo stats line ("N files · N symbols · indexed in Nms") is the
    least important text in the header – on phones it goes, so the title row
    stays inside the viewport (the numbers also live in the statusbar). */
-@media (max-width: 760px) { .ov-title > span.muted:last-child { display: none; } }
 /* ================================================================ integration: overview header wraps at phone width */
-@media (max-width: 760px) {
-  .ov-head .ov-title { flex-wrap: wrap; }
-  .ov-head .ov-title .muted { white-space: normal; }
-  .ov-head .row { flex-wrap: wrap; }
-  .ov-head .row .btn { max-width: 100%; }
-}
 
 /* index health: a two column fact list */
 .ov-health { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; padding: 10px 14px 14px; }
 .ov-health dt { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); align-self: center; }
 .ov-health dd { margin: 0; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag.warn { color: var(--yellow); border-color: color-mix(in oklab, var(--yellow) 40%, transparent); }
+
+/* Git and Issues summaries: a few facts and the latest rows. */
+.ov-sum .card-head .btn { margin-left: auto; }
+.ov-sum .ov-health { padding-bottom: 8px; }
+.ov-sum .ov-health dd.acc { color: var(--accent); }
+.ov-sum-row { display: flex; gap: 10px; align-items: baseline; padding: 5px 14px; font-size: 12px; border-top: 1px solid var(--line); cursor: pointer; min-width: 0; }
+.ov-sum-row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-sum-row .dim { color: var(--text-3); flex: none; }
+.ov-sum-row:hover { color: var(--accent); }
+.ov-sum-row:last-child { padding-bottom: 10px; }

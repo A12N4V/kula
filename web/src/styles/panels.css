@@ -1,0 +1,111 @@
+/* Icon buttons, chips and dock lists for right sidebar panels, the Extensions
+   view, and the settings dialog. Flat fills, warm 1px borders, orange on hover. */
+
+/* icon buttons: fixed 28px square */
+.ib { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg); color: var(--text-2); cursor: pointer; transition: border-color var(--dur), color var(--dur), background var(--dur); }
+.ib svg { width: 14px; height: 14px; }
+.ib:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+.ib.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.ib:disabled { opacity: .35; cursor: default; }
+.ib:focus-visible { outline: none; border-color: var(--accent); }
+.ib-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ib-row + .ib-row { margin-top: 6px; }
+.ib-gap { flex: 1; }
+.ct-card > .input, .ct-card > textarea, .ct-card > .ib-row + .input { width: 100%; margin-top: 8px; }
+.ib-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: none; color: var(--text-2); font: 11.5px var(--ui); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: border-color var(--dur), color var(--dur); }
+.chip:hover { border-color: var(--accent); color: var(--text); }
+.chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+/* dock list rows: worktrees, branches, installed, sources */
+.wt-row { display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 1px 0; font-size: 12px; }
+.wt-row + .wt-row { border-top: 1px solid color-mix(in oklab, var(--line) 60%, transparent); }
+.wt-row .ib { width: 22px; height: 22px; border-color: transparent; background: none; }
+.wt-row .ib:hover { border-color: var(--accent); }
+.wt-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--text-3); }
+.wt-dot.here { background: var(--accent); border-color: var(--accent); }
+.wt-dot.dirty { border-color: var(--yellow); }
+.wt-dot.merged { border-color: var(--line-2); background: var(--line-2); }
+.wt-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.wt-br { max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.acc { color: var(--accent); }
+
+/* kind tags and pills */
+.kind { flex: none; display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: var(--r-sm); font: 600 9.5px var(--mono); font-style: normal; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); }
+.kind.k-skill { color: var(--violet); border-color: color-mix(in oklab, var(--violet) 40%, transparent); }
+.kind.k-prompt { color: var(--cyan); border-color: color-mix(in oklab, var(--cyan) 40%, transparent); }
+.kind.k-mcp { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 45%, transparent); }
+.pill { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-sm); font-size: 11px; color: var(--text-3); }
+.pill.on { color: var(--green); border-color: color-mix(in oklab, var(--green) 40%, transparent); }
+.pill.warn { color: var(--yellow); border-color: color-mix(in oklab, var(--yellow) 40%, transparent); }
+
+/* git: issues mode fills the board */
+.gv-issues { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.gv-issues > * { flex: 1; min-height: 0; }
+.gv-dock-list { height: 100%; }
+.id-side .input { width: 100%; }
+
+/* Extensions: card grid in the centre */
+.ext { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+.ext-grid { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); grid-auto-rows: min-content; gap: 10px; padding: 16px; align-content: start; }
+.ext-grid > .card-empty { grid-column: 1 / -1; padding: 40px 0; text-align: center; color: var(--text-3); }
+.ext-card { display: flex; flex-direction: column; gap: 6px; min-height: 150px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); cursor: pointer; transition: border-color var(--dur); }
+.ext-card:hover, .ext-card.on { border-color: var(--accent); }
+.ext-card header, .ext-card footer { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.ext-card footer { margin-top: auto; }
+.ext-card footer .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ext-card h3 { margin: 2px 0 0; font: 500 15px var(--display); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ext-card p { margin: 0; color: var(--text-2); font-size: 12px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ext-more { grid-column: 1 / -1; justify-self: center; }
+.ext-sel p { margin: 0 0 6px; font-size: 12px; line-height: 1.45; }
+.ext-sel .mono { font-size: 11px; word-break: break-all; margin-bottom: 8px; }
+.ext-form { display: flex; flex-direction: column; gap: 6px; }
+.ext-form .input { width: 100%; margin: 0; }
+.ext-form textarea { resize: vertical; min-height: 120px; font-size: 11.5px; }
+.ext-form .btn { align-self: flex-end; }
+.ct-card .set-add { display: flex; gap: 6px; align-items: center; }
+.ct-card .set-add .input { flex: 1; min-width: 0; }
+
+/* Settings dialog: coloured section tiles, cards of rows */
+.settings.dialog { width: min(900px, calc(100vw - 32px)); height: min(680px, calc(100vh - 80px)); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
+.settings.dialog .set-main { grid-template-columns: 220px minmax(0, 1fr); }
+.settings.dialog .set-nav { display: flex; flex-direction: column; gap: 1px; padding: 10px 8px; overflow: auto; background: var(--bg); }
+.set-search { display: flex; align-items: center; gap: 6px; height: 30px; margin-bottom: 6px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-md); color: var(--text-3); transition: border-color var(--dur); }
+.set-search:focus-within { border-color: var(--accent); }
+.set-search svg { width: 13px; height: 13px; flex: none; }
+.set-search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); font: 12px var(--ui); outline: none; }
+.set-nav-grp { padding: 12px 10px 4px; font: 600 9.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); }
+.settings.dialog .set-nav button { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--r-md); color: var(--text-2); }
+.settings.dialog .set-nav button:hover { border-color: var(--line-2); background: none; color: var(--text); }
+.settings.dialog .set-nav button.on { border-color: color-mix(in oklab, var(--hue) 55%, transparent); background: color-mix(in oklab, var(--hue) 9%, transparent); color: var(--text); }
+.set-ico { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-sm); background: color-mix(in oklab, var(--hue) 14%, transparent); color: var(--text-2); }
+.set-ico svg { width: 15px; height: 15px; }
+.set-nav button.on .set-ico { background: color-mix(in oklab, var(--hue) 24%, transparent); color: var(--text); }
+.set-ico.lg { width: 34px; height: 34px; border-radius: var(--r-md); }
+.set-ico.lg svg { width: 20px; height: 20px; }
+.set-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.settings.dialog .set-pane header { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.settings.dialog .set-pane header h2 { margin: 0; font: 500 22px var(--display); color: var(--text); }
+.set-where { font-size: 11px; color: var(--text-3); }
+.settings.dialog .set-body { flex: 1; overflow: auto; padding: 6px 18px 22px; }
+.set-group { margin-top: 14px; }
+.settings.dialog .set-sec { margin: 0 0 6px; color: color-mix(in oklab, var(--hue) 70%, var(--text-3)); }
+.set-card { padding: 0 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg); }
+.set-card > .set-row:last-child, .set-card > *:last-child .set-row:last-child { border-bottom: 0; }
+.settings.dialog .set-row { padding: 9px 0; }
+.set-ctl { min-width: 0; display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.set-row:not(.toggle) .set-ctl { justify-content: flex-start; flex-wrap: wrap; }
+.set-label em.kind { margin-right: 6px; vertical-align: 1px; }
+.set-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 14px; }
+.set-stats.in { margin: 10px 0; }
+.set-stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg); }
+.set-stat b { font: 500 22px var(--display); color: var(--text); font-variant-numeric: tabular-nums; }
+.set-stat span { font: 600 9.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: color-mix(in oklab, var(--hue) 60%, var(--text-3)); }
+.set-add { display: flex; gap: 6px; padding: 9px 0; }
+.set-add .input { flex: 1; min-width: 0; }
+.kbd-cap { min-width: 56px; height: 26px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--panel-2); color: var(--text); font: 600 11.5px var(--mono); cursor: pointer; transition: border-color var(--dur), color var(--dur); }
+.kbd-cap:hover { border-color: var(--accent); }
+.kbd-cap.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.kbd-cap.none { color: var(--text-3); }
+.kbd-cap.fixed { display: inline-grid; place-items: center; cursor: default; color: var(--text-2); background: none; }
+.key-row.fixed .set-label span { color: var(--text-2); }

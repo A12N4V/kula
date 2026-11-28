@@ -5,7 +5,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type SparqlResult, type SparqlValue } from "../../api";
 import { useCode } from "../../CodePanel";
-import { ModeToggle } from "../../modes";
 import { Docked } from "../../studio/Dock";
 import { Icon, useToast } from "../../ui";
 import { Seg, useSaved, WEmpty, Widget, type Nav } from "./parts";
@@ -110,7 +109,6 @@ export default function Ask({ openSymbol }: Nav) {
   return (
     <div className="qv qv-ask" data-testid="query-ask">
       <header className="qv-head">
-        <ModeToggle />
         <span className="spacer" />
         <span className="kq-hint mono">⌘↵</span>
         <button className="btn sm primary" onClick={() => run()} disabled={busy || !q.trim()}><Icon.play /> Run</button>

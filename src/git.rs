@@ -343,8 +343,104 @@ impl Repo {
             .unwrap_or((0, 0))
     }
 
+    /// Ahead and behind `base` for every branch, local and remote, in one git call
+    /// (git 2.41+); older git falls back to one `rev-list` per branch.
+    pub fn ahead_behind_all(&self, base: &str) -> std::collections::HashMap<String, (usize, usize)> {
+        let fmt = format!("--format=%(refname:short)%1f%(ahead-behind:{base})");
+        if let Ok(raw) = self.run(&["for-each-ref", fmt.as_str(), "refs/heads", "refs/remotes"]) {
+            return raw
+                .lines()
+                .filter_map(|l| {
+                    let (name, ab) = l.split_once('\x1f')?;
+                    let (a, b) = ab.split_once(' ')?;
+                    Some((name.to_string(), (a.parse().ok()?, b.parse().ok()?)))
+                })
+                .collect();
+        }
+        let names = self.run(&["for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes"]).unwrap_or_default();
+        names.lines().map(|n| (n.to_string(), self.ahead_behind(base, n))).collect()
+    }
+
     pub fn is_clean(&self) -> bool {
         self.run(&["status", "--porcelain", "--untracked-files=no"]).map(|s| s.trim().is_empty()).unwrap_or(false)
+    }
+
+    /// The branch others merge into: origin/HEAD, else main, else master, else HEAD's.
+    pub fn default_branch(&self) -> String {
+        if let Ok(s) = self.run(&["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]) {
+            let s = s.trim();
+            if !s.is_empty() {
+                return s.to_string();
+            }
+        }
+        for b in ["main", "master"] {
+            if self.run(&["rev-parse", "--verify", "--quiet", &format!("refs/heads/{b}")]).is_ok() {
+                return b.into();
+            }
+        }
+        self.branch()
+    }
+
+    /// Every worktree, from `git worktree list --porcelain`, with its dirty count.
+    pub fn worktrees(&self) -> Result<Vec<Worktree>> {
+        let raw = self.run(&["worktree", "list", "--porcelain"])?;
+        let mut out = vec![];
+        for (i, block) in raw.split("\n\n").filter(|b| !b.trim().is_empty()).enumerate() {
+            let mut w = Worktree { main: i == 0, ..Default::default() };
+            for l in block.lines() {
+                let (k, v) = l.split_once(' ').unwrap_or((l, ""));
+                match k {
+                    "worktree" => w.path = v.into(),
+                    "HEAD" => w.head = v.chars().take(12).collect(),
+                    "branch" => w.branch = v.trim_start_matches("refs/heads/").into(),
+                    "detached" => w.detached = true,
+                    "bare" => w.bare = true,
+                    "locked" => w.locked = true,
+                    "prunable" => w.prunable = true,
+                    _ => {}
+                }
+            }
+            w.name = if w.main { "main".into() } else { Path::new(&w.path).file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default() };
+            w.current = Path::new(&w.path).canonicalize().ok() == self.root.canonicalize().ok();
+            if !w.bare && !w.prunable && Path::new(&w.path).is_dir() {
+                let st = Command::new("git").arg("-C").arg(&w.path).args(["status", "--porcelain"]).env("GIT_TERMINAL_PROMPT", "0").output();
+                if let Ok(o) = st {
+                    w.dirty = String::from_utf8_lossy(&o.stdout).lines().filter(|l| !l.is_empty()).count();
+                }
+            }
+            out.push(w);
+        }
+        Ok(out)
+    }
+
+    /// One look at all worktrees and branches: where each branch is checked
+    /// out, how far it sits from the default branch, and whether it is merged.
+    pub fn overview(&self) -> Result<Overview> {
+        let base = self.default_branch();
+        let worktrees = self.worktrees()?;
+        let merged: std::collections::HashSet<String> = self
+            .run(&["for-each-ref", "--merged", &base, "--format=%(refname:short)", "refs/heads", "refs/remotes"])
+            .unwrap_or_default()
+            .lines()
+            .map(String::from)
+            .collect();
+        let counts = self.ahead_behind_all(&base);
+        let mut branches = vec![];
+        for b in self.branches()? {
+            let (ahead, behind) = if b.name == base { (0, 0) } else { counts.get(&b.name).copied().unwrap_or((0, 0)) };
+            let worktree = if b.remote { None } else { worktrees.iter().find(|w| w.branch == b.name).map(|w| w.name.clone()) };
+            branches.push(OverviewBranch { merged: b.name != base && merged.contains(&b.name), ahead, behind, worktree, branch: b });
+        }
+        let local = branches.iter().filter(|b| !b.branch.remote).count();
+        Ok(Overview {
+            stale: branches.iter().filter(|b| !b.branch.remote && b.merged && b.worktree.is_none()).count(),
+            dirty: worktrees.iter().map(|w| w.dirty).sum(),
+            remote: branches.len() - local,
+            local,
+            base,
+            worktrees,
+            branches,
+        })
     }
 }
 
@@ -399,4 +495,41 @@ pub struct Branch {
     pub track: String,
     pub current: bool,
     pub subject: String,
+}
+
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct Worktree {
+    pub name: String,
+    pub path: String,
+    pub branch: String,
+    pub head: String,
+    pub main: bool,
+    pub current: bool,
+    pub detached: bool,
+    pub bare: bool,
+    pub locked: bool,
+    pub prunable: bool,
+    pub dirty: usize,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct OverviewBranch {
+    #[serde(flatten)]
+    pub branch: Branch,
+    pub ahead: usize,
+    pub behind: usize,
+    pub merged: bool,
+    pub worktree: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct Overview {
+    pub base: String,
+    pub local: usize,
+    pub remote: usize,
+    pub dirty: usize,
+    /// merged local branches no worktree holds: safe to delete
+    pub stale: usize,
+    pub worktrees: Vec<Worktree>,
+    pub branches: Vec<OverviewBranch>,
 }

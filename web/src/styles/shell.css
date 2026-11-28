@@ -20,7 +20,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .rail button { position: relative; width: 38px; height: 38px; display: grid; place-items: center; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; transition: color 0.15s, background 0.15s; }
 .rail button:hover { color: var(--text); background: var(--panel-2); }
 .rail button.on { color: var(--accent); background: var(--accent-soft); }
-.rail .badge { position: absolute; top: 4px; right: 3px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: var(--r-sm); background: var(--accent); color: var(--accent-ink); font-size: 9.5px; font-weight: 700; line-height: 15px; }
+.rail .badge { position: absolute; bottom: -1px; left: 50%; transform: translateX(-50%); min-width: 14px; height: 11px; padding: 0 3px; border-radius: 6px; border: 1px solid var(--accent); background: var(--bg-2); color: var(--accent); font: 600 8px/9px var(--mono); text-align: center; pointer-events: none; }
 .rail svg { width: 19px; height: 19px; }
 .rail [data-tip]:hover::after { content: attr(data-tip); position: absolute; left: 48px; top: 50%; transform: translateY(-50%); padding: 4px 8px; border-radius: var(--r-sm); background: var(--panel-2); border: 1px solid var(--line-2); color: var(--text); font-size: 12px; white-space: nowrap; z-index: 50; pointer-events: none; }
 
@@ -62,17 +62,6 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .toast.err { border-color: color-mix(in srgb, var(--red) 70%, transparent); color: var(--text); }
 .toast.ok { border-color: color-mix(in srgb, var(--green) 60%, transparent); }
 
-@media (max-width: 760px) {
-  .split { grid-template-columns: 1fr; }
-  .split > .detail { display: none; }
-  .inspector { left: 12px; width: auto; }
-  .search-trigger { width: 32px; flex: none; justify-content: center; padding: 0; }
-  .search-trigger .st-label { display: none; }
-  .search-trigger kbd, .topbar .btn.sm:not(.ghost) { display: none; }
-  .statusbar .sb-stats, .statusbar .mono { display: none; }
-  .topbar { gap: 8px; }
-  .brand .crumb, .chip.hide-sm { display: none; }
-}
 
 .detail svg:not([width]):not(.lane-svg) { width: 18px; height: 18px; flex: none; }
 
@@ -142,7 +131,6 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .op-facts dt { color: var(--text-3); text-transform: uppercase; letter-spacing: .14em; font-size: 10px; align-self: center; animation: rise .25s ease-out both; }
 .op-facts dd { margin: 0; color: var(--text); text-align: right; animation: rise .25s ease-out both; }
 .op-skip { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); font: 500 10px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--text-3); }
-@media (max-width: 760px) { .op-foot { flex-direction: column; align-items: flex-start; } .op-facts { min-width: 0; width: 100%; } .op-dither { inset: 8% 4% 44% 4%; } }
 
 /* Homonin type: one-line search hint in mono, lining figures in the serif */
 .search-trigger .st-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -153,7 +141,6 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .topbar .chip { flex-shrink: 1; min-width: 0; max-width: 240px; }
 .topbar .chip b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar .crumb-repo, .topbar .crumb-view { white-space: nowrap; }
-@media (max-width: 760px) { .topbar .search-trigger { flex: none; width: 32px; min-width: 0; } }
 @media (max-width: 900px) { .topbar .crumb:nth-of-type(2), .topbar .crumb-view { display: none; } .topbar .chip { max-width: 170px; } .topbar .search-trigger { min-width: 96px; } }
 /* status bar: the stats line truncates before anything is pushed off the edge */
 .statusbar { min-width: 0; overflow: hidden; }
@@ -167,29 +154,6 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 /* ================================================================ phones: logo and the sidebar toggle on the left, search and settings on the right;
    the sidebar is a drawer with labels, summoned and dismissed from the top bar */
 .rail-toggle, .rail-label, .rail-scrim { display: none; }
-@media (max-width: 760px) {
-  html, body { overflow-x: hidden; }
-  .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px 1fr 40px; }
-  /* the statusbar row grows to the 40px control floor so .sb-help cannot poke into the view above */
-  .main { min-width: 0; grid-column: 1; }
-  .statusbar { grid-column: 1; min-width: 0; overflow: hidden; }
-  .topbar { gap: 4px; padding: 0 6px 0 8px; }
-  .topbar .crumb, .topbar .crumb-repo, .topbar .crumb-view, .topbar .chip { display: none; }
-  .topbar .search-trigger + .spacer { display: none; }
-  .brand span { display: none; }
-  .rail-toggle { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; }
-  .rail-toggle:hover, .rail-open .rail-toggle { color: var(--text); background: var(--panel-2); }
-  .topbar .search-trigger, .topbar .btn.sm.ghost { width: 34px; height: 34px; min-width: 0; padding: 0; display: grid; place-items: center; border: 0; background: none; }
-  .rail { position: fixed; z-index: 60; top: 48px; bottom: 40px; left: 0; width: min(240px, 78vw); align-items: stretch; padding: 6px 0; overflow-y: auto;
-    border-right: 1px solid var(--line-2); transform: translateX(-100%); visibility: hidden; transition: transform .22s var(--ease), visibility 0s .22s; }
-  .rail-open .rail { transform: none; visibility: visible; transition: transform .22s var(--ease); }
-  .rail-group { align-items: stretch; }
-  .rail button { width: auto; height: 40px; display: flex; justify-content: flex-start; gap: 12px; padding: 0 16px; }
-  .rail [data-tip]:hover::after { display: none; }
-  .rail .badge { position: static; margin-left: auto; }
-  .rail-label { display: inline; font: 500 12.5px var(--mono); }
-  .rail-scrim { display: block; position: fixed; z-index: 59; inset: 48px 0 40px; background: rgba(0, 0, 0, .55); }
-}
 
 /* ---------- topbar actions: back, search, settings ---------- */
 .top-actions { display: flex; align-items: center; gap: 2px; }
@@ -235,41 +199,12 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .settings.dialog:has(.set-search .input:not(:placeholder-shown)) .set-main { grid-template-columns: 1fr; }
 
 /* – phones: every shell control meets the 40px floor – */
-@media (max-width: 760px) {
-  .brand { min-width: 40px; min-height: 40px; }
-  .rail-toggle, .topbar .search-trigger, .topbar .btn.sm.ghost { width: 40px; height: 40px; }
-  .sb-help { height: 40px; }
-  .shell-error .shell-error-actions { flex-direction: column; gap: 8px; }
-  .set-search { padding: 8px 10px; }
-}
 
 /* ================================================================ integration: 40px phone hit targets in the chrome */
-@media (max-width: 760px) {
-  .brand, .rail-toggle, .topbar .btn.sm, .sb-help { min-width: 40px; min-height: 40px; }
-  /* stat rows are navigable targets – keep them at the floor on phones */
-}
 
-@media (max-width: 600px) { .statusbar > .sb-crumbs { flex-shrink: 1; min-width: 0; overflow: hidden; } }
 
 /* ------------------------------------------- grouped views: the sub toggle */
 .view-body { position: absolute; inset: 0; }
-.has-sub > .view-body { top: 42px; }
-.subtoggle {
-  position: absolute; top: 8px; left: 8px; height: 28px; z-index: 5;
-  display: inline-flex; gap: 2px; padding: 2px;
-  border: 1px solid var(--line); border-radius: var(--r-md);
-  background: var(--panel);
-}
-.subtoggle button {
-  display: inline-flex; align-items: center; gap: 6px; padding: 0 10px;
-  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2);
-  font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer;
-  transition: background var(--dur), color var(--dur);
-}
-.subtoggle button svg { width: 13px; height: 13px; }
-.subtoggle button:hover { color: var(--accent); background: var(--sweep); }
-.subtoggle button.on { color: var(--text); background: transparent; border-color: transparent; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 60%, transparent); }
-.subtoggle .badge { font-size: 9.5px; letter-spacing: 0; color: var(--accent); }
 .help { max-height: calc(100vh - 64px); overflow: auto; }
 @media (max-width: 1100px) { .help-grid { grid-template-columns: 1fr; } }
 .top-actions .btn.on { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 45%, transparent); }

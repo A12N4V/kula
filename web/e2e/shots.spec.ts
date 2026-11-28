@@ -23,13 +23,6 @@ const settled = async (page: Page) => {
   await page.waitForTimeout(1200);
 };
 const shot = (page: Page, name: string) => page.screenshot({ path: `${OUT}/ui-${name}.png` });
-async function inspect(page: Page, name: string) {
-  await page.keyboard.press("ControlOrMeta+k");
-  await page.keyboard.type(name);
-  await page.locator(".palette").getByText(name, { exact: true }).first().click();
-  await expect(page.locator(".inspector h2")).toHaveText(name);
-}
-
 test("opening", async ({ page }) => {
   await at(page, "overview", true);
   await expect(page.locator(".opening")).toBeVisible();
@@ -44,21 +37,10 @@ test("overview", async ({ page }) => {
   await shot(page, "overview");
 });
 
-test("graph, impact, fences and a path", async ({ page }) => {
+test("graph", async ({ page }) => {
   await at(page, "graph");
-  await settled(page);
+  await page.waitForTimeout(1500);
   await shot(page, "graph");
-  await inspect(page, "context_pack");
-  await page.locator(".inspector").getByRole("button", { name: "Impact" }).click();
-  await page.waitForTimeout(1200);
-  await shot(page, "impact");
-  await page.keyboard.press("Escape");
-  await page.keyboard.press("f");
-  await page.waitForTimeout(900);
-  await shot(page, "fences");
-  await at(page, "graph/fences/refactor");
-  await settled(page);
-  await shot(page, "workflow-preview");
 });
 
 test("contrast: overlay, side by side, report", async ({ page }) => {

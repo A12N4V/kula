@@ -25,8 +25,6 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 }, colorScheme: "dark" } },
-    { name: "tablet", use: { ...devices["iPad Mini"], browserName: "chromium", colorScheme: "dark" }, grep: /@responsive/ },
-    { name: "phone", use: { ...devices["Pixel 7"], colorScheme: "dark" }, grep: /@mobile|@responsive/ },
   ],
   webServer: [
     {

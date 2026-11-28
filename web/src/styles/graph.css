@@ -106,55 +106,22 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 .section-title.out::before { background: var(--accent); }
 .kind-badge { font-family: var(--mono); font-weight: 650; }
 
-@media (max-width: 760px) {
-  .graph-wrap.inspecting .zoom { right: 14px; }
-  .legend { width: calc(100% - 72px); max-height: 38%; }
-  .hover-card { max-width: calc(100% - 28px); }
-  .hc-stats span:nth-child(n+4) { display: none; }
-}
 
 .hover-card { top: auto; bottom: 14px; }
 @keyframes card-in { from { opacity: 0; transform: translate(-50%, 3px); } to { opacity: 1; transform: translate(-50%, 0); } }
-@media (max-width: 760px) { .hover-card { bottom: auto; top: 58px; } }
 
 /* ================================================================ loader: the mark assembling */
-/* graph loader: the mark as a recursive ASCII zoom, blocking the graph, with honest progress (AsciiMark.tsx) */
-.graph-loader { position: absolute; inset: 0; z-index: 30; display: grid; grid-template-rows: minmax(0, 1fr) auto; justify-items: center; gap: 20px; padding: 32px 24px 36px;
-  background: var(--bg); }
-.graph-loader.leaving { animation: gl-out .45s var(--ease) both; pointer-events: none; }
-@keyframes gl-out { to { opacity: 0; } }
-.gl-field { position: relative; width: min(760px, 100%); height: 100%; min-height: 160px; overflow: hidden; }
 .ascii-mark { position: absolute; inset: 0; margin: 0; font: 400 9px/9px var(--mono); letter-spacing: 0; color: var(--accent); white-space: pre; overflow: hidden;
   user-select: none; font-variant-ligatures: none; }
-.gl-meter { width: min(520px, 100%); font: 500 11px var(--mono); color: var(--text-3); }
-.gl-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
-.gl-step { color: var(--text); text-transform: uppercase; letter-spacing: .14em; font-size: 10.5px; }
-.gl-detail { color: var(--text-3); font-variant-numeric: tabular-nums; }
-.gl-pct { color: var(--text); font-variant-numeric: tabular-nums; white-space: pre; }
-.gl-bar { position: relative; height: 3px; background: var(--line); }
-.gl-bar i { position: absolute; inset: 0; background: var(--accent); transform-origin: left; transition: transform .18s linear; }
-.gl-bar b { position: absolute; top: -3px; width: 1px; height: 9px; background: var(--line-2); }
-.gl-steps { display: flex; margin-top: 7px; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; }
-.gl-steps span { flex-basis: 0; min-width: 0; overflow: hidden; text-overflow: clip; white-space: nowrap; color: var(--text-3); opacity: .5; padding-right: 6px; }
-.gl-steps span.done { opacity: .9; }
-.gl-steps span.on { color: var(--accent); opacity: 1; }
 .mini-loader { display: grid; justify-items: center; gap: 14px; color: var(--text-3); font: 500 11px var(--mono); }
 .ml-field { position: relative; width: 220px; height: 130px; overflow: hidden; }
 .ml-field .ascii-mark { font-size: 6px; line-height: 6px; }
-@media (max-width: 760px) { .gl-field { min-height: 120px; } .ascii-mark { font-size: 7px; line-height: 7px; } .gl-steps span:not(.on) { font-size: 0; } }
-@media (prefers-reduced-motion: reduce) { .gl-bar i { transition: none; } }
 
 /* graph HUD: wraps instead of running off a narrow screen */
 .graph-overlay.hud { right: 14px; flex-wrap: wrap; align-content: flex-start; pointer-events: none; }
 .graph-overlay.hud > * { pointer-events: auto; }
 
 /* inspector: a fenced symbol says so first */
-.insp-guard { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 6px 8px; border: 1px solid var(--line); font-size: 11.5px; color: var(--text-2); }
-.insp-guard svg { color: var(--text-3); }
-.insp-guard.locked { border-color: color-mix(in oklab, var(--red) 40%, var(--line)); }
-.insp-guard.hidden { border-color: color-mix(in oklab, var(--violet) 40%, var(--line)); }
-.insp-guard.review { border-color: color-mix(in oklab, var(--yellow) 40%, var(--line)); }
-.insp-guard > span:last-child { overflow: hidden; text-overflow: ellipsis; }
 
 /* graph: path trace, fence key, node menu */
 .trace-chip, .fence-key { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 7; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
@@ -177,7 +144,6 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 .node-menu hr { margin: 4px 0; border: 0; border-top: 1px solid var(--line); }
 .node-menu button .muted { font-size: 10.5px; }
 
-@media (max-width: 760px) { .trace-chip, .fence-key { left: 14px; right: 14px; transform: none; max-width: none; bottom: 64px; } }
 
 /* graph: fence legend */
 .fk-wf { flex: none; }
@@ -213,13 +179,6 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 .legend .grip-top::after { top: 20px; }
 
 /* g1: phone floor – graph controls reach 40px. */
-@media (max-width: 760px) {
-  .seg button { height: 40px; padding: 0 14px; }
-  .hud-btn { height: 40px; }
-  .zoom .btn { width: 40px; height: 40px; }
-  .legend-head { height: 40px; }
-  .legend .grip-right, .legend .grip-top { display: none; }
-}
 
 /* graph: isolate */
 .legend-clear-row { display: flex; }
@@ -257,7 +216,6 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 .iso-save { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); font-size: 11px; }
 .iso-save input { flex: 1; min-width: 0; height: 26px; padding: 0 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font-size: 11.5px; }
 .iso-save input:focus { outline: none; border-color: var(--accent); }
-@media (max-width: 760px) { .iso-panel { width: auto; right: 14px; max-height: 50%; } }
 
 /* ---------- one header strip: mode toggle, layout, overlays, stats */
 .graph-head { position: relative; z-index: 6; background: var(--bg); }
@@ -269,6 +227,4 @@ b.in { color: var(--blue) !important; } b.out { color: var(--accent) !important;
 .ct { grid-template-rows: auto minmax(0, 1fr); }
 .ct > .graph-head .ct-crumbs { max-width: 40%; }
 @media (max-width: 1100px) { .graph-head .hud-stats { display: none; } }
-@media (max-width: 760px) { .graph-head { height: auto; flex-wrap: wrap; padding: 8px; } .graph-wrap > .graph-canvas { top: 88px; } }
-.graph-wrap > .graph-loader { top: 44px; }
 .graph-wrap > .inspector { z-index: 31; }

@@ -59,6 +59,13 @@ lto = "fat"
 codegen-units = 1
 strip = true
 
+# Same code as release, built in a fraction of the time, for timing runs.
+[profile.profiling]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = false
+
 [package.metadata.deb]
 maintainer = "Arnav Sharma <arnavs15@uci.edu>"
 copyright = "2026, Arnav Sharma"

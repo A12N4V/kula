@@ -9,7 +9,7 @@ import { visit } from "./near";
 
 export type CodeTarget = { path: string; line?: number; end?: number; name?: string; kind?: Node["kind"]; id?: number };
 
-const Ctx = createContext<{ open: (t: CodeTarget) => void; close: () => void; target: CodeTarget | null }>({ open: () => {}, close: () => {}, target: null });
+const Ctx = createContext<{ open: (t: CodeTarget) => void; edit: (t: CodeTarget) => void; close: () => void; target: CodeTarget | null }>({ open: () => {}, edit: () => {}, close: () => {}, target: null });
 export const useCode = () => useContext(Ctx);
 
 /** Open a node's source: symbols at their definition, files from the top, packages nowhere. */
@@ -18,13 +18,23 @@ export const nodeTarget = (n: Node): CodeTarget | null =>
 
 export function CodeProvider({ children, onLocate, onEdit }: { children: ReactNode; onLocate?: (id: number) => void; onEdit?: (t: CodeTarget) => void }) {
   const [target, setTarget] = useState<CodeTarget | null>(null);
-  const open = useCallback((t: CodeTarget) => { visit({ path: t.path, name: t.name, kind: t.kind, id: t.id }); setTarget(t); }, []);
   const close = useCallback(() => setTarget(null), []);
-  const value = useMemo(() => ({ open, close, target }), [open, close, target]);
+  // Opening a file in its own editor tab; the peek panel steps aside.
+  const edit = useCallback((t: CodeTarget) => { if (!onEdit) return; visit({ path: t.path, name: t.name, kind: t.kind, id: t.id }); setTarget(null); onEdit(t); }, [onEdit]);
+  // Any list that peeks on click opens a tab on double click: a second open of the same place within 400ms.
+  const last = useRef<{ key: string; at: number } | null>(null);
+  const open = useCallback((t: CodeTarget) => {
+    const key = `${t.path}:${t.line ?? ""}`, at = performance.now();
+    const twice = last.current?.key === key && at - last.current.at < 400;
+    last.current = twice ? null : { key, at };
+    if (twice && onEdit) return edit(t);
+    visit({ path: t.path, name: t.name, kind: t.kind, id: t.id }); setTarget(t);
+  }, [edit, onEdit]);
+  const value = useMemo(() => ({ open, edit, close, target }), [open, edit, close, target]);
   return (
     <Ctx.Provider value={value}>
       {children}
-      {target && <CodePanel t={target} onClose={close} onLocate={onLocate} onEdit={onEdit && ((t) => { close(); onEdit(t); })} />}
+      {target && <CodePanel t={target} onClose={close} onLocate={onLocate} onEdit={onEdit && edit} />}
     </Ctx.Provider>
   );
 }

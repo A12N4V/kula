@@ -105,7 +105,7 @@ export function SelectedPanel({ m, sel, p, counts, set, pick, open, rescan, busy
               {name === s && <Where m={m} s={s} pick={pick} open={open} />}
             </div>
           ))}
-          {names.length > SHOWN && <p className="ct-hint">{names.length - SHOWN} more, use Go to</p>}
+          {names.length > SHOWN && <p className="ct-hint">{names.length - SHOWN} more, find them with ⌘K</p>}
         </section>
       </div>
     </div>

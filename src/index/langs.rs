@@ -353,12 +353,15 @@ fn patterns(file: &str) -> impl Iterator<Item = &str> {
     file.split("\n\n").map(str::trim).filter(|p| !p.is_empty() && !p.lines().all(|l| l.trim_start().starts_with(';')))
 }
 
-/// Compile patterns in parallel: each tree-sitter query compile is slow for the
-/// larger grammars (TS/TSX), and they're independent.
+/// Fuse the patterns into a single query (one tree walk per file instead of one
+/// per pattern). Bundled patterns are tested to compile, so the fused compile
+/// almost always works; only when it fails (a bad pack pattern) is each pattern
+/// validated on its own, in parallel since TS/TSX compiles are slow, so one bad
+/// pattern never sinks the rest.
 fn compile(language: &Language, patterns: &[&str]) -> Vec<Query> {
-    // Validate each pattern on its own (one bad pattern must not sink the rest),
-    // then fuse the good ones into a single query: one tree walk per file
-    // instead of one per pattern.
+    if let Ok(q) = Query::new(language, &patterns.join("\n")) {
+        return vec![q];
+    }
     let ok: Vec<&str> = std::thread::scope(|s| {
         let hs: Vec<_> = patterns.iter().map(|p| s.spawn(move || Query::new(language, p).is_ok().then_some(*p))).collect();
         hs.into_iter().filter_map(|h| h.join().ok().flatten()).collect()

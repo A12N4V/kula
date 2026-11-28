@@ -70,11 +70,16 @@ CREATE TABLE IF NOT EXISTS nodes (
 CREATE TABLE IF NOT EXISTS edges (src INTEGER, dst INTEGER, kind TEXT, weight REAL, confidence TEXT NOT NULL DEFAULT 'resolved');
 CREATE TABLE IF NOT EXISTS communities (id INTEGER PRIMARY KEY, label TEXT, size INTEGER);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(name, path, tokenize = 'unicode61 remove_diacritics 2');
+"#;
+
+/// Built once after the bulk insert: one sort per index instead of a b-tree
+/// update per row.
+const INDEXES: &str = r#"
 CREATE INDEX IF NOT EXISTS edges_src ON edges(src, kind);
 CREATE INDEX IF NOT EXISTS edges_dst ON edges(dst, kind);
 CREATE INDEX IF NOT EXISTS nodes_name ON nodes(name);
 CREATE INDEX IF NOT EXISTS nodes_path ON nodes(path);
-CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(name, path, tokenize = 'unicode61 remove_diacritics 2');
 "#;
 
 fn row_node(r: &rusqlite::Row) -> rusqlite::Result<Node> {
@@ -125,6 +130,12 @@ impl Store {
         let _ = std::fs::remove_file(&tmp);
         let conn = Connection::open(&tmp)?;
         conn.execute_batch(SCHEMA)?;
+        // A private temp file renamed into place only once complete: no journal
+        // and no syncs while building; `publish` syncs the finished file once.
+        conn.execute_batch(
+            "PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF; PRAGMA locking_mode = EXCLUSIVE; \
+             PRAGMA cache_size = -32768; PRAGMA temp_store = MEMORY;",
+        )?;
         Ok(Store { conn, root: repo.root.clone(), staged: Some((tmp, dest)) })
     }
 
@@ -133,7 +144,9 @@ impl Store {
     pub fn publish(self) -> Result<()> {
         let Store { conn, staged, .. } = self;
         let Some((tmp, dest)) = staged else { return Ok(()) };
+        conn.execute_batch(INDEXES)?;
         conn.close().map_err(|(_, e)| e)?;
+        std::fs::File::open(&tmp)?.sync_all()?;
         // Indexes from before this change used WAL; unlink (never truncate) its files
         // so the new database doesn't inherit them. Open mappings survive an unlink.
         for suffix in ["-wal", "-shm"] {

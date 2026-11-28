@@ -12,9 +12,6 @@
 .guard-tag.review { color: var(--yellow); }
 .guard-tag.scope { color: var(--text-3); }
 .guard-tag.open { color: var(--green); }
-@media (max-width: 760px) {
-  .page { padding: 12px 14px 30px; }
-}
 /* notes that are agent memories, wherever they show */
 .note.mem { border-color: color-mix(in oklab, var(--green) 45%, var(--line)); }
 .note.mem.stale { border-color: color-mix(in oklab, var(--yellow) 45%, var(--line)); }
@@ -22,16 +19,9 @@
 .stack-tight { display: grid; gap: 6px; min-width: 0; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); cursor: pointer; padding: 3px 0; }
 .toggle input { accent-color: var(--accent); }
-@media (max-width: 760px) {
-  .top-actions .btn[aria-label="Back"], .top-search kbd { display: none; }
-  .fk-means { display: none; }
-}
 .mark-link { display: inline-flex; color: inherit; }
 /* ================================================================ integration: agents page must not bleed under the statusbar */
 /* .page is a grid child; without min-height:0 it can grow past its grid
    row and the last row's buttons overlap the statusbar controls. */
 .page { min-height: 0; }
 /* phone: every interactive row clears the 40 px floor (probe PROBLEMS) */
-@media (max-width: 760px) {
-  .stat-table tr.go { min-height: 40px; }
-}

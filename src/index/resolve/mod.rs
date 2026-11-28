@@ -62,7 +62,13 @@ pub struct ResolveCtx<'a> {
     pub by_dir: &'a HashMap<String, Vec<usize>>,
     /// Read a repo-relative file (tsconfig.json, jsconfig.json, go.mod).
     pub read: &'a dyn Fn(&str) -> Option<String>,
+    /// file id → its top-level symbols
+    pub top: &'a HashMap<usize, Vec<usize>>,
+    /// module path → what it exports, shared across files (barrels resolve once)
+    pub exports: &'a Exports,
 }
+
+pub type Exports = std::sync::Mutex<HashMap<String, std::sync::Arc<HashMap<String, usize>>>>;
 
 impl<'a> ResolveCtx<'a> {
     /// The file node id of `path`, when indexed.
@@ -72,8 +78,7 @@ impl<'a> ResolveCtx<'a> {
 
     /// Top-level symbol nodes declared in `path` (parent is the file node).
     pub fn top_level(&self, path: &str) -> Vec<usize> {
-        let Some(fid) = self.file_id(path) else { return vec![] };
-        (0..self.nodes.len()).filter(|c| self.nodes[*c].path == path && self.nodes[*c].parent == Some(fid as i64)).collect()
+        self.file_id(path).and_then(|f| self.top.get(&f)).cloned().unwrap_or_default()
     }
 }
 

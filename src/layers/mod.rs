@@ -26,7 +26,11 @@ pub(crate) fn apply(
     hashes: &mut Vec<u64>,
 ) {
     deps::apply(parsed, files, read, nodes, edges, file_id, hashes);
+    crate::index::trace("deps");
     env::apply(parsed, sym_ids, files, read, nodes, edges, file_id, hashes);
+    crate::index::trace("env");
     routes::apply(parsed, sym_ids, files, read, nodes, edges, file_id, hashes);
+    crate::index::trace("routes");
     tables::apply(parsed, sym_ids, files, read, nodes, edges, file_id, hashes);
+    crate::index::trace("tables");
 }

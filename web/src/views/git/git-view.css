@@ -95,10 +95,3 @@
 @media (max-width: 1100px) {
   .gv-modes button span { display: none; }
 }
-@media (max-width: 760px) {
-  .gv { position: static; }
-  .gv-head { height: auto; flex-wrap: wrap; padding: 8px; }
-  .gv-main { grid-template-columns: minmax(0, 1fr); }
-  .gv-main > .grip { display: none; }
-  .gv-list > .widget, .gv-detail { height: 420px; flex: none; }
-}

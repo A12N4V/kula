@@ -31,6 +31,82 @@ pub struct Meta {
     /// Run ledgers (`crate::launch::Run`), newest last, the last 200 kept.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub runs: Vec<serde_json::Value>,
+    /// Issue templates, the label set and milestones.
+    #[serde(default, skip_serializing_if = "IssueConfig::is_empty")]
+    pub issue_config: IssueConfig,
+}
+
+/// How issues are filed and sorted: templates, labels and milestones.
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+pub struct IssueConfig {
+    #[serde(default)]
+    pub templates: Vec<IssueTemplate>,
+    #[serde(default)]
+    pub labels: Vec<LabelDef>,
+    #[serde(default)]
+    pub milestones: Vec<Milestone>,
+    /// Who may be assigned, besides anyone already named on an issue.
+    #[serde(default)]
+    pub people: Vec<String>,
+}
+
+impl IssueConfig {
+    pub fn is_empty(&self) -> bool {
+        self.templates.is_empty() && self.labels.is_empty() && self.milestones.is_empty() && self.people.is_empty()
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+pub struct IssueTemplate {
+    pub name: String,
+    #[serde(default)]
+    pub about: String,
+    /// Prefilled title, e.g. "bug: ".
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default)]
+    pub labels: Vec<String>,
+    #[serde(default)]
+    pub assignees: Vec<String>,
+    #[serde(default)]
+    pub priority: String,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+pub struct LabelDef {
+    pub name: String,
+    /// `#rrggbb`.
+    #[serde(default)]
+    pub color: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+pub struct Milestone {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// Unix seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due: Option<i64>,
+    /// open | closed
+    #[serde(default = "open")]
+    pub state: String,
+}
+
+fn open() -> String {
+    "open".into()
+}
+
+/// One line of an issue's timeline: who changed what, when.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct IssueEvent {
+    pub by: String,
+    pub at: i64,
+    pub what: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -38,6 +114,8 @@ pub struct Comment {
     pub author: String,
     pub body: String,
     pub at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edited: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -56,6 +134,29 @@ pub struct Issue {
     pub created: i64,
     #[serde(default)]
     pub comments: Vec<Comment>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assignees: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub milestone: String,
+    /// "" | urgent | high | medium | low
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub priority: String,
+    /// Why it closed: completed | not_planned | duplicate.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub reason: String,
+    /// Linked work: `proposal:3`, `issue:5`, `branch:name`, `commit:sha`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub locked: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub template: String,
+    #[serde(default)]
+    pub updated: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<IssueEvent>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -137,6 +238,16 @@ pub fn issue_new(repo: &Repo, title: &str, body: &str, labels: Vec<String>, anch
         author: repo.user(),
         created: now(),
         comments: vec![],
+        assignees: vec![],
+        milestone: String::new(),
+        priority: String::new(),
+        reason: String::new(),
+        links: vec![],
+        locked: false,
+        pinned: false,
+        template: String::new(),
+        updated: now(),
+        events: vec![],
     };
     m.issues.push(issue.clone());
     save(repo, &m, &format!("open issue #{} {}", issue.id, title))?;
@@ -147,6 +258,11 @@ pub fn issue_set_status(repo: &Repo, id: u64, status: &str) -> Result<Issue> {
     let mut m = load(repo)?;
     let i = m.issues.iter_mut().find(|i| i.id == id).ok_or_else(|| anyhow!("no issue #{id}"))?;
     i.status = status.into();
+    if status == "open" {
+        i.reason.clear();
+    }
+    i.updated = now();
+    i.events.push(IssueEvent { by: repo.user(), at: now(), what: format!("{status} the issue") });
     let out = i.clone();
     save(repo, &m, &format!("{status} issue #{id}"))?;
     Ok(out)
@@ -154,8 +270,12 @@ pub fn issue_set_status(repo: &Repo, id: u64, status: &str) -> Result<Issue> {
 
 pub fn comment(repo: &Repo, id: u64, body: &str) -> Result<()> {
     let mut m = load(repo)?;
-    let c = Comment { author: repo.user(), body: body.into(), at: now() };
+    let c = Comment { author: repo.user(), body: body.into(), at: now(), edited: None };
     if let Some(i) = m.issues.iter_mut().find(|i| i.id == id) {
+        if i.locked {
+            bail!("issue #{id} is locked");
+        }
+        i.updated = now();
         i.comments.push(c);
     } else if let Some(p) = m.proposals.iter_mut().find(|p| p.id == id) {
         p.comments.push(c);
@@ -163,6 +283,274 @@ pub fn comment(repo: &Repo, id: u64, body: &str) -> Result<()> {
         bail!("no issue or proposal #{id}");
     }
     save(repo, &m, &format!("comment on #{id}"))
+}
+
+/// A change to one or more issues; `None` leaves a field as it is. Labels and
+/// assignees may also be added or removed one at a time, for bulk edits.
+#[derive(Deserialize, Default, Clone, Debug)]
+pub struct IssuePatch {
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub status: Option<String>,
+    pub reason: Option<String>,
+    pub labels: Option<Vec<String>>,
+    #[serde(default)]
+    pub add_labels: Vec<String>,
+    #[serde(default)]
+    pub remove_labels: Vec<String>,
+    pub assignees: Option<Vec<String>>,
+    #[serde(default)]
+    pub add_assignees: Vec<String>,
+    #[serde(default)]
+    pub remove_assignees: Vec<String>,
+    pub milestone: Option<String>,
+    pub priority: Option<String>,
+    pub anchors: Option<Vec<String>>,
+    pub links: Option<Vec<String>>,
+    pub locked: Option<bool>,
+    pub pinned: Option<bool>,
+}
+
+const PRIORITIES: &[&str] = &["", "urgent", "high", "medium", "low"];
+const REASONS: &[&str] = &["", "completed", "not_planned", "duplicate"];
+
+fn clean(v: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for x in v.into_iter().map(|x| x.trim().to_string()).filter(|x| !x.is_empty()) {
+        if !out.contains(&x) {
+            out.push(x);
+        }
+    }
+    out
+}
+
+/// Apply `p` to issue `i`, returning a timeline line per real change.
+fn apply_patch(i: &mut Issue, p: &IssuePatch) -> Result<Vec<String>> {
+    let mut log = vec![];
+    if let Some(t) = p.title.as_ref().map(|t| t.trim()).filter(|t| !t.is_empty() && *t != i.title) {
+        log.push(format!("renamed from \"{}\"", i.title));
+        i.title = t.into();
+    }
+    if let Some(b) = p.body.as_ref().filter(|b| **b != i.body) {
+        i.body = b.clone();
+        log.push("edited the description".into());
+    }
+    if let Some(r) = &p.reason {
+        if !REASONS.contains(&r.as_str()) {
+            bail!("unknown close reason {r}");
+        }
+    }
+    if let Some(st) = &p.status {
+        if st != "open" && st != "closed" {
+            bail!("status is open or closed, not {st}");
+        }
+        if *st != i.status {
+            i.status = st.clone();
+            if st == "open" {
+                i.reason.clear();
+            }
+            log.push(if st == "open" { "reopened".into() } else { format!("closed{}", p.reason.as_ref().filter(|r| !r.is_empty()).map(|r| format!(" as {}", r.replace('_', " "))).unwrap_or_default()) });
+        }
+    }
+    if let Some(r) = p.reason.as_ref().filter(|_| i.status == "closed") {
+        i.reason = r.clone();
+    }
+    let mut labels = p.labels.clone().map(clean).unwrap_or_else(|| i.labels.clone());
+    labels.extend(clean(p.add_labels.clone()).into_iter().filter(|l| !i.labels.contains(l)));
+    labels.retain(|l| !p.remove_labels.contains(l));
+    let labels = clean(labels);
+    if labels != i.labels {
+        log.push(format!("set labels to {}", if labels.is_empty() { "none".into() } else { labels.join(", ") }));
+        i.labels = labels;
+    }
+    let mut who = p.assignees.clone().map(clean).unwrap_or_else(|| i.assignees.clone());
+    who.extend(clean(p.add_assignees.clone()));
+    who.retain(|a| !p.remove_assignees.contains(a));
+    let who = clean(who);
+    if who != i.assignees {
+        log.push(if who.is_empty() { "unassigned everyone".into() } else { format!("assigned {}", who.join(", ")) });
+        i.assignees = who;
+    }
+    if let Some(ms) = p.milestone.as_ref().map(|m| m.trim().to_string()).filter(|m| *m != i.milestone) {
+        log.push(if ms.is_empty() { "cleared the milestone".into() } else { format!("moved to milestone {ms}") });
+        i.milestone = ms;
+    }
+    if let Some(pr) = p.priority.as_ref().filter(|pr| **pr != i.priority) {
+        if !PRIORITIES.contains(&pr.as_str()) {
+            bail!("unknown priority {pr}");
+        }
+        log.push(if pr.is_empty() { "cleared the priority".into() } else { format!("set priority {pr}") });
+        i.priority = pr.clone();
+    }
+    if let Some(a) = p.anchors.clone().map(clean).filter(|a| *a != i.anchors) {
+        log.push("changed the anchors".into());
+        i.anchors = a;
+    }
+    if let Some(l) = p.links.clone().map(clean).filter(|l| *l != i.links) {
+        log.push(format!("linked {}", if l.is_empty() { "nothing".into() } else { l.join(", ") }));
+        i.links = l;
+    }
+    if let Some(v) = p.locked.filter(|v| *v != i.locked) {
+        i.locked = v;
+        log.push(if v { "locked the thread".into() } else { "unlocked the thread".into() });
+    }
+    if let Some(v) = p.pinned.filter(|v| *v != i.pinned) {
+        i.pinned = v;
+        log.push(if v { "pinned".into() } else { "unpinned".into() });
+    }
+    Ok(log)
+}
+
+/// Change several issues at once; one commit on the meta ref.
+pub fn issue_patch(repo: &Repo, ids: &[u64], p: &IssuePatch) -> Result<Vec<Issue>> {
+    anyhow::ensure!(!ids.is_empty(), "no issues given");
+    let mut m = load(repo)?;
+    let (by, at) = (repo.user(), now());
+    let mut out = vec![];
+    for id in ids {
+        let i = m.issues.iter_mut().find(|i| i.id == *id).ok_or_else(|| anyhow!("no issue #{id}"))?;
+        for what in apply_patch(i, p)? {
+            i.events.push(IssueEvent { by: by.clone(), at, what });
+            i.updated = at;
+        }
+        out.push(i.clone());
+    }
+    let list = ids.iter().map(|i| format!("#{i}")).collect::<Vec<_>>().join(" ");
+    save(repo, &m, &format!("edit issue {list}"))?;
+    Ok(out)
+}
+
+/// A new issue with every field, usually from a template.
+#[derive(Deserialize, Default, Clone, Debug)]
+pub struct IssueDraft {
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default)]
+    pub labels: Vec<String>,
+    #[serde(default)]
+    pub anchors: Vec<String>,
+    #[serde(default)]
+    pub assignees: Vec<String>,
+    #[serde(default)]
+    pub milestone: String,
+    #[serde(default)]
+    pub priority: String,
+    #[serde(default)]
+    pub links: Vec<String>,
+    #[serde(default)]
+    pub template: String,
+}
+
+pub fn issue_create(repo: &Repo, d: IssueDraft) -> Result<Issue> {
+    let title = d.title.trim();
+    anyhow::ensure!(!title.is_empty(), "an issue needs a title");
+    anyhow::ensure!(PRIORITIES.contains(&d.priority.as_str()), "unknown priority {}", d.priority);
+    let mut m = load(repo)?;
+    let t = now();
+    let issue = Issue {
+        id: next(&mut m),
+        title: title.into(),
+        body: d.body,
+        status: "open".into(),
+        labels: clean(d.labels),
+        anchors: clean(d.anchors),
+        author: repo.user(),
+        created: t,
+        comments: vec![],
+        assignees: clean(d.assignees),
+        milestone: d.milestone.trim().into(),
+        priority: d.priority,
+        reason: String::new(),
+        links: clean(d.links),
+        locked: false,
+        pinned: false,
+        template: d.template.clone(),
+        updated: t,
+        events: vec![IssueEvent { by: repo.user(), at: t, what: if d.template.is_empty() { "opened".into() } else { format!("opened from {}", d.template) } }],
+    };
+    m.issues.push(issue.clone());
+    save(repo, &m, &format!("open issue #{} {}", issue.id, title))?;
+    Ok(issue)
+}
+
+/// Edit (Some) or delete (None) comment `idx` of issue `id`.
+pub fn issue_comment_edit(repo: &Repo, id: u64, idx: usize, body: Option<&str>) -> Result<Issue> {
+    let mut m = load(repo)?;
+    let i = m.issues.iter_mut().find(|i| i.id == id).ok_or_else(|| anyhow!("no issue #{id}"))?;
+    anyhow::ensure!(idx < i.comments.len(), "issue #{id} has no comment {idx}");
+    match body {
+        Some(b) => {
+            i.comments[idx].body = b.into();
+            i.comments[idx].edited = Some(now());
+        }
+        None => {
+            i.comments.remove(idx);
+            i.events.push(IssueEvent { by: repo.user(), at: now(), what: "deleted a comment".into() });
+        }
+    }
+    i.updated = now();
+    let out = i.clone();
+    save(repo, &m, &format!("edit comment on #{id}"))?;
+    Ok(out)
+}
+
+pub fn issue_delete(repo: &Repo, ids: &[u64]) -> Result<usize> {
+    let mut m = load(repo)?;
+    let before = m.issues.len();
+    m.issues.retain(|i| !ids.contains(&i.id));
+    let n = before - m.issues.len();
+    anyhow::ensure!(n > 0, "no such issues");
+    save(repo, &m, &format!("delete {n} issue(s)"))?;
+    Ok(n)
+}
+
+/// Replace templates, labels, milestones and people. Renamed labels or
+/// milestones are carried onto the issues that used the old name.
+pub fn issue_config_save(repo: &Repo, mut cfg: IssueConfig, renames: &[(String, String, String)]) -> Result<IssueConfig> {
+    for t in &mut cfg.templates {
+        t.name = t.name.trim().into();
+        anyhow::ensure!(!t.name.is_empty(), "every template needs a name");
+        anyhow::ensure!(PRIORITIES.contains(&t.priority.as_str()), "unknown priority {}", t.priority);
+        t.labels = clean(std::mem::take(&mut t.labels));
+    }
+    for l in &mut cfg.labels {
+        l.name = l.name.trim().into();
+        anyhow::ensure!(!l.name.is_empty(), "every label needs a name");
+        anyhow::ensure!(l.color.is_empty() || (l.color.len() == 7 && l.color.starts_with('#') && l.color[1..].chars().all(|c| c.is_ascii_hexdigit())), "label colour {} is not #rrggbb", l.color);
+    }
+    for ms in &mut cfg.milestones {
+        ms.name = ms.name.trim().into();
+        anyhow::ensure!(!ms.name.is_empty(), "every milestone needs a name");
+        anyhow::ensure!(ms.state == "open" || ms.state == "closed", "milestone state is open or closed");
+    }
+    for (what, list) in [("template", cfg.templates.iter().map(|x| &x.name).collect::<Vec<_>>()), ("label", cfg.labels.iter().map(|x| &x.name).collect()), ("milestone", cfg.milestones.iter().map(|x| &x.name).collect())] {
+        let mut seen = std::collections::HashSet::new();
+        for n in list {
+            anyhow::ensure!(seen.insert(n.to_lowercase()), "two {what}s are named {n}");
+        }
+    }
+    cfg.people = clean(std::mem::take(&mut cfg.people));
+    let mut m = load(repo)?;
+    for (kind, from, to) in renames {
+        for i in &mut m.issues {
+            match kind.as_str() {
+                "label" => {
+                    for l in &mut i.labels {
+                        if l == from {
+                            *l = to.clone();
+                        }
+                    }
+                    i.labels = clean(std::mem::take(&mut i.labels));
+                }
+                "milestone" if i.milestone == *from => i.milestone = to.clone(),
+                _ => {}
+            }
+        }
+    }
+    m.issue_config = cfg.clone();
+    save(repo, &m, "issue settings")?;
+    Ok(cfg)
 }
 
 pub fn proposal_new(repo: &Repo, title: &str, body: &str, base: &str, head: &str) -> Result<Proposal> {
@@ -314,9 +702,14 @@ pub fn sync(repo: &Repo, remote: &str, share: bool) -> Result<String> {
 
 fn merge_meta(ours: &mut Meta, theirs: Meta) {
     ours.next_id = ours.next_id.max(theirs.next_id);
+    if ours.issue_config.is_empty() {
+        ours.issue_config = theirs.issue_config.clone();
+    }
     for i in theirs.issues {
-        if !ours.issues.iter().any(|o| o.id == i.id && o.created == i.created) {
-            ours.issues.push(i);
+        match ours.issues.iter_mut().find(|o| o.id == i.id && o.created == i.created) {
+            Some(o) if i.updated > o.updated => *o = i,
+            Some(_) => {}
+            None => ours.issues.push(i),
         }
     }
     for p in theirs.proposals {
@@ -346,5 +739,30 @@ mod layout_tests {
         m.layout.insert("seat:ship/claude".into(), [12.5, -40.0]);
         let back: Meta = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
         assert_eq!(back.layout.get("seat:ship/claude"), Some(&[12.5, -40.0]));
+    }
+
+    #[test]
+    fn old_issues_parse_and_patches_log_changes() {
+        let i: super::Issue = serde_json::from_str(r#"{"id":1,"title":"t","status":"open","author":"a","created":1}"#).unwrap();
+        assert!(i.assignees.is_empty() && i.priority.is_empty() && !i.locked);
+        let mut i = i;
+        let p = super::IssuePatch { status: Some("closed".into()), reason: Some("not_planned".into()), add_labels: vec!["bug".into(), "bug".into()], priority: Some("high".into()), ..Default::default() };
+        let log = super::apply_patch(&mut i, &p).unwrap();
+        assert_eq!(i.status, "closed");
+        assert_eq!(i.reason, "not_planned");
+        assert_eq!(i.labels, vec!["bug".to_string()]);
+        assert_eq!(log.len(), 3);
+        assert!(super::apply_patch(&mut i, &p).unwrap().is_empty(), "same patch twice changes nothing");
+        let bad = super::IssuePatch { priority: Some("whenever".into()), ..Default::default() };
+        assert!(super::apply_patch(&mut i, &bad).is_err());
+        let re = super::IssuePatch { status: Some("open".into()), ..Default::default() };
+        super::apply_patch(&mut i, &re).unwrap();
+        assert!(i.reason.is_empty());
+    }
+
+    #[test]
+    fn issue_config_skips_when_empty() {
+        let m = Meta::default();
+        assert!(!serde_json::to_string(&m).unwrap().contains("issue_config"));
     }
 }

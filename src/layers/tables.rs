@@ -198,9 +198,18 @@ pub(crate) fn apply(
         };
         by_name.entry(key).or_default().push(k);
     }
-    // Pass two: uses, in code files only.
-    for (p, fid, style) in code {
-        let Some(src) = read(p) else { continue };
+    // Pass two: uses, in code files only. A use names a model or a table, so a
+    // file mentioning none of them (case folded) is skipped before the lex.
+    let needles: Vec<String> = by_name.keys().map(|k| k.to_ascii_lowercase()).chain(ids.keys().cloned()).collect();
+    // The lexing is pure per file, so files are scanned in parallel for
+    // (byte, line, table) uses; owners and dedupe are applied in file order after.
+    let uses = crate::index::par_map(code.len(), |ci| {
+        let (p, _, style) = code[ci];
+        let mut out: Vec<(usize, i64, usize)> = Vec::new();
+        let Some(src) = read(p) else { return out };
+        if !needles.iter().any(|n| src.to_ascii_lowercase().contains(n.as_str())) {
+            return out;
+        }
         let mask = lex(&src, style);
         let imp = imports(&src, style);
         let in_imp = |b: usize| imp.iter().any(|&(s, e)| s <= b && b < e);
@@ -241,12 +250,18 @@ pub(crate) fn apply(
                     continue;
                 }
             };
-            let by = owner(p, b, fid);
+            out.push((b, (1 + nl.partition_point(|&i| i < b)) as i64, t));
+        }
+        out
+    });
+    for ((p, fid, _), found) in code.iter().zip(uses) {
+        for (b, line, t) in found {
+            let by = owner(p, b, *fid);
             if definers.contains(&(by, t)) {
                 continue;
             }
             if linked.insert((by, t, "USES_TABLE")) {
-                edges.push(Edge::new(by as i64, t as i64, "USES_TABLE", (1 + nl.partition_point(|&i| i < b)) as f64).with("inferred"));
+                edges.push(Edge::new(by as i64, t as i64, "USES_TABLE", line as f64).with("inferred"));
             }
         }
     }

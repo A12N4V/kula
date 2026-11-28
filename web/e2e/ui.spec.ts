@@ -1,5 +1,4 @@
 import { expect, test as base, type Page } from "@playwright/test";
-import { GLOBAL_SHORTCUTS } from "../src/nav";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
@@ -140,6 +139,35 @@ test.describe("shell", () => {
     expect(big).toBe(0);
   });
 
+  test("editor tabs keep several views open and close any of them", async ({ page }) => {
+    await open(page);
+    const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
+    // Going somewhere changes the current tab, as a browser does; + opens a new one on the overview.
+    await page.evaluate(() => { location.hash = "#graph"; });
+    await expect(tabs).toHaveText(["Graph"]);
+    await page.getByRole("button", { name: "New tab" }).click();
+    await expect(tabs).toHaveText(["Graph", "Overview"]);
+    await expect(page).toHaveURL(/#overview\b/);
+    await tabs.first().click();
+    await expect(page).toHaveURL(/#graph\b/);
+    await tabs.nth(1).click();
+    await page.evaluate(() => { location.hash = "#graph"; });
+    await expect(tabs).toHaveText(["Graph", "Overview"]);
+    await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("button", { name: "Close Overview" }).click();
+    await expect(tabs).toHaveText(["Graph"]);
+    await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: "Close Graph" })).toHaveCount(0);
+    // Double click on a project file opens it in a tab of its own.
+    if (!(await page.locator(".pt-row").first().isVisible())) await page.keyboard.press("Alt+1");
+    const row = page.locator(".pt-row.file").first();
+    const name = ((await row.getAttribute("title")) ?? "").split("/").pop()!;
+    await row.dblclick();
+    await expect(tabs).toHaveCount(2);
+    await expect(tabs.nth(1)).toHaveText(name);
+    await expect(page.getByTestId("file-editor")).toBeVisible();
+  });
+
   test("⌘K opens the palette and it can reindex", async ({ page }) => {
     await open(page);
     await page.keyboard.press("ControlOrMeta+k");
@@ -235,24 +263,6 @@ test.describe("overview + code panel", () => {
     await page.keyboard.press("Escape");
     await expect(panel).toHaveCount(0);
   });
-
-  test("inspector rows open source with the definition lit; locate still moves the graph", async ({ page }) => {
-    await open(page, "graph");
-    await page.keyboard.press("ControlOrMeta+k");
-    await page.keyboard.type("parseHash");
-    await page.locator(".palette").getByText("parseHash", { exact: true }).first().click();
-    const row = page.locator(".inspector .sym:has(.kind-badge[title=\"function\"])").first();
-    await expect(row).toBeVisible({ timeout: 10_000 });
-    await row.click();
-    const panel = page.locator(".code-panel");
-    await expect(panel).toBeVisible();
-    await expect(panel.locator(".cp-code > div.lit").first()).toBeVisible();
-    await page.screenshot({ path: "test-results/code-panel.png" });
-    const before = page.url();
-    await row.hover();
-    await row.locator(".sym-locate").click();
-    await expect.poll(() => page.url()).not.toBe(before);
-  });
 });
 
 test.describe("graph chrome", () => {
@@ -264,11 +274,12 @@ test.describe("graph chrome", () => {
   test("languages settings: indexed languages and install buttons for detected-but-missing ones", async ({ page }) => {
     await open(page);
     await page.keyboard.press(",");
-    await page.locator("#set-langs").scrollIntoViewIfNeeded();
+    await page.locator("[data-section=langs]").click();
+    await page.getByTestId("settings-langs").scrollIntoViewIfNeeded();
     // The two-column table: every language here, with the count of files.
-    await expect(page.locator("#set-langs")).toBeVisible();
+    await expect(page.getByTestId("settings-langs")).toBeVisible();
     // The two-column table: every language here, with the count of files.
-    await expect(page.locator("#set-langs")).toBeVisible();
+    await expect(page.getByTestId("settings-langs")).toBeVisible();
     const indexed = page.locator(".settings .set-row", { hasText: "Indexed" });
     await expect(indexed).toBeVisible({ timeout: 20_000 });
     // This checkout contains files in languages without packs installed, so at
@@ -282,66 +293,9 @@ test.describe("graph chrome", () => {
     const body = await page.locator(".settings").textContent();
     expect(body).not.toContain("—");
   });
-
-  test("while the graph loads it is blocked by the recursive mark and a progress bar", async ({ page }) => {
-    test.setTimeout(60_000);
-    await page.route("**/api/graph*", async (r) => { await new Promise((f) => setTimeout(f, 3000)); await r.continue(); });
-    await open(page, "graph");
-    const gl = page.locator(".graph-loader");
-    await expect(gl).toBeVisible();
-    // It covers the graph area under the 44px header, opaque, and takes the pointer.
-    const [box, wrap] = await Promise.all([gl.boundingBox(), page.locator(".graph-wrap").boundingBox()]);
-    // Sub-pixel drift between the two measurements is float noise, not layout.
-    const near = (a: number, b: number) => Math.abs(a - b) < 0.5;
-    expect(box && wrap && near(box.x, wrap.x) && near(box.y, wrap.y + 44) && near(box.width, wrap.width) && near(box.height, wrap.height - 44)).toBe(true);
-    expect(await gl.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(0, 0, 0)");
-    // The ASCII field animates: the zoom falls into the centre, frame after frame.
-    const ascii = gl.locator(".ascii-mark");
-    await expect.poll(() => ascii.evaluate((el) => el.textContent?.trim().length ?? 0)).toBeGreaterThan(100);
-    // Counted in the page, so a slow test runner can't miss frames: three distinct ones within six seconds.
-    const distinct = await ascii.evaluate((el) => new Promise<number>((done) => {
-      const seen = new Set([el.textContent]);
-      const mo = new MutationObserver(() => { seen.add(el.textContent); if (seen.size >= 3) { mo.disconnect(); done(seen.size); } });
-      mo.observe(el, { childList: true, characterData: true, subtree: true });
-      setTimeout(() => { mo.disconnect(); done(seen.size); }, 4000);
-    }));
-    expect(distinct).toBeGreaterThan(2);
-    // Progress is a real number that only moves forward.
-    const bar = page.getByRole("progressbar", { name: "Loading the graph" });
-    const a = Number(await bar.getAttribute("aria-valuenow"));
-    await page.screenshot({ path: "test-results/graph-loading.png" });
-await expect.poll(async () => ((await bar.count()) ? Number(await bar.getAttribute("aria-valuenow", { timeout: 1000 }).catch(() => "101")) : 101), { timeout: 20_000 }).toBeGreaterThan(a);
-    await expect(gl).toHaveCount(0, { timeout: 30_000 });
-    await expect(page.locator(".graph-wrap canvas").first()).toBeVisible({ timeout: 30_000 });
-  });
-
-  test("under reduced motion the loader holds still", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.route("**/api/graph*", async (r) => { await new Promise((f) => setTimeout(f, 1200)); await r.continue(); });
-    await open(page, "graph");
-    const ascii = page.locator(".graph-loader .ascii-mark");
-    await expect.poll(() => ascii.evaluate((el) => el.textContent?.trim().length ?? 0)).toBeGreaterThan(100);
-    const a = await ascii.evaluate((el) => el.textContent);
-    await page.waitForTimeout(500);
-    expect(await ascii.evaluate((el) => el.textContent)).toBe(a);
-  });
 });
 
 test.describe("agent checks, for people", () => {
-  test("the inspector says what to know before editing a symbol", async ({ page }) => {
-    await open(page, "graph");
-    await page.keyboard.press("ControlOrMeta+k");
-    await page.keyboard.type("parseHash");
-    await page.locator(".palette").getByText("parseHash", { exact: true }).first().click();
-    await page.getByRole("button", { name: "Pre-edit" }).click();
-    const ac = page.locator(".inspector .ac");
-    await expect(ac.locator(".risk")).toHaveText(/low|medium|high/);
-    await expect(ac.locator(".ac-advice li").first()).toBeVisible();
-    await expect(ac).not.toContainText("verify_edit"); // advice is phrased for people here
-    // Rows come from structured refs: every one names a real path.
-    for (const p of await ac.locator(".ac-ref .p").allTextContents()) expect(p).toMatch(/^[\w./-]+(:\d+)?$/);
-  });
-
   test("verify reads the working tree against HEAD", async ({ request }) => {
     // The session token is whatever the server stamps into the page, not a constant.
     const html = await (await request.get("/")).text();
@@ -386,7 +340,7 @@ test.describe("animation", () => {
   });
 
   test("panels resize by their edge and remember it", async ({ page }) => {
-    await open(page, "issues");
+    await open(page, "notes");
     const list = page.locator(".split > .list");
     const grip = page.locator(".split > .grip");
     const w0 = (await list.boundingBox())!.width;
@@ -415,7 +369,7 @@ test.describe("animation", () => {
 // Every view at every size: nothing scrolls sideways and the view's own content shows.
 const VIEWS: [string, string][] = [
   ["overview", ".ov-title h1"], ["graph", ".graph-wrap"], ["git", "[data-testid=w-tree]"],
-  ["issues", ".list-head"], ["notes", ".list-head"], ["console", ".console"],
+  ["issues", "[data-testid=issue-desk]"], ["notes", ".list-head"], ["console", ".console"],
   ["agents", ".hub-top"], ["query", ".kq-text"], ["flows", ".qv-head"], ["impact", ".qv-head"], ["slice", ".qv-head"],
 ];
 for (const [view, sel] of VIEWS) {
@@ -438,31 +392,14 @@ test.describe("phone chrome", () => {
   test("@responsive settings with the languages table fits without sideways scroll", async ({ page }, info) => {
     await open(page);
     await page.keyboard.press(",");
-    await page.locator("#set-langs").scrollIntoViewIfNeeded();
+    await page.locator("[data-section=langs]").click();
+    await page.getByTestId("settings-langs").scrollIntoViewIfNeeded();
     const over = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
     expect(over).toBeLessThanOrEqual(0);
     const clipped = await page.evaluate(() => [...document.querySelectorAll(".settings .set-row button, .settings .set-row .mono")]
       .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > window.innerWidth + 1; }).map((el) => el.textContent?.trim().slice(0, 30)));
     expect(clipped).toEqual([]);
     await page.screenshot({ path: `test-results/${info.project.name}-settings.png` });
-  });
-
-  test("@mobile logo and sidebar toggle on the left, search and settings on the right; the sidebar is a drawer", async ({ page }, info) => {
-    test.skip(info.project.name !== "phone", "phones only");
-    await open(page);
-    const bar = page.locator(".topbar");
-    for (const sel of [".crumb-repo", ".chip"]) await expect(bar.locator(sel)).toBeHidden();
-    const x = async (sel: string) => (await bar.locator(sel).first().boundingBox())!.x;
-    expect(await x(".brand")).toBeLessThan(await x(".rail-toggle"));
-    expect(await x(".rail-toggle")).toBeLessThan(120);
-    expect(await x(".top-search")).toBeGreaterThan(page.viewportSize()!.width - 100);
-    const rail = page.locator("nav.rail");
-    await expect(rail).toBeHidden();
-    await page.getByRole("button", { name: "Show sidebar" }).click();
-    await expect(rail).toBeVisible();
-    await rail.getByRole("button", { name: "Git" }).click();
-    await expect(rail).toBeHidden();
-    await expect(page.getByTestId("w-tree")).toBeVisible();
   });
 });
 
@@ -531,84 +468,6 @@ async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: numbe
   }, pick);
 }
 
-test.describe("graph interactions", () => {
-  test("right-click a symbol for its actions; Escape closes them", async ({ page }) => {
-    await open(page, "graph");
-    const { a } = await nodeAt(page, "edge");
-    const menu = page.getByRole("menu");
-    await expect(async () => {
-      await page.mouse.click(a.x, a.y, { button: "right" });
-      await expect(menu).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 15_000 });
-    await expect(menu.locator(".nm-head")).toContainText(a.label);
-    for (const item of ["Inspect", "Impact", "Path from selection", "Copy location", "Copy RDF IRI"]) await expect(menu.getByRole("menuitem", { name: item })).toBeVisible();
-    // It opens where the pointer is.
-    const m = (await menu.boundingBox())!;
-    expect(Math.abs(m.x - a.x)).toBeLessThan(260);
-    expect(Math.abs(m.y - a.y)).toBeLessThan(320);
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("Escape");
-    await expect(menu).toHaveCount(0);
-    await page.mouse.click(a.x, a.y, { button: "right" });
-    await menu.getByRole("menuitem", { name: "Impact" }).click();
-    await expect(page.locator(".inspector .tabs .on")).toHaveText(/Impact/);
-    // Slice from here cuts that symbol out on the Slice mode.
-    // The inspector reflows the canvas, so find the node again on a fresh graph.
-    await open(page, "graph");
-    const { a: b } = await nodeAt(page, "edge");
-    await expect(async () => {
-      await page.mouse.click(b.x, b.y, { button: "right" });
-      await menu.getByRole("menuitem", { name: "Slice from here" }).click({ timeout: 1000 });
-    }).toPass({ timeout: 15_000 });
-    await expect(page).toHaveURL(/#slice\b/);
-    await expect(page.getByTestId("w-slice")).toContainText(/\d+ nodes/);
-  });
-
-  test("shift-click traces the shortest path from the selected symbol", async ({ page }) => {
-    await open(page, "graph");
-    const { a, b } = await nodeAt(page, "edge");
-    await page.mouse.click(a.x, a.y);
-    await expect(page.locator(".inspector h2")).toHaveText(a.label);
-    // The camera flies to the selection: let the flight start and land (a short
-    // sleep alone loses under load), then wait until the other end stops moving.
-    await page.waitForTimeout(600);
-    const to = await expect.poll(async () => {
-      const read = () => page.evaluate((id) => {
-        const { sigma } = (window as any).__kula;
-        const p = sigma.framedGraphToViewport(sigma.getNodeDisplayData(id));
-        return `${Math.round(p.x)},${Math.round(p.y)}`;
-      }, b.id);
-      const first = await read();
-      await page.waitForTimeout(200);
-      return (await read()) === first ? first : "moving";
-    });
-    expect(to).not.toBe("moving");
-    // The flight centres a; bring both ends into frame so b is on screen.
-    await page.evaluate(([ia, ib]) => {
-      const { sigma } = (window as any).__kula;
-      const p = sigma.getNodeDisplayData(ia), q = sigma.getNodeDisplayData(ib);
-      sigma.getCamera().setState({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
-    }, [a.id, b.id]);
-    await page.waitForTimeout(150);
-    const spot = await page.evaluate((id) => {
-      const { sigma } = (window as any).__kula;
-      const box = sigma.getContainer().getBoundingClientRect();
-      const p = sigma.framedGraphToViewport(sigma.getNodeDisplayData(id));
-      return { x: box.left + p.x, y: box.top + p.y };
-    }, b.id);
-    await page.keyboard.down("Shift");
-    await page.mouse.click(spot.x, spot.y);
-    await page.keyboard.up("Shift");
-    const chip = page.locator(".trace-chip");
-    await expect(chip).toBeVisible();
-    await expect(chip).toContainText("1 hop");
-    await expect(chip.locator(".tc-step button")).toHaveText([a.label, b.label]);
-    await page.screenshot({ path: "test-results/graph-path.png" });
-    await page.keyboard.press("Escape");
-    await expect(chip).toHaveCount(0);
-  });
-});
-
 test.describe("query", () => {
   test("SPARQL over the graph: examples, results that open the map, errors, export", async ({ page }) => {
     await open(page, "query");
@@ -655,43 +514,6 @@ test.describe("query", () => {
     await expect(page.getByTestId("w-inbound")).toBeVisible();
     await expect(page.getByTestId("slice-side")).toContainText("Crossings");
     await page.screenshot({ path: "test-results/query-slice.png" });
-  });
-});
-
-test.describe("fences on the graph", () => {
-  test.use({ baseURL: ({ fx }, use) => use(fx) });
-
-
-  test("the fences overlay lights locked code and the task's scope, and previews any workflow", async ({ page }) => {
-    test.setTimeout(60_000);
-    await open(page, "graph");
-    await expect(page.getByRole("button", { name: /Fences/ })).toBeVisible();
-    await page.keyboard.press("f");
-    const key = page.locator(".fence-key");
-    await expect(key).toBeVisible({ timeout: 45_000 });
-    await expect(key.locator(".guard-tag.locked")).toBeVisible();
-    await expect(key).toContainText("harden the MCP server");
-    await expect(key.getByRole("button", { name: "Fences of" })).toContainText("Now");
-    await expect(page.locator(".hud-btn", { hasText: "Fences" })).toHaveAttribute("aria-pressed", "true");
-    await page.screenshot({ path: "test-results/graph-fences.png" });
-    await key.getByRole("button", { name: "Fences of" }).click();
-    await key.getByRole("option", { name: "refactor workflow" }).click();
-    await expect(key).toContainText("preview");
-    await expect(key.locator(".guard-tag.locked")).toBeVisible();
-    await page.keyboard.press("f");
-    await expect(key).toHaveCount(0);
-  });
-
-  test("a locked symbol says so in the inspector and before editing", async ({ page }) => {
-    await open(page, "graph");
-    await page.keyboard.press("ControlOrMeta+k");
-    await page.keyboard.type("publish");
-    await page.locator(".palette").getByText("publish", { exact: true }).first().click();
-    const insp = page.locator(".inspector");
-    await expect(insp.locator(".insp-guard.locked")).toContainText("atomic index swap");
-    await insp.getByRole("button", { name: "Pre-edit" }).click();
-    await expect(insp.locator(".ac-advice")).toContainText("Do not edit");
-    await expect(insp.locator(".note.mem")).toContainText("Unlink, never truncate");
   });
 });
 
@@ -1127,14 +949,14 @@ test.describe("git board", () => {
     test(`fills ${w}x${h} with every widget and no page scroll`, async ({ page }) => {
       await page.setViewportSize({ width: w, height: h });
       await open(page, "git");
-      const modes = page.getByRole("radiogroup", { name: "Git list" });
-      for (const [m, a] of [["Changes", "tree"], ["History", "hist"], ["Branches", "br"], ["Stashes", "stash"], ["Review", "rev"]]) {
-        await modes.getByRole("radio", { name: new RegExp(`^${m}`) }).click();
+      await expect(page.getByTestId("w-tree")).toBeVisible();
+      await expect(page.getByTestId("w-det")).toBeVisible();
+      const panels = page.getByRole("toolbar", { name: "Options" });
+      for (const [m, a] of [["History", "hist"], ["Branches", "br"], ["Sync", "sync"], ["Stashes", "stash"], ["Issues", "iss"], ["Review", "rev"]]) {
+        const b = panels.getByRole("button", { name: new RegExp(`^${m}`) });
+        if ((await b.getAttribute("aria-pressed")) !== "true") await b.click();
         await expect(page.getByTestId(`w-${a}`)).toBeVisible();
       }
-      await expect(page.getByTestId("w-det")).toBeVisible();
-      await expect(page.getByTestId("w-sync")).toBeVisible();
-      await modes.getByRole("radio", { name: /^Changes/ }).click();
       const over = await page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight);
       expect(over).toBeLessThanOrEqual(0);
     });
@@ -1173,9 +995,7 @@ test.describe("notes autofill", () => {
     await page.keyboard.press("ControlOrMeta+k");
     await page.keyboard.type("context_pack");
     await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
-    await expect(page.locator(".inspector h2")).toHaveText("context_pack");
-    await page.locator(".rail").getByRole("button", { name: "Work" }).click();
-    await page.getByRole("radio", { name: "Notes" }).click();
+    await page.evaluate(() => { location.hash = "#notes"; });
     const target = page.getByLabel("Note target");
     await target.fill("");
     await target.focus();
@@ -1196,16 +1016,6 @@ test.describe("notes autofill", () => {
     await body.press("Enter");
     await expect(body).toHaveValue("see [[resolve_target]]");
   });
-});
-
-test("the inspector's tabs all fit at its default width", async ({ page }) => {
-  await open(page, "graph");
-  await page.keyboard.press("ControlOrMeta+k");
-  await page.keyboard.type("context_pack");
-  await page.locator(".palette").getByText("context_pack", { exact: true }).first().click();
-  const tabs = page.locator(".inspector .tabs");
-  await expect(tabs.getByRole("button")).toHaveCount(6);
-  expect(await tabs.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
 });
 
 test.describe("design system", () => {
@@ -1298,72 +1108,7 @@ test.describe("design system", () => {
   });
 });
 
-test.describe("g1 – graph, inspector and git by keyboard", () => {
-  test("G1.2: hovering a symbol shows a precise card – path:line, degree and churn – after a short delay", async ({ page }) => {
-    await open(page, "graph");
-    const { a } = await nodeAt(page, "edge");
-    await page.mouse.move(a.x + 200, a.y + 200);
-    await page.mouse.move(a.x, a.y, { steps: 4 });
-    const card = page.locator(".hover-card");
-    await expect(card).toBeVisible({ timeout: 1500 });
-    await expect(card.locator(".hc-name")).toHaveText(new RegExp(`^${a.label}(hub)?$`));
-    // path:line – a real location, not a bare path.
-    await expect(card.locator(".hc-path")).toHaveText(/:\d+$/);
-    await expect(card.locator(".hc-stats b.in")).toHaveText(/^\d+$/);
-    await expect(card.locator(".hc-stats b.out")).toHaveText(/^\d+$/);
-    await expect(card.locator(".hc-stats")).toContainText(/commit|commits/);
-    // It does not jump in on the first paint: the card waits a beat.
-    await page.mouse.move(a.x + 200, a.y + 200);
-    await expect(card).toHaveCount(0);
-  });
-
-  test("G1.1: arrows walk between neighbours; the palette jumps and selects; every inspector action is keyboard-reachable", async ({ page }) => {
-    await open(page, "graph");
-    const { a, b } = await nodeAt(page, "edge");
-    await page.mouse.click(a.x, a.y);
-    await expect(page.locator(".inspector h2")).toHaveText(a.label);
-    // Walk out along calls: the selection moves off a to a neighbour.
-    await page.keyboard.press("ArrowRight");
-    await expect(page.locator(".inspector h2")).not.toHaveText(a.label);
-    // Search jumps and selects: the palette's top hit lands on the map.
-    await page.keyboard.press("ControlOrMeta+k");
-    await page.keyboard.type("context_pack");
-    await expect(page.locator(".palette")).toBeVisible();
-    const top = ((await page.locator(".palette .res.on, .palette .res").first().textContent()) ?? "").trim();
-    await page.keyboard.press("Enter");
-    // The selection lands on the top hit – the inspector opens for it.
-    await expect(page.locator(".inspector h2")).not.toBe("");
-    if (/context_pack/.test(top)) await expect(page.locator(".inspector h2")).toHaveText(/context_pack/i);
-    // The reach-for actions are real buttons the keyboard can reach and press.
-    const seen = new Set<string>();
-    let reached = "";
-    for (let i = 0; i < 48 && reached === ""; i++) {
-      await page.keyboard.press("Tab");
-      reached = await page.evaluate(() => {
-        const el = document.activeElement as HTMLElement | null;
-        if (!el || !el.closest(".insp-actions")) return "";
-        return Array.from(el.closest(".insp-actions")!.querySelectorAll("button")).filter((b) => b === document.activeElement || el.contains(b)).map((b) => b.textContent?.trim() ?? "").find((t) => /Impact|Trace|History|Blame|Remember|Fence|Copy/.test(t)) ?? "";
-      });
-      if (reached === "") {
-        const at = await page.evaluate(() => (document.activeElement as HTMLElement | null)?.textContent?.trim() ?? "");
-        if (at) seen.add(at);
-      }
-    }
-    expect(reached, "Tab should land on an inspector action").not.toBe("");
-    if (/Blame/.test(reached)) {
-      await page.keyboard.press("Enter");
-      await expect(page.locator(".insp-blame")).toBeVisible();
-    }
-    // Trace arms from the keyboard too: t, then an arrow, traces the path.
-    await page.keyboard.press("t");
-    await expect(page.locator(".toasts")).toContainText("Trace armed");
-    await page.keyboard.press("ArrowRight");
-    const chip = page.locator(".trace-chip");
-    await expect(chip).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(chip).toHaveCount(0);
-  });
-
+test.describe("g1 – git by keyboard", () => {
   test("G1.1: git staging works from the keyboard – j/k walk, s stage, u unstage – and ⌘↵ commits", async ({ page }, info) => {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
@@ -1381,11 +1126,12 @@ test.describe("g1 – graph, inspector and git by keyboard", () => {
       await row.click(); // then pick ours
       await expect(tree.locator(".w-row.on")).toContainText(name);
       const stagedHead = tree.locator(".w-sec").first();
+      const base = Number(/Staged\s*(\d+)/.exec(await stagedHead.textContent() ?? "")?.[1] ?? 0); // the repo may already have staged work
       await page.keyboard.press("s"); // stage it
-      await expect(stagedHead).toContainText("Staged 1", { timeout: 10_000 });
+      await expect(stagedHead).toContainText(`Staged ${base + 1}`, { timeout: 10_000 });
       await expect(tree.locator(".w-row.on")).toContainText(name);
       await page.keyboard.press("u"); // unstage it again
-      await expect(stagedHead).toContainText("Staged 0", { timeout: 10_000 });
+      await expect(stagedHead).toContainText(`Staged ${base}`, { timeout: 10_000 });
       // ⌘↵ is the commit key: with no message it must do nothing at all.
       const before = await page.evaluate(() => fetch("/api/log?limit=1").then((r) => r.json()).catch(() => null));
       await page.keyboard.press("ControlOrMeta+Enter");
@@ -1416,19 +1162,18 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
     }
   });
 
-  test("N1.2: ? lists every global shortcut and each listed one works", async ({ page }) => {
+  test("N1.2: ? opens Settings on Keybindings, listing every action, and each listed one works", async ({ page }) => {
     await open(page, "git");
     await page.keyboard.press("?");
-    const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+    const sheet = page.getByTestId("settings-keys");
     await expect(sheet).toBeVisible();
-    // The sheet is generated from the same registry the shell acts on – each listed key works.
-    for (const sc of GLOBAL_SHORTCUTS) {
-      await expect(sheet.locator(`.help-row[data-keys="${sc.keys}"]`)).toContainText(sc.label);
-    }
+    // The list is generated from the same registry the shell acts on.
+    const ACTIONS = [["palette", "Command palette"], ["back", "Go back"], ["forward", "Go forward"], ["project", "Toggle Project tree"], ["right", "Toggle option panel"], ["settings", "Open settings"], ["keys", "Open keybindings"], ["console", "Console"], ["agents", "Agents"], ["query", "Ask"], ["extensions", "Extensions"]];
+    for (const [id, label] of ACTIONS) await expect(sheet.locator(`.key-row[data-action="${id}"]`)).toContainText(label);
     await page.keyboard.press("Escape");
     await expect(sheet).toHaveCount(0);
-    // 1 goes to the overview…
-    await page.keyboard.press("1");
+    // ⇧1 goes to the overview…
+    await page.keyboard.press("Shift+Digit1");
     await expect(page).toHaveURL(/#overview\b/);
     // ⌘K opens the palette, Escape closes it…
     await page.keyboard.press("ControlOrMeta+k");
@@ -1460,20 +1205,16 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
     await expect(page.locator("nav.rail").getByRole("button", { name: "Graph" })).toHaveAttribute("aria-current", "page");
     await page.getByRole("radio", { name: "Flows" }).click();
     await expect(page).toHaveURL(/#flows\b/);
-    await page.keyboard.press("1");
-    await page.keyboard.press("3");
+    await page.keyboard.press("Shift+Digit1");
+    await page.keyboard.press("Shift+Digit3");
     await expect(page).toHaveURL(/#flows\b/);
     await page.getByRole("radio", { name: "Graph" }).click();
-    // A context shortcut: f shows the fences in force on the graph.
-    // The fence overlay draws once the graph is up; under load the layout takes a while.
-    await expect(page.locator(".graph-wrap canvas").first()).toBeVisible({ timeout: 30_000 });
-    await page.keyboard.press("f");
-    await expect(page.locator(".graph-overlay.fence-key")).toBeVisible();
-    // The palette's own "Keyboard shortcuts" item opens this sheet.
+    await expect(page.locator("main canvas.ct-canvas")).toBeVisible({ timeout: 30_000 });
+    // The palette's own "Keybindings" item opens Settings on that section.
     await page.keyboard.press("ControlOrMeta+k");
-    await page.keyboard.type(">keyboard shortcuts");
+    await page.keyboard.type(">keybindings");
     await page.locator(".palette .res").first().click();
-    await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+    await expect(page.getByTestId("settings-keys")).toBeVisible();
   });
 
   test("N1.1: recently used commands sort first", async ({ page }) => {
@@ -1612,22 +1353,20 @@ test.describe("isolate from the map", () => {
 });
 
 test.describe("P3.11 · view rail", () => {
-  test("six places; Graph and Work toggle their sub views and remember the last one", async ({ page }) => {
+  test("one entry per view, Issues under Git, shift digits and the stripe", async ({ page }) => {
     await open(page, "overview");
     const names = await page.locator("nav.rail .rail-group:not(.rail-tools) button").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
-    expect(names).toEqual(["Overview", "Git", "Graph", "Work", "Agents", "Console"]);
-    await page.keyboard.press("4");
+    expect(names).toEqual(["Overview", "Graph", "Flows", "Slice", "Ask", "Git", "Proposals", "Notes", "Agents", "Extensions", "Console"]);
+    await page.keyboard.press("Shift+Digit7");
     await expect(page).toHaveURL(/#proposals\b/);
-    await page.getByRole("radio", { name: "Issues" }).click();
-    await expect(page).toHaveURL(/#issues\b/);
-    await page.keyboard.press("1");
-    await page.keyboard.press("4");
-    await expect(page).toHaveURL(/#issues\b/);
-    await expect(page.locator("nav.rail").getByRole("button", { name: "Work" })).toHaveAttribute("aria-current", "page");
-    // Old hashes still land on their sub view, under the right rail entry.
-    await page.goto("/#flows");
-    await expect(page.getByRole("radio", { name: "Flows" })).toHaveAttribute("aria-checked", "true");
-    await expect(page.locator("nav.rail").getByRole("button", { name: "Graph" })).toHaveAttribute("aria-current", "page");
+    await page.keyboard.press("Shift+Digit2");
+    await expect(page).toHaveURL(/#graph\b/);
+    await page.goto("/#issues");
+    await expect(page.locator("nav.rail").getByRole("button", { name: "Git" })).toHaveAttribute("aria-current", "page");
+    await open(page, "git");
+    const panels = page.getByRole("toolbar", { name: "Options" });
+    await panels.getByRole("button", { name: /^Issues/ }).click();
+    await expect(page.getByTestId("w-iss")).toBeVisible();
     await page.keyboard.press("Control+Backquote");
     await expect(page).toHaveURL(/#console\b/);
   });
@@ -1639,6 +1378,8 @@ test.describe("code canvas", () => {
     await open(page, "graph", "canvas");
     const stage = page.locator(".ct-stage canvas");
     await expect(stage).toBeVisible({ timeout: 30_000 });
+    // The canvas's panel opens as a sheet from the options row.
+    await page.getByRole("toolbar", { name: "Options" }).getByRole("button", { name: /^Selected/ }).click();
     const side = page.getByRole("complementary", { name: "Selected" });
     await expect(side.locator(".ct-sub")).toHaveText("Nothing picked");
 
@@ -1666,25 +1407,77 @@ test.describe("code canvas", () => {
     await out.click();
     await expect(side.getByRole("slider", { name: "Calls out strength" })).toBeVisible();
 
-    // Cmd+P jumps by name.
-    await page.keyboard.press("ControlOrMeta+p");
-    const go = page.getByRole("textbox", { name: "Go to" });
-    await expect(go).toBeFocused();
-    await go.fill("config.rs");
-    await expect(page.getByRole("listbox").getByRole("option").first()).toBeVisible();
-    await go.press("Enter");
+    // Cmd+K jumps by name.
+    await page.keyboard.press("ControlOrMeta+k");
+    await expect(page.locator(".palette")).toBeVisible();
+    await page.keyboard.type("config.rs");
+    await expect(page.locator(".palette").getByText(/config\.rs/).first()).toBeVisible();
+    await page.keyboard.press("Enter");
     await expect(side.locator(".ct-sub")).toContainText("config.rs");
 
-    // Escape clears.
+    // Escape clears the pick and closes the sheet.
     await page.keyboard.press("Escape");
+    await expect(side).toHaveCount(0);
+    await page.getByRole("toolbar", { name: "Options" }).getByRole("button", { name: /^Selected/ }).click();
     await expect(side.locator(".ct-sub")).toHaveText("Nothing picked");
 
-    // The layout toggle swaps to the force map and back.
-    const layout = page.getByRole("group", { name: "Layout" });
-    await layout.getByRole("button", { name: "Symbols" }).click();
-    await expect(stage).toHaveCount(0);
-    await layout.getByRole("button", { name: "Canvas" }).click();
-    await expect(stage).toBeVisible();
+    // The canvas is the only layout: no toggle to the force map.
+    await expect(page.getByRole("group", { name: "Layout" })).toHaveCount(0);
     await page.screenshot({ path: "test-results/canvas.png" });
+  });
+});
+
+test.describe("Issue desk", () => {
+  test("open, triage, comment and close an issue; templates come from settings", async ({ page }) => {
+    await open(page, "issues");
+    const desk = page.getByTestId("issue-desk");
+    // Settings live in the Settings dialog: starter templates, then save.
+    await page.keyboard.press(",");
+    await page.locator("[data-section=issues]").click();
+    const set = page.getByTestId("issue-settings");
+    await set.getByRole("button", { name: "Labels", exact: true }).click();
+    const names = await set.getByLabel("Label name").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+    if (!names.includes("desk-e2e")) {
+      await set.getByRole("button", { name: "Label", exact: true }).click();
+      await set.getByLabel("Label name").last().fill("desk-e2e");
+    }
+    await set.getByRole("button", { name: "Templates", exact: true }).click();
+    if (await set.getByRole("button", { name: "Add bug, feature and task" }).count()) await set.getByRole("button", { name: "Add bug, feature and task" }).click();
+    const saveBtn = set.getByRole("button", { name: "Save settings" });
+    if (await saveBtn.isEnabled()) await saveBtn.click();
+    await expect(saveBtn).toBeDisabled();
+    await page.keyboard.press("Escape");
+    const tool = page.getByRole("toolbar", { name: "Options" }).getByRole("button", { name: /^Issues/ });
+    if ((await tool.getAttribute("aria-pressed")) !== "true") await tool.click();
+    const side = page.getByTestId("issue-filters");
+    // New from the Bug template: title prefix, labels and priority carry over.
+    await side.getByRole("button", { name: "New issue", exact: true }).click();
+    await page.getByTestId("issue-templates").getByRole("button", { name: /^Bug/ }).click();
+    const title = `bug: desk ${Date.now()}`;
+    await desk.getByLabel("Title").fill(title);
+    await desk.getByRole("button", { name: "Open issue" }).click();
+    const row = desk.locator(".id-row", { hasText: title });
+    await expect(row).toBeVisible();
+    await expect(row.locator(".id-prio")).toHaveText("high");
+    // Detail: add a label, comment, then close as not planned.
+    const pane = desk.locator(".id-pane");
+    await pane.locator(".id-f", { hasText: "Labels" }).locator("input").fill("desk-e2e");
+    await pane.locator(".id-f", { hasText: "Labels" }).locator("input").press("Enter");
+    await expect(row.locator(".id-label", { hasText: "desk-e2e" })).toBeVisible();
+    await pane.getByLabel("Comment", { exact: true }).fill("seen it");
+    await pane.getByRole("button", { name: "Comment", exact: true }).click();
+    await expect(pane.locator(".id-comment", { hasText: "seen it" })).toBeVisible();
+    await pane.getByLabel("Close reason").selectOption("not_planned");
+    await pane.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(row).toHaveCount(0);
+    await tool.click();
+    await side.getByRole("button", { name: /^Closed/ }).click();
+    await expect(desk.locator(".id-row", { hasText: title })).toBeVisible();
+    await expect(pane.locator(".tag", { hasText: "not planned" })).toBeVisible();
+  });
+
+  test("Overview carries the desk", async ({ page }) => {
+    await open(page, "overview");
+    await expect(page.getByTestId("ov-issues").getByTestId("issue-desk")).toBeVisible();
   });
 });

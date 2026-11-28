@@ -4,7 +4,6 @@
 import { useEffect, useState } from "react";
 import { api, type Peer, type Slice as S } from "../../api";
 import { useCode } from "../../CodePanel";
-import { ModeToggle } from "../../modes";
 import { Docked } from "../../studio/Dock";
 import { Icon, Kind } from "../../ui";
 import { groupBy, IB, Seg, splitPath, useSaved, WEmpty, Widget, type Nav } from "./parts";
@@ -59,7 +58,6 @@ export default function Slice({ go, version, target }: Nav) {
   return (
     <div className="qv" data-testid="query-slice">
       <header className="qv-head">
-        <ModeToggle />
         <form className="qv-pick" onSubmit={(e) => { e.preventDefault(); run(); }}>
           <Icon.isolate />
           <input className="input qv-pick-in" value={text} onChange={(e) => setText(e.target.value)} placeholder="Symbols, paths or globs" aria-label="Slice selectors" />

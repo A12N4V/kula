@@ -27,21 +27,13 @@
 .ov-title .muted { flex: none; }
 .card-head { flex-wrap: wrap; row-gap: 6px; }
 .card-head .seg { flex-wrap: wrap; }
-@media (max-width: 760px) {
-  .ag-memory .card-head .seg { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); }
-  .ag-memory .card-head .seg button { padding-inline: 4px; white-space: nowrap; }
-}
 
 /* ================================================================ integration pass (team/ux) */
 /* Hit targets on phones: every small button at least 40px wide. */
-@media (max-width: 760px) { .btn.sm { min-width: 40px; } }
 /* Long refs (remote branches, tags) shrink inside history rows instead of
    pushing past the viewport; the tag ellipsises, the row keeps its lane. */
 .refs { min-width: 0; max-width: 100%; }
 .refs .tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
 /* ================================================================ integration: phone floors that must win the cascade (imported last) */
-@media (max-width: 760px) {
-  .stat-table th, .stat-table td { padding-top: 11px; padding-bottom: 11px; }
-}
 .verify-head { min-height: 40px; }

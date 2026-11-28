@@ -1,23 +1,25 @@
 import { CodeProvider } from "./CodePanel";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, relTime, type Branch, type Meta, type Node, type RepoInfo } from "./api";
 import { Icon, Kind, Logo, useToast } from "./ui";
 import type { ContrastMode, Go, Target, View } from "./nav";
-import { CONTEXT_SHORTCUTS, GLOBAL_SHORTCUTS, canonView, fuzzyScore } from "./nav";
+import { canonView, fuzzyScore } from "./nav";
 // Heavy views load on demand: the first paint ships the shell + Overview only,
 // the rest arrive as their own chunks (prefetched on idle, see PREFETCH below).
 const GraphView = lazy(() => import("./views/GraphView"));
 const Agents = lazy(() => import("./views/Agents"));
 const Query = lazy(() => import("./views/query/Ask"));
 const GitView = lazy(() => import("./views/git"));
+import IssueDesk from "./views/IssueDesk";
 const Console = lazy(() => import("./views/GitViews").then((m) => ({ default: m.Console })));
 const Flows = lazy(() => import("./views/query/Flows"));
 const Slice = lazy(() => import("./views/query/Slice"));
-const Issues = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Issues })));
+const Extensions = lazy(() => import("./views/Extensions"));
 const Notes = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Notes })));
 const Proposals = lazy(() => import("./views/MetaViews").then((m) => ({ default: m.Proposals })));
 import Overview from "./views/Overview";
-import SettingsPanel from "./SettingsPanel";
+import SettingsPanel, { type SettingsSection } from "./SettingsPanel";
+import { actionFor, chordOf, strong } from "./keys";
 
 // Warm the lazy chunks once the shell is up, so the first click on a rail item
 // does not wait on the network (local disk, but still a visible flash).
@@ -42,11 +44,11 @@ import { settings } from "./settings";
 import Opening from "./Opening";
 import ProjectTree from "./studio/ProjectTree";
 import { DockProvider, useDockHost } from "./studio/Dock";
-import { ModeCtx, type Modes } from "./modes";
-import Structure from "./studio/Structure";
 import FileEditor from "./studio/FileEditor";
 import BranchMenu from "./studio/BranchMenu";
-import EditorTabs, { tabKey, type Tab } from "./studio/EditorTabs";
+import { RibbonOptions, RibbonTabs, newTabId, tabKey, type Tab } from "./studio/Ribbon";
+import { useSections, useSymbols, type RailItem } from "./studio/RailIndex";
+import { visit } from "./near";
 
 // Tool window widths survive a reload; storage may be blocked, so every touch is guarded.
 const store = {
@@ -81,50 +83,26 @@ const VIEWS: ViewDef[] = [
   { id: "proposals", label: "Proposals", short: "Proposals", icon: Icon.pr, key: "" },
   { id: "issues", label: "Issues", short: "Issues", icon: Icon.issues, key: "" },
   { id: "notes", label: "Notes", short: "Notes", icon: Icon.notes, key: "" },
-  { id: "agents", label: "Agents", short: "Agents", icon: Icon.agents, key: "5" },
+  { id: "agents", label: "Agents", short: "Agents", icon: Icon.harmonograph, key: "5" },
+  { id: "extensions", label: "Extensions", short: "Extensions", icon: Icon.plug, key: "6" },
   { id: "console", label: "Console", short: "Console", icon: Icon.console, key: "0" },
 ];
 const vdef = (id: View) => VIEWS.find((x) => x.id === id)!;
 
-/** The rail: five places. Graph and Work hold sub views behind a toggle and remember the last one;
- *  `also` views (Ask) light the entry without a toggle of their own. */
+/** The rail: one entry per view, in groups. No sub views, no toggles. */
 type RailEntry = { id: string; label: string; icon: () => React.ReactElement; key: string; views: View[]; also?: View[]; inline?: boolean };
+const one = (id: View, key: string): RailEntry => { const d = vdef(id); return { id, label: d.label, icon: d.icon, key, views: [id] }; };
 const RAIL: RailEntry[][] = [
-  [
-    { id: "overview", label: "Overview", icon: Icon.home, key: "1", views: ["overview"] },
-    { id: "git", label: "Git", icon: Icon.branches, key: "2", views: ["git"] },
-    { id: "map", label: "Graph", icon: Icon.graph, key: "3", views: ["graph", "flows", "slice", "query"], inline: true },
-    { id: "work", label: "Work", icon: Icon.issues, key: "4", views: ["proposals", "issues", "notes"] },
-    { id: "agents", label: "Agents", icon: Icon.agents, key: "5", views: ["agents"] },
-  ],
+  [one("overview", "1"), one("graph", "2"), one("flows", "3"), one("slice", "4"), one("query", "5")],
+  [{ ...one("git", "6"), also: ["issues"] }, one("proposals", "7"), one("notes", "8")],
+  [one("agents", "9"), one("extensions", "")],
   // Pinned to the foot of the stripe, the way an IDE keeps Terminal there.
-  [{ id: "console", label: "Console", icon: Icon.console, key: "0", views: ["console"] }],
+  [one("console", "0")],
 ];
 const RAIL_FLAT = RAIL.flat();
-const railOf = (v: View) => RAIL_FLAT.find((r) => r.views.includes(v) || r.also?.includes(v))!;
-const lastSub = (r: RailEntry): View => {
-  const s = store.str(`kula.rail.${r.id}`, r.views[0]) as View;
-  return r.views.includes(s) ? s : r.views[0];
-};
+const railOf = (v: View, cur?: string) => RAIL_FLAT.find((r) => r.id === cur && r.views.includes(v)) ?? RAIL_FLAT.find((r) => r.views.includes(v) || r.also?.includes(v))!;
 
 /** The toggle over a grouped view: Map, Flows and Slice, or Proposals, Issues and Notes. */
-function SubToggle({ view, go, badge }: { view: View; go: (v: View) => void; badge: Partial<Record<View, number>> }) {
-  const r = railOf(view);
-  if (!r || r.views.length < 2 || r.inline) return null;
-  return (
-    <div className="subtoggle" role="radiogroup" aria-label={r.label}>
-      {r.views.map((v) => {
-        const d = vdef(v);
-        return (
-          <button key={v} role="radio" aria-checked={v === view} aria-label={d.label} className={v === view ? "on" : ""} onClick={() => go(v)} title={d.label}>
-            <d.icon /><span>{d.short}</span>{!!badge[v] && <span className="badge">{badge[v]}</span>}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 type Contrast = { base: string; head: string; mode?: ContrastMode } | null;
 
 /** URL ⇄ state: #overview · #graph/<id>/<tab> · #graph/contrast/<base>/<head> · #issues/<id> … */
@@ -147,14 +125,18 @@ export default function App() {
   const [target, setTarget] = useState<Target>(initial.target);
   const [contrast, setContrast] = useState<Contrast>(initial.contrast);
   const [focus, setFocus] = useState<number | null>(initial.focus);
+  // what is focused becomes a place note and memory composers autofill from
+  useEffect(() => {
+    if (focus == null) return;
+    api.symbol(focus).then(({ node: n }) => { if (n.kind !== "package") visit({ path: n.path, name: n.kind === "file" ? undefined : n.name, kind: n.kind, id: n.id }); }).catch(() => {});
+  }, [focus]);
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [changes, setChanges] = useState(0);
   const [palette, setPalette] = useState(false);
-  const [help, setHelp] = useState(false);
   const [version, setVersion] = useState(0);
   const [indexing, setIndexing] = useState(false);
-  const [prefs, setPrefs] = useState(false);
+  const [prefs, setPrefs] = useState<SettingsSection | null>(null);
   // The server's last error: when set, the shell shows it with a retry instead of a blank page.
   const [serverError, setServerError] = useState<string | null>(null);
   // The opening plays once per session (or on demand with ?opening), never under reduced motion.
@@ -216,40 +198,48 @@ export default function App() {
   // Phones: the sidebar is a drawer, summoned from the top bar.
   const [rail, setRail] = useState(false);
 
-  // Editor tabs hold opened files only; views live on the rail. Files stay out of the URL.
-  const [tabs, setTabs] = useState<Tab[]>([]);
+  // Editor tabs hold views and files side by side; view tabs are remembered, files stay out of the URL.
+  const [tabs, setTabs] = useState<Tab[]>(() => {
+    try {
+      const vs = JSON.parse(localStorage.getItem("kula.tabs") ?? "[]") as string[];
+      return vs.filter((v) => VIEWS.some((x) => x.id === v)).map((v) => ({ kind: "view", id: newTabId(), view: v }));
+    } catch { return []; }
+  });
+  useEffect(() => { store.set("kula.tabs", JSON.stringify(tabs.flatMap((t) => (t.kind === "view" ? [t.view] : [])))); }, [tabs]);
   const [file, setFile] = useState<{ path: string; line?: number } | null>(null);
   const [curLine, setCurLine] = useState<number | undefined>();
   const [left, setLeft] = useState(() => store.flag("kula.studio.left", window.innerWidth >= 1440));
-  const [right, setRight] = useState(() => store.flag("kula.studio.right", false));
+  // the sheet: a view's panel opened from the options row, over the centre pane
+  const [right, setRight] = useState(false);
   const [lw, setLw] = useState(() => store.get("kula.studio.lw", 260));
-  const [rw, setRw] = useState(() => store.get("kula.studio.rw", 260));
-  useEffect(() => { store.set("kula.studio.left", left ? "1" : "0"); store.set("kula.studio.right", right ? "1" : "0"); }, [left, right]);
-  // a view that docks its own panel takes the right sidebar; hiding it there is remembered apart
-  const dock = useDockHost();
-  const [dockHide, setDockHide] = useState(() => store.flag("kula.studio.dock", false));
-  useEffect(() => { store.set("kula.studio.dock", dockHide ? "1" : "0"); }, [dockHide]);
-  const docked = !!dock.label;
-  const showRight = docked ? !dockHide : right;
+  useEffect(() => { store.set("kula.studio.left", left ? "1" : "0"); }, [left]);
+  const [pick, setPick] = useState<string | undefined>();
+  const dock = useDockHost(pick, right, (id) => { if (id == null) setRight(false); else { setPick(id); setRight(true); } });
+  const dockLabel = dock.panels.find((p) => p.id === dock.shown)?.label;
   const toggleRight = useRef(() => {});
-  toggleRight.current = () => (docked ? setDockHide((h) => !h) : setRight((r) => !r));
-  useEffect(() => { store.set("kula.studio.lw", String(lw)); store.set("kula.studio.rw", String(rw)); }, [lw, rw]);
-  const showView = useCallback((_v: View) => { setFile(null); }, []);
+  toggleRight.current = () => setRight((r) => !r);
+  useEffect(() => { store.set("kula.studio.lw", String(lw)); }, [lw]);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  // The option sheet belongs to its view, so it closes only when the view changes.
+  const showView = useCallback((v: View) => { setFile(null); if (v !== viewRef.current) setRight(false); }, []);
   const openFile = useCallback((path: string, line?: number) => {
-    setFile({ path, line }); setCurLine(line);
+    setFile({ path, line }); setCurLine(line); setRight(false);
     setTabs((ts) => (ts.some((t) => t.kind === "file" && t.path === path)
       ? ts.map((t) => (t.kind === "file" && t.path === path ? { ...t, line } : t))
       : [...ts, { kind: "file", path, line }]));
     setRail(false);
   }, []);
 
+  const [railId, setRailId] = useState("overview");
+  const railRef = useRef(railId);
   const go: Go = useCallback((to, t = {}) => {
     const v = canonView(to);
     showView(v);
     setView(v);
     setTarget(t);
-    const r = railOf(v);
-    if (r && r.views.length > 1 && r.views.includes(v)) store.set(`kula.rail.${r.id}`, v);
+    const r = railOf(v, railRef.current);
+    railRef.current = r.id; setRailId(r.id);
     if (v === "graph") {
       setContrast(t.contrast ?? null);
       if (t.symbol) setFocus(t.symbol);
@@ -257,10 +247,29 @@ export default function App() {
     }
   }, [showView]);
 
-  const activeKey = file ? `f:${file.path}` : `v:${view}`;
+  // Tabs act like a browser: going somewhere changes the current tab, unless another tab already shows it.
+  const [cur, setCur] = useState("");
+  const curRef = useRef(cur); curRef.current = cur;
+  const tabsRef = useRef(tabs); tabsRef.current = tabs;
+  const activeKey = file ? `f:${file.path}` : `v:${cur}`;
+  useEffect(() => {
+    const ts = tabsRef.current;
+    const c = ts.find((t) => t.kind === "view" && t.id === curRef.current);
+    if (c?.kind === "view" && c.view === view) return;
+    const hit = ts.find((t) => t.kind === "view" && t.view === view);
+    if (hit?.kind === "view") { setCur(hit.id); return; }
+    if (c) { setTabs(ts.map((t) => (t === c ? { ...c, view } : t))); return; }
+    const id = newTabId();
+    setTabs([...ts, { kind: "view", id, view }]); setCur(id);
+  }, [view]);
   const pickTab = (t: Tab) => {
-    if (t.kind === "file") { setFile({ path: t.path, line: t.line }); setCurLine(t.line); }
-    else go(t.view as View);
+    if (t.kind === "file") { setFile({ path: t.path, line: t.line }); setCurLine(t.line); setRight(false); }
+    else { curRef.current = t.id; setCur(t.id); go(t.view as View); }
+  };
+  const newTab = () => {
+    const id = newTabId();
+    setTabs((ts) => [...ts, { kind: "view", id, view: "overview" }]);
+    curRef.current = id; setCur(id); go("overview");
   };
   const closeTab = (t: Tab) => {
     const k = tabKey(t);
@@ -271,44 +280,55 @@ export default function App() {
     const next = rest[Math.min(i, rest.length - 1)];
     if (!next) { setFile(null); return; }
     if (next.kind === "file") { setFile({ path: next.path, line: next.line }); setCurLine(next.line); }
-    else { setFile(null); setView(next.view as View); setTarget({}); }
+    else { setFile(null); curRef.current = next.id; setCur(next.id); setView(next.view as View); setTarget({}); }
   };
   const tabLabel = (t: Tab) => {
     if (t.kind === "file") return { name: t.path.slice(t.path.lastIndexOf("/") + 1), icon: <Icon.file />, title: t.path };
     const v = VIEWS.find((x) => x.id === t.view)!;
-    return { name: v.label, icon: <v.icon />, title: `${v.label}  ${v.key}` };
+    return { name: v.label, icon: <v.icon />, title: v.label };
   };
 
-  const lastShift = useRef(0);
+  const lastShift = useRef(-1e9);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Shift twice: Search Everywhere.
       if (e.key === "Shift" && !e.repeat) {
         const now = performance.now();
-        if (now - lastShift.current < 350) { lastShift.current = 0; setPalette(true); } else lastShift.current = now;
+        if (now - lastShift.current < 350) { lastShift.current = -1e9; setPalette(true); } else lastShift.current = now;
         return;
       }
-      lastShift.current = 0;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
-      // Tool windows by number, as in the IDE: ⌥1 Project, ⌥7 Structure.
-      if (e.altKey && !e.metaKey && !e.ctrlKey && (e.code === "Digit1" || e.code === "Digit7")) {
+      lastShift.current = -1e9;
+      const el = e.target as HTMLElement;
+      const typing = /INPUT|TEXTAREA|SELECT/.test(el.tagName) || el.isContentEditable || !!el.closest?.(".cm-editor, .monaco-editor");
+      if (el.closest?.("[data-capture-keys]")) return;
+      const chord = chordOf(e);
+      const act = chord ? actionFor(chord) : null;
+      if (act && (!typing || (strong(chord) && !(typing && /[←→]/.test(chord))))) {
         e.preventDefault();
-        if (e.code === "Digit1") setLeft((l) => !l); else toggleRight.current();
+        if (act === "palette") setPalette((p) => !p);
+        else if (act === "palette.slash") setPalette(true);
+        else if (act === "project") setLeft((l) => !l);
+        else if (act === "right") toggleRight.current();
+        else if (act === "back") history.back();
+        else if (act === "forward") history.forward();
+        else if (act === "console") go("console");
+        else if (act === "agents") go("agents");
+        else if (act === "query") go("query");
+        else if (act === "extensions") go("extensions");
+        else if (act === "settings") setPrefs((p) => (p ? null : "general"));
+        else if (act === "keys") setPrefs((p) => (p === "keys" ? null : "keys"));
         return;
       }
-      if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) { e.preventDefault(); if (e.key === "ArrowLeft") history.back(); else history.forward(); return; }
-      // ⌃` opens the Console, as an IDE opens its terminal.
-      if (e.ctrlKey && !e.metaKey && e.code === "Backquote") { e.preventDefault(); go("console"); return; }
-      const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-      const r = RAIL_FLAT.find((x) => x.key === e.key);
-      if (r) go(lastSub(r));
-      else if (e.key === "a") go("agents");
-      else if (e.key === "q") go("query");
-      if (e.key === "/") { e.preventDefault(); setPalette(true); }
-      if (e.key === "?") setHelp((h) => !h);
-      if (e.key === ",") setPrefs((p) => !p);
-      if (e.key === "Escape") { setHelp(false); setFocus(null); setRail(false); }
+      // Digits pick the options row; Shift with a digit picks the left rail group.
+      const d = /^Digit([0-9])$/.exec(e.code)?.[1];
+      if (d && e.shiftKey) {
+        const r = RAIL_FLAT.find((x) => x.key === d);
+        if (r) { e.preventDefault(); railRef.current = r.id; go(r.views[0]); }
+        return;
+      }
+      if (d) { const it = d === "0" ? null : stripeRef.current[+d - 1]; if (it) { e.preventDefault(); it.run(); } return; }
+      if (e.key === "Escape") { setFocus(null); setRail(false); setRight(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -324,30 +344,47 @@ export default function App() {
   const openIssues = meta?.issues.filter((i) => i.status === "open").length ?? 0;
   const openPrs = meta?.proposals.filter((p) => p.status === "open").length ?? 0;
   const badge: Partial<Record<View, number>> = { git: changes, issues: openIssues, proposals: openPrs };
-  const modeRail = railOf(view);
-  const modes: Modes | null = modeRail?.inline
-    ? { label: modeRail.label, view, go: (v) => go(v), items: modeRail.views.map((v) => ({ ...vdef(v), badge: badge[v] })) }
-    : null;
+  const sections = useSections(`${view}:${file ? "f" : "v"}`, !!file);
+  const symbols = useSymbols(file?.path ?? null, curLine, (n) => file && openFile(file.path, n));
+  // The options row lists the view's panels; a click opens one as a sheet, a second click closes it.
+  const panels: RailItem[] = file ? [] : dock.panels.map((p) => {
+    const I = p.icon ?? Icon.structure;
+    const on = dock.shown === p.id;
+    return { id: p.id, label: p.label, icon: <I />, badge: p.badge, info: p.info, on, run: () => { if (on) setRight(false); else { setPick(p.id); setRight(true); } } };
+  });
+  const track = file ? symbols.items : sections.items;
+  const stripe = panels.length ? panels : track;
+  const stripeRef = useRef(stripe); stripeRef.current = stripe;
+  // The sheet hangs under its option, kept inside the centre pane.
+  const editorRef = useRef<HTMLElement>(null);
+  const [sheetX, setSheetX] = useState(8);
+  useLayoutEffect(() => {
+    const ed = editorRef.current, id = dock.shown;
+    const b = id && document.querySelector<HTMLElement>(`.rb-opts [data-id="${CSS.escape(id)}"]`);
+    if (!ed || !b) return;
+    const e = ed.getBoundingClientRect(), r = b.getBoundingClientRect();
+    setSheetX(Math.max(8, Math.min(r.left - e.left, e.width - Math.min(380, e.width - 16) - 8)));
+  }, [dock.shown, left, lw]);
   const nav = { onChanged, openSymbol: (id: number) => go("graph", { symbol: id }), version, go, target };
   const current = VIEWS.find((v) => v.id === view)!;
 
   return (
     <CodeProvider onLocate={(id) => go("graph", { symbol: id })} onEdit={(t) => openFile(t.path, t.line)}>
     <DockProvider api={dock.api}>
-    <div className={`shell studio ${rail ? "rail-open" : ""} ${left ? "tw-l" : ""} ${showRight ? "tw-r" : ""}`}>
-      <header className="topbar">
-        <button className="brand" onClick={() => go("overview")} aria-label="Overview"><Logo /><span>kula</span></button>
+    <div className={`shell studio ${rail ? "rail-open" : ""} ${left ? "tw-l" : ""}`}>
+      <header className="topbar ribbon">
+        <button className="brand" onClick={() => go("overview")} aria-label="Overview" title="Overview"><Logo /></button>
         <button className="rail-toggle" onClick={() => setRail((r) => !r)} aria-label={rail ? "Hide sidebar" : "Show sidebar"} aria-expanded={rail} aria-controls="rail"><Icon.sidebar /></button>
-        <button className="crumb-repo tb-widget" onClick={() => go("overview")} title="Overview"><b>{repo?.name ?? "…"}</b></button>
-        <BranchMenu branch={repo?.branch} onChanged={onChanged} openGit={() => go("git")} />
-        <span className="spacer" />
+        <RibbonTabs tabs={tabs} active={activeKey} label={tabLabel} onPick={pickTab} onClose={closeTab} onNew={newTab} />
         <div className="top-actions">
+          <button className="crumb-repo tb-widget" onClick={() => go("overview")} title="Overview"><b>{repo?.name ?? "…"}</b></button>
+          <BranchMenu branch={repo?.branch} onChanged={onChanged} openGit={() => go("git")} />
           <button className="btn sm ghost icon-only" aria-label="Back" title="Back  ⌥←" onClick={() => history.back()}><Icon.back /></button>
           <button className="btn sm ghost top-search" aria-label="Search" title="Search everywhere  ⇧⇧  ⌘K" onClick={() => setPalette(true)}><Icon.search /><kbd>⌘K</kbd></button>
-          <button className={`btn sm ghost icon-only${showRight ? " on" : ""}`} aria-label={`${showRight ? "Hide" : "Show"} ${dock.label ?? "Structure"}`} title={`${dock.label ?? "Structure"}  ⌥7`} aria-pressed={showRight} onClick={() => toggleRight.current()}><Icon.panelRight /></button>
-          <button className="btn sm ghost icon-only" aria-label="Settings" title="Settings  ," onClick={() => setPrefs(true)}><Icon.gear /></button>
+          <button className="btn sm ghost icon-only" aria-label="Settings" title="Settings  ," onClick={() => setPrefs("general")}><Icon.gear /></button>
         </div>
       </header>
+      <RibbonOptions items={stripe} name={panels.length ? "Options" : file ? "Symbols" : "Sections"} pressable={panels.length > 0} />
 
       <nav className="rail" id="rail" aria-label="Views">
         <div className="rail-group rail-tools">
@@ -358,13 +395,13 @@ export default function App() {
         {RAIL.map((g, gi) => (
           <div key={gi} className="rail-group">
             {g.map((r) => {
-              const here = r.views.includes(view) || !!r.also?.includes(view);
+              const here = railOf(view, railId).id === r.id;
               const n = r.views.reduce((s, v) => s + (badge[v] ?? 0), 0);
               return (
-                <button key={r.id} className={!file && here ? "on" : ""} onClick={() => { go(here ? view : lastSub(r)); setRail(false); }} data-tip={`${r.label}  ${r.key}`} aria-label={r.label} aria-current={here ? "page" : undefined}>
+                <button key={r.id} className={!file && here ? "on" : ""} onClick={() => { railRef.current = r.id; go(here ? view : r.views[0]); setRail(false); }} data-tip={r.key ? `${r.label}  ⇧${r.key}` : r.label} aria-label={r.label} aria-current={here ? "page" : undefined}>
                   <r.icon />
                   <span className="rail-label">{r.label}</span>
-                  {!!n && <span className="badge">{n}</span>}
+                  {!!n && <span className="badge">{n > 99 ? "99+" : n}</span>}
                 </button>
               );
             })}
@@ -376,13 +413,13 @@ export default function App() {
       {left && (
         <aside className="tw tw-left" style={{ width: lw }} aria-label="Project">
           <div className="tw-head"><span>Project</span><span className="spacer" /><button className="tw-hide" aria-label="Hide Project" title="Hide  ⌥1" onClick={() => setLeft(false)}><Icon.close /></button></div>
-          <ProjectTree repo={repo?.name ?? "…"} version={version} active={file?.path ?? dock.active} onOpen={(p) => { if (file || !dock.reveal(p)) openFile(p); }} />
+          <ProjectTree repo={repo?.name ?? "…"} version={version} active={file?.path ?? dock.active} onOpen={(p) => { if (file || !dock.reveal(p)) openFile(p); }} onEdit={(p) => openFile(p)} />
           <Resizer side="left" width={lw} onWidth={setLw} />
         </aside>
       )}
 
-      <section className="editor">
-        {tabs.length > 0 && <EditorTabs tabs={[{ kind: "view", view }, ...tabs]} active={activeKey} label={tabLabel} onPick={pickTab} onClose={closeTab} />}
+      <section className="editor" ref={editorRef}>
+        {dock.shown && <aside className="rb-sheet" style={{ left: sheetX }} aria-label={dockLabel}><div className="tw-dock" ref={dock.setSlot} /></aside>}
         <main className="main">
           {/* Full panel only when nothing has loaded; once data is in, a failed poll
               is a slim banner so the view (and its state) survives the blip. */}
@@ -408,39 +445,29 @@ export default function App() {
             <FileEditor path={file.path} line={file.line} onLine={setCurLine} />
           ) : (
           /* Keyed so each view change plays a short enter transition. */
-          <ModeCtx.Provider value={modes}>
-          <div className={`view-enter ${railOf(view)?.views.length > 1 && !railOf(view)?.inline ? "has-sub" : ""}`} key={view + (contrast ? ":c" : "")}>
-            <SubToggle view={view} go={(v) => go(v)} badge={badge} />
+          <div className="view-enter" key={view + (contrast ? ":c" : "")}>
             <div className="view-body">
             <Suspense fallback={<div className="view-loading" aria-live="polite">loading…</div>}>
-              {view === "overview" && <Overview repo={repo} version={version} go={go} />}
-              {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs(true)} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
+              {view === "overview" && <Overview repo={repo} version={version} go={go} onChanged={onChanged} openSymbol={nav.openSymbol} />}
+              {view === "graph" && <GraphView focus={focus} setFocus={setFocus} onChanged={onChanged} version={version} openSettings={() => setPrefs("graph")} contrast={contrast} setContrast={setContrast} go={go} fences={target.fences} />}
               {view === "git" && <GitView {...nav} />}
+              {view === "issues" && <IssueDesk version={version} onChanged={onChanged} openSymbol={nav.openSymbol} target={target.issue ?? null} />}
               {view === "proposals" && <Proposals {...nav} />}
-              {view === "issues" && <Issues {...nav} />}
               {view === "notes" && <Notes {...nav} />}
               {view === "flows" && <Flows {...nav} />}
               {view === "agents" && <Agents {...nav} />}
               {view === "query" && <Query {...nav} />}
               {view === "slice" && <Slice {...nav} />}
+              {view === "extensions" && <Extensions version={version} onChanged={onChanged} />}
               {view === "console" && <Console {...nav} />}
             </Suspense>
             </div>
           </div>
-          </ModeCtx.Provider>
           )}
           </>
           )}
         </main>
       </section>
-
-      {showRight && (
-        <aside className="tw tw-right" style={{ width: rw }} aria-label={dock.label ?? "Structure"}>
-          <Resizer side="right" width={rw} onWidth={setRw} />
-          <div className="tw-head"><span>{dock.label ?? "Structure"}</span><span className="spacer" /><button className="tw-hide" aria-label={`Hide ${dock.label ?? "Structure"}`} title="Hide  ⌥7" onClick={() => (docked ? setDockHide(true) : setRight(false))}><Icon.close /></button></div>
-          {docked ? <div className="tw-dock" ref={dock.setSlot} /> : <Structure path={file?.path ?? null} line={curLine} onJump={(n) => file && openFile(file.path, n)} />}
-        </aside>
-      )}
 
       <footer className="statusbar">
         <span>kula {repo?.version}</span>
@@ -456,12 +483,10 @@ export default function App() {
         <span>{changes ? `${changes} changed` : "clean"}</span>
         <span className="mono">{repo?.head?.slice(0, 8)}</span>
         <span>{repo?.user}</span>
-        <button className="sb-help" onClick={() => setHelp(true)}><kbd>?</kbd> shortcuts</button>
       </footer>
 
-      {palette && <Palette meta={meta} onClose={() => setPalette(false)} go={(v, t) => { setPalette(false); go(v, t); }} onReindex={() => { setPalette(false); reindex(); }} onSettings={() => { setPalette(false); setPrefs(true); }} />}
-      {help && <Help onClose={() => setHelp(false)} />}
-      {prefs && <SettingsPanel onClose={() => setPrefs(false)} />}
+      {palette && <Palette meta={meta} onClose={() => setPalette(false)} go={(v, t) => { setPalette(false); go(v, t); }} onReindex={() => { setPalette(false); reindex(); }} onSettings={() => { setPalette(false); setPrefs("general"); }} onKeys={() => { setPalette(false); setPrefs("keys"); }} />}
+      {prefs && <SettingsPanel section={prefs} setSection={setPrefs} onClose={() => setPrefs(null)} />}
       {opening && <Opening repo={repo} onDone={endOpening} />}
     </div>
     </DockProvider>
@@ -482,7 +507,7 @@ function pushRecent(key: string) {
 
 /** One box for everything: symbols, issues, proposals, branches, views and actions.
  *  Fuzzy matching, recently used commands first, every result shows its shortcut. */
-function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | null; onClose: () => void; go: Go; onReindex: () => void; onSettings: () => void }) {
+function Palette({ meta, onClose, go, onReindex, onSettings, onKeys }: { meta: Meta | null; onClose: () => void; go: Go; onReindex: () => void; onSettings: () => void; onKeys: () => void }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Node[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -526,7 +551,7 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
       { key: "fences", label: "Graph: show fences", hint: "f", run: () => go("graph", { fences: "" }) },
       ...(["explore", "fix", "refactor", "tests", "docs", "autoresearch"]).map((w) => ({ key: `fences:${w}`, label: `Graph: preview the ${w} workflow's fences`, hint: "", run: () => go("graph", { fences: w }) })),
       { key: "settings", label: "Open settings", hint: ",", run: onSettings },
-      { key: "help", label: "Keyboard shortcuts", hint: "?", run: () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" })); } },
+      { key: "help", label: "Keybindings", hint: "?", run: onKeys },
       ...(["directory", "cluster", "kind", "churn"] as const).map((c) => ({ key: `color:${c}`, label: `Colour graph by ${c}`, hint: "", run: () => { settings.set({ colorBy: c }); go("graph"); } })),
       ...(["dark", "light", "system"] as const).map((t) => ({ key: `theme:${t}`, label: `Theme: ${t}`, hint: "", run: () => { settings.set({ theme: t }); onClose(); } })),
     ].filter((c) => score(c.label) >= 0).forEach((c) => items.push({ key: c.key, text: c.label, group: "Commands", run: c.run, el: <><span className="pal-ico" style={{ color: "var(--accent)" }}><Icon.arrow /></span><span>{c.label}</span><span className="p">{c.hint && <kbd>{c.hint}</kbd>}</span></> }));
@@ -568,20 +593,3 @@ function Palette({ meta, onClose, go, onReindex, onSettings }: { meta: Meta | nu
   );
 }
 
-function Help({ onClose }: { onClose: () => void }) {
-  // One registry, one sheet: the list cannot drift from what the shell does.
-  return (
-    <div className="scrim" onMouseDown={onClose}>
-      <div className="palette help" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Keyboard shortcuts">
-        <div className="help-head"><Logo /><h2>Keyboard shortcuts</h2><span className="spacer" /><button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button></div>
-        <div className="help-grid" data-testid="help-grid">
-          {GLOBAL_SHORTCUTS.map((k) => (<div key={k.keys} className="help-row" data-keys={k.keys}><kbd>{k.keys}</kbd><span>{k.label}</span></div>))}
-          <div className="help-sep">Views</div>
-          {RAIL_FLAT.map((v) => (<div key={v.id} className="help-row" data-keys={v.key}><kbd>{v.key}</kbd><span>{v.label}</span></div>))}
-          <div className="help-sep">In context</div>
-          {CONTEXT_SHORTCUTS.map((k) => (<div key={k.keys} className="help-row" data-keys={k.keys}><kbd>{k.keys}</kbd><span>{k.label}</span></div>))}
-        </div>
-      </div>
-    </div>
-  );
-}

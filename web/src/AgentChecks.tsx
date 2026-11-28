@@ -3,10 +3,8 @@
 // read from its structured *_refs.
 
 import { useEffect, useState } from "react";
-import { api, type AgentRef, type PreEdit, type Verify } from "./api";
+import { api, type AgentRef, type Verify } from "./api";
 import { useCode } from "./CodePanel";
-import { StatTable } from "./ui";
-import { GuardTag } from "./views/Agents";
 
 /** One located symbol; the location opens in the code panel. */
 function Row({ r, note, tone }: { r: { name: string; path: string; line?: number }; note?: string; tone?: "bad" | "warn" }) {
@@ -30,48 +28,6 @@ function List({ title, refs, note, tone, empty, max = 12 }: {
       {refs.slice(0, max).map((r) => <Row key={`${r.path}:${r.line}:${r.name}:${r.detail ?? ""}`} r={r} note={note?.(r)} tone={tone} />)}
       {refs.length > max && <div className="muted ac-empty">and {refs.length - max} more</div>}
     </>
-  );
-}
-
-/** Inspector tab: everything to know before changing this symbol. */
-export function PreEditPanel({ id }: { id: number }) {
-  const [p, setP] = useState<PreEdit | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { setP(null); setErr(null); api.preEdit(id).then(setP).catch((e) => setErr(e.message)); }, [id]);
-  if (err) return <div className="muted ac-empty">{err}</div>;
-  if (!p) return <div className="muted ac-empty">Reading callers, tests and history…</div>;
-  return (
-    <div className="ac">
-      <StatTable rows={[
-        { label: "Risk", value: <b className={`risk ${p.risk}`}>{p.risk}</b> },
-        { label: "Dependents", value: p.dependents },
-        { label: "Tests reach it", value: p.test_refs.length, tone: p.test_refs.length ? "" : "review" },
-      ]} />
-      {p.guard.level !== "open" && (
-        <div className={`insp-guard ${p.guard.level}`}><GuardTag level={p.guard.level} /><span>{p.guard.reason}</span><span className="muted mono">{p.guard.rule}</span></div>
-      )}
-      <ol className="ac-advice">{p.advice.map((a) => a.replace(/call verify_edit to see/, "the Graph check in Changes shows")).map((a) => <li key={a}>{a}</li>)}</ol>
-      <List title="Direct callers" refs={p.direct_caller_refs} />
-      <List title="Tests that reach it" refs={p.test_refs} empty="None through the call graph." tone={p.test_refs.length ? undefined : "warn"} />
-      {p.co_changes.length > 0 && (
-        <>
-          <div className="section-title">Changes together with <span className="count">{p.co_changes.length}</span></div>
-          {p.co_changes.map(([f, n]) => <Row key={f} r={{ name: f.split("/").pop() ?? f, path: f }} note={`${n} shared commit${n === 1 ? "" : "s"}`} />)}
-        </>
-      )}
-      {p.memories.length > 0 && (
-        <>
-          <div className="section-title">Memories <span className="count">{p.memories.length}</span></div>
-          {p.memories.map((m) => (
-            <div key={m.id} className={`note mem ${m.stale ? "stale" : ""}`}>
-              <span className={`tag ${m.stale ? "yellow" : "green"}`}>{m.stale ? "stale" : "fresh"}</span> {m.body}
-              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{m.via} · {m.author}</div>
-            </div>
-          ))}
-        </>
-      )}
-      {p.notes.length > 0 && (<><div className="section-title">Notes</div>{p.notes.map((n) => <div key={n} className="note">{n}</div>)}</>)}
-    </div>
   );
 }
 

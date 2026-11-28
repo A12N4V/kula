@@ -127,14 +127,5 @@
 
 /* ---------- narrow */
 @media (max-width: 1100px) { .qv-seg button svg + span { display: none; } }
-@media (max-width: 760px) {
-  .qv { position: static; }
-  .qv-head { height: auto; flex-wrap: wrap; padding: 8px; }
-  .qv-pick { flex: 1 1 100%; }
-  .qv-main { grid-template-columns: minmax(0, 1fr); }
-  .qv-main > .grip { display: none; }
-  .qv-main > .widget, .qv-col > .widget { height: 420px; flex: none; }
-  .kq-table td { max-width: 220px; }
-}
 .qv-hot { max-width: 520px; width: 100%; margin: 48px auto; }
 .qv-hot .kq-ex { border-color: var(--line); border-radius: var(--r-md); margin-top: 6px; }

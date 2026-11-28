@@ -456,11 +456,12 @@ async fn overview(State(s): State<AppState>) -> ApiResult {
             .find(|d| branches.iter().any(|b| !b.remote && b.name == **d))
             .map(|d| d.to_string())
             .unwrap_or_else(|| r.branch());
+        let counts = r.ahead_behind_all(&default);
         let mut local: Vec<Value> = branches
             .iter()
             .filter(|b| !b.remote)
             .map(|b| {
-                let (ahead, behind) = r.ahead_behind(&default, &b.name);
+                let (ahead, behind) = counts.get(&b.name).copied().unwrap_or((0, 0));
                 json!({ "name": b.name, "current": b.current, "time": b.time, "subject": b.subject, "ahead": ahead, "behind": behind, "upstream": b.upstream, "track": b.track })
             })
             .collect();
@@ -1243,6 +1244,31 @@ async fn meta_action(State(s): State<AppState>, Path((kind, action)): Path<(Stri
     .await
 }
 
+/// The issue desk: full drafts, bulk patches, comment edits, deletes and settings.
+async fn issues_action(State(s): State<AppState>, Path(action): Path<String>, Json(b): Json<Value>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        let ids: Vec<u64> = serde_json::from_value(b.get("ids").cloned().unwrap_or(json!([])))?;
+        let v = match action.as_str() {
+            "create" => json!(meta::issue_create(r, serde_json::from_value(b)?)?),
+            "patch" => json!(meta::issue_patch(r, &ids, &serde_json::from_value(b.get("patch").cloned().unwrap_or(json!({})))?)?),
+            "comment" => {
+                let id = b["id"].as_u64().ok_or_else(|| anyhow!("no id"))?;
+                let idx = b["index"].as_u64().ok_or_else(|| anyhow!("no index"))? as usize;
+                json!(meta::issue_comment_edit(r, id, idx, b["body"].as_str())?)
+            }
+            "delete" => json!({ "deleted": meta::issue_delete(r, &ids)? }),
+            "config" => {
+                let renames: Vec<(String, String, String)> = serde_json::from_value(b.get("renames").cloned().unwrap_or(json!([])))?;
+                json!(meta::issue_config_save(r, serde_json::from_value(b.get("config").cloned().unwrap_or(json!({})))?, &renames)?)
+            }
+            _ => return Err(anyhow!("unknown issues/{action}")),
+        };
+        Ok(v)
+    })
+    .await
+}
+
 // A1: fence-path verdict endpoint – read-only. The Fences tab asks what one
 // path would get for the task's fences and for each agent's (a team member
 // may sit under a different workflow), without starting anything.
@@ -1401,6 +1427,17 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/git/status", get(git_status))
         .route("/api/git/log", get(git_log))
         .route("/api/git/branches", get(git_branches))
+        .route("/api/git/overview", get(git_overview))
+        .route("/api/store", get(store_summary))
+        .route("/api/store/status", get(store_status))
+        .route("/api/store/log", get(store_log))
+        .route("/api/store/show", get(store_show))
+        .route("/api/store/{action}", post(store_action))
+        .route("/api/extensions/sources", get(ext_sources))
+        .route("/api/extensions/browse", get(ext_browse))
+        .route("/api/extensions/installed", get(ext_installed))
+        .route("/api/extensions/catalog.json", get(ext_export))
+        .route("/api/extensions/{action}", post(ext_action))
         .route("/api/git/diff", get(git_diff))
         .route("/api/git/show/{sha}", get(git_show))
         .route("/api/git/{action}", post(git_action))
@@ -1420,6 +1457,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/kg/export", get(kg_export))
         .route("/api/kg/examples", get(kg_examples))
         .route("/api/meta/{kind}/{action}", post(meta_action))
+        .route("/api/issues/{action}", post(issues_action))
         .fallback(static_file)
         .layer(middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
@@ -1534,3 +1572,126 @@ async fn k2_mcp_sync(State(s): State<AppState>, Json(a): Json<McpSyncReq>) -> Ap
 }
 
 // K2 route lines live in `router`, marked with the same K2 comment.
+
+// ------------------------------------------------------------------ worktrees, kulastore, extensions
+
+async fn git_overview(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(serde_json::to_value(s.repo.overview()?)?)).await
+}
+
+async fn store_summary(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(serde_json::to_value(crate::kulastore::summary(&s.repo)?)?)).await
+}
+
+async fn store_status(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!({ "entries": crate::kulastore::status(&s.repo)? }))).await
+}
+
+async fn store_log(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let n = q.get("limit").and_then(|v| v.parse().ok()).unwrap_or(40usize).min(400);
+        Ok(json!({ "log": crate::kulastore::log(&s.repo, n)? }))
+    })
+    .await
+}
+
+async fn store_show(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let path = q.get("path").cloned().unwrap_or_default();
+        if let Some(r) = q.get("rev") {
+            crate::git::validate_rev(r)?;
+        }
+        Ok(json!({ "path": path, "text": crate::kulastore::show(&s.repo, &path, q.get("rev").map(String::as_str))? }))
+    })
+    .await
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct StoreReq {
+    sections: Vec<String>,
+    paths: Vec<String>,
+    message: Option<String>,
+    rev: Option<String>,
+    overwrite: bool,
+    remote: Option<String>,
+}
+
+async fn store_action(State(s): State<AppState>, Path(action): Path<String>, Json(a): Json<StoreReq>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        let remote = a.remote.clone().unwrap_or_else(|| "origin".into());
+        if remote.starts_with('-') || remote.contains(char::is_whitespace) {
+            anyhow::bail!("bad remote");
+        }
+        Ok(match action.as_str() {
+            "snapshot" => serde_json::to_value(crate::kulastore::snapshot(r, &a.sections, a.message.as_deref())?)?,
+            "restore" => {
+                if let Some(rev) = &a.rev {
+                    crate::git::validate_rev(rev)?;
+                }
+                serde_json::to_value(crate::kulastore::restore(r, &a.paths, a.rev.as_deref(), a.overwrite)?)?
+            }
+            "push" => json!({ "out": crate::kulastore::push(r, &remote)? }),
+            "pull" => json!({ "out": crate::kulastore::pull(r, &remote)? }),
+            _ => anyhow::bail!("unknown store action {action:?}"),
+        })
+    })
+    .await
+}
+
+async fn ext_sources(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!({ "sources": crate::extensions::sources(&s.repo) }))).await
+}
+
+async fn ext_browse(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    blocking(move || {
+        let g = |k: &str| q.get(k).map(String::as_str);
+        let page = crate::extensions::browse(&s.repo, g("source").unwrap_or("store"), g("q").unwrap_or(""), g("kind").filter(|k| !k.is_empty()), g("cursor").filter(|c| !c.is_empty()), g("refresh") == Some("1"))?;
+        Ok(serde_json::to_value(page)?)
+    })
+    .await
+}
+
+async fn ext_installed(State(s): State<AppState>) -> ApiResult {
+    blocking(move || Ok(json!({ "installed": crate::extensions::installed(&s.repo) }))).await
+}
+
+async fn ext_export(State(s): State<AppState>) -> ApiResult {
+    blocking(move || crate::extensions::export_catalog(&s.repo)).await
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ExtReq {
+    entry: Option<crate::extensions::Entry>,
+    draft: Option<crate::extensions::Draft>,
+    kind: String,
+    name: String,
+    spec: String,
+    label: Option<String>,
+    id: String,
+    overwrite: bool,
+}
+
+async fn ext_action(State(s): State<AppState>, Path(action): Path<String>, Json(a): Json<ExtReq>) -> ApiResult {
+    blocking(move || {
+        let r = &s.repo;
+        Ok(match action.as_str() {
+            "install" => serde_json::to_value(crate::extensions::install(r, a.entry.as_ref().ok_or_else(|| anyhow!("entry missing"))?, a.overwrite)?)?,
+            "uninstall" => json!({ "removed": crate::extensions::uninstall(r, &a.kind, &a.name)? }),
+            "publish" => serde_json::to_value(crate::extensions::publish(r, a.draft.as_ref().ok_or_else(|| anyhow!("draft missing"))?)?)?,
+            "unpublish" => {
+                crate::extensions::unpublish(r, &a.kind, &a.name)?;
+                json!({ "ok": true })
+            }
+            "add-source" => serde_json::to_value(crate::extensions::add_source(r, &a.spec, a.label.as_deref())?)?,
+            "remove-source" => {
+                crate::extensions::remove_source(r, &a.id)?;
+                json!({ "ok": true })
+            }
+            _ => anyhow::bail!("unknown extensions action {action:?}"),
+        })
+    })
+    .await
+}

@@ -1,30 +1,25 @@
-// The Git view. One list at a time on the left (toggled in the header), the
-// shared Detail on the right, sync and output docked in the shell's sidebar.
+// The Git view. Changes on the left, the shared Detail on the right; history,
+// branches, sync and the rest dock in the shell's sidebar.
 // Every list writes the same selection; Detail reads it.
 import { useEffect, useRef, useState } from "react";
-import { api, isConflict, type Branch, type FileStatus, type GitOp, type Proposal } from "../../api";
+import { api, isConflict, type Branch, type FileStatus, type GitOp, type Issue, type Proposal } from "../../api";
 import type { Go, Target } from "../../nav";
 import { Grip, listWidth } from "../../resize";
-import { Docked } from "../../studio/Dock";
-import { useToast } from "../../ui";
+import { Docked, useDockOpen } from "../../studio/Dock";
+import { Icon, useToast } from "../../ui";
+import { Worktrees } from "./Worktrees";
 import { Branches } from "./Branches";
 import { Changes } from "./Changes";
 import { Detail } from "./Detail";
-import { Header, MODES, type Mode } from "./Header";
 import { History } from "./History";
 import { track, type Sel } from "./parts";
+import { Issues } from "./Issues";
 import { Review } from "./Review";
 import { Side, type Out } from "./Side";
 import { Conflicts, Stashes } from "./Stashes";
 import "./git-view.css";
 
 type Props = { onChanged: () => void; openSymbol: (id: number) => void; version: number; go?: Go; target?: Target };
-
-const MODE_KEY = "kula.git.mode";
-const savedMode = (): Mode => {
-  try { const m = localStorage.getItem(MODE_KEY); if (MODES.some((x) => x.id === m)) return m as Mode; } catch {}
-  return "changes";
-};
 
 export default function GitView({ onChanged, openSymbol, version, go, target }: Props) {
   const toast = useToast();
@@ -36,13 +31,13 @@ export default function GitView({ onChanged, openSymbol, version, go, target }: 
   const [tags, setTags] = useState<string[]>([]);
   const [stashes, setStashes] = useState<string[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [issues, setIssues] = useState<Issue[]>([]);
   const [sel, setSel] = useState<Sel>(target?.sha ? { kind: "commit", sha: target.sha } : null);
   const [filter, setFilter] = useState("");
-  const [mode, setModeState] = useState<Mode>(target?.sha ? "history" : savedMode);
+  const dockOpen = useDockOpen();
   const [busy, setBusy] = useState("");
   const [log, setLog] = useState<Out[]>([]);
 
-  const setMode = (m: Mode) => { setModeState(m); try { localStorage.setItem(MODE_KEY, m); } catch {} };
   const refresh = () => setTick((t) => t + 1);
   const seeded = useRef(!!target?.sha);
   useEffect(() => {
@@ -57,9 +52,9 @@ export default function GitView({ onChanged, openSymbol, version, go, target }: 
       }
     }).catch(() => {});
     api.branches().then((b) => { setBranches(b.branches); setTags(b.tags ?? []); setStashes(b.stashes); }).catch(() => {});
-    api.meta().then((m) => setProposals(m.proposals.filter((p) => p.status === "open"))).catch(() => {});
+    api.meta().then((m) => { setProposals(m.proposals.filter((p) => p.status === "open")); setIssues(m.issues.filter((i) => i.status === "open")); }).catch(() => {});
   }, [version, tick]);
-  useEffect(() => { if (target?.sha) { setSel({ kind: "commit", sha: target.sha }); setModeState("history"); } }, [target?.sha]);
+  useEffect(() => { if (target?.sha) { setSel({ kind: "commit", sha: target.sha }); dockOpen("git-history"); } }, [target?.sha]);
 
   /** Run a git action, toast, then refresh every list. */
   const run = async (action: string, body: Record<string, unknown> = {}, ok?: string) => {
@@ -86,33 +81,42 @@ export default function GitView({ onChanged, openSymbol, version, go, target }: 
     .then((r) => { refresh(); onChanged(); return { text: r.stdout + r.stderr }; })
     .catch((e) => ({ text: e.message as string, err: true })));
 
-  const showHistory = (b: string) => { setFilter(b); setMode("history"); };
+  const showHistory = (b: string) => { setFilter(b); dockOpen("git-history"); };
   const local = branches.filter((b) => !b.remote);
   const current = local.find((b) => b.current);
   const { ahead, behind } = track(current?.track);
   const conflicts = files.filter(isConflict);
 
-  let pane;
-  if (mode === "changes") pane = <Changes files={files} sel={sel} setSel={setSel} run={run} />;
-  else if (mode === "history") pane = <History version={version + tick} filter={filter} setFilter={setFilter} sel={sel} setSel={setSel} />;
-  else if (mode === "branches") pane = <Branches branches={branches} tags={tags} current={branch} run={run} sel={sel} setSel={setSel} showHistory={showHistory} />;
-  else if (mode === "stashes") pane = <Stashes stashes={stashes} run={run} sel={sel} setSel={setSel} />;
-  else pane = <Review proposals={proposals} branches={local} current={branch} sel={sel} setSel={setSel} />;
-
   return (
     <div className="gv" data-testid="git-board">
-      <Header upstream={current?.upstream} ahead={ahead} behind={behind} mode={mode} setMode={setMode}
-        counts={{ changes: files.length, branches: local.length, stashes: stashes.length, review: proposals.length }} busy={busy} />
       <div className="gv-main" style={listWidth("git", 380)}>
         <div className="gv-list">
           {op && <Conflicts op={op} files={conflicts} run={run} sel={sel} setSel={setSel} />}
-          {pane}
+          <Changes files={files} sel={sel} setSel={setSel} run={run} />
         </div>
         <Grip id="git" edge="right" target="prev" min={260} max={720} label="Resize list" />
         <Detail sel={sel} setSel={setSel} files={files} run={run} go={go} openSymbol={openSymbol} current={branch} version={version + tick} />
       </div>
-      <Docked label="Git">
+      <Docked id="git-history" label="History" icon={Icon.history}>
+        <div className="ct ct-side gv-side gv-dock-list"><History version={version + tick} filter={filter} setFilter={setFilter} sel={sel} setSel={setSel} /></div>
+      </Docked>
+      <Docked id="git-branches" label="Branches" icon={Icon.branches} badge={local.length || undefined}>
+        <div className="ct ct-side gv-side gv-dock-list"><Branches branches={branches} tags={tags} current={branch} run={run} sel={sel} setSel={setSel} showHistory={showHistory} /></div>
+      </Docked>
+      <Docked id="git-sync" label="Sync" icon={Icon.refresh} badge={ahead + behind || undefined} info={current?.upstream ? `${ahead} ahead, ${behind} behind` : current?.name}>
         <Side current={current} ahead={ahead} behind={behind} busy={busy} log={log} kula={kula} sync={sync} clear={() => setLog([])} />
+      </Docked>
+      <Docked id="git-worktrees" label="Worktrees" icon={Icon.folder}>
+        <Worktrees version={version + tick} />
+      </Docked>
+      <Docked id="git-stashes" label="Stashes" icon={Icon.doc} badge={stashes.length || undefined}>
+        <div className="ct ct-side gv-side gv-dock-list"><Stashes stashes={stashes} run={run} sel={sel} setSel={setSel} /></div>
+      </Docked>
+      <Docked id="git-issues" label="Issues" icon={Icon.issues} badge={issues.length || undefined}>
+        <div className="ct ct-side gv-side gv-dock-list"><Issues issues={issues} go={go} /></div>
+      </Docked>
+      <Docked id="git-review" label="Review" icon={Icon.pr} badge={proposals.length || undefined}>
+        <div className="ct ct-side gv-side gv-dock-list"><Review proposals={proposals} branches={local} current={branch} sel={sel} setSel={setSel} /></div>
       </Docked>
     </div>
   );

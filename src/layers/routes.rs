@@ -41,11 +41,15 @@ pub(crate) fn apply(
     let mut handler_of: HashMap<usize, usize> = HashMap::new(); // route node id → handler node id
     let mut by_norm_path: Vec<(String, usize)> = Vec::new(); // normalised path → route node id (GET first)
     let mut seen: HashSet<(String, String, String)> = HashSet::new();
-    for (pi, pf) in parsed.iter().enumerate() {
-        let Some(src) = read(&pf.path) else { continue };
+    // the scans are pure text passes, so they run in parallel
+    let found = crate::index::par_map(parsed.len(), |pi| {
+        let pf = &parsed[pi];
+        let src = read(&pf.path).unwrap_or_default();
+        scan(pf.lang, &pf.path, &src).into_iter().map(|r| (1 + src[..r.byte].matches('\n').count() as i64, r)).collect::<Vec<_>>()
+    });
+    for (pi, (pf, hits)) in parsed.iter().zip(found).enumerate() {
         let Some(fid) = file_id.get(&pf.path).copied() else { continue };
-        for r in scan(pf.lang, &pf.path, &src) {
-            let line = 1 + src[..r.byte].matches('\n').count() as i64;
+        for (line, r) in hits {
             let name = route_name(&r.method, &r.path);
             let key = (name.clone(), pf.path.clone(), r.method.clone());
             if !seen.insert(key) {
@@ -84,6 +88,10 @@ pub(crate) fn apply(
         }
     }
     // Pass 2: string-literal HTTP calls matched to routes by normalised path.
+    // A call only links to a route with a handler, so with none there is nothing to find.
+    if handler_of.is_empty() {
+        return;
+    }
     for (pi, pf) in parsed.iter().enumerate() {
         let Some(src) = read(&pf.path) else { continue };
         for (url, byte) in fetch_urls(pf.lang, &src) {

@@ -1,6 +1,6 @@
 // Cross-view navigation: any view can send the user somewhere specific.
 
-export type View = "overview" | "graph" | "git" | "changes" | "history" | "branches" | "proposals" | "issues" | "notes" | "flows" | "agents" | "query" | "impact" | "slice" | "console";
+export type View = "overview" | "graph" | "git" | "changes" | "history" | "branches" | "proposals" | "issues" | "notes" | "flows" | "agents" | "query" | "impact" | "slice" | "console" | "extensions";
 
 export interface Target {
   issue?: number;
@@ -24,40 +24,6 @@ export type ContrastMode = "overlay" | "split" | "report";
 export const canonView = (v: View): View => (v === "changes" || v === "history" || v === "branches" ? "git" : v === "impact" ? "graph" : v);
 
 export type Go = (view: View, target?: Target) => void;
-
-// – Shortcut registry –
-// The one place shortcuts are named, so the ? sheet, the palette footer and the
-// e2e suite all read the same list and cannot drift from what the shell does.
-
-export interface Shortcut { keys: string; label: string }
-
-/** Active in every view; each one is proven working by an e2e test (N1.2). */
-export const GLOBAL_SHORTCUTS: Shortcut[] = [
-  { keys: "⌘K /", label: "Command palette, symbols, #issues, @branches, >commands" },
-  { keys: "⇧⇧", label: "Search everywhere" },
-  { keys: "1 to 5, 0", label: "Go to a view (the rail shows which key)" },
-  { keys: "a q", label: "Agents, Ask" },
-  { keys: "⌃`", label: "Console" },
-  { keys: "⌥1", label: "Project tool window" },
-  { keys: "⌥7", label: "Right pane, or the top bar toggle" },
-  { keys: "?", label: "This sheet" },
-  { keys: ",", label: "Settings" },
-  { keys: "⌥← ⌥→", label: "Back / forward through views" },
-  { keys: "esc", label: "Close palette, sheet, settings or selection" },
-];
-
-/** Shortcuts that belong to a view or an in-place editor. */
-export const CONTEXT_SHORTCUTS: Shortcut[] = [
-  { keys: "f", label: "Graph: show the fences in force" },
-  { keys: "[  ]", label: "Inspector: back / forward through inspected symbols" },
-  { keys: "⇧ click", label: "Graph: trace the path from the selected symbol" },
-  { keys: "right-click", label: "Graph: actions for a symbol" },
-  { keys: "[[", label: "Notes and memories: link a symbol (autofill)" },
-  { keys: "tab", label: "Accept the autofill" },
-  { keys: "⌘↵", label: "Commit (Git) · save (Notes) · run (Ask)" },
-  { keys: "j k s u", label: "Git: walk files, stage, unstage" },
-  { keys: "↑ ↓", label: "Command history (Console)" },
-];
 
 /** Subsequence match with a bonus for runs and for hits after a word break. −1 means no match. */
 export function fuzzyScore(q: string, t: string): number {

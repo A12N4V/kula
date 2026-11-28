@@ -80,15 +80,6 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 
 .settings { position: relative; width: min(var(--size-settings, 380px), 100vw); }
 
-@media (max-width: 760px) {
-  .grip { display: none; }
-  .split { grid-template-columns: 1fr; }
-  .inspector { width: auto; }
-  .graph-wrap.inspecting .zoom { right: 14px; }
-  .contrast-canvas, .split-canvas, .contrast-report { right: 0; bottom: 45%; }
-  .contrast-panel { width: 100%; }
-  .split-canvas { grid-template-columns: 1fr; }
-}
 
 /* chips + autofill */
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 32px; padding: 3px; border: 1px solid var(--line-2); background: var(--bg); min-width: 0; }
@@ -127,34 +118,8 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .set-nav button:hover { color: var(--text); background: var(--bg-2); }
 .set-nav button.on { color: var(--accent); background: var(--bg-2); }
 .settings.dialog .set-body { padding: 4px 22px 20px; }
-@media (max-width: 760px) {
-  .scrim:has(.settings.dialog) { padding-top: 16px; }
-  .settings.dialog { height: calc(100vh - 32px); }
-  .settings.dialog .set-main { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-  .set-nav { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 6px 8px; }
-  .set-nav button { white-space: nowrap; border-left: 0; border-bottom: 2px solid transparent; }
-  .set-nav button.on { border-bottom-color: var(--accent); }
-}
 
 /* N1: phones – every settings control meets the 40px floor. */
-@media (max-width: 760px) {
-  .settings.dialog { width: calc(100vw - 12px); }
-  .settings header { padding: 8px 10px; }
-  .settings .btn.ghost.sm { min-width: 40px; min-height: 40px; justify-content: center; }
-  .set-search { padding: 8px 10px; }
-  .set-search .input { height: 40px; }
-  .set-search .btn { min-width: 40px; min-height: 40px; }
-  .set-nav { gap: 4px; padding: 6px; }
-  .set-nav button { min-height: 40px; padding: 8px 12px; }
-  .set-body { padding: 4px 12px 16px; }
-  .set-row { padding: 9px 0; gap: 10px; }
-  .seg button { min-height: 40px; }
-  .switch { width: 40px; height: 40px; }
-  .switch i { width: 34px; height: 20px; }
-  .switch.on i::after { transform: translateX(14px); }
-  .range { min-height: 40px; }
-  .btn.sm { min-height: 40px; }
-}
 
 /* D1: hover/focus system – decoration shadows go, 1px borders replace them. */
 .settings { box-shadow: none; }
@@ -168,13 +133,5 @@ html[data-resizing="y"] * { cursor: row-resize !important; }
 .settings .range { background: var(--panel-2); border: 1px solid var(--line); }
 .settings .range::-webkit-slider-thumb { background: var(--text-2); }
 .restore-m { display: none; }
-@media (max-width: 760px) {
-  .settings .set-nav { flex-wrap: wrap; overflow-x: hidden; }
-  .settings footer { display: none; }
-  .restore-m { display: inline-flex; }
-}
 
 /* ================================================================ integration: phone hit targets */
-@media (max-width: 760px) {
-  .cpl-row { min-height: 40px; }
-}

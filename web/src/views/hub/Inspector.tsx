@@ -3,7 +3,7 @@
 
 import Picker from "../../studio/Picker";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, type AgentsInfo, type Explain, type FlowMap, type Member, type ResearchRun, type Suggestion, type Team } from "../../api";
+import { api, type AgentsInfo, type Explain, type FlowMap, type Member, type Suggestion, type Team } from "../../api";
 import { Chips } from "../../Autofill";
 import { seatKey } from "../../roster";
 import { AGENT_IDS, AGENT_NAME, MODELS, type Act } from "./data";

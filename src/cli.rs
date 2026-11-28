@@ -422,6 +422,13 @@ pub(crate) enum Cmd {
         #[arg(default_value = "origin")]
         remote: String,
     },
+    /// The kulastore: agent memory, skills and config from every worktree, kept
+    /// on refs/kula/store. Private until `kula store push`.
+    #[command(subcommand, after_help = "Examples:\n  kula store snapshot   ·  kula store status   ·  kula store restore memory/claude/main")]
+    Store(StoreCmd),
+    /// Agent extensions: skills, prompts and MCP servers from open catalogs.
+    #[command(subcommand, after_help = "Examples:\n  kula ext search pdf   ·  kula ext add mcp weather   ·  kula ext list")]
+    Ext(ExtCmd),
     /// Serve the graph to AI agents over MCP (stdio).
     #[command(after_help = "Examples:\n  kula mcp")]
     Mcp,
@@ -818,5 +825,73 @@ pub(crate) enum NoteCmd {
     },
     Rm {
         id: u64,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum StoreCmd {
+    /// Record the current memory, skills and config (or only some sections).
+    Snapshot {
+        /// memory, skills, config or extensions
+        sections: Vec<String>,
+        #[arg(short, long)]
+        message: Option<String>,
+    },
+    /// What differs between the live files and the store.
+    Status,
+    /// Recent snapshots.
+    Log {
+        #[arg(short = 'n', default_value_t = 20)]
+        limit: usize,
+    },
+    /// Put stored files back (paths or prefixes; all when none).
+    Restore {
+        paths: Vec<String>,
+        #[arg(long)]
+        rev: Option<String>,
+        #[arg(long)]
+        overwrite: bool,
+    },
+    /// Publish the store to a remote.
+    Push {
+        #[arg(default_value = "origin")]
+        remote: String,
+    },
+    /// Merge a remote's store into this one.
+    Pull {
+        #[arg(default_value = "origin")]
+        remote: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ExtCmd {
+    /// Search a catalog.
+    Search {
+        #[arg(default_value = "")]
+        query: String,
+        #[arg(short, long, default_value = "mcp")]
+        source: String,
+        #[arg(short, long)]
+        kind: Option<String>,
+    },
+    /// Install the first match by name from a catalog.
+    Add {
+        source: String,
+        name: String,
+        #[arg(long)]
+        overwrite: bool,
+    },
+    /// Remove an installed extension.
+    Remove { kind: String, name: String },
+    /// Installed extensions.
+    List,
+    /// Catalogs, built in and added.
+    Sources,
+    /// Add a catalog: owner/repo, a .csv url or a JSON catalog url.
+    Source {
+        spec: String,
+        #[arg(short, long)]
+        label: Option<String>,
     },
 }

@@ -51,8 +51,8 @@
   --font: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
   --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
   --display: var(--serif);
-  --serif: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
-  --ui: "Jost Variable", "Avenir Next", system-ui, sans-serif;
+  --serif: var(--mono);
+  --ui: var(--mono);
   --module: 8px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: dark;
