@@ -898,9 +898,13 @@ fn parse_one_cached(
     oids: Option<&HashMap<String, String>>,
     cache: Option<&crate::cache::ParseCache>,
 ) -> Option<ParsedFile> {
-    let Some(cache) = cache else { return parse_one(path, lid, read, parser) };
-    let src = read(path)?;
+    let cache = match cache {
+        Some(c) => c,
+        None => return parse_one(path, lid, read, parser),
+    };
+    let Some(src) = read(path) else { return None };
     let lang = langs::get(langs::refine(lid, &src))?;
+    parser.set_language(&lang.language).ok()?;
     let oid = oids.and_then(|m| m.get(path).cloned()).unwrap_or_else(|| crate::cache::content_oid(&src));
     if let Some(c) = cache.get(&oid, lang.id) {
         return from_cached(c);
