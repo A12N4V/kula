@@ -155,6 +155,8 @@ fn rust_imports_stay_in_their_crate() {
         !imports.iter().any(|(a, b)| a.starts_with("crates/printer") && b.starts_with("crates/matcher")),
         "cross-crate import: {imports:?}"
     );
+    let files: Vec<String> = st.nodes_where("kind = 'file'", []).unwrap().iter().map(|n| n.path.clone()).collect();
+    eprintln!("B1DBG files={files:?} imports={imports:?}");
 }
 
 /// Guessed CALLS never reach a test file from library code, and a Go method on

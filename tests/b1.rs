@@ -227,3 +227,18 @@ fn fixture_symbols_and_edges_are_built() {
         );
     }
 }
+
+#[test]
+fn uncommitted_edit_is_never_served_a_stale_cached_parse() {
+    let t = fixture();
+    let d = t.path();
+    index(d);
+    // Edit a committed file in the worktree without committing: the git index
+    // still names the old blob, so the cache key must not come from it.
+    write(d, "app/src/lib.rs", "pub fn compute(n: u32) -> u32 { n + 100 }\npub fn extra() -> u32 { 7 }\n");
+    index(d);
+    let repo = kula::git::Repo::discover(d).unwrap();
+    let st = kula::store::Store::open(&repo).unwrap();
+    let nodes = st.nodes_where("1=1", ()).unwrap();
+    assert!(nodes.iter().any(|n| n.name == "extra"), "uncommitted edit was not indexed (stale cache hit)");
+}

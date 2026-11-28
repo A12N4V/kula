@@ -244,8 +244,11 @@ pub struct CachedDef {
     pub hash: u64,
 }
 
-/// The blob oid of every tracked file, straight from the git index – no
-/// content hashing. Untracked paths are simply absent.
+/// The blob oid of every tracked file whose worktree copy is clean, straight
+/// from the git index – no content hashing. Dirty (modified, unmerged, staged
+/// differently) and untracked paths are simply absent: `parse_one_cached` then
+/// falls back to a content FNV, so a worktree edit can never be served the
+/// committed file's cached parse.
 pub fn blob_oids(root: &Path) -> HashMap<String, String> {
     let mut out = HashMap::new();
     let Ok(o) = std::process::Command::new("git").arg("-C").arg(root).args(["ls-files", "-s", "-z"]).output() else {
@@ -257,6 +260,24 @@ pub fn blob_oids(root: &Path) -> HashMap<String, String> {
         let Some((meta, path)) = s.split_once('\t') else { continue };
         let Some(oid) = meta.split_whitespace().nth(1) else { continue };
         out.insert(path.to_string(), oid.to_string());
+    }
+    // Drop every path git reports as dirty; those keys would claim the cached
+    // parse of the committed blob for content that has since changed.
+    if let Ok(st) = std::process::Command::new("git").arg("-C").arg(root).args(["status", "--porcelain", "-z", "--untracked-files"]).output() {
+        for rec in st.stdout.split(|b| *b == 0) {
+            let s = std::str::from_utf8(rec).unwrap_or_default();
+            if s.len() < 4 {
+                continue;
+            }
+            out.remove(&s[3..].to_string());
+            // Rename records are "XY new\0old\0": the old path is dirty too.
+            if s.starts_with('R') {
+                if let Some((new, old)) = s[3..].split_once('\0') {
+                    out.remove(&new.to_string());
+                    out.remove(&old.to_string());
+                }
+            }
+        }
     }
     out
 }
