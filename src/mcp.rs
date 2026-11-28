@@ -41,6 +41,8 @@ fn tools() -> Value {
           "inputSchema": s(json!({}), &[]) },
         { "name": "kula_ops", "description": "The swarm operation log on refs/kula/ops: one commit per op (launch, save, commit, handoff, gate, merge, undo), each recording a VIEW – the head of every seat in the run – plus run id and parent op. Use it to see what the team did and to undo to an earlier view.",
           "inputSchema": s(json!({ "op": { "type": "string", "description": "one op id to read in full" }, "limit": { "type": "integer", "description": "max ops (default 20)" } }), &[]) },
+        { "name": "kula_usage", "description": "The usage ledger of a run (args: run, seat optional): day × model buckets with the four token classes, dollars spent, cache hit rate, EWMA burn rate and ETA to the budget line. Reads .kula/runs/<run>.usage.jsonl and de-duplicates by message id at read time.",
+          "inputSchema": s(json!({ "run": { "type": "string", "description": "the run id" }, "seat": { "type": "string", "description": "one seat (team/key); empty means the whole run" } }), &["run"]) },
         { "name": "kula_seats", "description": "Every seat as a pure function of kula.toml: the merged spec, its rendered folder under .kula/seats/ with hash8, drift against what is on disk, and lint verdicts (8 checks). The same data /api/seats returns.",
           "inputSchema": s(json!({ "render": { "type": "boolean", "description": "render folders now (default true)" } }), &[]) },
         { "name": "context_pack", "description": "The code you need for a task, not whole files: give symbols, files or a plain-language question; get their definitions plus what they use, who uses them, containers and tests, ranked by graph distance and fitted to a token budget (big bodies shrink to signatures). Use it before reading files.",
@@ -255,6 +257,11 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
                 "" => json!({ "head": crate::ops::head(repo), "ops": crate::ops::ops(repo, limit)? }),
                 id => json!(crate::ops::op(repo, id)?),
             }
+        }
+        "kula_usage" => {
+            let run = str_arg("run");
+            let seat = str_arg("seat");
+            json!(crate::runs::usage_detail(&repo.kula_dir(), &run, &seat))
         }
         "context_pack" => {
             let targets: Vec<String> = a

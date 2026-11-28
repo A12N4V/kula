@@ -486,6 +486,10 @@ pub fn parse(output: &str) -> Option<Usage> {
     found.then_some(total)
 }
 
+/// The capture driver lives in `usage.rs` so the test tree can compile it
+/// standalone; these re-exports keep the launch-side call sites.
+pub use crate::usage::{capture_stream, Captured};
+
 /// The seat a slice runs as, from `kula.toml`: `team/key`.
 pub fn seat_of<'a>(cfg: &'a crate::config::Config, seat: &str) -> Option<&'a crate::config::Member> {
     let (team, key) = seat.split_once('/')?;
