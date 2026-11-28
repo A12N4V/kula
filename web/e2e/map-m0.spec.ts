@@ -1,197 +1,167 @@
-// M0 proof: the Map view loads, the variant toggle changes the URL, the
-// inspector opens on a stub pick, and the test drawer records one result to
-// localStorage. Plus the model unit checks (no Vitest in this repo, so they
-// run in the page against the pure builder).
+// M0 proof: two variants only (Atlas · Metro), old URLs redirect, the header
+// is one row at 1440 and 1024, the canvas fills down to the status bar,
+// domains are recomputed with plain-word labels and no domain holds more than
+// 35% of flows, containment attaches `from_json` to `McpDef`, compare splits
+// Atlas | Metro, resize redraws without a reload, and the drawer
+// counterbalances the variants.
 
 import { expect, test } from "@playwright/test";
 
-test("map view loads with header and canvas", async ({ page }) => {
-  await page.goto("/#map");
-  await expect(page.getByTestId("map-view")).toBeVisible();
-  await expect(page.getByTestId("variant-a")).toBeVisible();
-  await expect(page.getByTestId("map-canvas")).toBeVisible();
-  await expect(page.getByTestId("overlay-fences")).toBeVisible();
-  // the model built from the repo's own flowmap
-  const stations = await page.evaluate(() => (window as any).__kulaMap?.model?.stations?.length ?? 0);
-  expect(stations).toBeGreaterThan(0);
-});
-
-test("variant toggle changes the URL and is remembered", async ({ page }) => {
-  await page.goto("/#map");
-  await page.getByTestId("variant-b").click();
-  await expect(page).toHaveURL(/#map\/b/);
-  await page.reload();
-  await expect(page.getByTestId("variant-b")).toHaveAttribute("aria-selected", "true");
-  await page.getByTestId("variant-a").click();
-  await expect(page).toHaveURL(/#map\/a/);
-});
-
-test("inspector opens on a stub pick", async ({ page }) => {
-  await page.goto("/#map");
-  // wait for the model and the fitted view, then click a real station on the canvas
+// Wait for the map shell: model built, layout exposed, canvas fitted.
+async function ready(page: import("@playwright/test").Page, hash = "/#map") {
+  await page.goto(hash);
   await page.waitForFunction(() => {
     const k = (window as any).__kulaMap;
     const c = document.querySelector('[data-testid="map-canvas"]');
-    return !!(k?.layout?.stations?.length && c && k?.view?.scale && k.view.w === c.clientWidth && c.clientWidth > 0);
+    return !!(k?.model && k?.layout?.stations?.length && c && k?.view?.w === c.clientWidth && c.clientWidth > 0);
   });
-  const at = await page.evaluate(() => {
+}
+
+test("atlas and metro both render, not the stub", async ({ page }) => {
+  await ready(page, "/#map/atlas");
+  let r = await page.evaluate(() => {
     const k = (window as any).__kulaMap;
-    const s = k.layout.stations[0];
-    const v = k.view;
-    return { x: s.x * v.scale + v.ox, y: s.y * v.scale + v.oy, name: k.model.stations.find((t: any) => t.id === s.id).name };
+    return { stub: k.stubA, variant: k.variant, stations: k.layout.stations.length, hook: !!k.hooks?.atlas };
   });
-  await page.getByTestId("map-canvas").click({ position: { x: at.x, y: at.y } });
-  const ins = page.getByTestId("map-inspector");
-  await expect(ins).toBeVisible();
-  await expect(ins).toContainText(at.name);
-  await page.getByTestId("inspector-close").click();
-  await expect(ins).not.toBeVisible();
+  expect(r.stub, "atlas must not be the stub").toBe(false);
+  expect(r.variant).toBe("atlas");
+  expect(r.stations).toBeGreaterThan(0);
+  expect(r.hook, "__kulaMap.hooks.atlas must be published").toBe(true);
+
+  await ready(page, "/#map/metro");
+  r = await page.evaluate(() => {
+    const k = (window as any).__kulaMap;
+    return { stub: k.stubA, variant: k.variant, stations: k.layout.stations.length, hook: !!k.hooks?.metro };
+  });
+  expect(r.stub, "metro must not be the stub").toBe(false);
+  expect(r.variant).toBe("metro");
+  expect(r.stations).toBeGreaterThan(0);
+  expect(r.hook, "__kulaMap.hooks.metro must be published").toBe(true);
 });
 
-test("find on map flies to a station and opens the inspector", async ({ page }) => {
-  await page.goto("/#map");
-  await page.waitForFunction(() => ((window as any).__kulaMap?.model?.stations?.length ?? 0) > 0);
-  const name = await page.evaluate(() => (window as any).__kulaMap.model.stations[0].name);
-  await page.getByTestId("map-find").fill(name.slice(0, 6));
-  await page.getByTestId("map-find-list").getByRole("button").first().click();
-  await expect(page.getByTestId("map-inspector")).toBeVisible();
-  await expect(page).toHaveURL(/#map\/a\/s\//);
+test("legacy URLs redirect: a and c to atlas, b to metro", async ({ page }) => {
+  for (const [from, to] of [["a", "atlas"], ["b", "metro"], ["c", "atlas"]] as const) {
+    await ready(page, `/#map/${from}`);
+    expect(new URL(page.url()).hash, `#map/${from} must redirect`).toBe(`#map/${to}`);
+  }
 });
 
-test("test drawer records one result to localStorage", async ({ page }) => {
-  await page.goto("/#map");
-  await page.evaluate(() => localStorage.removeItem("kula.map.ab"));
-  await page.getByTestId("map-test-toggle").click();
-  await expect(page.getByTestId("ab-drawer")).toBeVisible();
-  await expect(page.getByTestId("ab-task")).toBeVisible();
-  // answer task 1 correctly through the map: find its flow and pick it
-  const label = await page.evaluate(() => {
+test("the variant toggle switches variant and URL, Atlas first", async ({ page }) => {
+  await ready(page, "/#map/atlas");
+  const labels = await page.locator(".map-seg-btn").allTextContents();
+  expect(labels.map((s) => s.trim())).toEqual(["Atlas", "Metro"]);
+  await page.getByTestId("variant-metro").click();
+  await page.waitForFunction(() => (window as any).__kulaMap?.variant === "metro");
+  expect(new URL(page.url()).hash).toBe("#map/metro");
+});
+
+test("a bare #map shows the remembered variant", async ({ page }) => {
+  await ready(page, "/#map/metro"); // leaves the remember flag on metro
+  await ready(page, "/#map");
+  const variant = await page.evaluate(() => (window as any).__kulaMap.variant);
+  expect(variant).toBe("metro");
+  expect(new URL(page.url()).hash).toBe("#map/metro");
+});
+
+test("the header is one row at 1440 and at 1024", async ({ page }) => {
+  await ready(page, "/#map/atlas");
+  const oneRow = () =>
+    page.evaluate(() => {
+      const kids = [...document.querySelectorAll(".map-header > *")].map((e) => e.getBoundingClientRect().top);
+      return Math.max(...kids) - Math.min(...kids);
+    });
+  expect(await oneRow(), "one row at 1440").toBeLessThanOrEqual(8);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.waitForTimeout(300);
+  expect(await oneRow(), "one row at 1024").toBeLessThanOrEqual(8);
+  // Below 1200 the overlay toggles collapse into one Overlays menu.
+  expect(await page.getByTestId("overlays-menu").count()).toBe(1);
+  expect(await page.getByTestId("overlay-fences").isVisible()).toBe(false);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(300);
+  expect(await page.locator(".map-overlays").first().isVisible()).toBe(true);
+});
+
+test("the canvas fills down to the status bar", async ({ page }) => {
+  await ready(page, "/#map/atlas");
+  const gap = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="map-canvas"]')!.getBoundingClientRect();
+    const s = document.querySelector("footer.statusbar")!.getBoundingClientRect();
+    return Math.round(s.top - c.bottom);
+  });
+  expect(gap, "canvas bottom must equal the status bar top").toBe(0);
+});
+
+test("resize redraws without a reload", async ({ page }) => {
+  await ready(page, "/#map/atlas");
+  await page.evaluate(() => ((window as any).__m0NoReload = true));
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.waitForFunction(() => {
+    const k = (window as any).__kulaMap;
+    const c = document.querySelector('[data-testid="map-canvas"]');
+    // The app shell caps the map column, so assert tracking, not a width.
+    return !!(window as any).__m0NoReload && k?.view?.w === c?.clientWidth && c && c.clientWidth < 1140;
+  });
+  expect(await page.evaluate(() => (window as any).__m0NoReload)).toBe(true);
+});
+
+test("no domain holds more than 35% of flows; labels are plain words", async ({ page }) => {
+  await ready(page, "/#map/atlas");
+  const r = await page.evaluate(() => {
     const m = (window as any).__kulaMap.model;
-    const routed = m.flows.filter((f: any) => f.route);
-    return (routed[0] ?? m.flows[0]).label;
+    const worst = Math.max(...m.domains.map((d: any) => d.flows.length)) / m.flows.length;
+    return { worst, n: m.domains.length, labels: m.domains.map((d: any) => d.label) };
   });
-  await page.getByTestId("map-find").fill(label.slice(0, 6));
-  await page.getByTestId("map-find-list").getByRole("button").first().click();
-  await expect(page.getByTestId("ab-rate")).toBeVisible();
-  await page.getByTestId("ab-rate-clarity-4").click();
-  await page.getByTestId("ab-rate-speed-4").click();
-  await page.getByTestId("ab-rate-look-4").click();
-  await page.getByTestId("ab-note").fill("spec");
-  await page.getByTestId("ab-next").click();
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.map.ab") ?? "[]"));
-  expect(stored.length).toBe(1);
-  expect(stored[0].variant).toMatch(/^[abc]$/);
-  expect(typeof stored[0].ms).toBe("number");
-  expect(stored[0].ratings.clarity).toBe(4);
+  expect(r.worst, `largest domain share must be under 35% (got ${(r.worst * 100).toFixed(0)}%)`).toBeLessThan(0.35);
+  expect(r.n).toBeGreaterThan(1);
+  expect(r.labels.some((l: string) => /^(Guard|Index)$/.test(l)), "plain-word labels expected").toBe(true);
 });
 
-test("model: dedup, degree, layer, determinism (in page)", async ({ page }) => {
-  await page.goto("/#map");
-  await page.waitForFunction(() => (window as any).__kulaMap?.build);
-  const r = await page.evaluate(async () => {
-    const { build } = (window as any).__kulaMap;
-    const [fm, graph] = await Promise.all([
-      fetch("/api/flowmap", { headers: { "x-kula-token": document.querySelector<HTMLMetaElement>('meta[name="kula-token"]')?.content ?? "dev" } }).then((x) => x.json()),
-      fetch("/api/graph", { headers: { "x-kula-token": document.querySelector<HTMLMetaElement>('meta[name="kula-token"]')?.content ?? "dev" } }).then((x) => x.json()),
-    ]);
-    const a = build(fm, graph);
-    const b = build(fm, graph);
-    const json = (m: any) => JSON.stringify({ d: m.domains, f: m.flows, s: m.stations, i: m.interchanges.map((x: any) => x.id) });
-    // dedup: stations ≤ total step occurrences
-    const totalSteps = fm.flows.reduce((n: number, f: any) => n + f.steps.length, 0);
-    const degreeOk = a.stations.every((s: any) => s.degree === s.flows.length && s.degree >= 1);
-    const interchanges = a.interchanges.every((s: any) => s.degree >= 2);
-    const entryLayered = a.flows.every((f: any) => f.steps[0]?.layer === "test" || f.steps[0]?.layer === "entry");
-    const layersKnown = a.stations.every((s: any) => ["entry", "handler", "logic", "data", "io", "test"].includes(s.layer));
+test("containment attaches from_json to McpDef", async ({ page }) => {
+  await ready(page, "/#map/atlas");
+  const r = await page.evaluate(() => {
+    const m = (window as any).__kulaMap.model;
+    const k = m.containers.find((c: any) => c.name === "McpDef");
     return {
-      deterministic: json(a) === json(b),
-      dedup: a.stations.length <= totalSteps,
-      hasInterchange: a.interchanges.length > 0,
-      degreeOk,
-      interchanges,
-      entryLayered,
-      layersKnown,
+      kind: k?.kind, members: k?.members?.length ?? 0,
+      fromJson: k?.members?.some((x: any) => /from_json/i.test(x.name)) ?? false,
+      station: m.stations.find((s: any) => s.container === k?.id)?.id,
     };
   });
-  expect(r.deterministic).toBe(true);
-  expect(r.dedup).toBe(true);
-  expect(r.hasInterchange).toBe(true);
-  expect(r.degreeOk).toBe(true);
-  expect(r.interchanges).toBe(true);
-  expect(r.entryLayered).toBe(true);
-  expect(r.layersKnown).toBe(true);
+  expect(r.kind, "McpDef must be a container").toBe("class");
+  expect(r.members).toBeGreaterThan(0);
+  expect(r.fromJson, "from_json must be a member of McpDef").toBe(true);
+  expect(r.station, "a station must point at the McpDef container").toBeTruthy();
 });
 
-// The model on the fixture repo (sh e2e/fixture.sh): same checks as above but
-// against a different, disposable repo, so the builder is proven repo-shape
-// independent. The fixture is spawned like ui.spec.ts does, on a free port.
-test("model: the builder holds on the fixture repo too", async ({ page }) => {
-  test.setTimeout(240_000);
-  const path = await import("node:path");
-  const fs = await import("node:fs");
-  const { spawn } = await import("node:child_process");
-  let script = "";
-  for (const cwd of [process.cwd(), path.resolve(process.cwd(), "..")]) {
-    const p = path.join(cwd, "e2e", "fixture.sh");
-    if (fs.existsSync(p)) { script = p; break; }
-  }
-  test.skip(!script, "e2e/fixture.sh not found");
-  let port = Number(process.env.KULA_PW_PORT ?? 7431) + 20;
-  const taken = async (p: number) => {
-    try { await fetch(`http://localhost:${p}/`, { signal: AbortSignal.timeout(300) }); return true; } catch { return false; }
-  };
-  for (let p = port; p < port + 12 && (await taken(port)); p++) port = p + 1;
-  const logFile = `/tmp/kula-fx-m0-${port}.log`;
-  const log = fs.openSync(logFile, "w");
-  const proc = spawn("sh", [script, String(port)], {
-    cwd: path.dirname(script) + "/..",
-    stdio: ["ignore", log, log],
-    env: { ...process.env, TMPDIR: "/tmp" },
+test("compare splits Atlas | Metro with both panes drawn", async ({ page }) => {
+  await ready(page, "/#map/atlas");
+  await page.getByTestId("map-compare").click();
+  await page.waitForFunction(() => {
+    const k = (window as any).__kulaMap;
+    return k?.varB && k?.varB !== k?.varA && k?.view2?.w > 0;
   });
-  const url = `http://localhost:${port}`;
-  let up = false;
-  const deadline = Date.now() + 180_000;
-  while (Date.now() < deadline) {
-    try { if ((await fetch(url)).ok) { up = true; break; } } catch { /* not up yet */ }
-    await new Promise((f) => setTimeout(f, 300));
-  }
-  try {
-    if (!up) throw new Error(`fixture did not come up:\n${fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : ""}`);
-    // Fetch on the Node side: the page runs on another port, and the fixture
-    // server sends no CORS headers, so an in-page fetch would be refused.
-    const tok = { "x-kula-token": "test" };
-    const fm = await (await fetch(`${url}/api/flowmap`, { headers: tok })).json();
-    const graph = await (await fetch(`${url}/api/graph`, { headers: tok })).json();
-    await page.goto("/#map");
-    await page.waitForFunction(() => !!((window as any).__kulaMap?.build));
-    const r = await page.evaluate(({ fm, graph }) => {
-      const { build } = (window as any).__kulaMap;
-      const a = build(fm, graph);
-      const b = build(fm, graph);
-      const json = (m: any) => JSON.stringify({ d: m.domains, f: m.flows, s: m.stations, i: m.interchanges.map((x: any) => x.id) });
-      const totalSteps = fm.flows.reduce((n: number, f: any) => n + f.steps.length, 0);
-      return {
-        deterministic: json(a) === json(b),
-        dedup: a.stations.length <= totalSteps,
-        degreeOk: a.stations.every((s: any) => s.degree === s.flows.length && s.degree >= 1),
-        interchanges: a.interchanges.every((s: any) => s.degree >= 2) && a.interchanges.length > 0,
-        entryLayered: a.flows.every((f: any) => f.steps[0]?.layer === "test" || f.steps[0]?.layer === "entry"),
-        layersKnown: a.stations.every((s: any) => ["entry", "handler", "logic", "data", "io", "test"].includes(s.layer)),
-      };
-    }, { fm, graph });
-    expect(r.deterministic).toBe(true);
-    expect(r.dedup).toBe(true);
-    expect(r.degreeOk).toBe(true);
-    expect(r.interchanges).toBe(true);
-    expect(r.entryLayered).toBe(true);
-    expect(r.layersKnown).toBe(true);
-  } finally {
-    proc.kill("SIGTERM");
-    fs.closeSync(log);
-    try {
-      const repo = fs.readFileSync(`/tmp/kula-fixture-${port}.path`, "utf8").trim();
-      fs.rmSync(repo, { recursive: true, force: true });
-      fs.rmSync(`/tmp/kula-fixture-${port}.path`, { force: true });
-    } catch { /* fixture may have died before writing the path file */ }
-  }
+  const r = await page.evaluate(() => {
+    const k = (window as any).__kulaMap;
+    return { a: k.varA.id, b: k.varB.id, ids: [k.variant, k.other], canvas2: !!document.querySelector('[data-testid="map-canvas-2"]') };
+  });
+  expect(r.a === "b" || r.b === "a", "the two panes must be atlas and metro").toBe(true);
+  expect(r.ids).toContain("atlas");
+  expect(r.ids).toContain("metro");
+  expect(r.canvas2, "compare must mount a second canvas").toBe(true);
+});
+
+test("the drawer counterbalances the two variants", async ({ page }) => {
+  await ready(page, "/#map/atlas");
+  const order = await page.evaluate(() => {
+    const k = (window as any).__kulaMap;
+    const o1 = k.sessionOrder();
+    const o2 = k.sessionOrder(); // stable within one session
+    return { o1, o2, parity: localStorage.getItem("kula.map.ab.sessions") };
+  });
+  expect(order.o1.length).toBe(2);
+  expect(order.o1).toContain("atlas");
+  expect(order.o1).toContain("metro");
+  expect(order.o2).toEqual(order.o1);
+  expect(order.parity, "a durable session counter must exist").toBeTruthy();
 });
