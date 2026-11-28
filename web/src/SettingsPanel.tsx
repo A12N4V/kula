@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactEle
 import { dirColor, groupDirs, rankHue } from "./colors";
 import { fuzzyScore } from "./nav";
 import { settings, useKnownDirs, useSettings, type Settings } from "./settings";
-import { Icon, useToast } from "./ui";
+import { Icon, SetIcon, useToast } from "./ui";
 import { api, hub, relTime, type ConfigMatrix, type ExtInstalled, type ExtSource, type GitOverview, type IssueConfig, type LangRow, type MemoryLayer, type RepoInfo, type StoreCommit, type StoreSummary } from "./api";
 import { hasCustomSizes, resetSizes } from "./resize";
 import { ACTIONS, FIXED, chordOf, rebind, useBindings, type ActionId } from "./keys";
@@ -14,22 +14,9 @@ import { IssueSettingsPanel } from "./views/IssueDesk";
 
 export type SettingsSection = "general" | "appearance" | "graph" | "colours" | "keys" | "git" | "issues" | "agents" | "extensions" | "account" | "langs" | "disk";
 
-// Section icons: two tones, the outline in ink and one mark in the section hue.
-const S = { fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, width: 18, height: 18, viewBox: "0 0 24 24" };
-const I: Record<SettingsSection, () => ReactElement> = {
-  general: () => <svg {...S}><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" stroke="var(--hue)" /><circle cx="10" cy="17" r="2" stroke="var(--hue)" /></svg>,
-  appearance: () => <svg {...S}><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 0 16z" fill="var(--hue)" stroke="none" /></svg>,
-  graph: () => <svg {...S}><path d="M7 7l10 4M7 7l3 10M17 11l-7 6" /><circle cx="7" cy="7" r="2" /><circle cx="17" cy="11" r="2" fill="var(--hue)" stroke="var(--hue)" /><circle cx="10" cy="17" r="2" /></svg>,
-  colours: () => <svg {...S}><rect x="4" y="4" width="7" height="7" rx="1.5" fill="var(--hue)" stroke="none" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></svg>,
-  keys: () => <svg {...S}><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 10h.01M11 10h.01M15 10h.01M8 14h8" /><path d="M17 10h.01" stroke="var(--hue)" strokeWidth="2.4" /></svg>,
-  git: () => <svg {...S}><circle cx="7" cy="5" r="2" /><circle cx="7" cy="19" r="2" /><circle cx="17" cy="8" r="2" stroke="var(--hue)" /><path d="M7 7v10M17 10c0 4-4 5-10 7" /></svg>,
-  issues: () => <svg {...S}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.5" fill="var(--hue)" stroke="none" /></svg>,
-  agents: () => <svg {...S}><rect x="5" y="8" width="14" height="11" rx="2" /><path d="M12 8V5M9.5 16h5" /><circle cx="12" cy="4" r="1.4" /><circle cx="9.5" cy="12" r="1.2" fill="var(--hue)" stroke="none" /><circle cx="14.5" cy="12" r="1.2" fill="var(--hue)" stroke="none" /></svg>,
-  extensions: () => <svg {...S}><path d="M9 4v4M15 4v4M6 8h12v4a6 6 0 0 1-12 0z" /><path d="M12 18v3" stroke="var(--hue)" /></svg>,
-  account: () => <svg {...S}><circle cx="12" cy="9" r="3.5" /><path d="M5 20c1.2-3.5 4-5 7-5s5.8 1.5 7 5" /><circle cx="18" cy="6" r="2" fill="var(--hue)" stroke="none" /></svg>,
-  langs: () => <svg {...S}><path d="M8 7l-4 5 4 5M16 7l4 5-4 5" /><path d="M13.5 5l-3 14" stroke="var(--hue)" /></svg>,
-  disk: () => <svg {...S}><ellipse cx="12" cy="6" rx="7" ry="2.5" /><path d="M5 6v12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6" /><path d="M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5" stroke="var(--hue)" /></svg>,
-};
+// Section icons live in the design system (ui.tsx SetIcon): two tones, the
+// outline in ink and one mark in the section hue.
+const I = SetIcon as Record<SettingsSection, () => ReactElement>;
 
 type Sec = { id: SettingsSection; label: string; hue: string; group: "You" | "Workspace" | "Repository"; words: string };
 const SECTIONS: Sec[] = [

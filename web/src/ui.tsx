@@ -69,6 +69,26 @@ export const Icon = {
   sun: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>),
   check: () => (<svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>),
 };
+
+// Settings section icons: two tones – the outline in ink and one mark in the
+// section hue (the section's --hue is set on the button's style). 18px.
+// The SVG grammar is shared with the Icon set above: rounded structure
+// geometry, one filled or accent-coloured mark per glyph.
+const Q = { fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+export const SetIcon: Record<string, () => ReactNode> = {
+  general: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" stroke="var(--hue)" /><circle cx="10" cy="17" r="2" stroke="var(--hue)" /></svg>),
+  appearance: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 0 16z" fill="var(--hue)" stroke="none" /></svg>),
+  graph: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><path d="M7 7l10 4M7 7l3 10M17 11l-7 6" /><circle cx="7" cy="7" r="2" /><circle cx="17" cy="11" r="2" fill="var(--hue)" stroke="var(--hue)" /><circle cx="10" cy="17" r="2" /></svg>),
+  colours: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="var(--hue)" stroke="none" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></svg>),
+  keys: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 10h.01M11 10h.01M15 10h.01M8 14h8" /><path d="M17 10h.01" stroke="var(--hue)" strokeWidth="2.4" /></svg>),
+  git: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><circle cx="7" cy="5" r="2" /><circle cx="7" cy="19" r="2" /><circle cx="17" cy="8" r="2" stroke="var(--hue)" /><path d="M7 7v10M17 10c0 4-4 5-10 7" /></svg>),
+  issues: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.5" fill="var(--hue)" stroke="none" /></svg>),
+  agents: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><rect x="5" y="8" width="14" height="11" rx="2" /><path d="M12 8V5M9.5 16h5" /><circle cx="12" cy="4" r="1.4" /><circle cx="9.5" cy="12" r="1.2" fill="var(--hue)" stroke="none" /><circle cx="14.5" cy="12" r="1.2" fill="var(--hue)" stroke="none" /></svg>),
+  extensions: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><path d="M9 4v4M15 4v4M6 8h12v4a6 6 0 0 1-12 0z" /><path d="M12 18v3" stroke="var(--hue)" /></svg>),
+  account: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><circle cx="12" cy="9" r="3.5" /><path d="M5 20c1.2-3.5 4-5 7-5s5.8 1.5 7 5" /><circle cx="18" cy="6" r="2" fill="var(--hue)" stroke="none" /></svg>),
+  langs: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><path d="M8 7l-4 5 4 5M16 7l4 5-4 5" /><path d="M13.5 5l-3 14" stroke="var(--hue)" /></svg>),
+  disk: () => (<svg viewBox="0 0 24 24" {...Q} width="18" height="18"><ellipse cx="12" cy="6" rx="7" ry="2.5" /><path d="M5 6v12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6" /><path d="M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5" stroke="var(--hue)" /></svg>),
+};
 /**
  * The mark: the kula ring drawn with kula rings (src/mark.ts). Small sizes show
  * one level, where two would blur; from 28px up every cell is the ring again.
