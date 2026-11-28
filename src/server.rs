@@ -318,6 +318,18 @@ async fn flowmap(State(s): State<AppState>, Query(q): Query<HashMap<String, Stri
     blocking(move || Ok(json!(graph::flowmap(&Store::open(&s.repo)?, limit)?))).await
 }
 
+/// B3: why a seat may or may not touch a file or symbol – the rule chain
+/// repo → team → seat, highest wins. Query: `target` (path, `path:name`, or
+/// bare symbol name), optional `seat` (seat name or agent id).
+async fn fence_explain(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    let target = q.get("target").cloned().unwrap_or_default();
+    let seat = q.get("seat").cloned().filter(|x| !x.is_empty());
+    blocking(move || {
+        Ok(json!(crate::guard::explain(&s.repo, &target, seat.as_deref()).ok_or_else(|| anyhow!("no fence explanation for {target}"))?))
+    })
+    .await
+}
+
 /// H.6: the run ledger, read back.
 fn find_run(repo: &Repo, id: &str) -> anyhow::Result<crate::launch::Run> {
     crate::launch::list(repo).into_iter().find(|r| r.id == id).ok_or_else(|| anyhow!("no run {id}"))
@@ -1429,6 +1441,7 @@ pub fn router(repo: Repo, token: String) -> Router {
         .route("/api/impact/{id}", get(impact))
         .route("/api/flows", get(flows))
         .route("/api/flowmap", get(flowmap))
+        .route("/api/fence/explain", get(fence_explain))
         .route("/api/runs", get(runs_list))
         .route("/api/runs/{id}", get(run_detail))
         .route("/api/runs/{id}/synopsis", get(run_synopsis))

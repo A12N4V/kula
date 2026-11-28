@@ -5,7 +5,7 @@ use crate::git::Repo;
 use crate::graph;
 use crate::guard::Guards;
 use crate::store::{Node, Store};
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::io::{BufRead, Write};
@@ -35,6 +35,8 @@ fn tools() -> Value {
           "inputSchema": s(json!({ "target": { "type": "string" } }), &[]) },
         { "name": "kula_flows", "description": "Alias of flowmap – the same flows the /api/flowmap endpoint returns, entry points unrolled into ordered steps with branch flags and domains.",
           "inputSchema": s(json!({ "limit": { "type": "integer", "description": "max flows (default 30)" } }), &[]) },
+        { "name": "kula_fence_explain", "description": "Why a seat may or may not touch a file or symbol: the full fence chain – repository rules, then the team's task and workflow, then the seat's own fence – each layer's verdicts and the one that decided (highest wins).",
+          "inputSchema": s(json!({ "target": { "type": "string", "description": "a path, path:name, or a bare symbol name" }, "seat": { "type": "string", "description": "seat name or agent id; omit for no seat" } }), &["target"]) },
         { "name": "issues", "description": "Local issues and proposals tracked in git.",
           "inputSchema": s(json!({}), &[]) },
         { "name": "kula_ops", "description": "The swarm operation log on refs/kula/ops: one commit per op (launch, save, commit, handoff, gate, merge, undo), each recording a VIEW – the head of every seat in the run – plus run id and parent op. Use it to see what the team did and to undo to an earlier view.",
@@ -190,6 +192,12 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
         }
         "flows" => json!(graph::flows(&st()?, int_arg("limit", 10))?),
         "flowmap" | "kula_flows" => json!(graph::flowmap(&st()?, int_arg("limit", 60))?),
+        "kula_fence_explain" => {
+            let seat = str_arg("seat");
+            let x = crate::guard::explain(repo, &str_arg("target"), (!seat.is_empty()).then_some(seat.as_str()))
+                .ok_or_else(|| anyhow!("no fence explanation for {}", str_arg("target")))?;
+            json!(x)
+        }
         "notes" => {
             let t = str_arg("target");
             let m = crate::meta::load(repo)?;
