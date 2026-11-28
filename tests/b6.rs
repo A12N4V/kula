@@ -13,6 +13,30 @@ pub mod workflow;
 #[path = "../src/usage.rs"]
 pub mod usage;
 
+/// The pipeline's `Captured` carries the launcher's legacy aggregate. The
+/// test tree cannot compile all of launch.rs, so the same struct is
+/// reproduced field for field: `usage.rs` only reads and writes these
+/// fields, and the binary's own tests cover the real type.
+pub mod launch {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+    pub struct Usage {
+        #[serde(default)]
+        pub tokens_in: u64,
+        #[serde(default)]
+        pub tokens_out: u64,
+        #[serde(default)]
+        pub turns: u64,
+        #[serde(default)]
+        pub cost_usd: f64,
+        #[serde(default)]
+        pub duration_ms: u64,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        pub model: String,
+    }
+}
+
 pub mod orch {
     pub mod task {
         /// Same behaviour as orch::task::slug, which the test tree cannot
@@ -202,86 +226,41 @@ fn duplicated_message_never_counts_twice() {
     assert_eq!(b.buckets[0].tokens.input, 30);
 }
 
-/// A fake agent over budget is stopped within one turn: SIGINT first, and
-/// SIGTERM 5 s later if it lived. The fake agent is the stand-in, never a
-/// real model call.
+/// A fake agent over budget is stopped within one turn: the shipped capture
+/// path does the reading – spawn → parse → dedupe → price → budget check →
+/// SIGINT, then SIGTERM 5 s later if it lived. The fake agent is the
+/// stand-in, never a real model call.
 #[test]
 fn fake_agent_over_budget_is_stopped_within_one_turn() {
-    use std::io::Read;
-    use std::process::{Command, Stdio};
+    use std::process::Command;
 
+    let dir = std::env::temp_dir().join(format!("b6-over-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake-agent.sh");
-    let mut child = Command::new("sh")
-        .arg(&script)
-        .env("FAKE_USAGE", "1")
-        .env("FAKE_MODE", "clean")
-        .env("KULA_SLICE", "p-1")
-        .env("KULA_ATTEMPT", "1")
-        .env("KULA_SCOPE", "src:src")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let pid = child.id();
-    let mut out = child.stdout.take().unwrap();
-
-    let t = table();
-    // Budget so small the first kula_usage line (1200 in × $1/M = $0.0012)
+    let mut cmd = {
+        let mut c = Command::new("sh");
+        c.arg(&script)
+            .env("FAKE_USAGE", "1")
+            .env("FAKE_MODE", "clean")
+            .env("KULA_SLICE", "p-1")
+            .env("KULA_ATTEMPT", "1")
+            .env("KULA_SCOPE", "src:src");
+        c
+    };
+    let mut warned = 0;
+    // Budget so small the first kula_usage line (1200 in x $1/M = $0.0012)
     // is already past the line: the seat must be stopped in this turn.
-    let mut acc = Accumulator::new("team/one", "over", 0.001);
-    let mut signaled = false;
-    let mut buf = [0u8; 1];
-    let mut line = String::new();
-    'outer: loop {
-        line.clear();
-        loop {
-            match out.read(&mut buf) {
-                Ok(0) => break 'outer,
-                Ok(_) => {
-                    if buf[0] == b'\n' {
-                        break;
-                    }
-                    line.push(buf[0] as char);
-                }
-                Err(_) => break 'outer,
-            }
+    let cap = usage::capture_stream(&mut cmd, "team/one", "over", "p-1", "fake", &table(), 0.001, &dir, |st, _, _| {
+        if st == usage::BudgetState::Warn {
+            warned += 1;
         }
-        for raw in usage::parse_stream(&line, "fake") {
-            let cost = usage::price(&t, &raw, DAY).unwrap_or(0.0);
-            acc.add(&UsageRecord {
-                seat: "team/one".into(),
-                run: "over".into(),
-                slice: "p-1".into(),
-                model: raw.model.clone(),
-                day: DAY.into(),
-                ts: 1_795_747_200_000,
-                tokens: raw.tokens,
-                cost_usd: cost,
-                estimated: String::new(),
-                agent: "fake".into(),
-                message_id: raw.message_id,
-            });
-        }
-        if acc.take_action() == usage::BudgetState::Stop {
-            // SIGINT first, exactly as capture_stream does.
-            let _ = Command::new("kill").args(["-INT", &pid.to_string()]).status();
-            signaled = true;
-            for _ in 0..50 {
-                if matches!(child.try_wait(), Ok(Some(_))) {
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }
-            if !matches!(child.try_wait(), Ok(Some(_))) {
-                let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).status();
-            }
-            let _ = child.wait();
-            break;
-        }
-    }
-    child.wait().ok();
-    
-    assert!(signaled, "the seat was stopped within the turn: the budget stop sent SIGINT");
-    assert!(matches!(child.try_wait(), Ok(Some(_))), "the agent is gone after the stop");
+    })
+    .expect("capture_stream runs the fake agent");
 
+    assert!(cap.stopped, "the seat was stopped within the turn: the budget stop fired");
+    assert_eq!(cap.code, 130, "a budget stop reports SIGINT's exit code");
+    assert!(warned <= 1, "at most one 80% warning is emitted per accumulator, saw {warned}");
+    assert!(cap.acc.metrics().tokens.input > 0, "the message that crossed the line still counts");
+    assert!(usage::ledger_path(&dir, "over").exists(), "the ledger was written before the stop");
+    let _ = std::fs::remove_dir_all(&dir);
 }

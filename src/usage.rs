@@ -18,6 +18,8 @@ use crate::config::PriceTable;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::path::Path;
+use std::io::Read;
+use std::process::Stdio;
 
 /// The four token classes the pipeline tracks.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -734,3 +736,174 @@ cache_write = 0.5
         assert!(estimate_tokens("") == 0);
     }
 }
+
+/// What capturing an agent's stream produced.
+pub struct Captured {
+    /// Legacy aggregate, the shape B4's launcher already stores.
+    pub usage: crate::launch::Usage,
+    /// Priced, de-duplicated records, newest last.
+    pub records: Vec<crate::usage::UsageRecord>,
+    /// The accumulator with buckets, burn rate and budget state.
+    pub acc: crate::usage::Accumulator,
+    /// True when the budget stop fired (SIGINT then SIGTERM).
+    pub stopped: bool,
+    /// The child's exit code (130 marks a budget stop; 1 when killed or gone).
+    pub code: i32,
+    /// Price errors keyed by model: an unknown model is an error, never a
+    /// silent zero.
+    pub price_errors: Vec<String>,
+    /// The agent's full output (stdout lines plus stderr), so callers can run
+    /// the legacy terminal parse on it exactly as before.
+    pub output: String,
+}
+
+/// Run a command while capturing its stdout as a usage stream: every line is
+/// parsed, de-duplicated by message id, priced and accumulated; the budget
+/// ladder runs as records land – 80% emits one warning (through `on_event`),
+/// 100% stops the seat with SIGINT, then SIGTERM 5 s later. Each record is
+/// appended to the run's ledger.
+#[allow(clippy::too_many_arguments)]
+pub fn capture_stream(
+    cmd: &mut std::process::Command,
+    seat: &str,
+    run: &str,
+    slice: &str,
+    agent: &str,
+    table: &crate::config::PriceTable,
+    budget: f64,
+    kula_dir: &Path,
+    mut on_event: impl FnMut(crate::usage::BudgetState, f64, f64),
+) -> anyhow::Result<Captured> {
+    use std::io::{BufRead, Read};
+
+    let mut cmd = cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    let mut child = cmd.spawn()?;
+    let pid = child.id();
+    let mut out = child.stdout.take().expect("stdout was piped");
+    // stderr is captured on its own thread: it holds the launcher's messages
+    // (and an agent that prints its stream there), kept out of the parse loop.
+    let err_handle = child
+        .stderr
+        .take()
+        .map(|mut e| std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = e.read_to_end(&mut buf);
+            String::from_utf8_lossy(&buf).into_owned()
+        }));
+    let mut acc = crate::usage::Accumulator::new(seat, run, budget);
+    let mut usage = crate::launch::Usage::default();
+    let mut records = vec![];
+    let mut price_errors = vec![];
+    let mut stopped = false;
+
+    let mut record_raw = |raw: &crate::usage::RawMessage,
+                          acc: &mut crate::usage::Accumulator,
+                          usage: &mut crate::launch::Usage,
+                          records: &mut Vec<crate::usage::UsageRecord>,
+                          price_errors: &mut Vec<String>| {
+        let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        let day = crate::usage::day_of(ts);
+        let mut r = crate::usage::UsageRecord {
+            seat: seat.into(),
+            run: run.into(),
+            slice: slice.into(),
+            model: raw.model.clone(),
+            day: day.clone(),
+            ts,
+            tokens: raw.tokens,
+            cost_usd: 0.0,
+            estimated: raw.estimated.clone(),
+            agent: agent.into(),
+            message_id: raw.message_id.clone(),
+        };
+        match crate::usage::price(table, raw, &day) {
+            Ok(c) => r.cost_usd = c,
+            Err(e) => {
+                if !price_errors.iter().any(|x| x.contains(&raw.model)) {
+                    price_errors.push(e.to_string());
+                }
+            }
+        }
+        if acc.add(&r) {
+            usage.tokens_in += raw.tokens.input + raw.tokens.cache_read + raw.tokens.cache_write;
+            usage.tokens_out += raw.tokens.output;
+            usage.turns += 1;
+            usage.cost_usd += r.cost_usd;
+            if usage.model.is_empty() {
+                usage.model = raw.model.clone();
+            }
+            records.push(r.clone());
+            crate::usage::ledger_append(kula_dir, &r);
+        }
+    };
+
+    // Read the stream line by line with read_until: bytes are decoded with
+    // from_utf8_lossy per line, so multi byte UTF-8 in agent text survives.
+    let mut reader = std::io::BufReader::new(out);
+    let mut buf: Vec<u8> = Vec::new();
+    let mut output = String::new();
+    loop {
+        buf.clear();
+        let n = reader.read_until(b'\n', &mut buf).map_err(|e| anyhow::anyhow!("{e}"))?;
+        if n == 0 {
+            break;
+        }
+        let line = String::from_utf8_lossy(&buf);
+        let line = line.trim_end_matches(['\n', '\r']);
+        output.push_str(line);
+        output.push('\n');
+        for raw in crate::usage::parse_stream(line, agent) {
+            record_raw(&raw, &mut acc, &mut usage, &mut records, &mut price_errors);
+        }
+        match acc.take_action() {
+            crate::usage::BudgetState::Warn => on_event(crate::usage::BudgetState::Warn, acc.spent, acc.budget),
+            crate::usage::BudgetState::Stop => {
+                // Stop the seat: SIGINT, then SIGTERM after 5 s if it lives.
+                stopped = true;
+                let _ = std::process::Command::new("kill").args(["-INT", &pid.to_string()]).status();
+                for _ in 0..50 {
+                    if matches!(child.try_wait(), Ok(Some(_))) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                if !matches!(child.try_wait(), Ok(Some(_))) {
+                    let _ = std::process::Command::new("kill").args(["-TERM", &pid.to_string()]).status();
+                }
+                let _ = child.wait();
+                // Drain what the agent printed while it was shutting down.
+                let mut rest: Vec<u8> = Vec::new();
+                let _ = reader.read_to_end(&mut rest);
+                let text = String::from_utf8_lossy(&rest).into_owned();
+                output.push_str(&text);
+                for line in text.lines() {
+                    for raw in crate::usage::parse_stream(line, agent) {
+                        record_raw(&raw, &mut acc, &mut usage, &mut records, &mut price_errors);
+                    }
+                }
+                break;
+            }
+            crate::usage::BudgetState::Ok => {}
+        }
+    }
+    // The stderr thread ends when the child closes it, which it does on exit;
+    // join so the combined output is complete.
+    if let Some(h) = err_handle {
+        if let Ok(e) = h.join() {
+            if !e.is_empty() {
+                output.push_str(&e);
+                if !e.ends_with('\n') {
+                    output.push('\n');
+                }
+            }
+        }
+    }
+    let status = child.wait()?;
+    let code = if stopped { 130 } else { status.code().unwrap_or(1) };
+    if !stopped && !status.success() {
+        // The agent failed on its own; usage captured so far still counts.
+    }
+    on_event(crate::usage::BudgetState::Ok, acc.spent, acc.budget);
+    Ok(Captured { usage, records, acc, stopped, code, price_errors, output })
+}
+

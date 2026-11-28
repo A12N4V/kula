@@ -81,6 +81,10 @@ fn keep(repo: &Repo, wt: &Path, plan: &Plan, slice: &str) -> Result<()> {
     Ok(())
 }
 
+/// Launches one attempt with the usage pipeline in the loop: the agent's
+/// stdout stream flows through parse → dedupe → price → accumulate → budget
+/// stop (80% warns through an event, 100% SIGINTs the seat), and the legacy
+/// terminal parse still runs on the combined output.
 #[allow(clippy::too_many_arguments)]
 fn launch(
     exe: &Path,
@@ -94,12 +98,17 @@ fn launch(
     n: u32,
     prompt: &str,
     run: (&str, &str, &str),
-) -> (i32, String) {
+    table: &crate::config::PriceTable,
+    budget: f64,
+    kula_dir: &Path,
+    events: &dyn Fn(crate::events::Event),
+) -> (i32, String, crate::launch::Captured) {
     let _ = std::fs::create_dir_all(log_dir);
     let pf = log_dir.join(format!("prompt-{n}.md"));
     let _ = std::fs::write(&pf, prompt);
     let args: Vec<String> = cmd.iter().map(|a| a.replace("{prompt}", prompt)).collect();
-    let out = Command::new(exe)
+    let mut command = Command::new(exe);
+    command
         .arg("-C")
         .arg(wt)
         .args(["run", "--agent", agent, "--"])
@@ -115,11 +124,37 @@ fn launch(
         .env("KULA_PLAN", run.0)
         .env("KULA_RUN", run.1)
         // a fresh worktree has no `.kula/team.json`, so the seat fences ride in the environment
-        .env("KULA_TEAM", run.2)
-        .output();
-    match out {
-        Ok(o) => (o.status.code().unwrap_or(1), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))),
-        Err(e) => (127, format!("could not start {}: {e}", args.first().map(String::as_str).unwrap_or("?"))),
+        .env("KULA_TEAM", run.2);
+    let cap = crate::launch::capture_stream(&mut command, run.2, run.1, slice, agent, table, budget, kula_dir, |st, spent, b| {
+        // The budget join point: 80% emits one warning event through the team's
+        // event log; the 100% stop lands as an event after the attempt ends.
+        let pct = if st == crate::usage::BudgetState::Warn { "warn" } else { "spent" };
+        events(crate::events::Event {
+            kind: "usage".into(),
+            team: run.2.into(),
+            agent: agent.into(),
+            plan: run.0.into(),
+            run: run.1.into(),
+            slice: slice.into(),
+            verdict: pct.into(),
+            msg: format!("budget {pct}: ${spent:.2} of ${b:.2}"),
+            ..Default::default()
+        });
+    });
+    match cap {
+        Ok(c) => (c.code, c.output.clone(), c),
+        Err(e) => {
+            let args0 = args.first().map(String::as_str).unwrap_or("?");
+            (127, format!("could not start {args0}: {e}"), crate::launch::Captured {
+                usage: Default::default(),
+                records: vec![],
+                acc: crate::usage::Accumulator::new(run.2, run.1, budget),
+                stopped: false,
+                code: 127,
+                price_errors: vec![],
+                output: String::new(),
+            })
+        }
     }
 }
 
@@ -305,6 +340,11 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                 scope.spawn(move || {
                     let slice = snap.slice(&id).unwrap().clone();
                     let log_dir = run_dir.join(&id);
+                    let table = crate::config::PriceTable::from(cfg);
+                    // The seat's dollar budget: the plan's run cap (a seat that
+                    // alone would spend the run's cap is stopped at it).
+                    let seat_budget = snap.budget_usd.unwrap_or(0.0);
+                    let kula_dir = repo.kula_dir();
                     let mut cmd = agent_cmd(&snap, &slice.agent);
                     // The seat's own MCP servers, skills and memory.
                     let pre = match crate::launch::seat_of(cfg, &slice.seat) {
@@ -324,7 +364,8 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                         &log_dir,
                         |n, prompt| {
                             let prompt = if pre.is_empty() { prompt.to_string() } else { format!("{pre}\n{prompt}") };
-                            let (code, out) = launch(
+                            let events = |e: crate::events::Event| crate::events::append(&kula_dir, e);
+                            let (code, out, cap) = launch(
                                 exe,
                                 &wt,
                                 &log_dir,
@@ -336,8 +377,36 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
                                 n,
                                 &prompt,
                                 (&snap.id, run_id, &snap.team),
+                                &table,
+                                seat_budget,
+                                &kula_dir,
+                                &events,
                             );
-                            let usage = crate::launch::parse(&out);
+                            let mut usage = crate::launch::parse(&out);
+                            // The pipeline's stream total wins when the legacy
+                            // terminal parse found nothing: the event carries
+                            // what was actually priced, deduped and budgeted.
+                            if cap.usage.turns > 0 && usage.as_ref().map(|u| u.turns == 0 && u.cost_usd == 0.0).unwrap_or(true) {
+                                usage = Some(cap.usage.clone());
+                            }
+                            if cap.stopped {
+                                events(crate::events::Event {
+                                    kind: "usage".into(),
+                                    team: snap.team.clone(),
+                                    agent: slice.agent.clone(),
+                                    plan: snap.id.clone(),
+                                    run: run_id.clone(),
+                                    slice: id.clone(),
+                                    verdict: "stopped".into(),
+                                    msg: format!(
+                                        "budget stop: ${:.2} of ${seat_budget:.2} spent{}",
+                                        cap.acc.spent,
+                                        if cap.price_errors.is_empty() { String::new() } else { format!("; {}", cap.price_errors.join("; ")) }
+                                    ),
+                                    usage: usage.clone(),
+                                    ..Default::default()
+                                });
+                            }
                             if let Some(u) = &usage {
                                 measured.lock().unwrap().entry(id.clone()).or_default().usage.add(u);
                             }
