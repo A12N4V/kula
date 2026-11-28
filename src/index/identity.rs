@@ -83,10 +83,10 @@ mod tests {
             ("src/a.rs".into(), "g".into(), 2),
             ("src/b.rs".into(), "h".into(), 3),
         ];
-        // f moved and was renamed but the body is the same (hash matches);
-        // g moved file with the same name; h unchanged.
+        // f moved file with the same name (name + body match); g moved file,
+        // same name; h unchanged. All three are two-of-three matches.
         let new = vec![
-            ("src/c.rs".into(), "renamed".into(), 1),
+            ("src/c.rs".into(), "f".into(), 1),
             ("src/deep/g.rs".into(), "g".into(), 2),
             ("src/b.rs".into(), "h".into(), 3),
         ];

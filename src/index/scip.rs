@@ -78,10 +78,6 @@ pub fn load(root: &std::path::Path) -> Option<ScipIndex> {
 }
 
 fn parse_bytes(bytes: &[u8]) -> Option<ScipIndex> {
-    if bytes.first() != Some(&0x0a) {
-        return None; // not an Index message; refuse to guess
-    }
-    let bytes = bytes;
     let mut docs = HashMap::new();
     for (num, f) in fields(&bytes) {
         if num != 2 {

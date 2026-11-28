@@ -228,7 +228,7 @@ fn unroll(store: &Store, src: &mut Src, entry: &Node) -> Result<Vec<Step>> {
 /// entry point.
 fn cli_variants(store: &Store) -> HashSet<String> {
     let mut out = HashSet::new();
-    let Ok(files) = store.files() else { return out };
+    let files: Vec<String> = store.nodes_where("kind = 'file'", []).unwrap_or_default().into_iter().map(|n| n.path).collect();
     for path in files {
         if !path.ends_with(".rs") {
             continue;
