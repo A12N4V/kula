@@ -201,25 +201,6 @@ test.describe("design language", () => {
   });
 });
 
-test.describe("graph", () => {
-  test("renders, and packages toggle onto the rim", async ({ page }) => {
-    test.setTimeout(60_000);
-    await open(page, "graph");
-// Laying out the graph takes a while when the machine is busy; wait for it.
-    await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
-    await expect(page.locator(".graph-wrap canvas").first()).toBeVisible({ timeout: 30_000 });
-    const btn = page.getByRole("button", { name: /Packages/ });
-    await expect(btn).toHaveAttribute("aria-pressed", "false");
-    await btn.click();
-    await expect(btn).toHaveAttribute("aria-pressed", "true");
-    await expect(btn).toContainText(/\d+/);
-    await page.waitForTimeout(5000); // let the layout settle before the snapshot
-    await page.screenshot({ path: "test-results/graph-packages.png" });
-    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("kula.settings.v1") ?? "{}").packages);
-    expect(stored).toBe(true);
-  });
-});
-
 test.describe("overview + code panel", () => {
   test("coupling: one functional figure – directories × directories, loops marked", async ({ page }) => {
     await open(page);
@@ -394,48 +375,6 @@ test.describe("console", () => {
   });
 });
 
-/** Screen position of a graph node, once the layout has settled (automation-only handle, see GraphView). */
-async function nodeAt(page: Page, pick: "hub" | "edge"): Promise<{ a: { x: number; y: number; id: string; label: string }; b: { x: number; y: number; id: string; label: string } }> {
-  await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 20_000 });
-  await page.waitForFunction(() => !!(window as any).__kula);
-  // Wait until the layout holds still: a background reindex can nudge nodes.
-  let last = "";
-  await expect.poll(async () => {
-    const now = await page.evaluate(() => {
-      const { sigma, graph } = (window as any).__kula;
-      return graph.order + ":" + graph.nodes().slice(0, 40).map((id: string) => {
-        const p = sigma.getNodeDisplayData(id); return p ? `${Math.round(p.x * 1e4)},${Math.round(p.y * 1e4)}` : "";
-      }).join(";");
-    });
-    const same = now === last; last = now; return same;
-  }, { timeout: 20_000, intervals: [400] }).toBe(true);
-  return page.evaluate((pick) => {
-    const { sigma, graph } = (window as any).__kula;
-    const box = sigma.getContainer().getBoundingClientRect();
-    const real = (id: string) => !id.startsWith("__dir:") && graph.getNodeAttribute(id, "dir") !== "__pkg";
-    const at = (id: string) => {
-      const p = sigma.framedGraphToViewport(sigma.getNodeDisplayData(id));
-      return { x: box.left + p.x, y: box.top + p.y, id, label: graph.getNodeAttribute(id, "label") };
-    };
-    // Two far-apart, directly connected symbols, both on screen.
-    const inView = (id: string) => { const p = at(id); return p.x > box.left + 40 && p.x < box.right - 40 && p.y > box.top + 80 && p.y < box.bottom - 80; };
-    const edges = graph.edges().map((e: string) => graph.extremities(e)).filter(([s, t]: string[]) => s !== t && real(s) && real(t) && inView(s) && inView(t));
-    // Symbols, a short hop apart but not overlapping: still near each other after the camera zooms in.
-    const d = (e: string[]) => { const p = at(e[0]), q = at(e[1]); return Math.hypot(p.x - q.x, p.y - q.y); };
-    const sym = (id: string) => graph.getNodeAttribute(id, "node").kind !== "file";
-    // Nothing else drawn within reach, so the click lands on this node and not a neighbour over it.
-    const pts = graph.nodes().map((id: string) => at(id));
-    const clear = (id: string) => { const p = at(id); return !pts.some((q: { id: string; x: number; y: number }) => q.id !== id && Math.hypot(p.x - q.x, p.y - q.y) < 14); };
-    const pool = edges.filter((e: string[]) => sym(e[0]) && sym(e[1]) && d(e) > 25 && clear(e[0]) && clear(e[1]));
-    pool.sort((e1: string[], e2: string[]) => (pick === "hub" ? d(e2) - d(e1) : d(e1) - d(e2)));
-    // Fewer symbols in view: any pair, as long as nothing sits on top of either end.
-    const loose = edges.filter((e: string[]) => d(e) > 25 && clear(e[0]) && clear(e[1]));
-    loose.sort((e1: string[], e2: string[]) => d(e1) - d(e2));
-    const [s, t] = pool[0] ?? loose[0] ?? edges[0];
-    return { a: at(s), b: at(t) };
-  }, pick);
-}
-
 test.describe("query", () => {
   test("SPARQL over the graph: examples, results that open the map, errors, export", async ({ page }) => {
     await open(page, "query");
@@ -463,7 +402,7 @@ test.describe("query", () => {
     await page.getByRole("button", { name: "ttl", exact: true }).click();
     expect((await dl).suggestedFilename()).toBe("kula-graph.ttl");
   });
-  test("flows and slice: graph modes, pick, read, no page scroll", async ({ page }) => {
+  test("flows and slice: pick, read, no page scroll", async ({ page }) => {
     await open(page, "flows");
     const flows = page.getByTestId("w-flows");
     await expect(flows.locator(".qv-flow").first()).toBeVisible({ timeout: 20_000 });
@@ -473,7 +412,10 @@ test.describe("query", () => {
     expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= innerHeight)).toBe(true);
     await page.screenshot({ path: "test-results/query-flows.png" });
 
-    await page.getByRole("radio", { name: "Slice" }).click();
+    // Slice lives in the palette, beside the Code modes.
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.keyboard.type(">Open Slice");
+    await page.locator(".palette .res").first().click();
     await expect(page).toHaveURL(/#slice\b/);
     const sel = page.getByRole("textbox", { name: "Slice selectors" });
     await sel.fill("src/graph/**");
@@ -839,7 +781,7 @@ name = "e2e-ship"
 category = "deploy"
 test = "true"
 members = [
-  { name = "shipper", agent = "fake-agent", scope = ["src/**"] },
+  { name = "shipper", agent = "fake-agent", scope = ["src/**"], budget = 200000, max_parallel = 1 },
 ]
 
 [[schedule]]
@@ -1233,94 +1175,6 @@ test.describe("N1 · shell: palette, shortcuts, states", () => {
   });
 });
 // ========================================================= A2: one picture of the whole setup – roster, keyboard, timeline, seat facts
-test.describe("isolate", () => {
-  test.use({ baseURL: ({ fx }, use) => use(fx) });
-  test.describe.configure({ mode: "serial" });
-
-  test("isolate a directory: only the slice and its boundary stubs, inbound and outbound, saved as a scope", async ({ page }, info) => {
-    test.skip(info.project.name !== "desktop", "writes kula.toml in the fixture");
-    test.setTimeout(90_000);
-    await open(page, "graph");
-    await expect(page.locator(".graph-loader")).toHaveCount(0, { timeout: 30_000 });
-    await page.waitForFunction(() => !!(window as any).__kula);
-    await page.keyboard.press("i");
-    const ask = page.getByRole("dialog", { name: "Isolate part of the graph" });
-    await expect(ask).toBeVisible();
-    await ask.getByLabel("Selectors").fill("src/index/**");
-    await ask.getByLabel("Selectors").press("Enter");
-    const panel = page.getByRole("region", { name: "Isolated slice" });
-    await expect(panel).toBeVisible();
-    await expect(ask).toHaveCount(0);
-    await expect(panel.locator(".iso-sel")).toHaveText("src/index/**");
-    await expect(page.getByRole("button", { name: /Isolate \d+/ })).toHaveAttribute("aria-pressed", "true");
-
-    // What is drawn is the slice plus what crosses its edge – nothing else.
-    const check = await page.evaluate(async () => {
-      const token = document.querySelector<HTMLMetaElement>('meta[name="kula-token"]')?.content ?? "";
-      const slice = await fetch("/api/isolate", { method: "POST", headers: { "x-kula-token": token, "content-type": "application/json" }, body: JSON.stringify({ select: ["src/index/**"] }) }).then((r) => r.json());
-      const { sigma, graph } = (window as any).__kula;
-      const inside = new Set(slice.nodes.map((n: any) => String(n.id)));
-      const peers = new Set([...slice.inbound, ...slice.outbound].map((p: any) => String(p.node.id)));
-      let shown = 0, stray = 0, stubs = 0;
-      graph.forEachNode((id: string, a: any) => {
-        if (a.virtual || a.dir === "__pkg") return;
-        const d = sigma.getNodeDisplayData(id);
-        if (!d || d.hidden) return;
-        if (inside.has(id)) shown++; else if (peers.has(id)) stubs++; else stray++;
-      });
-      return { shown, stray, stubs, counts: slice.counts };
-    });
-    expect(check.stray).toBe(0);
-    expect(check.shown).toBeGreaterThan(5);
-    expect(check.stubs).toBeGreaterThan(0);
-    await expect(panel.locator(".iso-counts")).toContainText(`${check.counts.nodes} symbols`);
-
-    // Inbound and outbound lists, with edge counts.
-    const tabs = panel.getByRole("tab");
-    await expect(tabs.nth(0)).toContainText(`${check.counts.inbound_edges} in · ${check.counts.inbound}`);
-    expect(await panel.locator(".iso-row").count()).toBeGreaterThan(0);
-    await tabs.nth(1).click();
-    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
-    await expect(panel.locator(".iso-row .iso-n.out").first()).toHaveText(/×\d+/);
-    await tabs.nth(2).click();
-    await expect(panel.locator(".iso-row").first()).toContainText("src/index/");
-    await page.screenshot({ path: "test-results/graph-isolate.png" });
-
-    // Save it as a named scope: it lands in kula.toml and is offered next time.
-    await panel.getByLabel("Scope name").fill("e2e-index");
-    await panel.getByRole("button", { name: "Save scope" }).click();
-    await expect(panel.locator(".iso-save")).toContainText('scope = ["@e2e-index"]');
-    const scopes = await page.evaluate(() => fetch("/api/scopes", { headers: { "x-kula-token": document.querySelector<HTMLMetaElement>('meta[name="kula-token"]')?.content ?? "" } }).then((r) => r.json()));
-    expect(scopes.find((s: any) => s.name === "e2e-index")?.select).toEqual(["src/index/**"]);
-    await panel.locator(".iso-sel").click();
-    await expect(ask.getByRole("button", { name: /@e2e-index/ })).toBeVisible();
-    await page.keyboard.press("Escape");
-
-    // Exit: the whole map comes back.
-    await panel.getByRole("button", { name: "Exit isolate" }).click();
-    await expect(panel).toHaveCount(0);
-    await page.evaluate(() => fetch("/api/scopes/forget", { method: "POST", headers: { "x-kula-token": document.querySelector<HTMLMetaElement>('meta[name="kula-token"]')?.content ?? "", "content-type": "application/json" }, body: JSON.stringify({ name: "e2e-index" }) }));
-  });
-});
-
-test.describe("isolate from the map", () => {
-  test("right-click a symbol to isolate its neighbourhood", async ({ page }) => {
-    await open(page, "graph");
-    const { a } = await nodeAt(page, "edge");
-    // The layout may still be easing: retry the right-click until the menu opens.
-    await expect(async () => {
-      await page.mouse.click(a.x, a.y, { button: "right" });
-      await expect(page.getByRole("menu")).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 15_000 });
-    await page.getByRole("menuitem", { name: /Isolate (neighbourhood|file)/ }).click();
-    const panel = page.getByRole("region", { name: "Isolated slice" });
-    await expect(panel).toBeVisible();
-    await expect(panel.locator(".iso-sel")).toContainText(a.label);
-    await page.keyboard.press("i");
-    await expect(page.getByRole("dialog", { name: "Isolate part of the graph" }).getByLabel("Selectors")).toHaveValue(/symbol:|path:/);
-  });
-});
-
 test.describe("five destinations", () => {
   test("Home, Agents, Code, Changes, Review on 1 to 5, old hashes land, console is a drawer", async ({ page }) => {
     await open(page, "overview");

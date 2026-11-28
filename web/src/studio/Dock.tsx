@@ -52,14 +52,16 @@ export function useDockHost(pick: string | undefined, on: boolean, open: (id: st
 
 export const DockProvider = ({ api, children }: { api: DockApi; children: ReactNode }) => <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 
-/** View side: offer a panel in the ribbon; its children render in the option panel while it shows. */
-export function Docked({ id, label, icon, badge, info, children }: { id?: string; label: string; icon?: () => ReactElement; badge?: number; info?: string; children: ReactNode }) {
+/** View side: offer a panel in the ribbon; its children render in the option panel while it shows.
+ *  A primary panel holds the view's own reading (examples, steps) and opens when the view does. */
+export function Docked({ id, label, icon, badge, info, primary, children }: { id?: string; label: string; icon?: () => ReactElement; badge?: number; info?: string; primary?: boolean; children: ReactNode }) {
   const d = useContext(Ctx);
   const key = id ?? label;
   const mine = useRef(++seq).current;
-  const put = d?.put, drop = d?.drop;
+  const put = d?.put, drop = d?.drop, open = d?.open;
   useEffect(() => { put?.({ id: key, label, icon, badge, info, seq: mine }); }, [key, label, icon, badge, info, !!put]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => drop?.(key), [key, !!drop]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (primary) open?.(key); }, [key, !!open]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!d?.slot || d.shown !== key) return null;
   return createPortal(children, d.slot);
 }

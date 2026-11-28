@@ -10,6 +10,7 @@ import { LAYERS, type Layer } from "./model";
 import type { Pick } from "./ab";
 import type { OverlayState } from "./overlays";
 import { pickCode } from "./ab";
+import { Icon } from "../../ui";
 
 const LAYER_LABEL: Record<Layer, string> = {
   entry: "entry", handler: "handler", logic: "logic", data: "data", io: "io", test: "test",
@@ -51,7 +52,7 @@ export function Inspector({ pick, model, overlays, onClose, onPick }: {
     <aside className="map-inspector" data-testid="map-inspector">
       <header className="map-inspector-head">
         <span className="map-kind">{pick.kind}</span>
-        <button className="btn sm icon" onClick={onClose} aria-label="Close inspector" data-testid="inspector-close"><span aria-hidden>✕</span></button>
+        <button className="btn sm icon" onClick={onClose} aria-label="Close inspector" data-testid="inspector-close"><Icon.close /></button>
       </header>
       {st && (
         <div className="map-inspector-body">

@@ -102,7 +102,7 @@ export default function Slice({ go, version, target }: Nav) {
           </div>
         </div>
       )}
-      <Docked label="Slice">
+      <Docked label="Slice" primary>
         <div className="ct ct-side qv-side" data-testid="slice-side">
           <div className="ct-side-head">
             <div className={`ct-pick${sels.length ? " on" : ""}`}><b>{sels.length ? sels.join(" ") : "No slice"}</b><span className="ct-sub">{`${hops} hop${hops === 1 ? "" : "s"} around`}</span></div>

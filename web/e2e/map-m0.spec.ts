@@ -82,14 +82,14 @@ test("the header is one row at 1440 and at 1024", async ({ page }) => {
   expect(await page.locator(".map-overlays").first().isVisible()).toBe(true);
 });
 
-test("the canvas fills down to the status bar", async ({ page }) => {
+test("the canvas fills down to the shell body bottom", async ({ page }) => {
   await ready(page, "/#map/atlas");
   const gap = await page.evaluate(() => {
     const c = document.querySelector('[data-testid="map-canvas"]')!.getBoundingClientRect();
-    const s = document.querySelector("footer.statusbar")!.getBoundingClientRect();
-    return Math.round(s.top - c.bottom);
+    const s = document.querySelector(".k-body")!.getBoundingClientRect();
+    return Math.round(s.bottom - c.bottom);
   });
-  expect(gap, "canvas bottom must equal the status bar top").toBe(0);
+  expect(gap, "canvas bottom must equal the shell body bottom").toBe(0);
 });
 
 test("resize redraws without a reload", async ({ page }) => {

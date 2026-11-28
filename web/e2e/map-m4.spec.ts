@@ -4,6 +4,8 @@
 // per session, and first paint + pan frames are timed for both variants.
 
 import { expect, test } from "@playwright/test";
+// The a/b/c variants gave way to Atlas and Metro (map2 M0). Map2 M4 rewrites this spec for two variants.
+test.skip(true, "old three variant spec, rewritten by map2 M4");
 
 // Wait for the map shell: model built, layout exposed, canvas fitted.
 async function ready(page: import("@playwright/test").Page, hash = "/#map") {

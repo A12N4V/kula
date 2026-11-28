@@ -162,6 +162,11 @@ pub fn team_plan(cfg: &Config, o: &DeployOpts, all_files: &[String], flow_files:
 /// The plan for a deploy, from the repo's index, saved to `.kula/plans/<id>.json`.
 pub fn make(repo: &Repo, o: &DeployOpts) -> Result<(Plan, PathBuf)> {
     let cfg = Config::load(&repo.root)?;
+    // The same seat lint run-plan applies, here so the caller hears it instead of a log.
+    let own = format!("{}/", o.team);
+    if let Some(e) = crate::launch::lint(&repo.root, &cfg).into_iter().find(|e| e.seat.starts_with(&own)) {
+        bail!("{} cannot deploy: {} {}", e.seat, e.field, e.problem);
+    }
     let st = crate::store::Store::open(repo).ok();
     let all_files: Vec<String> =
         st.as_ref().and_then(|s| s.nodes_where("kind = 'file'", []).ok()).unwrap_or_default().into_iter().map(|n| n.path).collect();

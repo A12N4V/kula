@@ -23,7 +23,7 @@ const SECTIONS: Sec[] = [
   { id: "general", label: "General", hue: "#f97f3a", group: "You", words: "general startup opening panel sizes reset defaults" },
   { id: "appearance", label: "Appearance", hue: "#e3b26b", group: "You", words: "appearance theme dark light system density compact comfortable" },
   { id: "keys", label: "Keybindings", hue: "#d98fb5", group: "You", words: "keybindings shortcuts keys keyboard chords rebind hotkeys" },
-  { id: "graph", label: "Graph", hue: "#7fb3d5", group: "Workspace", words: "graph encoding colour nodes directory depth territories hub tiles labels imports packages curved edges flow" },
+  { id: "graph", label: "Graph", hue: "#7fb3d5", group: "Workspace", words: "graph encoding colour nodes directory depth territories hub tiles labels imports curved edges flow" },
   { id: "colours", label: "Directory colours", hue: "#9fc28a", group: "Workspace", words: "directory colours colors swatches palette" },
   { id: "git", label: "Git", hue: "#f0a76b", group: "Repository", words: "git worktrees branches remotes stale merged base" },
   { id: "issues", label: "Issues", hue: "#e88a7a", group: "Repository", words: "issues templates labels milestones people" },
@@ -138,7 +138,6 @@ function GraphSec({ q }: { q: string }) {
           </Row>
         )}
         <Toggle k="imports" label="Import edges" hint="Off shows calls only" q={q} />
-        <Toggle k="packages" label="Packages" hint="Dependencies on the rim, tied to their importers" q={q} />
         <Toggle k="curved" label="Curved edges" q={q} />
         <Toggle k="flow" label="Call direction dots" hint="Moving dots on the focused symbol's calls" q={q} />
       </Group>

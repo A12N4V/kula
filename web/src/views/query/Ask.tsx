@@ -124,7 +124,7 @@ export default function Ask({ openSymbol }: Nav) {
         </Widget>
         <Widget area="results" title="Results" count={status} className="kq-out">{out}</Widget>
       </div>
-      <Docked label="Query">
+      <Docked label="Query" primary>
         <div className="ct ct-side qv-side" data-testid="query-side">
           <div className="ct-side-head">
             <Seg label="Reference" value={side} set={setSide} opts={[{ id: "examples", label: "Examples" }, { id: "vocabulary", label: "Vocabulary" }]} />

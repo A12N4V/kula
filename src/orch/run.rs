@@ -199,8 +199,11 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     let plan = Plan::load(plan_path)?;
     let cfg = crate::config::Config::load(&repo.root).unwrap_or_default();
     // Seat lint runs before anything is created: no run dir, no worktree, no
-    // agent, no launch op. A failure names the seat and the field.
-    let lint_errors = crate::launch::lint(&repo.root, &cfg);
+    // agent, no launch op. A failure names the seat and the field. A plan the
+    // hub deployed answers only for its own team's seats.
+    let own = format!("{}/", plan.team);
+    let lint_errors: Vec<_> =
+        crate::launch::lint(&repo.root, &cfg).into_iter().filter(|e| plan.team.is_empty() || e.seat.starts_with(&own)).collect();
     if !lint_errors.is_empty() {
         let first = &lint_errors[0];
         bail!("seat lint failed for {} – field {}: {} ({} error(s) total)", first.seat, first.field, first.problem, lint_errors.len());
@@ -222,13 +225,6 @@ pub fn run_plan(repo: &Repo, plan_path: &Path) -> Result<Plan> {
     std::fs::create_dir_all(&run_dir)?;
     let started = crate::events::now_ms();
     let run_id = format!("{}-{}", plan.id, started / 1000);
-    // Seat lint runs before anything is started: no worktree, no agent, no
-    // launch op. A failure names the seat and the field.
-    let lint_errors = crate::launch::lint(&repo.root, &cfg);
-    if !lint_errors.is_empty() {
-        let first = &lint_errors[0];
-        bail!("seat lint failed for {} – field {}: {} ({} error(s) total)", first.seat, first.field, first.problem, lint_errors.len());
-    }
     let base_sha = repo
         .run(&["rev-parse", if plan.base_ref.is_empty() { "HEAD" } else { &plan.base_ref }])
         .map(|s| s.trim().to_string())

@@ -90,7 +90,7 @@ export default function Flows({ version, go }: Nav) {
           )}
         </Widget>
       </div>
-      <Docked label="Flow">
+      <Docked label="Flow" primary>
         <div className="ct ct-side qv-side" data-testid="flows-side">
           <div className="ct-side-head">
             <div className="ct-pick on"><b>{flow ? flow.entry.name : "No flow"}</b><span className="ct-sub">{flow ? `${flow.kind} in ${label.get(flow.domain) ?? "unsorted"}` : "pick one in the list"}</span></div>
