@@ -262,6 +262,11 @@ impl Store {
         self.conn.query_row("SELECT value FROM meta WHERE key = ?1", [k], |r| r.get(0)).optional().ok().flatten()
     }
 
+    /// Live cluster count, for the reuse fast path that skips re-clustering.
+    pub fn communities_count(&self) -> usize {
+        self.conn.query_row("SELECT count(*) FROM communities", [], |r| r.get::<_, i64>(0)).unwrap_or(0).max(0) as usize
+    }
+
     pub fn node(&self, id: i64) -> Result<Option<Node>> {
         Ok(self.conn.query_row(&format!("SELECT {NODE_COLS} FROM nodes WHERE id = ?1"), [id], row_node).optional()?)
     }

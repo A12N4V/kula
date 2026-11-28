@@ -825,7 +825,7 @@ fn parse_one(path: &str, lid: &'static str, read: Reader, parser: &mut Parser) -
 }
 
 pub fn build(files: &[(String, Option<&'static str>)], read: Reader) -> Built {
-    build_with(files, read, None, None)
+    build_with(files, read, None, None, true)
 }
 
 /// Cached-parse bridge: `ParsedFile` ⇄ `CachedParse`. `lang` is a `&'static str`
@@ -933,6 +933,7 @@ fn build_with(
     read: Reader,
     progress: Option<&'static Progress>,
     cache: Option<(&std::path::Path, Option<&HashMap<String, String>>)>,
+    cluster: bool,
 ) -> Built {
     let source: Vec<(String, &'static str)> = files.iter().filter_map(|(p, l)| l.map(|l| (p.clone(), l))).collect();
 
@@ -1250,7 +1251,9 @@ fn build_with(
     if let Some(p) = progress {
         p.phase(4, 0);
     }
-    let communities = crate::graph::detect_communities(&mut nodes, &edges);
+    // The caller clusters when it has to: run() first checks whether the
+    // node+edge structure is unchanged and reuses the live clusters instead.
+    let communities = if cluster { crate::graph::detect_communities(&mut nodes, &edges) } else { Vec::new() };
     trace("cluster");
     let cached = pc.as_ref().map_or(0, |c| c.hits.load(std::sync::atomic::Ordering::Relaxed) as usize);
     Built { nodes, edges, communities, hashes, files: files.len(), parsed: parsed.len(), cached }
@@ -1275,7 +1278,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     }
     let read = |p: &str| std::fs::read_to_string(root.join(p)).ok();
     let oids = crate::cache::blob_oids(&root);
-    let built = build_with(&files, &read, Some(&PROGRESS), Some((root.as_path(), Some(&oids))));
+    let built = build_with(&files, &read, Some(&PROGRESS), Some((root.as_path(), Some(&oids))), false);
     // SCIP edges (when `index.scip` exists) outrank the resolver ladder and
     // the name guesses; the best source wins per edge, disagreements counted.
     let (edges, conflicts) = match crate::index::scip::load(&root) {
@@ -1288,16 +1291,17 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
         }
         None => (built.edges, 0),
     };
-    let Built { nodes, communities, files: nfiles, parsed, cached, .. } = built;
+    let Built { mut nodes, communities, files: nfiles, parsed, cached, .. } = built;
 
     PROGRESS.phase(5, 0);
-    // A warm reindex of an unchanged tree builds the same graph; rewriting the
-    // whole SQLite file for it was ~110 ms of every warm run. Hash it, compare
-    // with the live index and publish only real changes.
-    let hash = graph_hash(&nodes, &edges, &communities);
+    // A warm reindex of an unchanged tree builds the same node+edge structure;
+    // rewriting the whole SQLite file for it was ~110 ms and re-clustering
+    // ~95 ms of every warm run. Hash the structure, compare with the live
+    // index, and publish (or even cluster) only on a real change.
+    let base = graph_base_hash(&nodes, &edges);
     let head = repo.head().unwrap_or_default();
     if let Ok(live) = Store::open(repo) {
-        if live.meta("graph_hash").as_deref() == Some(hash.as_str())
+        if live.meta("graph_base_hash").as_deref() == Some(base.as_str())
             && live.meta("schema").as_deref() == Some(crate::store::SCHEMA_VERSION)
             && live.meta("indexed_head").as_deref() == Some(head.as_str())
         {
@@ -1308,7 +1312,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
                 cached,
                 symbols: nodes.iter().filter(|n| n.kind != "file" && n.kind != "package").count(),
                 edges: edges.len(),
-                communities: communities.len(),
+                communities: live.communities_count(),
                 millis: t0.elapsed().as_millis(),
             };
             live.set_meta("stats", &serde_json::to_string(&stats)?)?;
@@ -1319,6 +1323,10 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
             return Ok(stats);
         }
     }
+    // Not reused: cluster, hash the finished graph and publish a new database.
+    let communities = crate::graph::detect_communities(&mut nodes, &edges);
+    trace("cluster");
+    let hash = graph_hash(&nodes, &edges, &communities);
     let store = Store::create(repo)?;
     store.write_all(&nodes, &edges, &communities)?;
     trace("rows");
@@ -1326,6 +1334,7 @@ pub fn run(repo: &Repo, quiet: bool) -> Result<IndexStats> {
     store.set_meta("indexer", env!("CARGO_PKG_VERSION"))?;
     store.set_meta("edge_disagreements", &conflicts.to_string())?;
     store.set_meta("indexed_head", &head)?;
+    store.set_meta("graph_base_hash", &base)?;
     store.set_meta("graph_hash", &hash)?;
     store.set_meta("indexed_at", &now_secs())?;
 
@@ -1377,6 +1386,32 @@ fn graph_hash(nodes: &[crate::store::Node], edges: &[crate::store::Edge], commun
         h.write(&c.id.to_le_bytes());
         c.label.hash(&mut h);
         h.write(&c.size.to_le_bytes());
+    }
+    format!("{:016x}", h.finish())
+}
+
+/// The structure half of graph_hash: nodes and edges, no communities. A match
+/// means the live clusters are still valid, so run() skips re-clustering too.
+fn graph_base_hash(nodes: &[crate::store::Node], edges: &[crate::store::Edge]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for n in nodes {
+        h.write(&n.id.to_le_bytes());
+        n.kind.hash(&mut h);
+        n.name.hash(&mut h);
+        n.path.hash(&mut h);
+        n.lang.hash(&mut h);
+        h.write(&n.start_line.to_le_bytes());
+        h.write(&n.end_line.to_le_bytes());
+        h.write(&n.parent.unwrap_or(0).to_le_bytes());
+    }
+    for e in edges {
+        h.write(&e.src.to_le_bytes());
+        h.write(&e.dst.to_le_bytes());
+        e.kind.hash(&mut h);
+        h.write(&e.weight.to_bits().to_le_bytes());
+        e.confidence.hash(&mut h);
+        e.source.hash(&mut h);
     }
     format!("{:016x}", h.finish())
 }
