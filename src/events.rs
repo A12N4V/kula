@@ -407,7 +407,16 @@ fn run_logs() -> &'static std::sync::Mutex<std::collections::HashMap<PathBuf, Ru
 pub fn with_run_log<T>(kula_dir: &Path, run: &str, f: impl FnOnce(&mut RunLog) -> Result<T>) -> Result<T> {
     let path = RunLog::path(kula_dir, run);
     let mut logs = run_logs().lock().unwrap_or_else(|p| p.into_inner());
-    let log = logs.entry(path).or_insert_with(|| RunLog::open(kula_dir, run).unwrap_or_else(|_| RunLog { run: run.into(), path: RunLog::path(kula_dir, run), file: None, unsynced: 0, seqs: Default::default(), index: Default::default() }));
+    let log = logs.entry(path).or_insert_with(|| {
+        RunLog::open(kula_dir, run).unwrap_or_else(|_| RunLog {
+            run: run.into(),
+            path: RunLog::path(kula_dir, run),
+            file: None,
+            unsynced: 0,
+            seqs: Default::default(),
+            index: Default::default(),
+        })
+    });
     f(log)
 }
 
@@ -761,7 +770,8 @@ mod tests {
     fn fsync_batches_do_not_lose_events_on_read() {
         let d = b5_dir("fsync");
         for i in 0..40u64 {
-            let ev = EventV2 { run: "r".into(), seat: "a".into(), ts: i, kind: EventKind::Tool, msg: format!("t{i}"), ..Default::default() };
+            let ev =
+                EventV2 { run: "r".into(), seat: "a".into(), ts: i, kind: EventKind::Tool, msg: format!("t{i}"), ..Default::default() };
             with_run_log(&d, "r", |log| log.append(ev)).unwrap();
         }
         assert_eq!(replay(&d, "r", "a", 0, 100).unwrap().len(), 40, "every event is on disk despite batching");
@@ -793,7 +803,17 @@ mod tests {
         let blob = out(&["rev-parse", "refs/kula/runs/p-1^{tree}:events.jsonl"]).trim().to_string();
         assert_eq!(out(&["cat-file", "-p", &blob]).lines().count(), 1);
         // A new event after the ledger re-compacts to a new commit on top.
-        with_run_log(&kd, "p-1", |log| log.append(EventV2 { run: "p-1".into(), seat: "team/a".into(), ts: 2, kind: EventKind::Tool, msg: "y".into(), ..Default::default() })).unwrap();
+        with_run_log(&kd, "p-1", |log| {
+            log.append(EventV2 {
+                run: "p-1".into(),
+                seat: "team/a".into(),
+                ts: 2,
+                kind: EventKind::Tool,
+                msg: "y".into(),
+                ..Default::default()
+            })
+        })
+        .unwrap();
         forget_run_log(&kd, "p-1");
         let c2 = compaction(&repo, &kd, "p-1").unwrap().unwrap();
         assert_ne!(c1, c2);

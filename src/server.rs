@@ -495,7 +495,7 @@ pub(crate) fn run_events_blocking(dir: &std::path::Path, run: &str, seat: Option
     if let Ok(s) = std::fs::read_to_string(std::path::Path::new(dir).join("runs").join(format!("{run}.json"))) {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
             if v.get("state").and_then(|x| x.as_str()).map(|x| x != "running").unwrap_or(false) {
-                if let Ok(repo) = crate::Repo::discover(&dir.parent().unwrap_or(dir).to_path_buf()) {
+                if let Ok(repo) = crate::Repo::discover(dir.parent().unwrap_or(dir)) {
                     let _ = crate::events::compaction(&repo, dir, run);
                 }
             }
@@ -508,7 +508,6 @@ pub(crate) fn run_events_blocking(dir: &std::path::Path, run: &str, seat: Option
     let events = if events.len() > limit { events[events.len() - limit..].to_vec() } else { events };
     json!({ "run": run, "events": events, "now": crate::events::now_ms() })
 }
-
 
 async fn runs_changelog(State(s): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     blocking(move || {

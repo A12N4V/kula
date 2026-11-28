@@ -452,13 +452,7 @@ pub fn session_split(events: &[crate::events::EventV2], gap_ms: u64) -> Vec<Sess
                     s.end = s.end.max(e.ts);
                     s.events.push(e.clone());
                 }
-                _ => sessions.push(Session {
-                    seat: seat.to_string(),
-                    start: e.ts,
-                    end: e.ts,
-                    events: vec![e.clone()],
-                    spans: vec![],
-                }),
+                _ => sessions.push(Session { seat: seat.to_string(), start: e.ts, end: e.ts, events: vec![e.clone()], spans: vec![] }),
             }
         }
         for s in &mut sessions {

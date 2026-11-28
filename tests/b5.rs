@@ -13,18 +13,11 @@ const KULA: &str = env!("CARGO_BIN_EXE_kula");
 fn repo5() -> tempfile::TempDir {
     let t = tempfile::tempdir().unwrap();
     let d = t.path();
-    let ok = Command::new("git")
-        .arg("-C")
-        .arg(d)
-        .args(["init", "-q", "-b", "main"])
-        .output()
-        .unwrap();
+    let ok = Command::new("git").arg("-C").arg(d).args(["init", "-q", "-b", "main"]).output().unwrap();
     assert!(ok.status.success(), "git init failed");
     let kd = d.join(".kula").join("runs");
     std::fs::create_dir_all(&kd).unwrap();
-    let ev = |run: &str, seat: &str, seq: u64, ts: u64, kind: &str, msg: &str| {
-        json!({ "run": run, "seat": seat, "seq": seq, "ts": ts, "kind": kind, "msg": msg, "target": "src/a.rs", "path": "src/a.rs" })
-    };
+    let ev = |run: &str, seat: &str, seq: u64, ts: u64, kind: &str, msg: &str| json!({ "run": run, "seat": seat, "seq": seq, "ts": ts, "kind": kind, "msg": msg, "target": "src/a.rs", "path": "src/a.rs" });
     let mut lines = vec![];
     for (run, seat, seq, ts, kind, msg) in [
         ("p-1", "team/a", 1, 100, "turn", "turn 1"),
@@ -69,7 +62,8 @@ fn mcp_call_events(dir: &Path, args: Value) -> Value {
         "jsonrpc": "2.0", "id": 2, "method": "tools/call",
         "params": { "name": "kula_events", "arguments": args }
     });
-    let mut child = Command::new(KULA).arg("-C").arg(dir).arg("mcp").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().expect("spawn kula mcp");
+    let mut child =
+        Command::new(KULA).arg("-C").arg(dir).arg("mcp").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().expect("spawn kula mcp");
     {
         let stdin = child.stdin.as_mut().unwrap();
         writeln!(stdin, "{init}").unwrap();
@@ -85,7 +79,8 @@ fn mcp_call_events(dir: &Path, args: Value) -> Value {
         .map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("bad mcp line {l:?}: {e}")))
         .collect();
     let reply = replies.iter().find(|r| r.get("id") == Some(&json!(2))).expect("no reply for tools/call");
-    serde_json::from_str(reply.pointer("/result/content/0/text").and_then(|v| v.as_str()).expect("text content")).expect("kula_events payload")
+    serde_json::from_str(reply.pointer("/result/content/0/text").and_then(|v| v.as_str()).expect("text content"))
+        .expect("kula_events payload")
 }
 
 fn view(port: u16, dir: &Path) -> std::process::Child {
@@ -145,11 +140,7 @@ fn mcp_kula_events_equals_http_events() {
     child2.kill().expect("kill kula view");
     child2.wait().expect("wait kula view");
     assert_eq!(seat_http["events"], seat_mcp["events"], "seat filter disagrees");
-    let got: Vec<(String, u64)> = seat_http["events"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|e| (e["seat"].as_str().unwrap().into(), e["seq"].as_u64().unwrap()))
-        .collect();
+    let got: Vec<(String, u64)> =
+        seat_http["events"].as_array().unwrap().iter().map(|e| (e["seat"].as_str().unwrap().into(), e["seq"].as_u64().unwrap())).collect();
     assert_eq!(got, vec![("team/a".into(), 2), ("team/a".into(), 3)], "from=2 replays the suffix");
 }

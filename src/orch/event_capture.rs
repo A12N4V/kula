@@ -191,7 +191,11 @@ fn parse_codex(v: &serde_json::Value) -> Vec<Draft> {
     match str_at(m, &["type"]).as_str() {
         "exec_command_begin" => {
             let mut d = Draft::new(EventKind::Tool);
-            let cmd = m.get("command").and_then(|c| c.as_array()).map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>()).unwrap_or_default();
+            let cmd = m
+                .get("command")
+                .and_then(|c| c.as_array())
+                .map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>())
+                .unwrap_or_default();
             d.msg = cmd.join(" ");
             d.target = cmd.first().map(|s| s.to_string()).unwrap_or_default();
             out.push(d);
@@ -298,7 +302,7 @@ pub fn capture_stream(fmt: StreamFormat, output: &str, kula_dir: &Path, run: &st
                 msg: d.msg.clone(),
                 path: d.path.clone(),
                 verdict: d.verdict.clone(),
-                usage: d.usage.clone(),
+                usage: d.usage,
                 ..Default::default()
             };
             if let Some(seq) = capture_event(kula_dir, run, seat, e.clone()) {
@@ -322,7 +326,8 @@ mod tests {
     }
 
     fn fixture(_fmt: StreamFormat, cli: &str) -> String {
-        std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/streams/{cli}/stream.jsonl"))).unwrap()
+        std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/streams/{cli}/stream.jsonl")))
+            .unwrap()
     }
 
     /// Parse every line of a recorded stream the way `capture_stream` does,

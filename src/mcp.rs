@@ -265,7 +265,7 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             } else {
                 let seat = str_arg("seat");
                 let from = int_arg("from", 0) as u64;
-                let limit = int_arg("limit", 500) as usize;
+                let limit = int_arg("limit", 500);
                 // The very body the route's poll fallback answers with, so
                 // both doors can never disagree.
                 json!(crate::server::run_events_blocking(
