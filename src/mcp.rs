@@ -187,7 +187,7 @@ fn call(repo: &Repo, name: &str, a: &Value) -> Result<Value> {
             json!({ "summary": d.summary, "changed": changed })
         }
         "flows" => json!(graph::flows(&st()?, int_arg("limit", 10))?),
-        "flowmap" | "kula_flows" => json!(graph::flowmap(&st()?, int_arg("limit", 30))?),
+        "flowmap" | "kula_flows" => json!(graph::flowmap(&st()?, int_arg("limit", 60))?),
         "notes" => {
             let t = str_arg("target");
             let m = crate::meta::load(repo)?;

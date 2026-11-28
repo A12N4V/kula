@@ -154,6 +154,92 @@ fn mcp_call_flows(dir: &Path) -> Value {
     inner
 }
 
+/// The same flows through every door: the HTTP route and the MCP tool return
+/// byte-identical JSON at their (aligned) default limit of 60.
+#[test]
+fn mcp_kula_flows_equals_http_flowmap() {
+    let t = fixture();
+    let d = t.path();
+    index(d);
+    // kula view on a fixed token and port; the port line is printed on stdout.
+    let port = 28471u16;
+    let mut child = Command::new(KULA)
+        .arg("-C")
+        .arg(d)
+        .arg("view")
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--no-open")
+        .env("KULA_TOKEN", "b1-test-token")
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn kula view");
+    // Wait until the port answers.
+    let http = (0..150).find_map(|_| http_get_json(port, "/api/flowmap", "b1-test-token"));
+    let http = http.expect("no /api/flowmap reply from kula view");
+    let mcp = mcp_call_flows_no_args(d);
+    child.kill().ok();
+    assert_eq!(
+        http, mcp,
+        "/api/flowmap and kula_flows differ – the same flows must come out of both doors"
+    );
+    assert!(!http.pointer("/flows").and_then(|v| v.as_array()).map_or(true, |a| a.is_empty()), "flows are empty");
+}
+
+/// GET one JSON path from the local view server over a raw TCP socket, no
+/// HTTP client dependency: x-kula-token auth, plain HTTP/1.1, one response.
+fn http_get_json(port: u16, path: &str, token: &str) -> Option<Value> {
+    use std::io::Read;
+    use std::net::TcpStream;
+    let mut s = TcpStream::connect(("127.0.0.1", port)).ok()?;
+    s.set_read_timeout(Some(std::time::Duration::from_secs(5))).ok()?;
+    let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nx-kula-token: {token}\r\nConnection: close\r\n\r\n");
+    use std::io::Write;
+    s.write_all(req.as_bytes()).ok()?;
+    let mut buf = Vec::new();
+    s.read_to_end(&mut buf).ok()?;
+    let text = String::from_utf8_lossy(&buf);
+    let body = text.split_once("\r\n\r\n")?.1;
+    serde_json::from_str(body).ok()
+}
+
+/// kula_flows with no arguments, exactly as an editor that doesn't set a limit.
+fn mcp_call_flows_no_args(dir: &Path) -> Value {
+    let init = serde_json::json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "clientInfo": { "name": "b1-test" }, "protocolVersion": "2025-06-18" }
+    });
+    let call = serde_json::json!({
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": { "name": "kula_flows", "arguments": {} }
+    });
+    let mut child = Command::new(KULA)
+        .arg("-C")
+        .arg(dir)
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn kula mcp");
+    use std::io::Write;
+    let stdin = child.stdin.as_mut().unwrap();
+    writeln!(stdin, "{init}").unwrap();
+    writeln!(stdin, "{call}").unwrap();
+    drop(child.stdin.take());
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "kula mcp exited {}", out.status);
+    let text = String::from_utf8_lossy(&out.stdout);
+    let replies: Vec<Value> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("bad mcp line {l:?}: {e}")))
+        .collect();
+    let reply = replies.iter().find(|r| r.get("id") == Some(&serde_json::json!(2))).expect("no reply for tools/call");
+    let inner: Value = serde_json::from_str(reply.pointer("/result/content/0/text").and_then(|v| v.as_str()).expect("text content"))
+        .expect("kula_flows payload");
+    inner
+}
+
 #[test]
 fn mcp_kula_flows_equals_cli_flows_json() {
     let t = fixture();
