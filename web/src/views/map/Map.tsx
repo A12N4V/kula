@@ -16,6 +16,7 @@ import {
 } from "./ab";
 import { metroVariantFor, layoutFor as metroLayoutFor } from "./metro";
 import { atlasVariant } from "./atlas";
+import { storyVariant, __layoutForTest as storyLayoutFor } from "./story";
 import { getAtlasLayout } from "./atlas/layout";
 import "./map.css";
 
@@ -251,10 +252,11 @@ function stubLayoutFor(model: MapModel): StubLayout {
   return l;
 }
 
-/** The variant wired for an id. C stays the stub until its module lands. */
+/** The variant wired for an id. The stub only shows before data arrives. */
 function variantFor(id: VariantId, model: MapModel | null): Variant {
   if (model && id === "a") return metroVariantFor(model);
   if (model && id === "b") return atlasVariant;
+  if (model && id === "c") return storyVariant;
   return stubVariant;
 }
 
@@ -314,8 +316,11 @@ export default function MapView({ route, setRoute }: { route: MapRoute; setRoute
       if (!model) return null;
       if (id === "a") return metroLayoutFor(model);
       if (id === "b") return atlasLayoutFor(model);
+      if (id === "c") return storyLayoutFor(model);
       return stubLayoutFor(model);
     };
+    (window as unknown as Record<string, unknown>).__atlas = { atlasVariant, getAtlasLayout };
+    (window as unknown as Record<string, unknown>).__story = { storyVariant, __layoutForTest: storyLayoutFor };
     (window as unknown as Record<string, unknown>).__kulaMap = {
       build: buildMapModel,
       model,

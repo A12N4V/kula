@@ -50,7 +50,7 @@ const waitReady = (page: Page) =>
 
 /** Draw the metro map in-page onto a fresh canvas at a given view. */
 
-test("shell: #map/a renders (stub until M4 wires variant a) without errors", async ({ page }) => {
+test("shell: #map/a renders the metro variant without errors", async ({ page }) => {
   await page.goto("/#map/a");
   await waitReady(page);
   await expect(page).toHaveURL(/#map\/a/);

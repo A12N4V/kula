@@ -1,18 +1,17 @@
 // MB proof: the Atlas variant (variant B). The pure layout layer is imported
 // Node-side for determinism, area and call-order proofs; the variant is also
-// bundled (see .kula-team/scratch/vite.config.mb.ts) and injected into the
+// reached through the app shell (window.__atlas from Map.tsx) to
 // page to render real pixels for screenshots and hit/fit checks, since Map.tsx
 // wiring is M4's work and the app still shows the stub.
 
 import { expect, test } from "@playwright/test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { atlasLayout, ATLAS_WORLD, flowRoute } from "../src/views/map/atlas/layout";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SHOTS = resolve(HERE, "../../.kula-team/shots");
-const BUNDLE = resolve(HERE, "../../.kula-team/scratch/mb-bundle/atlas.js");
 
 type Json = Record<string, unknown>;
 
@@ -96,7 +95,6 @@ test("layout: route visits stations in call order", async ({ page }) => {
 
 test("variant: semantic zoom gates parcels, dots and names; overlays honour the toggle", async ({ page }) => {
   const model = (await pageModel(page)) as any;
-  await page.addScriptTag({ content: readFileSync(BUNDLE, "utf8") });
   const r = await page.evaluate(() => {
     const atlas = (window as any).__atlas;
     const model = (window as any).__kulaMap.model;
@@ -185,7 +183,6 @@ test("variant: semantic zoom gates parcels, dots and names; overlays honour the 
 
 test("variant: fit and hit answer before the first draw", async ({ page }) => {
   const model = (await pageModel(page)) as any;
-  await page.addScriptTag({ content: readFileSync(BUNDLE, "utf8") });
   const r = await page.evaluate(() => {
     const atlas = (window as any).__atlas;
     const model = (window as any).__kulaMap.model;
@@ -225,7 +222,6 @@ test("variant: fit and hit answer before the first draw", async ({ page }) => {
 test("screenshots: atlas, route, district zoom, overlays", async ({ page }) => {
   test.setTimeout(60_000);
   const model = (await pageModel(page)) as any;
-  await page.addScriptTag({ content: readFileSync(BUNDLE, "utf8") });
   const shots = await page.evaluate(async () => {
     const atlas = (window as any).__atlas;
     const model = (window as any).__kulaMap.model;

@@ -1,18 +1,17 @@
 // MC proof: the Storyboard variant (variant C). The pure layout layer is
 // imported Node-side for determinism and lane-order proofs; the variant is
-// also bundled (see .kula-team/scratch/vite.config.mc.ts) and injected into
+// reached through the app shell (window.__story from Map.tsx) in
 // the page to render real pixels for screenshots and hit/fit checks, since
 // Map.tsx wiring is M4's work and the app still shows the stub.
 
 import { expect, test } from "@playwright/test";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { storyLayout, STORY_WORLD, LANE_ORDER } from "../src/views/map/story/layout";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SHOTS = resolve(HERE, "../../.kula-team/shots");
-const BUNDLE = resolve(HERE, "../../.kula-team/scratch/mc-bundle/story.iife.js");
 
 type Json = Record<string, unknown>;
 
@@ -24,7 +23,7 @@ async function pageModel(page: import("@playwright/test").Page): Promise<Json> {
 
 test.beforeAll(() => mkdirSync(SHOTS, { recursive: true }));
 
-test("shell: #map/c renders with the stub and no console errors", async ({ page }) => {
+test("shell: #map/c renders the storyboard with no console errors", async ({ page }) => {
   const errors: string[] = [];
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text().slice(0, 200)); });
   await page.goto("/#map/c");
@@ -132,7 +131,6 @@ test("layout: chips never collide horizontally on a lane row", async ({ page }) 
 test("variant: a card click or a fit on a flow opens the lanes; a chip jumps", async ({ page }) => {
   await page.goto("/#map/c");
   await page.waitForFunction(() => ((window as any).__kulaMap?.model?.stations?.length ?? 0) > 0);
-  await page.addScriptTag({ content: readFileSync(BUNDLE, "utf8") });
   const r = await page.evaluate(() => {
     const story = (window as any).__story;
     const model = (window as any).__kulaMap.model;
@@ -215,7 +213,6 @@ test("shell: a chip pick updates the URL and the inspector", async ({ page }) =>
 test("variant: overlays honour the toggles on both surfaces", async ({ page }) => {
   await page.goto("/#map/c");
   await page.waitForFunction(() => ((window as any).__kulaMap?.model?.stations?.length ?? 0) > 0);
-  await page.addScriptTag({ content: readFileSync(BUNDLE, "utf8") });
   const r = await page.evaluate(() => {
     const story = (window as any).__story;
     const model = (window as any).__kulaMap.model;
@@ -269,7 +266,6 @@ test("variant: overlays honour the toggles on both surfaces", async ({ page }) =
 
 test("screenshots: grid, open story, mobile grid", async ({ page }) => {
   const model = (await pageModel(page)) as any;
-  await page.addScriptTag({ content: readFileSync(BUNDLE, "utf8") });
   await page.evaluate(() => {
     const story = (window as any).__story;
     const model = (window as any).__kulaMap.model;
