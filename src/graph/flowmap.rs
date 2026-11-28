@@ -222,6 +222,51 @@ fn unroll(store: &Store, src: &mut Src, entry: &Node) -> Result<Vec<Step>> {
     Ok(steps)
 }
 
+/// CLI subcommand names, read from the source: variants of any `enum
+/// Commands` / `Subcommand` / `Action` / `Verb` (the clap convention) in Rust
+/// files, PascalCase → snake_case. A function named after a variant is a CLI
+/// entry point.
+fn cli_variants(store: &Store) -> HashSet<String> {
+    let mut out = HashSet::new();
+    let Ok(files) = store.files() else { return out };
+    for path in files {
+        if !path.ends_with(".rs") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(store.root.join(&path)) else { continue };
+        let mut in_enum = false;
+        for line in text.lines() {
+            let t = line.trim();
+            if t.starts_with("enum ")
+                && ["Commands", "Subcommand", "Action", "Verb"].iter().any(|k| t.contains(k))
+            {
+                in_enum = true;
+                continue;
+            }
+            if !in_enum {
+                continue;
+            }
+            if t == "}" {
+                in_enum = false;
+                continue;
+            }
+            let word: &str = t.split(|c: char| !(c.is_alphanumeric() || c == '_')).next().unwrap_or("");
+            if word.is_empty() || !word.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false) {
+                continue;
+            }
+            let mut snake = String::new();
+            for (i, ch) in word.char_indices() {
+                if ch.is_ascii_uppercase() && i > 0 {
+                    snake.push('_');
+                }
+                snake.push(ch.to_ascii_lowercase());
+            }
+            out.insert(snake);
+        }
+    }
+    out
+}
+
 /// The flow map: up to `limit` flows, routes and `main` first, then by reach.
 pub fn flowmap(store: &Store, limit: usize) -> Result<FlowMap> {
     let mut entries: Vec<(Node, &'static str, Option<String>)> = Vec::new();
@@ -236,6 +281,17 @@ pub fn flowmap(store: &Store, limit: usize) -> Result<FlowMap> {
     for m in store.nodes_where("kind = 'function' AND name = 'main'", [])? {
         if taken.insert(m.id) {
             entries.push((m, "main", None));
+        }
+    }
+    // CLI subcommands: functions named after Commands/Subcommand enum variants.
+    let subs = cli_variants(store);
+    if !subs.is_empty() {
+        let mut fns = store.nodes_where("kind = 'function'", [])?;
+        fns.sort_by_key(|n| n.id);
+        for f in fns {
+            if subs.contains(&f.name) && taken.insert(f.id) {
+                entries.push((f, "cli", None));
+            }
         }
     }
     for e in super::paths::uncalled_callers(store)? {
@@ -254,8 +310,9 @@ pub fn flowmap(store: &Store, limit: usize) -> Result<FlowMap> {
     let rank = |k: &str| match k {
         "route" => 0,
         "main" => 1,
-        "entry" => 2,
-        _ => 3,
+        "cli" => 2,
+        "entry" => 3,
+        _ => 4,
     };
     flows.sort_by(|a, b| rank(a.kind).cmp(&rank(b.kind)).then(b.steps.len().cmp(&a.steps.len())).then(a.entry.name.cmp(&b.entry.name)));
     // Single-step flows say nothing unless they are routes.
