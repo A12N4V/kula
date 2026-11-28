@@ -289,7 +289,7 @@ pub(crate) fn module_path(go_mod: &str) -> Option<String> {
 fn enclosing_scope(pf: &ParsedFile, byte: usize) -> usize {
     pf.defs
         .iter()
-        .filter(|d| d.start_byte <= byte && byte < d.end_byte && matches!(d.kind, "function" | "method"))
+        .filter(|d| d.start_byte <= byte && byte < d.end_byte && matches!(d.kind.as_str(), "function" | "method"))
         .min_by_key(|d| d.end_byte - d.start_byte)
         .map(|d| d.start_byte)
         .unwrap_or(0)

@@ -58,6 +58,7 @@ Gate G0: PASSED 2026-11-11 (P0.1–P0.3, P0.6, P0.7 done; no blockers). Fix any 
 
 | ID | Task | Owner | needs | Acceptance |
 |---|---|---|---|---|
+| P1.2.0 | DONE 2026-11-27 (B1, docs/design/engines/map.md): Blob parse cache keyed (blob oid, grammar version) read from the git index, warm reindex 2.6 s → ~0.35 s on kula itself; cache parity (cold == warm bytes) property test; edge sources scip > resolver > 1/k with confidence tiers; symbol_id()/relink() for B3; entry finder + ordered flows; /api/flowmap == kula_flows equality test | B1 | P1.1.3 | Warm reindex of kula under 0.4 s; cached and cold graphs byte identical; flows equal over HTTP and MCP |
 | P1.2.1 | Design doc: hierarchy (package → module → symbol), cluster naming, layers, entry points, summaries, storage (index vs `refs/kula/meta`) | PLAN | P1.1.3 | `docs/design/map.md` reviewed by YOU |
 | P1.2.2 | DONE 2026-11-12 (K2, 178cab8; tests/map.rs, explain.rs, brief.rs; hand review of other repos still YOU): Module tree from directories + manifests (Cargo, package.json, pyproject, go.mod), with size, churn (git), fan-in/out | WORKER | P1.2.1 | `kula map --json` emits the tree; correct on kula itself |
 | P1.2.3 | DONE 2026-11-12 (K2, 178cab8; tests/map.rs, explain.rs, brief.rs; hand review of other repos still YOU): Deterministic cluster naming: distinctive vocabulary of symbols and paths per cluster; stable names across reindexes | WORKER | P1.2.1 | Names stable across 3 consecutive indexes of an unchanged repo; hand-reviewed on 3 repos |

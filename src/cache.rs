@@ -8,7 +8,7 @@
 
 use anyhow::Result;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -197,6 +197,204 @@ mod tests {
         std::fs::write(dir.join("kula.toml"), "x = 2\n").unwrap();
         let c = cached("t", &dir, build).unwrap();
         assert_eq!(c["n"], 2, "changed input rebuilds");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Parse cache – keyed by (git blob oid, grammar version).
+//
+// Reindexing the same commit re-parses every file even though tree-sitter
+// output depends only on (source bytes, grammar). The git index already holds
+// each tracked file's blob oid, so we read oids with `git ls-files -s` (no
+// hashing of tracked files) and parse only cache misses. Untracked files fall
+// back to an FNV of their contents as the oid stand-in. The cached value is a
+// JSON mirror of everything the graph builder consumes from a parse, so a
+// warm build is byte-identical to a cold one.
+// ---------------------------------------------------------------------------
+
+/// Bump when the tree-sitter queries or `parse_source` change shape.
+pub const GRAMMAR_VERSION: u32 = 1;
+
+/// Everything the graph builder consumes from one parsed file.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct CachedParse {
+    pub path: String,
+    pub lang: String,
+    pub loc: u32,
+    pub defs: Vec<CachedDef>,
+    pub calls: Vec<(String, usize)>,
+    pub self_calls: HashSet<usize>,
+    pub imports: Vec<String>,
+    pub import_bindings: Vec<crate::index::resolve::ImportBinding>,
+    pub receivers: HashMap<usize, String>,
+    pub var_types: HashMap<String, String>,
+    pub interfaces: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct CachedDef {
+    pub name: String,
+    pub kind: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub start_byte: usize,
+    pub end_byte: usize,
+    pub parent_name: Option<String>,
+    pub hash: u64,
+}
+
+/// The blob oid of every tracked file whose worktree copy is clean, straight
+/// from the git index – no content hashing. Dirty (modified, unmerged, staged
+/// differently) and untracked paths are simply absent: `parse_one_cached` then
+/// falls back to a content FNV, so a worktree edit can never be served the
+/// committed file's cached parse.
+pub fn blob_oids(root: &Path) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let Ok(o) = std::process::Command::new("git").arg("-C").arg(root).args(["ls-files", "-s", "-z"]).output() else {
+        return out;
+    };
+    for rec in o.stdout.split(|b| *b == 0) {
+        let s = std::str::from_utf8(rec).unwrap_or_default();
+        // "mode oid stage\0path" – ls-files -s is "mode oid stage\tpath" per record.
+        let Some((meta, path)) = s.split_once('\t') else { continue };
+        let Some(oid) = meta.split_whitespace().nth(1) else { continue };
+        out.insert(path.to_string(), oid.to_string());
+    }
+    // Drop every path git reports as dirty; those keys would claim the cached
+    // parse of the committed blob for content that has since changed.
+    if let Ok(st) =
+        std::process::Command::new("git").arg("-C").arg(root).args(["status", "--porcelain", "-z", "--untracked-files"]).output()
+    {
+        for rec in st.stdout.split(|b| *b == 0) {
+            let s = std::str::from_utf8(rec).unwrap_or_default();
+            if s.len() < 4 {
+                continue;
+            }
+            out.remove(&s[3..]);
+            // Rename records are "XY new\0old\0": the old path is dirty too.
+            if s.starts_with('R') {
+                if let Some((new, old)) = s[3..].split_once('\0') {
+                    out.remove(new);
+                    out.remove(old);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// FNV-1a of the contents, for files the git index does not track.
+pub fn content_oid(content: &str) -> String {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in content.as_bytes() {
+        h = (h ^ *b as u64).wrapping_mul(0x100000001b3);
+    }
+    format!("u{h:016x}")
+}
+
+/// Persistent parse cache in `.kula/pcache.db`. Open failures fall back to an
+/// in-memory cache so indexing never breaks because of the cache.
+pub struct ParseCache {
+    conn: Option<std::sync::Mutex<Connection>>,
+    pub hits: std::sync::atomic::AtomicU64,
+    pub misses: std::sync::atomic::AtomicU64,
+}
+
+impl ParseCache {
+    pub fn open(root: &Path) -> ParseCache {
+        let conn = root
+            .join(".kula")
+            .pipe(|dir| std::fs::create_dir_all(&dir).ok().map(|_| dir))
+            .and_then(|dir| Connection::open(dir.join("pcache.db")).ok())
+            .and_then(|c| {
+                c.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS pcache(key TEXT PRIMARY KEY, value BLOB);
+                     PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;",
+                )
+                .ok()
+                .map(|_| c)
+            });
+        if let Some(c) = &conn {
+            // Cap: keep the newest entries when the cache outgrows ~40k parses.
+            if let Ok(n) = c.query_row("SELECT count(*) FROM pcache", [], |r| r.get::<_, i64>(0)) {
+                if n > 40_000 {
+                    let _ =
+                        c.execute("DELETE FROM pcache WHERE rowid IN (SELECT rowid FROM pcache ORDER BY rowid LIMIT ?1)", [(n - 40_000)]);
+                }
+            }
+        }
+        ParseCache { conn: conn.map(std::sync::Mutex::new), hits: Default::default(), misses: Default::default() }
+    }
+
+    fn key(oid: &str, lang: &str) -> String {
+        format!("{}:{}:{}", GRAMMAR_VERSION, lang, oid)
+    }
+
+    pub fn get(&self, oid: &str, lang: &str) -> Option<CachedParse> {
+        let conn = self.conn.as_ref()?.lock().ok()?;
+        let row = conn.query_row("SELECT value FROM pcache WHERE key = ?1", [Self::key(oid, lang)], |r| r.get::<_, Vec<u8>>(0)).ok()?;
+        self.hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        serde_json::from_slice(&row).ok()
+    }
+
+    pub fn put(&self, oid: &str, lang: &str, v: &CachedParse) {
+        let Ok(bytes) = serde_json::to_vec(v) else { return };
+        if let Some(c) = &self.conn {
+            if let Ok(c) = c.lock() {
+                let _ = c.execute("INSERT OR REPLACE INTO pcache VALUES (?1, ?2)", params![Self::key(oid, lang), bytes]);
+            }
+        }
+        self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+// rusqlite is not a dependency of cache.rs today; it is of the crate.
+use rusqlite::{params, Connection};
+
+/// Small pipe helper for the optional-open chain above.
+trait Pipe: Sized {
+    fn pipe<T>(self, f: impl FnOnce(Self) -> T) -> T {
+        f(self)
+    }
+}
+impl<T> Pipe for T {}
+
+#[cfg(test)]
+mod pcache_tests {
+    use super::*;
+
+    #[test]
+    fn round_trips_cached_parse() {
+        let dir = std::env::temp_dir().join(format!("kula-pcache-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let c = ParseCache::open(&dir);
+        let v = CachedParse {
+            path: "a.rs".into(),
+            lang: "rust".into(),
+            loc: 12,
+            defs: vec![CachedDef {
+                name: "f".into(),
+                kind: "function".into(),
+                start_line: 1,
+                end_line: 3,
+                start_byte: 0,
+                end_byte: 9,
+                parent_name: None,
+                hash: 42,
+            }],
+            calls: vec![("g".into(), 5)],
+            self_calls: HashSet::new(),
+            imports: vec!["std::io".into()],
+            import_bindings: vec![],
+            receivers: HashMap::new(),
+            var_types: HashMap::new(),
+            interfaces: vec![],
+        };
+        c.put("abc", "rust", &v);
+        let back = c.get("abc", "rust").expect("hit after put");
+        assert_eq!(back.defs[0].hash, 42);
+        assert!(c.get("other", "rust").is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -208,6 +208,8 @@ pub fn export(store: &Store, level: &str, limit: usize) -> Result<GraphExport> {
                     weight: r.get::<_, i64>(3)? as f64,
                     // The surest edge behind this file dependency.
                     confidence: ["guessed", "inferred", "resolved"][r.get::<_, i64>(4)?.clamp(0, 2) as usize].into(),
+                    // These are derived file-level edges; the original source is not tracked.
+                    source: "resolver".into(),
                 })
             })?
             .filter_map(|e| e.ok())

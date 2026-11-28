@@ -221,7 +221,7 @@ impl<'a> Scope<'a> {
             return self.has_type(&f, name).then_some(f);
         }
         for d in &self.pf().defs {
-            if &d.name == name && is_type_kind(d.kind) {
+            if &d.name == name && is_type_kind(&d.kind) {
                 return Some(self.pf().path.clone());
             }
         }

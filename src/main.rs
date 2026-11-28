@@ -1,4 +1,6 @@
 //! kula – git, with a map.
+// The MCP tool schemas are large json! literals; keep the macro recursion under the limit.
+#![recursion_limit = "512"]
 
 mod agent;
 mod agent_config;

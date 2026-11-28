@@ -264,7 +264,7 @@ pub const SPECS: &[Spec] = &[
     },
 ];
 
-fn spec(id: &str) -> Option<&'static Spec> {
+pub(crate) fn spec(id: &str) -> Option<&'static Spec> {
     SPECS.iter().find(|s| s.id == id)
 }
 

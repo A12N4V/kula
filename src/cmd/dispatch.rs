@@ -81,10 +81,11 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
                 out(&s);
             } else {
                 println!(
-                    "{} {} files · {} parsed · {} symbols · {} edges · {} clusters  {}",
+                    "{} {} files · {} parsed · {} cached · {} symbols · {} edges · {} clusters  {}",
                     green("✓"),
                     s.files,
                     s.parsed,
+                    s.cached,
                     bold(&s.symbols.to_string()),
                     s.edges,
                     s.communities,
